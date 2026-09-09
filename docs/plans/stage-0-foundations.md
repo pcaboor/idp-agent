@@ -100,8 +100,8 @@ Expected: FAIL — `Cannot find module '../../src/core/index.js'`
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "build": "tsc"
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
     "yaml": "^2.9.0",
@@ -116,7 +116,8 @@ Expected: FAIL — `Cannot find module '../../src/core/index.js'`
 }
 ```
 
-`tsconfig.json`:
+`tsconfig.json` — type checking, covering tests as well as sources. A type error in
+a test must break the build, not surface at runtime:
 
 ```json
 {
@@ -125,14 +126,28 @@ Expected: FAIL — `Cannot find module '../../src/core/index.js'`
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2023"],
-    "outDir": "dist",
-    "rootDir": ".",
+    "types": ["node"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "declaration": true
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
+}
+```
+
+`tsconfig.build.json` — emitting the published library, sources only:
+
+```json
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "outDir": "dist",
+    "rootDir": "src"
   },
   "include": ["src/**/*.ts"]
 }
@@ -169,7 +184,7 @@ Expected: PASS — 1 test.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add package.json tsconfig.json vitest.config.ts LICENSE src tests pnpm-lock.yaml
+git add package.json tsconfig.json tsconfig.build.json vitest.config.ts LICENSE src tests pnpm-lock.yaml
 git commit -m "chore: scaffold the project with vitest and typescript"
 ```
 
