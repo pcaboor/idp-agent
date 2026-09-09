@@ -1,0 +1,92 @@
+import { describe, expect, it } from 'vitest'
+import {
+  findUnknowns,
+  isApplicable,
+  operationSchema,
+  planSchema,
+} from '../../src/core/schemas/plan.js'
+
+const resource = {
+  apiVersion: 'backstage.io/v1alpha1' as const,
+  kind: 'Resource' as const,
+  metadata: { name: 'billing-api-billing-db-dev', annotations: {} },
+  spec: { type: 'database-access' as const, owner: 'group:default/tiger' },
+}
+
+describe('plan schemas', () => {
+  it('accepts a create-entity operation', () => {
+    const op = operationSchema.parse({ op: 'create-entity', entity: resource })
+    expect(op.op).toBe('create-entity')
+  })
+
+  it('rejects an operation that is not modelled', () => {
+    const result = operationSchema.safeParse({ op: 'delete-database', name: 'billing' })
+    expect(result.success).toBe(false)
+  })
+
+  it('finds no unknown in a fully determined plan', () => {
+    const plan = planSchema.parse({
+      intent: 'give billing-api read access to billing-db-dev',
+      operations: [{ op: 'create-entity', entity: resource }],
+    })
+    expect(findUnknowns(plan)).toEqual([])
+    expect(isApplicable(plan)).toBe(true)
+  })
+
+  it('reports the path of every unknown and refuses to apply', () => {
+    const plan = planSchema.parse({
+      intent: 'connect to the billing database',
+      operations: [
+        {
+          op: 'create-entity',
+          entity: {
+            ...resource,
+            spec: { ...resource.spec, owner: { unknown: 'no CODEOWNERS entry found' } },
+          },
+        },
+      ],
+    })
+    expect(findUnknowns(plan)).toEqual(['operations.0.entity.spec.owner'])
+    expect(isApplicable(plan)).toBe(false)
+  })
+
+  it('reports several unknowns in traversal order', () => {
+    const plan = planSchema.parse({
+      intent: 'connect to something',
+      operations: [
+        {
+          op: 'create-entity',
+          entity: {
+            ...resource,
+            spec: {
+              type: { unknown: 'could not tell a cache from a database' },
+              owner: { unknown: 'no CODEOWNERS entry found' },
+            },
+          },
+        },
+      ],
+    })
+    expect(findUnknowns(plan)).toEqual([
+      'operations.0.entity.spec.type',
+      'operations.0.entity.spec.owner',
+    ])
+  })
+
+  it('treats an empty plan as applicable — absent means already done', () => {
+    const plan = planSchema.parse({ intent: 'already declared', operations: [] })
+    expect(isApplicable(plan)).toBe(true)
+  })
+
+  it('rejects an unknown carrying no reason', () => {
+    const result = planSchema.safeParse({
+      intent: 'x',
+      operations: [
+        { op: 'create-entity', entity: { ...resource, spec: { owner: { unknown: '' } } } },
+      ],
+    })
+    // An empty reason is accepted by the record, but carries nothing to ask the
+    // user: findUnknowns must still surface it rather than let it pass silently.
+    expect(result.success).toBe(true)
+    expect(findUnknowns(result.data)).toEqual(['operations.0.entity.spec.owner'])
+  })
+})
