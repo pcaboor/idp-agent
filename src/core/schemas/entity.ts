@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { RESOURCE_TYPE_NAMES, natureOf } from './resource-types.js'
 
 /** Annotation carrying an entity's own file location. Read it; never re-derive it. */
 export const SOURCE_FILE_ANNOTATION = 'idp-agent.dev/source-file'
@@ -15,17 +16,6 @@ export const entityRefSchema = z
 export const ownerRefSchema = z
   .string()
   .regex(/^(group|user):[a-z0-9-]+\/[a-z0-9._-]+$/, 'expected group:... or user:...')
-
-export const RESOURCE_TYPES = [
-  'database',
-  'cache',
-  'api',
-  'database-access',
-  'network-access',
-  'gateway-route',
-] as const
-
-export type ResourceType = (typeof RESOURCE_TYPES)[number]
 
 export const metadataSchema = z.object({
   name: z.string().regex(NAME_PATTERN, 'invalid Backstage name'),
@@ -50,17 +40,30 @@ export const componentSchema = z.object({
   }),
 })
 
-export const resourceSchema = z.object({
-  ...baseFields,
-  kind: z.literal('Resource'),
-  spec: z.object({
-    type: z.enum(RESOURCE_TYPES),
-    owner: ownerRefSchema,
-    dependsOn: z.array(entityRefSchema).optional(),
-    /** An access carries its consumers; a resource does not (design section 4.1). */
-    dependencyOf: z.array(entityRefSchema).optional(),
-  }),
-})
+export const resourceSchema = z
+  .object({
+    ...baseFields,
+    kind: z.literal('Resource'),
+    spec: z.object({
+      type: z.enum(RESOURCE_TYPE_NAMES),
+      owner: ownerRefSchema,
+      dependsOn: z.array(entityRefSchema).optional(),
+      /** An access carries its consumers; a resource does not (design 4.1). */
+      dependencyOf: z.array(entityRefSchema).optional(),
+    }),
+  })
+  .superRefine((value, ctx) => {
+    // Enforced here rather than left to review: a consumer list on an object is
+    // valid YAML that the catalogue ingests without complaint, so nothing
+    // downstream would ever report it.
+    if (value.spec.dependencyOf !== undefined && natureOf(value.spec.type) !== 'right') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['spec', 'dependencyOf'],
+        message: `'${value.spec.type}' is an object; only a right carries its consumers`,
+      })
+    }
+  })
 
 export const entitySchema = z.discriminatedUnion('kind', [componentSchema, resourceSchema])
 

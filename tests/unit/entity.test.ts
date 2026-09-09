@@ -51,4 +51,42 @@ describe('entity schemas', () => {
     })
     expect(result.success).toBe(false)
   })
+
+  it('refuses dependencyOf on an object: a resource does not carry its consumers', () => {
+    const result = resourceSchema.safeParse({
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Resource',
+      metadata: { name: 'billing-db-dev' },
+      spec: {
+        type: 'database',
+        owner: 'group:default/tiger',
+        dependencyOf: ['component:default/billing-api'],
+      },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts dependencyOf on a right', () => {
+    const result = resourceSchema.safeParse({
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Resource',
+      metadata: { name: 'billing-api-billing-db-dev' },
+      spec: {
+        type: 'database-access',
+        owner: 'group:default/tiger',
+        dependencyOf: ['component:default/billing-api'],
+      },
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('still discriminates on kind once the refinement is in place', () => {
+    const parsed = entitySchema.parse({
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Resource',
+      metadata: { name: 'billing-db-dev' },
+      spec: { type: 'database', owner: 'group:default/tiger' },
+    })
+    expect(parsed.kind).toBe('Resource')
+  })
 })

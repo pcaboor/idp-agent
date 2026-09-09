@@ -555,9 +555,8 @@ git commit -m "feat(core): add Plan, Operation and explicit unknown handling"
 - Modify: `src/core/index.ts`
 
 **Interfaces:**
-- Consumes: `ResourceType`, `SOURCE_FILE_ANNOTATION`, `Entity` from Task 2
+- Consumes: `folderOf`, `ResourceType` from `schemas/resource-types.ts`; `SOURCE_FILE_ANNOTATION`, `Entity` from Task 2
 - Produces:
-  - `FOLDER_BY_TYPE: Record<ResourceType, string>`
   - `computeEntityPath(type: ResourceType, name: string): string`
   - `resolveEntityPath(entity: Entity): string`
   - `assertInsideRepo(repoRoot: string, candidate: string): string` — throws `PathEscapeError`
@@ -629,17 +628,8 @@ Create `src/core/paths/entity-path.ts`:
 
 ```typescript
 import path from 'node:path'
-import { SOURCE_FILE_ANNOTATION, type Entity, type ResourceType } from '../schemas/entity.js'
-
-/** One folder per nature, so two concurrent declarations never share a file. */
-export const FOLDER_BY_TYPE: Record<ResourceType, string> = {
-  database: 'catalog/databases',
-  cache: 'catalog/caches',
-  api: 'catalog/apis',
-  'database-access': 'dependencies/access',
-  'network-access': 'dependencies/network',
-  'gateway-route': 'dependencies/gateway',
-}
+import { SOURCE_FILE_ANNOTATION, type Entity } from '../schemas/entity.js'
+import { folderOf, type ResourceType } from '../schemas/resource-types.js'
 
 export class PathEscapeError extends Error {
   constructor(candidate: string) {
@@ -650,7 +640,7 @@ export class PathEscapeError extends Error {
 
 /** Convention for a new entity. The model never chooses this. */
 export function computeEntityPath(type: ResourceType, name: string): string {
-  return `${FOLDER_BY_TYPE[type]}/${name}.yml`
+  return `${folderOf(type)}/${name}.yml`
 }
 
 /**
