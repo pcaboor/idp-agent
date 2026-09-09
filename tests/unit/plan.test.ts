@@ -90,3 +90,55 @@ describe('plan schemas', () => {
     expect(findUnknowns(result.data)).toEqual(['operations.0.entity.spec.owner'])
   })
 })
+
+describe('plan limits', () => {
+  const operation = { op: 'create-entity', entity: resource }
+
+  it('refuses more operations than a reviewer could read in one merge request', () => {
+    const many = Array.from({ length: 51 }, () => operation)
+    expect(planSchema.safeParse({ intent: 'x', operations: many }).success).toBe(false)
+  })
+
+  it('accepts a plan at the limit', () => {
+    const many = Array.from({ length: 50 }, () => operation)
+    expect(planSchema.safeParse({ intent: 'x', operations: many }).success).toBe(true)
+  })
+
+  it('refuses an intent longer than a request', () => {
+    expect(planSchema.safeParse({ intent: 'x'.repeat(2001), operations: [] }).success).toBe(false)
+  })
+
+  it('refuses a structure nested deeper than any real entity', () => {
+    let deep: Record<string, unknown> = { leaf: true }
+    for (let i = 0; i < 100; i += 1) deep = { nested: deep }
+    const result = planSchema.safeParse({
+      intent: 'x',
+      operations: [{ op: 'create-entity', entity: deep }],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('refuses a single value larger than any real field', () => {
+    const result = planSchema.safeParse({
+      intent: 'x',
+      operations: [{ op: 'create-entity', entity: { description: 'x'.repeat(8193) } }],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('walks a structure deep enough to overflow a recursive implementation', () => {
+    let deep: Record<string, unknown> = { unknown: 'leaf' }
+    for (let i = 0; i < 50_000; i += 1) deep = { nested: deep }
+    expect(() => findUnknowns(deep)).not.toThrow()
+  })
+
+  it('drops a __proto__ key rather than polluting the prototype', () => {
+    const parsed = planSchema.parse({
+      intent: 'x',
+      operations: [JSON.parse('{"op":"create-entity","entity":{"__proto__":{"owned":true}}}')],
+    })
+    const entity = (parsed.operations[0] as { entity: Record<string, unknown> }).entity
+    expect(Object.keys(entity)).toEqual([])
+    expect(({} as Record<string, unknown>).owned).toBeUndefined()
+  })
+})
