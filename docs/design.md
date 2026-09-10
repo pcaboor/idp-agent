@@ -36,6 +36,7 @@ harness more verifiable over the one that adds an integration.
 | Axis | Reliable agent harness; GitOps is the playing field |
 | SI context | `ContextProvider` interface, embedded fictional SI by default |
 | Source of truth | Backstage to **explore**, the git repository to **decide on writes** |
+| Provider schedule | fixtures in stages 1-2, `iac-fs` from stage 4, `backstage-http` at MVP |
 | LLM layer | Vercel AI SDK, low-level mode — multi-provider, loop written by hand |
 | Reliability proof | Record/replay cassettes + property-based invariants + negative tests |
 | Terminal | Ink; the harness emits events, the TUI draws them |
@@ -541,6 +542,11 @@ English throughout: code, comments, commits, docs, CLI output.
 Deliberately excluded; do not reintroduce without an explicit decision.
 
 - GitLab (v0.2 — the interface is in place, it is one file to write)
+- The `backstage-http` provider (MVP). v0.1 ships `fixtures` and `iac-fs`.
+  `iac-fs` cannot be deferred with it: the catalogue lags the repository by about
+  two minutes, so deciding to write against Backstage would propose creating what
+  already exists. The git repository stays the source of truth at write time, in
+  the POC as much as in production.
 - MCP server exposed by `idp-agent` (v0.2)
 - Extraction into a publishable monorepo (v0.2, once usage has revealed the interfaces)
 - Real Kong / Tufin / Jira integrations — they remain described destinations, not code
