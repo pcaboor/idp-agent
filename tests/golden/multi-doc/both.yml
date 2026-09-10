@@ -1,0 +1,17 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: first
+spec:
+  type: database
+  owner: group:default/tiger
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: second
+spec:
+  type: database
+  owner: group:default/tiger

@@ -1,0 +1,14 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: mcp-inpi-db-dev
+  annotations:
+    company.fr/env: dev
+spec:
+  type: database-access
+  owner: group:default/dodowarriors
+  dependsOn:
+    - resource:default/inpi-db-dev
+  dependencyOf:
+    - component:default/mcp-inpi

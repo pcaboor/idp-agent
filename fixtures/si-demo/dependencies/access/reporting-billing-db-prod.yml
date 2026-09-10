@@ -1,0 +1,14 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: reporting-billing-db-prod
+  annotations:
+    company.fr/env: prod
+spec:
+  type: database-access
+  owner: group:default/common
+  dependsOn:
+    - resource:default/billing-db-prod
+  dependencyOf:
+    - component:default/reporting-worker

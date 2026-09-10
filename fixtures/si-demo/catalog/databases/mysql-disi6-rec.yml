@@ -1,0 +1,10 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: mysql-disi6-rec
+  annotations:
+    company.fr/env: staging
+spec:
+  type: database
+  owner: group:default/common

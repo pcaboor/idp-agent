@@ -1,0 +1,12 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: billing-db-prod
+  annotations:
+    company.fr/env: prod
+spec:
+  type: database
+  owner: group:default/tiger
+  dependsOn:
+    - resource:default/mysql-prod-01

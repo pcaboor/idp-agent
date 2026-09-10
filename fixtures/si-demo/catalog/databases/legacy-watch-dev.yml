@@ -1,0 +1,12 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: legacy-watch-dev
+  annotations:
+    company.fr/env: dev
+spec:
+  type: database
+  owner: group:default/elephant
+  dependsOn:
+    - resource:default/mysql-disi6-dev
