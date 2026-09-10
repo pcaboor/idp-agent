@@ -1,0 +1,14 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: billing-api-billing-db-prod
+  annotations:
+    company.fr/env: prod
+spec:
+  type: database-access
+  owner: group:default/tiger
+  dependsOn:
+    - resource:default/billing-db-prod
+  dependencyOf:
+    - component:default/billing-api

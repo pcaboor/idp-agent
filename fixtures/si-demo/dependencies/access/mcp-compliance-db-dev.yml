@@ -1,0 +1,14 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: mcp-compliance-db-dev
+  annotations:
+    company.fr/env: dev
+spec:
+  type: database-access
+  owner: group:default/common
+  dependsOn:
+    - resource:default/compliance-db-dev
+  dependencyOf:
+    - component:default/mcp-eu-compliance

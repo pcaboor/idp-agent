@@ -1,0 +1,10 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: mysql-prod-01
+  annotations:
+    company.fr/env: prod
+spec:
+  type: database
+  owner: group:default/common

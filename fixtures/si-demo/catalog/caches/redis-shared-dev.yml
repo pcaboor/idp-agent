@@ -1,0 +1,10 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: redis-shared-dev
+  annotations:
+    company.fr/env: dev
+spec:
+  type: cache
+  owner: group:default/common

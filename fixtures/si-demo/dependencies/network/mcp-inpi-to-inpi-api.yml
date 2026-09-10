@@ -1,0 +1,14 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: mcp-inpi-to-inpi-api
+  annotations:
+    company.fr/env: prod
+spec:
+  type: network-access
+  owner: group:default/dodowarriors
+  dependsOn:
+    - resource:default/inpi-api
+  dependencyOf:
+    - component:default/mcp-inpi
