@@ -1,0 +1,49 @@
+import { describe, expect, it } from 'vitest'
+import { renderTable } from '../../src/cli/render/table.js'
+import { renderEntityDetail } from '../../src/cli/render/entity.js'
+import { EntityGraph } from '../../src/context/graph/entity-graph.js'
+import type { Entity } from '../../src/core/schemas/entity.js'
+
+describe('renderTable', () => {
+  it('aligns columns to the widest cell', () => {
+    // Asserting the exact run of spaces would mean counting them by hand and
+    // getting it wrong; assert the alignment itself.
+    const lines = renderTable(['NAME', 'ENV'], [['a', 'dev'], ['longer-name', 'prod']]).split('\n')
+    expect(lines).toHaveLength(3)
+    const column = lines[0]?.indexOf('ENV')
+    expect(lines[1]?.indexOf('dev')).toBe(column)
+    expect(lines[2]?.indexOf('prod')).toBe(column)
+    expect(lines[2]?.startsWith('longer-name  ')).toBe(true)
+  })
+
+  it('renders headers alone when there are no rows', () => {
+    expect(renderTable(['NAME'], [])).toBe('NAME')
+  })
+
+  it('never pads the last column, so no line carries trailing space', () => {
+    const output = renderTable(['A', 'B'], [['x', 'y']])
+    expect(output.split('\n').every((line) => line === line.trimEnd())).toBe(true)
+  })
+})
+
+describe('renderEntityDetail', () => {
+  const db: Entity = {
+    apiVersion: 'backstage.io/v1alpha1',
+    kind: 'Resource',
+    metadata: { name: 'billing-db-dev', annotations: { 'company.fr/env': 'dev' } },
+    spec: { type: 'database', owner: 'group:default/tiger' },
+  }
+
+  it('states what is known', () => {
+    const output = renderEntityDetail(EntityGraph.from([db]), db)
+    expect(output).toContain('billing-db-dev')
+    expect(output).toContain('database')
+    expect(output).toContain('group:default/tiger')
+    expect(output).toContain('dev')
+  })
+
+  it('says an environment is undeclared rather than guessing one', () => {
+    const bare: Entity = { ...db, metadata: { name: 'x', annotations: {} } }
+    expect(renderEntityDetail(EntityGraph.from([bare]), bare)).toContain('undeclared')
+  })
+})

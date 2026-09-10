@@ -4,7 +4,19 @@
   "description": "Turn a natural-language intent into reviewed infrastructure declarations",
   "license": "Apache-2.0",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "idp-agent": "dist/cli/bin.js",
+    "idpa": "dist/cli/bin.js"
+  },
+  "files": [
+    "dist",
+    "fixtures",
+    "LICENSE",
+    "NOTICE"
+  ],
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
