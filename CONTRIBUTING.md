@@ -1,0 +1,80 @@
+# Contributing
+
+## Setup
+
+```bash
+pnpm install
+pnpm test
+```
+
+That is it. Node >= 22 and pnpm 10, nothing else — no API key, no network, no Docker,
+no database. If a change makes any of those necessary to run the suite, the change is
+wrong, not the setup.
+
+Before opening a pull request, run what CI runs:
+
+```bash
+pnpm typecheck    # vitest does not typecheck; this is not redundant
+pnpm test
+pnpm build
+pnpm smoke        # runs the built dist/cli/bin.js, which the suite never does
+```
+
+## How the work is organised
+
+Each stage has a plan in [`docs/plans/`](docs/plans), written before any code and
+executed task by task, test first. Read [`AGENTS.md`](AGENTS.md) before touching
+anything — it is the shortest path to the architecture and the invariants, and it says
+what is already built.
+
+**Test first.** Write the failing test, watch it fail for the right reason, then write
+the smallest code that passes. A test that never failed proves nothing about the code;
+it only proves the test runs.
+
+## The rules CI enforces for you
+
+No human has to explain these in review — the build does it, with a message:
+
+- `core/` imports neither `agents/` nor `llm/`, and never reaches the network.
+- `agents/` imports neither `fs`, nor `child_process`, nor a git client. There is no
+  code path from an agent to the disk, and that is structural, not a convention.
+- Everything typechecks under TypeScript 7 with the project's strict settings.
+- The built binary runs and returns the right exit codes.
+
+Add a rule when you add a layer. `tests/architecture/dependencies.test.ts` is the place.
+
+## What review looks at instead
+
+The invariants in [`docs/design.md`](docs/design.md) §4. They are not style preferences:
+each has a known cost when violated, and none follows from the documentation of the
+tools involved. A change that weakens one needs to change that section first, with the
+reasoning — not in a pull request description that nobody will find again.
+
+The two that catch most newcomers:
+
+- **Declare, never infer.** What is unknown is reported as unknown, never filled with a
+  plausible value. An ambiguous name lists its candidates; it does not pick the first.
+- **Never ignore in silence.** An entity that fails validation is reported. Dropping it
+  quietly is the catalogue behaviour this tool exists to compensate for.
+
+## Commits and pull requests
+
+[Conventional Commits](https://www.conventionalcommits.org): `feat(cli): …`,
+`fix(context): …`, `docs: …`, `test(core): …`, `ci: …`.
+
+Write the body for whoever reads it in a year: what was wrong, why this is the fix, and
+what you decided against. `main` is reached through a pull request — the repository
+holds its own doctrine about merges being the act of authorisation, and applies it to
+itself.
+
+**English throughout** — code, comments, commit messages, test names, CLI output.
+
+## Reporting a bug, or a vulnerability
+
+Bugs: open an issue with the command you ran and what you expected. Vulnerabilities:
+see [`SECURITY.md`](SECURITY.md) — a private advisory, not a public issue.
+
+## Licence
+
+By contributing, you agree that your contributions are licensed under Apache-2.0, the
+licence of the project.
