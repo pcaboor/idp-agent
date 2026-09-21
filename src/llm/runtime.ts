@@ -107,9 +107,17 @@ export function toToolChoice(
   return typeof choice === 'string' ? choice : { type: 'tool', toolName: choice.tool }
 }
 
+/**
+ * replay — read a recorded turn, build no adapter, read no credential.
+ * record — call the model and write the turn down.
+ * live   — call the model and write nothing. This is a real run of the CLI;
+ *          it has no scenario to replay and no reason to record one.
+ */
+export type ClientMode = 'replay' | 'record' | 'live'
+
 export function createClient(options: {
-  tape: OpenRecording
-  mode: 'replay' | 'record'
+  tape?: OpenRecording
+  mode: ClientMode
   choice?: ModelChoice
 }): LlmClient {
   // Counted here, per agent, never derived from content: that is what makes
@@ -125,6 +133,7 @@ export function createClient(options: {
       if (options.mode === 'replay') {
         // No adapter is built and no credential is read: a contributor replays
         // a recording made against a model they have no key for.
+        if (options.tape === undefined) throw new Error('replay needs a recording')
         return fromRecord(options.tape.replay(key, digestOf(request)))
       }
 
@@ -143,7 +152,11 @@ export function createClient(options: {
         toolChoice: toToolChoice(request.toolChoice),
       })
 
-      options.tape.record(key, {
+      if (options.mode === 'live') {
+        return { ...readContent(response.content), finishReason: response.finishReason }
+      }
+
+      options.tape?.record(key, {
         ...key,
         provider: choice.provider,
         model: choice.model,
