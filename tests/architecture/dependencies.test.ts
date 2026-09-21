@@ -50,7 +50,7 @@ async function importsUnder(dir: string): Promise<Import[]> {
  * Every import reachable from an entry file, not only the ones written in it.
  * Relative specifiers are resolved and walked; a bare specifier is recorded and
  * not walked. Grepping one directory would let agents/ -> llm/client ->
- * cassette -> node:fs pass, while SECURITY.md claims there is no code path from
+ * recording -> node:fs pass, while SECURITY.md claims there is no code path from
  * an agent to the disk. This is that claim, made checkable.
  */
 async function closureOf(entry: string, seen = new Set<string>()): Promise<Import[]> {

@@ -87,7 +87,7 @@ The doctrine that follows from running such a system is written down in
 |---|---|---|
 | 0 | Foundations — schemas, serialiser, paths, invariants | done |
 | 1 | Read-only — `graph`, `show <entity>` | done |
-| 2 | Question mode — Supervisor, cassettes | next |
+| 2 | Question mode — Supervisor, recordings | next |
 | 3 | `init` — scaffold, CI, CODEOWNERS, witnesses | |
 | 4 | Preview only — Inspector, Architect, `Plan`, diff; writes nothing | |
 | 5 | Write + local branch — atomicity, idempotence | |

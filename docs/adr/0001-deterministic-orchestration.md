@@ -5,7 +5,7 @@
 ## Context
 
 Four agents take part in a mutation — Supervisor, Inspector, Architect, Reviewer (docs/design.md
-§ 6); something must decide which runs, in what order, and how often it retries. Cassettes replay
+§ 6); something must decide which runs, in what order, and how often it retries. Recordings replay
 per turn (§ 9.3) and tests assert the event sequence (§ 6.2); both need that order to be fixed.
 
 ## Decision
@@ -19,7 +19,7 @@ Inspector, Architect and repair loop at stage 4 (§ 11); `src/agents/` is unwrit
 ## Rejected alternative
 
 **Let the Supervisor pick its own workers** — an LLM router choosing the next agent and when to
-retry. It would make the suite unwritable: cassettes are indexed on `(scenario, agent, turn
+retry. It would make the suite unwritable: recordings are indexed on `(scenario, agent, turn
 number)` (§ 9.3), and a turn number exists only once the order is fixed, so a test asserting the
 `AgentEvent` stream would have no constant to assert against. Worse, the three-attempt bound stops
 being a bound — a router free to re-dispatch can loop, rarely enough to survive review.
