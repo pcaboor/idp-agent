@@ -55,7 +55,11 @@ async function walk(root: string, directory: string, found: Walked): Promise<voi
   for (const entry of entries) {
     const full = path.join(directory, entry.name)
     if (entry.isDirectory()) {
-      if (entry.name === '.git' || entry.name === 'node_modules') continue
+      // A hidden directory is tooling, not catalogue: .github holds workflows
+      // that are YAML and are not entities, .git holds objects. Parsing them
+      // as entities would make the repository this tool just scaffolded fail
+      // its own validator — which is how this rule was found.
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
       await walk(root, full, found)
       continue
     }

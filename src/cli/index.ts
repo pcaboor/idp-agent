@@ -13,6 +13,10 @@ import { EntityGraph } from '../context/graph/entity-graph.js'
 import { runGraph, type GraphOptions } from './commands/graph.js'
 import { runShow } from './commands/show.js'
 import { runValidate } from './commands/validate.js'
+import { INIT_DEFERRED, runInit, runInitPlatform } from './commands/init.js'
+import { isForgeHandle } from '../scaffold/codeowners.js'
+import { assertInsideRepo } from '../core/paths/entity-path.js'
+import { VERSION } from '../core/index.js'
 import type { CommandResult } from './commands/result.js'
 
 export type Command =
@@ -20,6 +24,8 @@ export type Command =
   | { name: 'show'; query: string }
   | { name: 'ask'; intent: string }
   | { name: 'validate'; directory: string }
+  | { name: 'init-platform'; directory: string; owner: string }
+  | { name: 'init' }
   | { name: 'help' }
   | { name: 'error'; message: string }
 
@@ -29,12 +35,45 @@ const HELP = `idp-agent - read-only view of the service catalogue
   idp-agent show <name-or-reference>
   idp-agent ask "<question>"     needs IDP_PROVIDER and IDP_MODEL
   idp-agent validate <directory>
+  idp-agent init platform <directory> --owner @org/team
 `
 
 export function parseArguments(argv: string[]): Command {
   const [commandName, ...rest] = argv
   if (commandName === undefined || commandName === 'help' || commandName === '--help') {
     return { name: 'help' }
+  }
+
+  if (commandName === 'init') {
+    if (rest[0] !== 'platform') return { name: 'init' }
+    try {
+      const { values, positionals } = parseArgs({
+        args: rest.slice(1),
+        options: { owner: { type: 'string' } },
+        allowPositionals: true,
+        strict: true,
+      })
+      const directory = positionals[0]
+      if (directory === undefined) {
+        return { name: 'error', message: 'init platform needs a directory' }
+      }
+      const owner = values.owner
+      if (owner === undefined) {
+        return {
+          name: 'error',
+          message: 'init platform needs --owner, e.g. --owner @acme/platform',
+        }
+      }
+      if (!isForgeHandle(owner)) {
+        return {
+          name: 'error',
+          message: `"${owner}" is not a forge handle; CODEOWNERS wants @user or @org/team, not an entity owner reference`,
+        }
+      }
+      return { name: 'init-platform', directory, owner }
+    } catch (error) {
+      return { name: 'error', message: (error as Error).message }
+    }
   }
 
   if (commandName === 'validate') {
@@ -95,6 +134,8 @@ export function parseArguments(argv: string[]): Command {
  */
 export interface MainDeps {
   root?: string
+  /** Where a relative directory argument is resolved from. Injected for tests. */
+  cwd?: string
   out?: (chunk: string) => void
   err?: (chunk: string) => void
   /** Injected so a test never reads the real environment. */
@@ -130,6 +171,25 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   if (command.name === 'error') {
     err(`${command.message}\n\n${HELP}`)
     return EXIT.badUsage
+  }
+
+  if (command.name === 'init') {
+    err(`${INIT_DEFERRED}\n`)
+    const result = runInit()
+    return result.unsupported === true ? EXIT.unsupported : EXIT.ok
+  }
+
+  if (command.name === 'init-platform') {
+    let root: string
+    try {
+      root = assertInsideRepo(deps.cwd ?? process.cwd(), command.directory)
+    } catch (error) {
+      err(`${error instanceof Error ? error.message : String(error)}\n`)
+      return EXIT.badUsage
+    }
+    const result = await runInitPlatform({ root, owner: command.owner, version: VERSION })
+    out(`${result.text}\n`)
+    return EXIT.ok
   }
 
   // Reads the directory it was handed, so it must not go through the fixture
