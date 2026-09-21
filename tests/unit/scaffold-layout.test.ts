@@ -32,6 +32,15 @@ describe('scaffoldLayout', () => {
     expect(workflow?.content).not.toContain('__VERSION__')
   })
 
+  it('leaves the validation step commented out while the package is unpublished', async () => {
+    // A workflow naming a package nobody can install fails on its first push
+    // with no explanation. Shipping it commented, with the reason, is the same
+    // admission the branch-protection block makes.
+    const workflow = (await layout()).find((file) => file.path.endsWith('validate.yml'))
+    expect(workflow?.content).toMatch(/^\s*# - run: npx/m)
+    expect(workflow?.content).toMatch(/not published yet/i)
+  })
+
   it('maps the dotless template to the dotfile it must become', async () => {
     // npm renames a packaged .gitignore to .npmignore, so it ships dotless.
     expect((await layout()).map((file) => file.path)).toContain('.gitignore')
