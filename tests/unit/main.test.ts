@@ -82,6 +82,69 @@ describe('main', () => {
     expect(io.out.join('')).toContain('matches 2 entities')
   })
 
+  it('returns 2 and refuses to pick a model on the user behalf', async () => {
+    // The state a reviewing agent who just cloned the repository is in.
+    const io = capture()
+    const code = await main(['ask', 'which databases are in prod?'], {
+      root: FIXTURES,
+      env: {},
+      out: (s) => io.out.push(s),
+      err: (s) => io.err.push(s),
+    })
+    expect(code).toBe(2)
+    expect(io.err.join('')).toContain('no model configured')
+    expect(io.out).toEqual([])
+  })
+
+  it('refuses an ask with no question, rather than asking an empty one', async () => {
+    const io = capture()
+    const code = await main(['ask'], { out: (s) => io.out.push(s), err: (s) => io.err.push(s) })
+    expect(code).toBe(2)
+    expect(io.err.join('')).toContain('needs a question')
+  })
+
+  it('still refuses an unknown command, now that a new one exists', async () => {
+    const io = capture()
+    expect(
+      await main(['asking'], { out: (s) => io.out.push(s), err: (s) => io.err.push(s) }),
+    ).toBe(2)
+  })
+
+  it('offers ask in the help', async () => {
+    const io = capture()
+    await main(['help'], { out: (s) => io.out.push(s), err: (s) => io.err.push(s) })
+    expect(io.out.join('')).toContain('idp-agent ask')
+  })
+
+  it('calls the model rather than hunting for a recording, when one is configured', async () => {
+    // A real run has no scenario to replay. Before this, `idp-agent ask` with a
+    // provider configured died looking for a recording called "live".
+    const io = capture()
+    const code = await main(['ask', 'which databases are in prod?'], {
+      root: FIXTURES,
+      env: { IDP_PROVIDER: 'mistral', IDP_MODEL: 'some-model' },
+      out: (s) => io.out.push(s),
+      err: (s) => io.err.push(s),
+    })
+    expect(io.err.join('')).not.toContain('no recording')
+    // It gets as far as the provider, which refuses for want of a key — the
+    // point being that it went looking for a model and not for a file.
+    expect(io.err.join('')).toMatch(/API key|network/i)
+    expect(code).not.toBe(0)
+  })
+
+  it('reports an unexpected failure instead of exiting 0 with a stack trace', async () => {
+    const io = capture()
+    const code = await main(['ask', 'anything'], {
+      root: FIXTURES,
+      env: { IDP_PROVIDER: 'mistral', IDP_MODEL: 'some-model' },
+      out: (s) => io.out.push(s),
+      err: (s) => io.err.push(s),
+    })
+    expect(code).toBe(1)
+    expect(io.out).toEqual([])
+  })
+
   it('succeeds when it found what was asked for', async () => {
     const io = capture()
     const code = await main(['show', 'billing-db-prod'], {

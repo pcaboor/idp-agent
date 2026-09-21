@@ -19,6 +19,15 @@ const BIN = path.resolve(fileURLToPath(import.meta.url), '../../dist/cli/bin.js'
 // from its own location, not from wherever the user happens to stand.
 const ELSEWHERE = mkdtempSync(path.join(tmpdir(), 'idp-agent-smoke-'))
 
+/**
+ * Whatever the contributor has exported, the binary must behave the same here
+ * as it does in CI. An IDP_PROVIDER left in a shell would silently flip the
+ * "no model configured" checks from a refusal to a live API call.
+ */
+const CLEAN_ENV = Object.fromEntries(
+  Object.entries(process.env).filter(([name]) => !name.startsWith('IDP_')),
+)
+
 const failures = []
 
 /** @param {{args: string[], code: number, stdout?: RegExp, stderr?: RegExp}} expected */
@@ -30,6 +39,7 @@ function check({ args, code, stdout, stderr }) {
   try {
     out = execFileSync(process.execPath, [BIN, ...args], {
       cwd: ELSEWHERE,
+      env: CLEAN_ENV,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     })
@@ -54,10 +64,14 @@ check({ args: ['show', 'no-such-entity'], code: 1, stdout: /No entity named/ })
 check({ args: ['graph', '--env', 'nowhere'], code: 1 })
 check({ args: ['graph', '--wat', 'x'], code: 2 })
 check({ args: ['nope'], code: 2 })
+// With nothing configured — the state a reviewing agent who just cloned the
+// repository is in — the built binary must refuse cleanly, not crash.
+check({ args: ['ask', 'which databases are in prod?'], code: 2, stderr: /no model configured/ })
+check({ args: ['ask'], code: 2, stderr: /needs a question/ })
 
 if (failures.length > 0) {
   console.error(`\n${failures.length} smoke failure(s):`)
   for (const failure of failures) console.error(`  ${failure}`)
   process.exit(1)
 }
-console.log(`\n8 smoke checks passed against ${path.relative(process.cwd(), BIN)}`)
+console.log(`\n10 smoke checks passed against ${path.relative(process.cwd(), BIN)}`)
