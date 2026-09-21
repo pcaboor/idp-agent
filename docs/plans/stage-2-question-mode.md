@@ -260,7 +260,7 @@ git commit -m "test: forbid the network in the suite and the disk under agents/,
   - `interface OpenRecording { replay(key: TurnKey, digest: string): TurnRecord; record(key: TurnKey, record: TurnRecord): void; save(): Promise<void> }`
   - `class RecordingMissError extends Error`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/unit/recording.test.ts`:
 
@@ -373,12 +373,12 @@ describe('recording record', () => {
 })
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `pnpm vitest run tests/unit/recording.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Write the types**
+- [x] **Step 3: Write the types**
 
 Create `src/llm/client.ts`. **Types only** — no runtime import, so `agents/` can import it
 without pulling `ai` or `node:fs` into its closure:
@@ -426,7 +426,7 @@ export interface LlmClient {
 }
 ```
 
-- [ ] **Step 4: Write the recording**
+- [x] **Step 4: Write the recording**
 
 Create `src/llm/recording.ts`:
 
@@ -551,12 +551,12 @@ export function fileRecordingStore(directory: string): RecordingStore {
 }
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `pnpm vitest run tests/unit/recording.test.ts && pnpm typecheck`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/llm/client.ts src/llm/recording.ts src/cli/recording-fs.ts tests/unit/recording.test.ts
