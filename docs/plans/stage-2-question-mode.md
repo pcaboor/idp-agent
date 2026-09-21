@@ -1102,7 +1102,7 @@ git commit -m "feat(agents): classify a request, and refuse a third answer"
   - `type Answer = z.infer<typeof answerSchema>`
   - `function buildTools(graph: EntityGraph): { specs: ModelToolSpec[]; run(call: ModelToolCall): ToolOutcome; witnessed: ReadonlySet<string> }`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/unit/graph-tools.test.ts`:
 
@@ -1178,12 +1178,12 @@ describe('graph tools', () => {
 })
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `pnpm vitest run tests/unit/graph-tools.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Write the schemas**
+- [x] **Step 3: Write the schemas**
 
 Create `src/core/schemas/query.ts`:
 
@@ -1237,7 +1237,7 @@ export const answerSchema = z.discriminatedUnion('outcome', [
 export type Answer = z.infer<typeof answerSchema>
 ```
 
-- [ ] **Step 4: Write the registry**
+- [x] **Step 4: Write the registry**
 
 Create `src/agents/tools/graph-tools.ts`. `buildTools(graph)` returns the four specs, a `run`
 that parses with the matching schema and returns `{ result, rows, truncated }`, and a `witnessed`
@@ -1252,7 +1252,7 @@ set. Rules, all of them load-bearing:
 - An unknown tool name returns `{ error: 'unknown tool' }`.
 - Rows are the same shape `renderTable` consumes, so the answer and the table cannot disagree.
 
-- [ ] **Step 5: Run the tests and commit**
+- [x] **Step 5: Run the tests and commit**
 
 ```bash
 pnpm vitest run tests/unit/graph-tools.test.ts && pnpm typecheck
