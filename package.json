@@ -25,6 +25,10 @@
     "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "4.0.58",
+    "@ai-sdk/mistral": "4.0.48",
+    "@ai-sdk/openai": "4.0.71",
+    "ai": "7.0.107",
     "yaml": "^2.9.0",
     "zod": "^4.6.0"
   },
