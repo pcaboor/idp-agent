@@ -8,7 +8,7 @@ reviewed, then merged.
 
 ```bash
 git clone https://github.com/pcaboor/idp-agent && cd idp-agent
-pnpm install && pnpm test     # 273 tests, no API key, no network, no cost
+pnpm install && pnpm test     # 305 tests, no API key, no network, no cost
 ```
 
 That is the whole setup. The suite never reaches a model, and it never will: that is a
@@ -19,10 +19,10 @@ constraint of the design, not a stage the project is passing through.
 Stages 0 and 1 of 7 are shipped: two read-only commands over a fictional information
 system of 33 entities. No AI, no network, no writes.
 
-Not on npm yet — publishing is stage 7. Until then:
+On npm as a release candidate:
 
 ```bash
-pnpm build && node dist/cli/bin.js show billing-db-prod
+npx --yes idp-agent@0.1.0-rc.1 show billing-db-prod
 ```
 
 ```
@@ -53,6 +53,7 @@ idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource]
 idp-agent show <name-or-reference>
 idp-agent ask "<question>"      # needs IDP_PROVIDER and IDP_MODEL
 idp-agent validate <directory>  # what the generated CI runs
+idp-agent init platform <dir> --owner @org/team
 ```
 
 `ask` puts a model in front of the same graph. It chooses which questions to ask; the
@@ -96,8 +97,8 @@ The doctrine that follows from running such a system is written down in
 |---|---|---|
 | 0 | Foundations — schemas, serialiser, paths, invariants | done |
 | 1 | Read-only — `graph`, `show <entity>` | done |
-| 2 | Question mode — Supervisor, recordings | in progress |
-| 3 | `init` — scaffold, CI, CODEOWNERS, witnesses | |
+| 2 | Question mode — Supervisor, recordings | done |
+| 3 | `init platform` + `validate` | done |
 | 4 | Preview only — Inspector, Architect, `Plan`, diff; writes nothing | |
 | 5 | Write + local branch — atomicity, idempotence | |
 | 6 | GitHub merge request — real forge, negative token test | |

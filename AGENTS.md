@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 273 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 305 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -46,8 +46,8 @@ Stages 0 and 1 are merged on `main`; history is linear, no merge commits.
 |---|---|---|
 | 0 | Foundations — schemas, serialiser, paths, invariants | done |
 | 1 | Read-only — `graph`, `show <entity>` over fixtures | done |
-| 2 | Question mode — Supervisor, recordings | in progress: 8 of 8 tasks written, recordings pending |
-| 3 | `init` — scaffold, CI, CODEOWNERS, witnesses | |
+| 2 | Question mode — Supervisor, recordings | done |
+| 3 | `init platform` — scaffold, CI, CODEOWNERS, witnesses, `validate` | done |
 | 4 | Preview only — Inspector, Architect, `Plan`, diff; writes nothing | |
 | 5 | Write + local branch — `ForgeProvider`, atomicity, idempotence | |
 | 6 | GitHub merge request — real forge, negative token test | |
