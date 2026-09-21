@@ -285,7 +285,7 @@ git commit -m "fix(fixtures): give the gateway folder its witness, and correct t
   - `function planJsonSchema(): Record<string, unknown>`
   - `const UNENFORCED_BY_JSON_SCHEMA: readonly string[]`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/unit/json-schema.test.ts`:
 
@@ -339,12 +339,12 @@ describe('planJsonSchema', () => {
 })
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `pnpm vitest run tests/unit/json-schema.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `src/core/schemas/json-schema.ts`:
 
@@ -380,7 +380,7 @@ export const entityJsonSchema = (): Record<string, unknown> => exported(entitySc
 export const planJsonSchema = (): Record<string, unknown> => exported(planSchema)
 ```
 
-- [ ] **Step 4: Run the tests and commit**
+- [x] **Step 4: Run the tests and commit**
 
 ```bash
 pnpm vitest run tests/unit/json-schema.test.ts && pnpm typecheck
