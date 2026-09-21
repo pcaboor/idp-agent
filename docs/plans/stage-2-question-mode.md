@@ -797,7 +797,7 @@ recording.
   - `function summariseGraph(graph: EntityGraph): { summary: SiSummary; vocabulary: Vocabulary }`
   - `function formatSummary(summary: SiSummary, vocabulary: Vocabulary): string`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/unit/summary.test.ts`:
 
@@ -869,12 +869,12 @@ describe('formatSummary', () => {
 })
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `pnpm vitest run tests/unit/summary.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `summariseGraph`**
+- [x] **Step 3: Implement `summariseGraph`**
 
 Create `src/context/graph/summary.ts`. Bucket with `count === 0 ? '0' : count < 10 ? '1-9' :
 count < 100 ? '10-99' : '100+'`. Build each vocabulary list with a `Set`, then `.sort()`. Take
@@ -882,13 +882,13 @@ count < 100 ? '10-99' : '100+'`. Build each vocabulary list with a `Set`, then `
 environment rather than inventing one. Computed in `context/` and handed to `agents/` as plain
 data, so `agents/` never holds a graph.
 
-- [ ] **Step 4: Implement `formatSummary`**
+- [x] **Step 4: Implement `formatSummary`**
 
 Create `src/agents/summary.ts`. Emit sorted `key: value` lines, one per field, then the four
 vocabulary lists. Deterministic bytes: the prompt digest depends on it, and so does every
 recording.
 
-- [ ] **Step 5: Run the tests and commit**
+- [x] **Step 5: Run the tests and commit**
 
 ```bash
 pnpm vitest run tests/unit/summary.test.ts && pnpm typecheck
