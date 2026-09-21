@@ -601,7 +601,7 @@ Why not `FixtureProvider`: it returns entities and rejections with no file prove
 every rule here is anchored on a path. This is also the seam stage 4's `IacFsProvider`
 grows from — §3 puts `iac-fs` at stage 4, and this is its first half.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/unit/iac-fs.test.ts`:
 
@@ -651,12 +651,12 @@ describe('readRepository', () => {
 })
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `pnpm vitest run tests/unit/iac-fs.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `src/context/iac-fs/snapshot.ts`. Walk with `readdir(dir, { withFileTypes: true })`
 — never a glob, since the witness files are dotfiles and the rule depends on seeing them.
@@ -665,7 +665,7 @@ documents, `safeParse` each non-null one, collect entities and rejection message
 every directory in `folders`, and those containing `.witness.yml` in `witnesses`. All
 paths repository-relative with POSIX separators, sorted.
 
-- [ ] **Step 4: Run the tests and commit**
+- [x] **Step 4: Run the tests and commit**
 
 ```bash
 pnpm vitest run tests/unit/iac-fs.test.ts && pnpm typecheck
