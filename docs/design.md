@@ -304,27 +304,39 @@ governance model:
 
 ```
 iac-repo/
-├── catalog/{databases,apis,caches}/.witness.yml
-├── dependencies/{access,network}/.witness.yml
+├── catalog/…                         one folder per object type, from the registry
+├── dependencies/…                    one folder per right type, from the registry
+│   └── each with a .witness.yml      a pattern with no match must fail, not return empty
 ├── schemas/                          JSON Schemas exported from Zod
-├── .github/workflows/validate.yml    refuses what the catalogue would accept
+├── .github/workflows/validate.yml    calls `idp-agent validate`, which refuses what the
+│                                     catalogue would accept
 ├── CODEOWNERS
 └── README.md                         the doctrine, written down
 ```
 
+The folder list is derived from the resource-type registry, never written out here: adding
+a type adds its folder, and a list in this document would drift from the code the first
+time one is added. It has already drifted once.
+
 **What the tool cannot do, and says so.** Branch protection is set in the forge
-interface. The tool prints the exact settings required, then **verifies** them —
-including a live check that the supplied token can open a request but cannot merge
-one. It refuses to report success until that check passes.
+interface. The tool prints the exact settings required. **From stage 6** it also
+**verifies** them — including a live check that the supplied token can open a request but
+cannot merge one — and refuses to report success until that check passes. Before stage 6
+it prints the settings and states plainly that it cannot verify them, which is the same
+admission made one stage earlier.
 
 An automaton that verifies its own powerlessness, out loud, is the clearest
 statement the product makes.
 
-### 7.3 `idp-agent init` — once per application
+### 7.3 `idp-agent init` — once per application (stage 4)
 
 Inspects the repository (manifest, git remote, CODEOWNERS), proposes a
 `catalog-info.yml` through the same `propose()` path as any other entity, confirms
 the owner it inferred rather than assuming it, and writes `.idp-agent.yml`.
+
+Three of those four need the Inspector and `propose()`, which arrive at stage 4. The
+command exists from stage 3 and refuses until then, naming what it waits for — a boundary
+with a test, rather than a stub.
 
 ### 7.4 `idp-agent "<intent>"` — the daily gesture
 
