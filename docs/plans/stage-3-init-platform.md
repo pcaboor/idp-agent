@@ -686,7 +686,7 @@ git commit -m "feat(context): read an IaC repository, keeping where each entity 
 **Interfaces:**
 - Produces: `function runValidate(root: string, read?: typeof readRepository): Promise<CommandResult>`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/unit/validate-command.test.ts`, driving `main(['validate', dir])` against:
 the fixture SI (exit 0, prints the entity and file counts); a `mkdtemp` holding two files
@@ -695,11 +695,11 @@ fault is a dangling reference (**exit 0**, the warning printed — *reported* is
 a directory that does not exist (exit 2). Build the temp directories with `mkdtemp` and
 `writeFile`; no fixture is added for a case that exists to be malformed.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Expected: FAIL — `validate` parses as an unknown command.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `runValidate` reads, checks, and renders one line per violation:
 `<severity> <file>: <message>`, errors first. `found` is true when no **error** survives.
@@ -710,7 +710,7 @@ directory it was given, not the fixture SI.
 Widen the docstring of `found` in `result.ts` and the exit-code paragraph in `AGENTS.md`,
 `README.md` and `src/cli/README.md`: `1` now also means *the repository does not conform*.
 
-- [ ] **Step 4: Run everything and commit**
+- [x] **Step 4: Run everything and commit**
 
 ```bash
 pnpm test && pnpm typecheck && pnpm build
