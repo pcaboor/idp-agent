@@ -188,7 +188,7 @@ the repository that exists to demonstrate the one-witness-per-folder rule breaks
 - Consumes: `RESOURCE_TYPES`, `folderOf` from `core/schemas/resource-types.ts`
 - Produces: nothing importable. A guarantee, and documents that stop lying.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/unit/resource-types.test.ts`:
 
@@ -213,12 +213,12 @@ it('every folder the registry declares exists in the fixture SI, with a witness'
 })
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `pnpm vitest run tests/unit/resource-types.test.ts`
 Expected: FAIL — `["dependencies/gateway (no folder)"]`.
 
-- [ ] **Step 3: Add the missing witness**
+- [x] **Step 3: Add the missing witness**
 
 Create `fixtures/si-demo/dependencies/gateway/.witness.yml`, byte-identical to the others:
 
@@ -227,13 +227,13 @@ Create `fixtures/si-demo/dependencies/gateway/.witness.yml`, byte-identical to t
 # instead of failing, and an empty set reads as "nothing to do".
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `pnpm test`
 Expected: PASS. The entity count is unchanged — a witness parses to `null` and
 `FixtureProvider` skips it, which the existing fixtures test already asserts.
 
-- [ ] **Step 5: Correct the documents**
+- [x] **Step 5: Correct the documents**
 
 In `docs/design.md` §7.2, replace the five-folder tree with one that says where the folders
 come from, and split the verification sentence by stage:
@@ -263,7 +263,7 @@ Until then the command exists and refuses, naming what it waits for.
 In `AGENTS.md`: the test count (`221` → the real number), and `Three architecture rules`
 → the real list, which has been seven since stage 2.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add fixtures/si-demo/dependencies/gateway tests/unit/resource-types.test.ts docs/design.md AGENTS.md
