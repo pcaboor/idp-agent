@@ -20,6 +20,13 @@ pnpm build
 pnpm smoke        # runs the built dist/cli/bin.js, which the suite never does
 ```
 
+**`pnpm typecheck` is not a formality.** A green suite has already hidden a resource type
+that does not exist, an `undefined` passed where the property is optional, and a dead
+import — vitest strips types, it does not check them. The config is deliberately strict
+(`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noUnusedLocals`,
+`noUnusedParameters`): if your editor shows a diagnostic the CI does not, that is a gap in
+the config, not noise to ignore. Close it.
+
 ## How the work is organised
 
 Each stage has a plan in [`docs/plans/`](docs/plans), written before any code and
