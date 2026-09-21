@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "scenario": "mutation-classified-link",
+  "turns": [
+    {
+      "agent": "supervisor",
+      "turn": 0,
+      "provider": "mistral",
+      "model": "mistral-small-2603",
+      "digest": "sha256:37c65966223e6a6ef50d7eb65d8d56fa6e71e126e0b2cbcbc8ccd94935b4981f",
+      "recordedAt": "2026-09-21T11:37:35.000Z",
+      "call": {
+        "system": "You classify a request about an infrastructure catalogue.\n\nAnswer with exactly one word:\n  QUESTION  the request asks about what exists\n  MUTATION  the request asks for something to change\n\nNo explanation, no punctuation, no other word.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "request: give billing-api access to orders-db in prod\n\nsi:\n  entities: 10-99\n  components: 1-9\n  resources: 10-99\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: api, cache, database, database-access, network-access, service\n  environments: dev, prod, staging\n  owners: group:default/common, group:default/dodowarriors, group:default/elephant, group:default/tiger"
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "MUTATION"
+          }
+        ],
+        "finishReason": "stop"
+      }
+    }
+  ]
+}

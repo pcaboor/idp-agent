@@ -1,0 +1,465 @@
+{
+  "version": 1,
+  "scenario": "question-consumers-of-billing-db",
+  "turns": [
+    {
+      "agent": "analyst",
+      "turn": 0,
+      "provider": "mistral",
+      "model": "mistral-small-2603",
+      "digest": "sha256:ad67876625c34d39a7c67fc7dadd9b90a527cd0cf5901123f4f07a466babf9f3",
+      "recordedAt": "2026-09-21T11:37:30.000Z",
+      "call": {
+        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  nothing       when no entity matches\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "question: which services use the billing database in prod?\n\nsi:\n  entities: 10-99\n  components: 1-9\n  resources: 10-99\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: api, cache, database, database-access, network-access, service\n  environments: dev, prod, staging\n  owners: group:default/common, group:default/dodowarriors, group:default/elephant, group:default/tiger\n"
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "modEGsx5V",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "modEGsx5V",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/billing-db-prod",
+                  "name": "billing-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                },
+                {
+                  "ref": "resource:default/compliance-db-prod",
+                  "name": "compliance-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/common"
+                },
+                {
+                  "ref": "resource:default/mysql-prod-01",
+                  "name": "mysql-prod-01",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/common"
+                },
+                {
+                  "ref": "resource:default/orders-db-prod",
+                  "name": "orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "1LimH8Ax7",
+                "name": "get_dependencies",
+                "args": {
+                  "ref": "resource:default/billing-db-prod",
+                  "direction": "consumers"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "1LimH8Ax7",
+            "name": "get_dependencies",
+            "result": {
+              "rows": [
+                {
+                  "ref": "component:default/billing-api",
+                  "name": "billing-api",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "(undeclared)",
+                  "owner": "group:default/tiger"
+                },
+                {
+                  "ref": "component:default/reporting-worker",
+                  "name": "reporting-worker",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "(undeclared)",
+                  "owner": "group:default/common"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "29tTKMnva",
+                "name": "answer",
+                "args": {
+                  "outcome": "entities",
+                  "refs": [
+                    "component:default/billing-api",
+                    "component:default/reporting-worker"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "modEGsx5V",
+            "toolName": "search_entities",
+            "input": {
+              "kind": "Resource",
+              "type": "database",
+              "env": "prod"
+            }
+          }
+        ],
+        "finishReason": "tool-calls"
+      }
+    },
+    {
+      "agent": "analyst",
+      "turn": 1,
+      "provider": "mistral",
+      "model": "mistral-small-2603",
+      "digest": "sha256:b598da2b8e5689dffc1913b2aeb2e81e9a34e37da06063ddea277ebabad37c64",
+      "recordedAt": "2026-09-21T11:37:31.000Z",
+      "call": {
+        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  nothing       when no entity matches\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "question: which services use the billing database in prod?\n\nsi:\n  entities: 10-99\n  components: 1-9\n  resources: 10-99\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: api, cache, database, database-access, network-access, service\n  environments: dev, prod, staging\n  owners: group:default/common, group:default/dodowarriors, group:default/elephant, group:default/tiger\n"
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "modEGsx5V",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "modEGsx5V",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/billing-db-prod",
+                  "name": "billing-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                },
+                {
+                  "ref": "resource:default/compliance-db-prod",
+                  "name": "compliance-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/common"
+                },
+                {
+                  "ref": "resource:default/mysql-prod-01",
+                  "name": "mysql-prod-01",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/common"
+                },
+                {
+                  "ref": "resource:default/orders-db-prod",
+                  "name": "orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "1LimH8Ax7",
+                "name": "get_dependencies",
+                "args": {
+                  "ref": "resource:default/billing-db-prod",
+                  "direction": "consumers"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "1LimH8Ax7",
+            "name": "get_dependencies",
+            "result": {
+              "rows": [
+                {
+                  "ref": "component:default/billing-api",
+                  "name": "billing-api",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "(undeclared)",
+                  "owner": "group:default/tiger"
+                },
+                {
+                  "ref": "component:default/reporting-worker",
+                  "name": "reporting-worker",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "(undeclared)",
+                  "owner": "group:default/common"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "29tTKMnva",
+                "name": "answer",
+                "args": {
+                  "outcome": "entities",
+                  "refs": [
+                    "component:default/billing-api",
+                    "component:default/reporting-worker"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "1LimH8Ax7",
+            "toolName": "get_dependencies",
+            "input": {
+              "ref": "resource:default/billing-db-prod",
+              "direction": "consumers"
+            }
+          }
+        ],
+        "finishReason": "tool-calls"
+      }
+    },
+    {
+      "agent": "analyst",
+      "turn": 2,
+      "provider": "mistral",
+      "model": "mistral-small-2603",
+      "digest": "sha256:4c9842e244c963bf678de9218292ff3710a04fef0472695db10254efe65136b0",
+      "recordedAt": "2026-09-21T11:37:31.000Z",
+      "call": {
+        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  nothing       when no entity matches\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "question: which services use the billing database in prod?\n\nsi:\n  entities: 10-99\n  components: 1-9\n  resources: 10-99\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: api, cache, database, database-access, network-access, service\n  environments: dev, prod, staging\n  owners: group:default/common, group:default/dodowarriors, group:default/elephant, group:default/tiger\n"
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "modEGsx5V",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "modEGsx5V",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/billing-db-prod",
+                  "name": "billing-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                },
+                {
+                  "ref": "resource:default/compliance-db-prod",
+                  "name": "compliance-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/common"
+                },
+                {
+                  "ref": "resource:default/mysql-prod-01",
+                  "name": "mysql-prod-01",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/common"
+                },
+                {
+                  "ref": "resource:default/orders-db-prod",
+                  "name": "orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "1LimH8Ax7",
+                "name": "get_dependencies",
+                "args": {
+                  "ref": "resource:default/billing-db-prod",
+                  "direction": "consumers"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "1LimH8Ax7",
+            "name": "get_dependencies",
+            "result": {
+              "rows": [
+                {
+                  "ref": "component:default/billing-api",
+                  "name": "billing-api",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "(undeclared)",
+                  "owner": "group:default/tiger"
+                },
+                {
+                  "ref": "component:default/reporting-worker",
+                  "name": "reporting-worker",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "(undeclared)",
+                  "owner": "group:default/common"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "29tTKMnva",
+                "name": "answer",
+                "args": {
+                  "outcome": "entities",
+                  "refs": [
+                    "component:default/billing-api",
+                    "component:default/reporting-worker"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "29tTKMnva",
+            "toolName": "answer",
+            "input": {
+              "outcome": "entities",
+              "refs": [
+                "component:default/billing-api",
+                "component:default/reporting-worker"
+              ]
+            }
+          }
+        ],
+        "finishReason": "tool-calls"
+      }
+    },
+    {
+      "agent": "supervisor",
+      "turn": 0,
+      "provider": "mistral",
+      "model": "mistral-small-2603",
+      "digest": "sha256:10a76bc6dc9d810695131ef10fec847abd1d8a6781ff94d7b3c59f146ae04b46",
+      "recordedAt": "2026-09-21T11:37:30.000Z",
+      "call": {
+        "system": "You classify a request about an infrastructure catalogue.\n\nAnswer with exactly one word:\n  QUESTION  the request asks about what exists\n  MUTATION  the request asks for something to change\n\nNo explanation, no punctuation, no other word.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "request: which services use the billing database in prod?\n\nsi:\n  entities: 10-99\n  components: 1-9\n  resources: 10-99\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: api, cache, database, database-access, network-access, service\n  environments: dev, prod, staging\n  owners: group:default/common, group:default/dodowarriors, group:default/elephant, group:default/tiger"
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "QUESTION"
+          }
+        ],
+        "finishReason": "stop"
+      }
+    }
+  ]
+}
