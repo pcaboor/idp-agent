@@ -582,7 +582,7 @@ git commit -m "feat(llm): record and replay a model turn, keyed on scenario, age
   - `class NoModelConfiguredError extends Error`
   - `function createClient(options: { tape: OpenRecording; mode: 'replay' | 'record'; choice?: ModelChoice }): LlmClient`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/unit/providers.test.ts`:
 
@@ -616,12 +616,12 @@ describe('chooseModel', () => {
 })
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `pnpm vitest run tests/unit/providers.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Add the dependencies**
+- [x] **Step 3: Add the dependencies**
 
 ```bash
 pnpm add ai @ai-sdk/anthropic @ai-sdk/mistral @ai-sdk/openai
@@ -631,7 +631,7 @@ Pin exact versions in `package.json` (no `^`): a provider adapter's request shap
 what a recording recorded. Recordings stay **out** of the `files` array — they are test material,
 not shipped.
 
-- [ ] **Step 4: Write the providers**
+- [x] **Step 4: Write the providers**
 
 Create `src/llm/providers.ts`:
 
@@ -689,7 +689,7 @@ export function modelFor(choice: ModelChoice): LanguageModel {
 }
 ```
 
-- [ ] **Step 5: Write the runtime**
+- [x] **Step 5: Write the runtime**
 
 Create `src/llm/runtime.ts` — the only file importing `ai`:
 
@@ -754,7 +754,7 @@ export function createClient(options: {
 shapes and the four types in `client.ts`. Write them in this file; they are the reason
 `client.ts` stays free of `ai`.
 
-- [ ] **Step 6: Write `src/llm/README.md`**
+- [x] **Step 6: Write `src/llm/README.md`**
 
 15-25 lines. It must say: this folder is the single crossing point; `client.ts` is types only
 and is the only file `agents/` may import, which is what keeps `ai` and `node:fs` out of the
@@ -763,12 +763,12 @@ agent closure; there is no default provider; how to plug in your own model
 recording's provider, so the suite runs without your key; and that a changed fixture cascades
 digest warnings down a scenario because turn *n* embeds turn *n−1*'s output.
 
-- [ ] **Step 7: Run the tests**
+- [x] **Step 7: Run the tests**
 
 Run: `pnpm vitest run && pnpm typecheck`
 Expected: PASS, including `only src/llm/ imports the model SDK` from Task 1.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/llm package.json pnpm-lock.yaml tests/unit/providers.test.ts
