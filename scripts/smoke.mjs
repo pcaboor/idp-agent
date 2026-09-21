@@ -68,10 +68,32 @@ check({ args: ['nope'], code: 2 })
 // repository is in — the built binary must refuse cleanly, not crash.
 check({ args: ['ask', 'which databases are in prod?'], code: 2, stderr: /no model configured/ })
 check({ args: ['ask'], code: 2, stderr: /needs a question/ })
+check({ args: ['init'], code: 3, stderr: /stage 4/ })
+check({ args: ['init', 'platform', 'repo'], code: 2, stderr: /--owner/ })
+check({ args: ['init', 'platform', 'repo', '--owner', '@acme/platform'], code: 0, stdout: /wrote 12/ })
+check({ args: ['validate', 'repo'], code: 0, stdout: /0 violations/ })
+
+// The one check that can catch "green tests, broken package": the templates
+// live outside dist/, so nothing in the suite notices if they are missing from
+// the tarball — and `npx idp-agent init platform` would then fail on a machine
+// that never cloned this repository.
+const packed = JSON.parse(
+  execFileSync('npm', ['pack', '--dry-run', '--json'], {
+    cwd: path.resolve(fileURLToPath(import.meta.url), '../..'),
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  }),
+)[0]
+
+const shipped = packed.files.map((file) => file.path)
+for (const required of ['templates/iac-repo/witness.yml', 'templates/iac-repo/gitignore']) {
+  if (shipped.includes(required)) console.log(`  ok   packaged ${required}`)
+  else failures.push(`the tarball does not carry ${required}`)
+}
 
 if (failures.length > 0) {
   console.error(`\n${failures.length} smoke failure(s):`)
   for (const failure of failures) console.error(`  ${failure}`)
   process.exit(1)
 }
-console.log(`\n10 smoke checks passed against ${path.relative(process.cwd(), BIN)}`)
+console.log(`\n${15} smoke checks passed against ${path.relative(process.cwd(), BIN)}`)

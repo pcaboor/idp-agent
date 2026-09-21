@@ -1,8 +1,27 @@
 {
   "name": "idp-agent",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
   "description": "Turn a natural-language intent into reviewed infrastructure declarations",
   "license": "Apache-2.0",
+  "author": "pcaboor",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pcaboor/idp-agent.git"
+  },
+  "homepage": "https://github.com/pcaboor/idp-agent#readme",
+  "bugs": {
+    "url": "https://github.com/pcaboor/idp-agent/issues"
+  },
+  "keywords": [
+    "backstage",
+    "catalog",
+    "gitops",
+    "platform-engineering",
+    "idp",
+    "infrastructure-as-code",
+    "multi-agent",
+    "llm"
+  ],
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -14,6 +33,7 @@
   "files": [
     "dist",
     "fixtures",
+    "templates",
     "LICENSE",
     "NOTICE"
   ],
