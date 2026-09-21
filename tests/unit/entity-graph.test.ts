@@ -30,12 +30,19 @@ const access = resource(
   ['resource:default/billing-db-dev'],
   ['component:default/billing-api'],
 )
-const component: Entity = {
+const service = (name: string, dependsOn: string[] = []): Entity => ({
   apiVersion: 'backstage.io/v1alpha1',
   kind: 'Component',
-  metadata: { name: 'billing-api', annotations: {} },
-  spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
-}
+  metadata: { name, annotations: {} },
+  spec: {
+    type: 'service',
+    lifecycle: 'production',
+    owner: 'group:default/tiger',
+    ...(dependsOn.length > 0 ? { dependsOn } : {}),
+  },
+})
+
+const component = service('billing-api')
 
 const graph = EntityGraph.from([host, db, access])
 
@@ -114,5 +121,73 @@ describe('consumersOf', () => {
     const a = resource('a', 'database', 'dev', ['resource:default/b'])
     const b = resource('b', 'database', 'dev', ['resource:default/a'])
     expect(EntityGraph.from([a, b]).consumersOf('resource:default/a')).toEqual([])
+  })
+})
+
+describe('dependenciesOf', () => {
+  const full = EntityGraph.from([host, db, access, component])
+
+  it('lists what an entity depends on, from both directions of the declaration', () => {
+    expect(full.dependenciesOf(refOf(component)).map((e) => e.metadata.name)).toEqual([
+      'billing-api-billing-db-dev',
+    ])
+  })
+
+  it('returns the access, not the resource behind it', () => {
+    // Composing the access's own dependsOn would be a traversal, and it would
+    // drop the environment that is part of the access's identity (design 4.1).
+    expect(full.dependenciesOf(refOf(component)).map((e) => e.metadata.name)).not.toContain(
+      'billing-db-dev',
+    )
+  })
+
+  it('is the exact transpose of dependantsOf', () => {
+    const refs = [host, db, access, component].map(refOf)
+    for (const from of refs) {
+      for (const to of refs) {
+        const forward = full.dependenciesOf(from).map(refOf).includes(to)
+        const backward = full.dependantsOf(to).map(refOf).includes(from)
+        expect(`${from} -> ${to}: ${forward}`).toBe(`${from} -> ${to}: ${backward}`)
+      }
+    }
+  })
+
+  it('answers nothing for an entity that does not exist, even when an access names it', () => {
+    const orphan = resource('ghost-access', 'database-access', 'dev', [], [
+      'component:default/ghost',
+    ])
+    expect(EntityGraph.from([orphan]).dependenciesOf('component:default/ghost')).toEqual([])
+  })
+
+  it('records an edge declared from both sides only once', () => {
+    const both = service('billing-api', ['resource:default/billing-api-billing-db-dev'])
+    expect(
+      EntityGraph.from([host, db, access, both])
+        .dependenciesOf(refOf(both))
+        .map((e) => e.metadata.name),
+    ).toEqual(['billing-api-billing-db-dev'])
+  })
+
+  it('puts its own declarations first, then derived edges in a stable order', () => {
+    const api = resource('payments-api', 'api', 'prod')
+    const cache = resource('billing-api-cache-dev', 'database-access', 'dev', [], [
+      'component:default/billing-api',
+    ])
+    const consumer = service('billing-api', ['resource:default/payments-api'])
+    expect(
+      EntityGraph.from([host, db, access, cache, api, consumer])
+        .dependenciesOf(refOf(consumer))
+        .map((e) => e.metadata.name),
+    ).toEqual(['payments-api', 'billing-api-billing-db-dev', 'billing-api-cache-dev'])
+  })
+
+  it('answers the same whatever order the provider loaded the entities in', () => {
+    const loaded = [host, db, access, component]
+    const reversed = EntityGraph.from([...loaded].reverse())
+    for (const entity of loaded) {
+      const ref = refOf(entity)
+      expect(reversed.dependenciesOf(ref).map(refOf)).toEqual(full.dependenciesOf(ref).map(refOf))
+      expect(reversed.dependantsOf(ref).map(refOf)).toEqual(full.dependantsOf(ref).map(refOf))
+    }
   })
 })

@@ -60,4 +60,16 @@ describe('show', () => {
   it('says so when nothing matches', async () => {
     expect(runShow(await load(), 'no-such-thing')).toContain('No entity named')
   })
+
+  it('names the accesses a service depends on, declared from the access side', async () => {
+    const output = runShow(await load(), 'billing-api')
+    expect(output).toContain('billing-api-billing-db-prod')
+    expect(output).toContain('billing-api-cache-dev')
+  })
+
+  it('does not say a service depends on nothing while a database says it is reached by it', async () => {
+    const graph = await load()
+    expect(runShow(graph, 'billing-db-prod')).toContain('billing-api')
+    expect(runShow(graph, 'billing-api')).not.toMatch(/depends on\n\s+none/)
+  })
 })
