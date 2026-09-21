@@ -8,7 +8,7 @@ reviewed, then merged.
 
 ```bash
 git clone https://github.com/pcaboor/idp-agent && cd idp-agent
-pnpm install && pnpm test     # 221 tests, no API key, no network, no cost
+pnpm install && pnpm test     # 273 tests, no API key, no network, no cost
 ```
 
 That is the whole setup. The suite never reaches a model, and it never will: that is a
@@ -52,6 +52,7 @@ walking access declarations, with no model involved.
 idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource]
 idp-agent show <name-or-reference>
 idp-agent ask "<question>"      # needs IDP_PROVIDER and IDP_MODEL
+idp-agent validate <directory>  # what the generated CI runs
 ```
 
 `ask` puts a model in front of the same graph. It chooses which questions to ask; the
@@ -62,9 +63,10 @@ refused rather than printed. **No provider is configured by default** — set `I
 (`idp-agent` and the short alias `idpa` are the names the `bin` entry declares; they
 work today through `pnpm link --global`.)
 
-Exit codes: `0` succeeded · `1` the query resolved nothing · `2` the arguments were
-refused, or no model is configured · `3` the request was understood and this build will
-not act on it. An ambiguous name resolves nothing rather than picking the first candidate.
+Exit codes: `0` succeeded · `1` the answer is negative — nothing matched, or the
+repository does not conform · `2` the arguments were refused, or no model is configured ·
+`3` the request was understood and this build will not act on it. An ambiguous name
+resolves nothing rather than picking the first candidate.
 
 ## What it is really about
 
