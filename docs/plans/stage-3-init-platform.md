@@ -737,7 +737,7 @@ git commit -m "feat(cli): add the validate command CI will call"
   - `function loadTemplates(dir?: string): Promise<ReadonlyMap<string, string>>`
   - `function isForgeHandle(raw: string): boolean` · `function renderCodeowners(handle: string): string`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/unit/scaffold-layout.test.ts`:
 
@@ -810,12 +810,12 @@ describe('codeowners', () => {
 })
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `pnpm vitest run tests/unit/scaffold-layout.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Write the templates**
+- [x] **Step 3: Write the templates**
 
 `templates/iac-repo/witness.yml` — byte-identical to the fixture's.
 
@@ -851,7 +851,7 @@ not.
 `templates/iac-repo/gitignore` — stored dotless; npm renames a packaged `.gitignore` to
 `.npmignore`, and the mapping happens on write.
 
-- [ ] **Step 4: Implement the three modules**
+- [x] **Step 4: Implement the three modules**
 
 `templates.ts` resolves `TEMPLATE_ROOT` off `import.meta.url`, the way `DEFAULT_ROOT` does
 in `cli/index.ts`, and reads the files into a map keyed by template name.
@@ -868,7 +868,7 @@ review ADR-0006 rests on.
 `scaffold/README.md`: why the writer sits outside `core/`, and why exactly one file in this
 folder touches `node:fs`.
 
-- [ ] **Step 5: Add the architecture rules**
+- [x] **Step 5: Add the architecture rules**
 
 `AGENTS.md` says to add a rule when you add a layer. Three, in
 `tests/architecture/dependencies.test.ts`:
@@ -901,7 +901,7 @@ it('core/ neither reads nor writes', async () => {
 
 Verify the second bites: temporarily import `node:fs` in `layout.ts`, watch it fail, remove it.
 
-- [ ] **Step 6: Run the tests and commit**
+- [x] **Step 6: Run the tests and commit**
 
 ```bash
 pnpm test && pnpm typecheck
