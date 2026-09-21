@@ -926,7 +926,7 @@ git commit -m "feat(scaffold): derive the repository layout from the resource-ty
   - `function runInitPlatform(options: { root: string; owner: string; version: string }, io?: FileIO): Promise<CommandResult>`
   - `function runInit(): CommandResult`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/unit/scaffold-write.test.ts` — against a `mkdtemp` directory:
 
@@ -951,11 +951,11 @@ git commit -m "feat(scaffold): derive the repository layout from the resource-ty
 - the branch-protection block is printed on **both** the first run and the no-op re-run;
 - `idp-agent init` → exit 3, the message naming stage 4 and `propose()`.
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Expected: FAIL — modules not found, and `init` parses as an unknown command.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `write.ts` is the only module under `scaffold/` importing `node:fs`. `writeNew` uses
 `flag: 'wx'` — it never clobbers and never deletes, and returns `false` when the file is
@@ -970,7 +970,7 @@ In `cli/index.ts`: `init platform <dir> --owner <handle>` and the bare `init`, b
 with `parseArgs({ strict: true })`, the directory through `assertInsideRepo(cwd, …)`.
 Dispatch before the `FixtureProvider` load.
 
-- [ ] **Step 4: Run everything and commit**
+- [x] **Step 4: Run everything and commit**
 
 ```bash
 pnpm test && pnpm typecheck && pnpm build
