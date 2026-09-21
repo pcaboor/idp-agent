@@ -1457,7 +1457,7 @@ git commit -m "feat(agents): bound the question loop and refuse an answer the gr
 - Consumes: everything above
 - Produces: `function runAsk(options): Promise<CommandResult>`; `EXIT.unsupported = 3`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/unit/ask.test.ts` covering `runAsk` against a scripted `LlmClient` (no recording):
 one entity found renders the detail view and `found` is true; several render the table; `nothing`
@@ -1485,12 +1485,12 @@ it('refuses to pick a model on the user behalf', async () => {
 })
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `pnpm vitest run tests/unit/ask.test.ts tests/unit/main.test.ts`
 Expected: FAIL — `runAsk` not found, and `ask` parses as an unknown command.
 
-- [ ] **Step 3: Widen the command result and the exit codes**
+- [x] **Step 3: Widen the command result and the exit codes**
 
 `src/cli/commands/result.ts`:
 
@@ -1510,7 +1510,7 @@ missing or longer than `PLAN_LIMITS.maxIntentLength`), `MainDeps` gains `env?`, 
 `result.unsupported === true ? EXIT.unsupported : result.found ? EXIT.ok : EXIT.notFound`.
 Add the `ask` line to `HELP`.
 
-- [ ] **Step 4: Write `runAsk`**
+- [x] **Step 4: Write `runAsk`**
 
 Create `src/cli/commands/ask.ts`. In order: summarise the graph, open the recording, build the
 client, `classify`, and on `QUESTION` run `answerQuestion`. Then **sign the answer** — the whole
@@ -1567,7 +1567,7 @@ it('prints exactly what renderTable would print, and nothing the model wrote', a
 })
 ```
 
-- [ ] **Step 7: Extend the smoke checks**
+- [x] **Step 7: Extend the smoke checks**
 
 In `scripts/smoke.mjs`, add and update the count line:
 
@@ -1578,7 +1578,7 @@ check({ args: ['ask', 'anything at all'], code: 2, stderr: /no model configured/
 The built binary must refuse cleanly with nothing configured — the state a reviewing agent who
 just cloned the repository is in.
 
-- [ ] **Step 8: Amend the documents**
+- [x] **Step 8: Amend the documents**
 
 - `docs/design.md` §5.1: the carve-out. *One object crosses per direction of authority* — the
   `Plan` authorises writes and carries values; the `Answer` authorises nothing and carries only
@@ -1598,7 +1598,7 @@ just cloned the repository is in.
   longer vacuous — and add rows for the transitive rule and the offline `fetch` stub.
 - `src/cli/README.md`: the `ask` branch and `EXIT.unsupported`.
 
-- [ ] **Step 9: Run everything**
+- [x] **Step 9: Run everything**
 
 ```bash
 pnpm typecheck && pnpm test && pnpm build && pnpm smoke
