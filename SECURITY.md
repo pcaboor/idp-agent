@@ -23,16 +23,24 @@ claimed here.
 | An entity that fails validation is reported, never dropped in silence | `tests/unit/fixtures-provider.test.ts`, `tests/unit/main.test.ts` |
 | The suite needs no API key, no network and no Docker | it is the whole of CI: five commands, offline |
 
-## Armed, and enforced the day the code lands
+These were written before the directories they guard existed, and passed vacuously until
+stage 2 filled them. They now hold over real code:
 
-These rules are written as tests now and pass vacuously, because the directories they
-guard do not exist yet. They fail the build the moment someone creates them and gets it
-wrong — which is the point of writing them first.
-
-- **Agents get no write access.** `agents/` may not import `fs`, `child_process` or a
-  git client (`tests/architecture/dependencies.test.ts`). The guardrail is structural:
-  there is no code path from an agent to the disk.
-- **`core/` stays free of the model.** It may not import `agents/` or `llm/`.
+- **Agents get no write access.** No module **reachable from** `agents/` may import `fs`,
+  `child_process`, a git client or the network — the test walks the transitive import
+  closure, so `agents/` to `llm/client` to `recording` to `node:fs` fails the build rather
+  than passing a grep. It is why `llm/client.ts` holds types only and the recording store
+  lives in `cli/`. Verified non-vacuous against exactly that shape before being relied on.
+- **`core/` stays free of the model.** It may not import `agents/`, `llm/`, or the model
+  SDK, and only `llm/` may import the SDK at all.
+- **The suite cannot reach the network.** `tests/setup/offline.ts` replaces
+  `globalThis.fetch` with a thrower unless `IDP_RECORDING=record`. Structural, not a
+  convention: a forgotten recording fails loudly instead of quietly calling a provider on
+  whoever's key is in the shell.
+- **A model cannot make the tool state an unread fact.** Every reference an answer names
+  must be in the witness set of what the tools actually returned, or the answer is refused
+  and the reference named (`tests/unit/analyst.test.ts`). No model-authored text reaches
+  stdout.
 
 ## Designed, not yet built
 
