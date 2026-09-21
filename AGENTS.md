@@ -154,6 +154,7 @@ stops and asks. Orchestration is plain TypeScript; no agent decides the sequence
 
 ## Open questions
 
-- `docs/design.md` §12 also asks for `README.md`, `SECURITY.md`, `CONTRIBUTING.md`,
-  per-folder `README`s and `docs/adr/000X-*.md`. None exist yet.
+- `src/agents/README.md` and `src/llm/README.md` follow when those folders do. Everything
+  else `docs/design.md` §12 asks for now exists: `README.md`, `SECURITY.md`,
+  `CONTRIBUTING.md`, the per-folder READMEs and `docs/adr/0001`–`0006`.
 - `.remember/` is stale — it describes an earlier architecture. Trust git and this file.
