@@ -19,13 +19,18 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 121 tests. No API key, no network, no Docker. Ever.
-pnpm typecheck
-pnpm build            # then: node dist/cli/bin.js graph --env prod
+pnpm test             # 129 tests. No API key, no network, no Docker. Ever.
+pnpm typecheck        # vitest does not typecheck; this is not redundant
+pnpm build
+pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
 ```
 
-CI runs exactly those four, on Node 22 and 24. A suite that demands a key is a
+CI runs exactly those five, on Node 22 and 24. A suite that demands a key is a
 regression, not a configuration problem.
+
+**Exit codes:** `0` succeeded · `1` the query resolved nothing (no match, or an
+ambiguous name — a script must be able to tell) · `2` the arguments were refused.
+A command returns `{ text, found }`; only `cli/index.ts` turns that into a code.
 
 ## Current state — 2026-09-21
 
@@ -149,12 +154,6 @@ stops and asks. Orchestration is plain TypeScript; no agent decides the sequence
 
 ## Open questions
 
-- `main()` in `src/cli/index.ts` has no test. The Stage 1 criterion "an invalid entity is
-  reported on stderr" is implemented and exercised only by hand — and the fixture SI has
-  zero rejections, so a manual run never reaches it.
-- `show <missing>` and a filter matching nothing both exit 0; a script cannot detect a
-  miss by exit status.
-- Nothing runs the built `dist/cli/bin.js`, so a packaging regression passes CI.
 - `docs/design.md` §12 also asks for `README.md`, `SECURITY.md`, `CONTRIBUTING.md`,
   per-folder `README`s and `docs/adr/000X-*.md`. None exist yet.
 - `.remember/` is stale — it describes an earlier architecture. Trust git and this file.

@@ -61,28 +61,48 @@ export function parseArguments(argv: string[]): Command {
   return { name: 'error', message: `unknown command "${commandName}"` }
 }
 
+/**
+ * What main writes to and reads from. Injected so the command is tested without
+ * a process, and against a catalogue other than the fixture SI.
+ */
+export interface MainDeps {
+  root?: string
+  out?: (chunk: string) => void
+  err?: (chunk: string) => void
+}
+
+/** 0 succeeded · 1 the query resolved nothing · 2 the arguments were refused. */
+export const EXIT = { ok: 0, notFound: 1, badUsage: 2 } as const
+
+const DEFAULT_ROOT = path.resolve(fileURLToPath(import.meta.url), '../../../fixtures/si-demo')
+
 /** Returns the exit code rather than calling process.exit, so it is testable. */
-export async function main(argv: string[]): Promise<number> {
+export async function main(argv: string[], deps: MainDeps = {}): Promise<number> {
+  const out = deps.out ?? ((chunk: string): void => void process.stdout.write(chunk))
+  const err = deps.err ?? ((chunk: string): void => void process.stderr.write(chunk))
   const command = parseArguments(argv)
 
   if (command.name === 'help') {
-    process.stdout.write(HELP)
-    return 0
+    out(HELP)
+    return EXIT.ok
   }
   if (command.name === 'error') {
-    process.stderr.write(`${command.message}\n\n${HELP}`)
-    return 2
+    err(`${command.message}\n\n${HELP}`)
+    return EXIT.badUsage
   }
 
-  const fixtures = path.resolve(fileURLToPath(import.meta.url), '../../../fixtures/si-demo')
-  const { entities, rejected } = await new FixtureProvider(fixtures).load()
+  const { entities, rejected } = await new FixtureProvider(deps.root ?? DEFAULT_ROOT).load()
+  // Reported, never dropped in silence: that silent drop is the catalogue
+  // behaviour this tool exists to compensate for (design 4.4).
   for (const rejection of rejected) {
-    process.stderr.write(`skipped ${rejection.source}: ${rejection.reason}\n`)
+    err(`skipped ${rejection.source}: ${rejection.reason}\n`)
   }
 
   const graph = EntityGraph.from(entities)
-  const output =
+  const result =
     command.name === 'graph' ? runGraph(graph, command.options) : runShow(graph, command.query)
-  process.stdout.write(`${output}\n`)
-  return 0
+  out(`${result.text}\n`)
+  // A query that resolved nothing is not a failure of the tool, but it is not a
+  // success of the question either: a script must be able to tell.
+  return result.found ? EXIT.ok : EXIT.notFound
 }
