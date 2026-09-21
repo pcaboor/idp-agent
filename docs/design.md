@@ -479,7 +479,7 @@ agent at it — wants to judge it in two minutes.
 | `src/core/README.md`, `src/agents/README.md` | why this boundary exists, at folder level |
 | `docs/adr/000X-*.md` | one decision per file, ~20 lines, dated |
 
-Architecture Decision Records pay the most here. An agent reading *"ADR-001:
+Architecture Decision Records pay the most here. An agent reading *"ADR-0001:
 deterministic orchestration over model-driven — rejected alternative: let the Supervisor
 pick its own workers — reason: untestable, loops one time in ten"* infers the author's
 level immediately.
@@ -487,12 +487,12 @@ level immediately.
 Initial set:
 
 ```
-ADR-001  deterministic orchestration over model-driven
-ADR-002  no write tools for agents; the Plan as trust boundary
-ADR-003  provider interfaces for context and forge
-ADR-004  cassettes as the default suite, live evals as nightly
-ADR-005  structured entities, never model-authored YAML
-ADR-006  the merge request is the act of authorisation
+ADR-0001  deterministic orchestration over model-driven
+ADR-0002  no write tools for agents; the Plan as trust boundary
+ADR-0003  provider interfaces for context and forge
+ADR-0004  cassettes as the default suite, live evals as nightly
+ADR-0005  structured entities, never model-authored YAML
+ADR-0006  the merge request is the act of authorisation
 ```
 
 ### 12.2 The whole suite runs without an API key
