@@ -151,10 +151,11 @@ stops and asks. Orchestration is plain TypeScript; no agent decides the sequence
 - `fixtures/si-demo/` is a valid IaC repository, not a test-only shape: one file per
   entity, in the folder `computeEntityPath` produces, witness files included. Later
   stages write into it directly.
+- `.remember/` is one machine's scratchpad, gitignored in full (`*`). It is absent from a
+  fresh clone and is not a source of truth about this project — git and this file are.
 
 ## Open questions
 
 - `src/agents/README.md` and `src/llm/README.md` follow when those folders do. Everything
   else `docs/design.md` §12 asks for now exists: `README.md`, `SECURITY.md`,
   `CONTRIBUTING.md`, the per-folder READMEs and `docs/adr/0001`–`0006`.
-- `.remember/` is stale — it describes an earlier architecture. Trust git and this file.
