@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 239 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 273 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -28,11 +28,15 @@ pnpm smoke            # runs the built dist/cli/bin.js, which the suite never do
 CI runs exactly those five, on Node 22 and 24. A suite that demands a key is a
 regression, not a configuration problem.
 
-**Exit codes:** `0` succeeded · `1` the query resolved nothing (no match, an ambiguous
-name, or an unexpected failure) · `2` the arguments were refused, or no model is
-configured · `3` the request was understood and this build will not act on it (a change
-request, or a question the model refused). A command returns `{ text, found, unsupported? }`;
-only `cli/index.ts` turns that into a code.
+**Exit codes:** `0` succeeded · `1` the answer is negative — nothing matched, a name was
+ambiguous, **the repository does not conform**, or something failed unexpectedly · `2` the
+arguments were refused, or no model is configured · `3` the request was understood and this
+build will not act on it (a change request, or a question the model refused). A command
+returns `{ text, found, unsupported? }`; only `cli/index.ts` turns that into a code.
+
+A `validate` warning does not fail the build: a dangling reference is reported and exits 0,
+because a red build there pushes people to delete the declaration, which is what §4.4
+forbids.
 
 ## Current state — 2026-09-21
 

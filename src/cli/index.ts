@@ -12,12 +12,14 @@ import type { AgentEvent } from '../agents/events.js'
 import { EntityGraph } from '../context/graph/entity-graph.js'
 import { runGraph, type GraphOptions } from './commands/graph.js'
 import { runShow } from './commands/show.js'
+import { runValidate } from './commands/validate.js'
 import type { CommandResult } from './commands/result.js'
 
 export type Command =
   | { name: 'graph'; options: GraphOptions }
   | { name: 'show'; query: string }
   | { name: 'ask'; intent: string }
+  | { name: 'validate'; directory: string }
   | { name: 'help' }
   | { name: 'error'; message: string }
 
@@ -26,12 +28,19 @@ const HELP = `idp-agent - read-only view of the service catalogue
   idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource]
   idp-agent show <name-or-reference>
   idp-agent ask "<question>"     needs IDP_PROVIDER and IDP_MODEL
+  idp-agent validate <directory>
 `
 
 export function parseArguments(argv: string[]): Command {
   const [commandName, ...rest] = argv
   if (commandName === undefined || commandName === 'help' || commandName === '--help') {
     return { name: 'help' }
+  }
+
+  if (commandName === 'validate') {
+    const directory = rest[0]
+    if (directory === undefined) return { name: 'error', message: 'validate needs a directory' }
+    return { name: 'validate', directory }
   }
 
   if (commandName === 'ask') {
@@ -121,6 +130,14 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   if (command.name === 'error') {
     err(`${command.message}\n\n${HELP}`)
     return EXIT.badUsage
+  }
+
+  // Reads the directory it was handed, so it must not go through the fixture
+  // load every other command needs.
+  if (command.name === 'validate') {
+    const result = await runValidate(command.directory)
+    out(`${result.text}\n`)
+    return result.found ? EXIT.ok : EXIT.notFound
   }
 
   const { entities, rejected } = await new FixtureProvider(deps.root ?? DEFAULT_ROOT).load()

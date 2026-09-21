@@ -1,0 +1,34 @@
+import { checkRepository, type Violation } from '../../core/validate/rules.js'
+import { readRepository } from '../../context/iac-fs/snapshot.js'
+import type { RepositorySnapshot } from '../../core/validate/rules.js'
+import type { CommandResult } from './result.js'
+
+/**
+ * What the generated CI workflow runs. The catalogue ingests a duplicate in
+ * silence and lets the first source win; this is what refuses it (design 4.4).
+ *
+ * A warning does not fail the build. A dangling reference is reported and
+ * never pruned, but a repository mid-migration is not broken — and a red
+ * build here would push people to delete the declaration, which is the one
+ * thing that rule forbids.
+ */
+export async function runValidate(
+  root: string,
+  read: (root: string) => Promise<RepositorySnapshot> = readRepository,
+): Promise<CommandResult> {
+  const snapshot = await read(root)
+  const violations = checkRepository(snapshot)
+
+  const entities = snapshot.files.reduce((total, file) => total + file.entities.length, 0)
+  const errors = violations.filter((violation) => violation.severity === 'error')
+
+  const line = (violation: Violation): string =>
+    `${violation.severity.padEnd(7)} ${violation.file}: ${violation.message}`
+
+  const summary = `${entities} entities in ${snapshot.files.length} files, ${errors.length} violations`
+
+  return {
+    text: [...violations.map(line), ...(violations.length > 0 ? [''] : []), summary].join('\n'),
+    found: errors.length === 0,
+  }
+}

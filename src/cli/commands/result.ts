@@ -5,6 +5,11 @@
  */
 export interface CommandResult {
   text: string
+  /**
+   * The answer is positive. For a query, something matched; for a command that
+   * inspects, the subject conforms. False becomes exit 1 — a negative answer,
+   * not a failure of the tool.
+   */
   found: boolean
   /**
    * The request was understood, and this build will not act on it. Distinct
