@@ -22,6 +22,11 @@ claimed here.
 | `core/` never reaches the network | `tests/architecture/dependencies.test.ts` |
 | An entity that fails validation is reported, never dropped in silence | `tests/unit/fixtures-provider.test.ts`, `tests/unit/main.test.ts` |
 | The suite needs no API key, no network and no Docker | it is the whole of CI: five commands, offline |
+| A duplicate entity is refused before the merge, naming **both** files | `tests/unit/validate-rules.test.ts` — the catalogue would keep the first and say nothing |
+| An entity filed where its type and name do not put it is refused | same, `misplaced-entity`, compared against `resolveEntityPath` |
+| A folder holding entities with no witness is refused | same — a pattern with no match must fail, not return an empty set |
+| `init platform` never overwrites and never deletes | `tests/unit/scaffold-write.test.ts` — `flag: 'wx'`, and a hand-edited `CODEOWNERS` survives a re-run byte for byte |
+| A model cannot make the tool state an unread fact | `tests/unit/analyst.test.ts` — every reference an answer names must be in the witness set of what the tools returned |
 
 These were written before the directories they guard existed, and passed vacuously until
 stage 2 filled them. They now hold over real code:
@@ -31,8 +36,10 @@ stage 2 filled them. They now hold over real code:
   closure, so `agents/` to `llm/client` to `recording` to `node:fs` fails the build rather
   than passing a grep. It is why `llm/client.ts` holds types only and the recording store
   lives in `cli/`. Verified non-vacuous against exactly that shape before being relied on.
-- **`core/` stays free of the model.** It may not import `agents/`, `llm/`, or the model
-  SDK, and only `llm/` may import the SDK at all.
+- **`core/` stays free of the model.** It may not import `agents/`, `llm/`, the disk, the
+  network or the model SDK, and only `llm/` may import the SDK at all.
+- **One module writes.** In `scaffold/`, only `write.ts` imports a writing function — the
+  seam a future applier replaces, kept to one file so it stays reviewable.
 - **The suite cannot reach the network.** `tests/setup/offline.ts` replaces
   `globalThis.fetch` with a thrower unless `IDP_RECORDING=record`. Structural, not a
   convention: a forgotten recording fails loudly instead of quietly calling a provider on

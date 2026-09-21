@@ -8,7 +8,7 @@ reviewed, then merged.
 
 ```bash
 git clone https://github.com/pcaboor/idp-agent && cd idp-agent
-pnpm install && pnpm test     # 305 tests, no API key, no network, no cost
+pnpm install && pnpm test     # 306 tests, no API key, no network, no cost
 ```
 
 That is the whole setup. The suite never reaches a model, and it never will: that is a
@@ -16,7 +16,7 @@ constraint of the design, not a stage the project is passing through.
 
 ## What it does today
 
-Stages 0 and 1 of 7 are shipped: two read-only commands over a fictional information
+Stages 0 to 3 of 7 are shipped: two read-only commands over a fictional information
 system of 33 entities. No AI, no network, no writes.
 
 Not published yet. From a clone:

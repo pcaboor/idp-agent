@@ -42,11 +42,19 @@ it only proves the test runs.
 
 No human has to explain these in review — the build does it, with a message:
 
-- `core/` imports neither `agents/` nor `llm/`, and never reaches the network.
-- `agents/` imports neither `fs`, nor `child_process`, nor a git client. There is no
-  code path from an agent to the disk, and that is structural, not a convention.
+- `core/` imports neither `agents/`, `llm/`, the disk, the network nor the model SDK.
+- `agents/` imports neither `fs`, nor `child_process`, nor a git client — **and nothing
+  reachable from it does either**. The test walks the transitive import closure, so there
+  is genuinely no code path from an agent to the disk. That is structural, not a
+  convention.
+- Only `llm/` imports the model SDK, and `agents/` imports `llm/client.js` and nothing
+  else from it — which is why that file holds types only.
+- `scaffold/` imports `core/` and nothing else of ours, and exactly one module in it
+  writes.
 - Everything typechecks under TypeScript 7 with the project's strict settings.
-- The built binary runs and returns the right exit codes.
+- The built binary runs, returns the right exit codes, and the packaged tarball carries
+  what it needs — `pnpm smoke` reads `npm pack` output, because green tests once hid a
+  package with no templates in it.
 
 Add a rule when you add a layer. `tests/architecture/dependencies.test.ts` is the place.
 
