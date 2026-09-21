@@ -81,6 +81,42 @@ describe('createClient in replay', () => {
   })
 })
 
+describe('turn numbering', () => {
+  it('does not spend a turn on a call that failed', async () => {
+    // The analyst retries a refused forced tool choice as an open one. That is
+    // two physical calls for one logical turn when recording, and one when
+    // replaying: if a failed call consumed a number, the recording would carry
+    // a hole and every later turn would replay off by one.
+    const attempts: number[] = []
+    const failing: RecordingStore = {
+      read: async () => recording,
+      write: async () => {},
+    }
+    const tape = await openRecording({
+      scenario: 'demo',
+      store: failing,
+      mode: 'replay',
+      warn: () => {},
+    })
+    let first = true
+    const counting = {
+      ...tape,
+      replay: (key: { agent: string; turn: number }, digest: string) => {
+        attempts.push(key.turn)
+        if (first) {
+          first = false
+          throw new Error('transient')
+        }
+        return tape.replay(key as never, digest)
+      },
+    }
+    const client = createClient({ tape: counting as never, mode: 'replay' })
+    await client.generate(ask('analyst')).catch(() => {})
+    await client.generate(ask('analyst'))
+    expect(attempts).toEqual([0, 0])
+  })
+})
+
 describe('createClient in record', () => {
   it('refuses to record without a configured model', async () => {
     const client = createClient({

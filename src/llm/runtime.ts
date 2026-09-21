@@ -126,15 +126,22 @@ export function createClient(options: {
 
   return {
     async generate(request: GenerateRequest): Promise<GenerateResult> {
+      // The number is spent only once the call succeeds. A refused forced tool
+      // choice is retried as an open one, which is two physical calls for one
+      // logical turn while recording and one while replaying — a failed call
+      // that consumed a number would punch a hole in the recording and shift
+      // every later turn by one.
       const turn = turns.get(request.agent) ?? 0
-      turns.set(request.agent, turn + 1)
       const key = { agent: request.agent, turn }
+      const spend = (): void => void turns.set(request.agent, turn + 1)
 
       if (options.mode === 'replay') {
         // No adapter is built and no credential is read: a contributor replays
         // a recording made against a model they have no key for.
         if (options.tape === undefined) throw new Error('replay needs a recording')
-        return fromRecord(options.tape.replay(key, digestOf(request)))
+        const record = options.tape.replay(key, digestOf(request))
+        spend()
+        return fromRecord(record)
       }
 
       const choice = options.choice
@@ -151,6 +158,8 @@ export function createClient(options: {
         tools: toTools(request.tools),
         toolChoice: toToolChoice(request.toolChoice),
       })
+
+      spend()
 
       if (options.mode === 'live') {
         return { ...readContent(response.content), finishReason: response.finishReason }
