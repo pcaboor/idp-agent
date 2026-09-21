@@ -14,10 +14,23 @@ export function renderEntityDetail(graph: EntityGraph, entity: Entity): string {
     `  environment  ${entity.metadata.annotations[ENV_ANNOTATION] ?? UNDECLARED}`,
   ]
 
+  // A service lists rights from several environments at once, and being
+  // authorised in dev grants nothing in prod (design 4.1). Reading that off the
+  // name would be reading a convention; the annotation is the declaration.
   const section = (title: string, entities: Entity[]): void => {
     lines.push('', title)
-    if (entities.length === 0) lines.push('  none')
-    else for (const found of entities) lines.push(`  ${refOf(found)}`)
+    if (entities.length === 0) {
+      lines.push('  none')
+      return
+    }
+    const width = Math.max(...entities.map((found) => refOf(found).length))
+    for (const found of entities) {
+      const env =
+        found.kind === 'Resource'
+          ? (found.metadata.annotations[ENV_ANNOTATION] ?? UNDECLARED)
+          : ''
+      lines.push(`  ${refOf(found).padEnd(width)}  ${env}`.trimEnd())
+    }
   }
 
   section('depends on', graph.dependenciesOf(refOf(entity)))

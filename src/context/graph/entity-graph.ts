@@ -20,27 +20,40 @@ const envOf = (entity: Entity): string | undefined => entity.metadata.annotation
 export class EntityGraph {
   private readonly byRef: Map<string, Entity>
   private readonly dependants: Map<string, Set<string>>
+  private readonly derived: Map<string, Set<string>>
 
   private constructor(private readonly entities: Entity[]) {
     this.byRef = new Map(entities.map((entity) => [refOf(entity), entity]))
     this.dependants = new Map()
+    this.derived = new Map()
 
     // A dependency is declared from either side: `dependsOn` on the consumer, or
-    // `dependencyOf` on the access. Both feed the same reverse index, so asking
-    // who consumes something does not depend on which side wrote it down.
+    // `dependencyOf` on the access. Which side wrote the edge down decides which
+    // file a reviewer sees, never which question may be answered — so both feed
+    // both indexes, and the two are exact transposes of each other.
     for (const entity of entities) {
       const ref = refOf(entity)
-      for (const target of entity.spec.dependsOn ?? []) this.link(target, ref)
+      for (const target of entity.spec.dependsOn ?? []) this.link(this.dependants, target, ref)
       if (entity.kind === 'Resource') {
-        for (const consumer of entity.spec.dependencyOf ?? []) this.link(ref, consumer)
+        for (const consumer of entity.spec.dependencyOf ?? []) {
+          this.link(this.dependants, ref, consumer)
+          this.link(this.derived, consumer, ref)
+        }
       }
     }
   }
 
-  private link(target: string, dependant: string): void {
-    const set = this.dependants.get(target) ?? new Set<string>()
-    set.add(dependant)
-    this.dependants.set(target, set)
+  private link(index: Map<string, Set<string>>, key: string, value: string): void {
+    const set = index.get(key) ?? new Set<string>()
+    set.add(value)
+    index.set(key, set)
+  }
+
+  /** Present entities only, in the order given. A missing one is dangling. */
+  private present(refs: string[]): Entity[] {
+    return refs
+      .map((ref) => this.byRef.get(ref))
+      .filter((found): found is Entity => found !== undefined)
   }
 
   static from(entities: Entity[]): EntityGraph {
@@ -75,19 +88,29 @@ export class EntityGraph {
     })
   }
 
-  /** Present entities only. A missing target is dangling, and reported as such. */
+  /**
+   * One declared hop, whichever side wrote it down. An access reached this way
+   * is returned as itself: composing it with its own `dependsOn` would be a
+   * traversal, and would drop the environment that is part of a right's
+   * identity (design 4.1). The multi-hop walk is `consumersOf`, named as such.
+   *
+   * Present entities only; a missing target is dangling, and reported as such.
+   * The subject must exist: a dangling `dependencyOf` must not make the entity
+   * it names answerable.
+   */
   dependenciesOf(ref: string): Entity[] {
     const entity = this.byRef.get(ref)
     if (entity === undefined) return []
-    return (entity.spec.dependsOn ?? [])
-      .map((target) => this.byRef.get(target))
-      .filter((found): found is Entity => found !== undefined)
+    // Declared here first, in file order — a fact a reviewer can see. Then the
+    // edges written on the other side, sorted, so the answer does not depend on
+    // the order a provider happened to return entities in.
+    const own = entity.spec.dependsOn ?? []
+    const derived = [...(this.derived.get(ref) ?? [])].filter((r) => !own.includes(r)).sort()
+    return this.present([...own, ...derived])
   }
 
   dependantsOf(ref: string): Entity[] {
-    return [...(this.dependants.get(ref) ?? [])]
-      .map((dependant) => this.byRef.get(dependant))
-      .filter((found): found is Entity => found !== undefined)
+    return this.present([...(this.dependants.get(ref) ?? [])].sort())
   }
 
   /**

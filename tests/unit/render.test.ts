@@ -46,4 +46,34 @@ describe('renderEntityDetail', () => {
     const bare: Entity = { ...db, metadata: { name: 'x', annotations: {} } }
     expect(renderEntityDetail(EntityGraph.from([bare]), bare)).toContain('undeclared')
   })
+
+  it('states the environment of every resource it lists, since dev and prod are two rights', () => {
+    // A service lists accesses from several environments at once, and being
+    // authorised in dev grants nothing in prod (design 4.1). Reading it off the
+    // name would be reading a convention instead of the declaration.
+    const service: Entity = {
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Component',
+      metadata: { name: 'billing-api', annotations: {} },
+      spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
+    }
+    const accessIn = (env: string): Entity => ({
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Resource',
+      metadata: { name: `billing-api-db-${env}`, annotations: { 'company.fr/env': env } },
+      spec: {
+        type: 'database-access',
+        owner: 'group:default/tiger',
+        dependencyOf: ['component:default/billing-api'],
+      },
+    })
+    const graph = EntityGraph.from([service, accessIn('dev'), accessIn('prod')])
+    const listed = renderEntityDetail(graph, service)
+      .split('\n')
+      .filter((line) => line.includes('billing-api-db-'))
+
+    expect(listed).toHaveLength(2)
+    expect(listed[0]?.endsWith('dev')).toBe(true)
+    expect(listed[1]?.endsWith('prod')).toBe(true)
+  })
 })

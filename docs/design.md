@@ -61,6 +61,11 @@ follows from the documentation of the tools involved.
 
 - **A resource is an object; an access is a right over that resource.** The access —
   not the resource — carries the list of its consumers.
+- **A declaration is read from both ends.** Which side wrote the edge down — `dependsOn`
+  on the consumer, `dependencyOf` on the access — decides which file a reviewer sees,
+  never which question may be answered. A graph query resolves one declared hop in
+  either direction; reading a declaration back is not inference, and composing several
+  hops is a separate, separately named walk.
 - **The environment is part of an access's identity.** Being authorised in dev grants
   nothing in staging: two distinct entities.
 - **Declare, never infer.** What the catalogue does not know is reported as unknown,
