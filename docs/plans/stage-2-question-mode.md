@@ -913,7 +913,7 @@ git commit -m "feat(context): summarise the SI in buckets, so a new fixture does
   - `function classify(client: LlmClient, input: { intent: string; summary: string }, emit: EventSink): Promise<'MUTATION' | 'QUESTION'>`
   - `class ClassificationError extends Error`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/unit/supervisor.test.ts`:
 
@@ -992,12 +992,12 @@ describe('classify', () => {
 })
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `pnpm vitest run tests/unit/supervisor.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Write the events**
+- [x] **Step 3: Write the events**
 
 Create `src/agents/events.ts`:
 
@@ -1020,7 +1020,7 @@ export type AgentEvent =
 export type EventSink = (event: AgentEvent) => void
 ```
 
-- [ ] **Step 4: Write the Supervisor**
+- [x] **Step 4: Write the Supervisor**
 
 Create `src/agents/supervisor.ts`:
 
@@ -1068,7 +1068,7 @@ export async function classify(
 }
 ```
 
-- [ ] **Step 5: Write `src/agents/README.md`**
+- [x] **Step 5: Write `src/agents/README.md`**
 
 15-25 lines: why `agents/` may import neither disk nor network, **transitively** — the guardrail
 is structural, there is no code path from an agent to a file; why that forces `client.ts` to be
@@ -1077,7 +1077,7 @@ graph, never a provider); that orchestration is plain TypeScript and no agent de
 sequence; and the cost, honestly: every capability an agent needs has to be handed to it, which
 makes adding one a change in two places.
 
-- [ ] **Step 6: Run the tests and commit**
+- [x] **Step 6: Run the tests and commit**
 
 ```bash
 pnpm vitest run tests/unit/supervisor.test.ts && pnpm typecheck
