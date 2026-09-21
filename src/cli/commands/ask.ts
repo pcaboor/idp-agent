@@ -43,7 +43,7 @@ export async function runAsk(options: {
   }
 
   const tools = buildTools(graph)
-  const { answer } = await answerQuestion(
+  const { answer, truncated } = await answerQuestion(
     client,
     tools,
     { intent, summary: summaryText, vocabulary: '' },
@@ -68,7 +68,9 @@ export async function runAsk(options: {
     .filter((entity): entity is Entity => entity !== undefined)
 
   if (found.length === 0) return { text: 'No entity matches that question.', found: false }
-  if (found.length === 1) return { text: renderEntityDetail(graph, found[0]!), found: true }
+  if (found.length === 1) {
+    return { text: withTruncation(renderEntityDetail(graph, found[0]!), truncated), found: true }
+  }
 
   const rows = found.map((entity) => [
     entity.metadata.name,
@@ -77,5 +79,18 @@ export async function runAsk(options: {
     entity.metadata.annotations[ENV_ANNOTATION] ?? '-',
     entity.spec.owner,
   ])
-  return { text: renderTable(['NAME', 'KIND', 'TYPE', 'ENV', 'OWNER'], rows), found: true }
+  return {
+    text: withTruncation(renderTable(['NAME', 'KIND', 'TYPE', 'ENV', 'OWNER'], rows), truncated),
+    found: true,
+  }
+}
+
+/**
+ * A short list that does not say it is short is worse than an error: the
+ * reader leaves with a wrong answer believing it complete. The tools tell the
+ * model when they cut rows; this is where the reader is told too.
+ */
+function withTruncation(text: string, truncated: number): string {
+  if (truncated === 0) return text
+  return `${text}\n\n${truncated} further row(s) were not shown; narrow the question to see them.`
 }

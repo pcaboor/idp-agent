@@ -105,6 +105,39 @@ describe('runAsk on a question', () => {
   })
 })
 
+describe('runAsk when the tools had to cut the result', () => {
+  it('says how many rows are missing instead of printing a short list in silence', async () => {
+    // What you see must not look complete when it is not. This is the failure
+    // the tool exists to prevent, and it reached a user before it reached a
+    // test: `ask "list all resources"` printed 25 of 28.
+    const { result } = await ask([
+      saying('QUESTION'),
+      calling('search_entities', { kind: 'Resource' }),
+      calling('answer', {
+        outcome: 'entities',
+        refs: [
+          'resource:default/billing-db-prod',
+          'resource:default/orders-db-prod',
+        ],
+      }),
+    ], 'list every resource')
+    expect(result.found).toBe(true)
+    expect(result.text).toMatch(/more not shown|not shown/i)
+  })
+
+  it('says nothing about truncation when nothing was cut', async () => {
+    const { result } = await ask([
+      saying('QUESTION'),
+      calling('search_entities', { type: 'database', env: 'prod' }),
+      calling('answer', {
+        outcome: 'entities',
+        refs: ['resource:default/billing-db-prod', 'resource:default/orders-db-prod'],
+      }),
+    ])
+    expect(result.text).not.toMatch(/not shown/i)
+  })
+})
+
 describe('runAsk on a change request', () => {
   it('refuses it as unsupported rather than as a failed query', async () => {
     const { result, errors } = await ask(

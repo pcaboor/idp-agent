@@ -9,12 +9,26 @@ import type { buildTools } from './tools/graph-tools.js'
  * refusal rather than a partial guess — a partial guess is the one outcome
  * that must never reach a user, because it looks exactly like an answer.
  */
-export const LOOP_LIMITS = { maxTurns: 4, maxCallsPerTurn: 3 } as const
+export const LOOP_LIMITS = {
+  maxTurns: 4,
+  maxCallsPerTurn: 3,
+  /**
+   * Turns that read nothing at all. "salut" is not a question about a
+   * catalogue, and spending four paid round-trips to find that out is three
+   * too many.
+   */
+  maxBarrenTurns: 2,
+} as const
 
 export interface AnalystOutcome {
   answer: Answer
   witnessed: ReadonlySet<string>
   calls: string[]
+  /**
+   * Rows the tools cut off. The tool tells the model; if it stopped there the
+   * CLI would print a short list with nothing saying it is short.
+   */
+  truncated: number
 }
 
 const SYSTEM = `You answer questions about an infrastructure catalogue.
@@ -27,7 +41,11 @@ Finish by calling "answer":
   nothing       when no entity matches
   unanswerable  with a reason, when the catalogue cannot answer this question
 
-Refusing is a valid outcome. Do not approximate to produce one.`
+Refusing is a valid outcome. Do not approximate to produce one.
+
+If the request is not a question about this catalogue at all — a greeting, small
+talk, something about the weather — call "answer" with "unanswerable" straight
+away. Do not search first.`
 
 const unanswerable = (reason: string): Answer => ({ outcome: 'unanswerable', reason })
 
@@ -47,21 +65,25 @@ export async function answerQuestion(
   ]
   const calls: string[] = []
   let answer: Answer | undefined
+  let truncated = 0
+  let barren = 0
 
-  for (let turn = 0; turn < LOOP_LIMITS.maxTurns && answer === undefined; turn += 1) {
-    const last = turn === LOOP_LIMITS.maxTurns - 1
-    const result = await client.generate({
-      agent: 'analyst',
-      system: SYSTEM,
-      transcript,
-      tools: tools.specs,
-      // The last allowed turn forces termination rather than letting the loop
-      // fall off its bound with nothing to show.
-      toolChoice: last ? { tool: 'answer' } : 'auto',
-    })
+  let stop = false
+
+  for (let turn = 0; turn < LOOP_LIMITS.maxTurns && answer === undefined && !stop; turn += 1) {
+    // Two turns that read nothing mean the catalogue has nothing to say here.
+    // One more turn to ask for the answer, then out — whether the model
+    // cooperates or not.
+    const barrenOut = barren >= LOOP_LIMITS.maxBarrenTurns
+    stop = barrenOut
+    const last = turn === LOOP_LIMITS.maxTurns - 1 || barrenOut
+    // The last allowed turn forces termination rather than letting the loop
+    // fall off its bound with nothing to show.
+    const result = await generate(client, transcript, tools.specs, last)
 
     if (result.toolCalls.length === 0) break
 
+    let read = 0
     const executed = result.toolCalls.slice(0, LOOP_LIMITS.maxCallsPerTurn)
     const dropped = result.toolCalls.length - executed.length
     transcript.push({ role: 'assistant', text: result.text, toolCalls: executed })
@@ -73,6 +95,8 @@ export async function answerQuestion(
       const reads = call.name !== 'answer'
       if (reads) emit({ type: 'tool:call', name: call.name, args: call.args })
       const outcome = tools.run(call)
+      truncated += outcome.truncated
+      read += outcome.rows
       if (reads) {
         emit({
           type: 'tool:result',
@@ -102,6 +126,8 @@ export async function answerQuestion(
       transcript.push({ role: 'tool', id: call.id, name: call.name, result: outcome.result })
     }
 
+    barren = read === 0 ? barren + 1 : 0
+
     // Dropped calls are told, never dropped in silence: the model must know
     // its request was not executed in full.
     if (dropped > 0) {
@@ -122,8 +148,41 @@ export async function answerQuestion(
     })
   }
 
-  return { answer: signed, witnessed: tools.witnessed, calls }
+  return { answer: signed, witnessed: tools.witnessed, calls, truncated }
 }
+
+/**
+ * Forcing a tool is model-dependent: some providers reject `tool_choice` with
+ * a 400, and the SDK throws when a forced call does not come back. Neither is
+ * a reason to lose the question, so the forced turn degrades to an open choice
+ * with the instruction spelled out instead. A failure that is not about the
+ * tool choice is re-thrown: it is not ours to swallow.
+ */
+async function generate(
+  client: LlmClient,
+  transcript: Transcript[],
+  specs: ReturnType<typeof buildTools>['specs'],
+  last: boolean,
+): Promise<Awaited<ReturnType<LlmClient['generate']>>> {
+  const request = { agent: 'analyst' as const, system: SYSTEM, transcript, tools: specs }
+
+  if (!last) return client.generate({ ...request, toolChoice: 'auto' })
+
+  try {
+    return await client.generate({ ...request, toolChoice: { tool: 'answer' } })
+  } catch (error) {
+    if (!refusesForcedTool(error)) throw error
+    return client.generate({
+      ...request,
+      system: `${SYSTEM}\n\nThis is your last turn. Call the "answer" tool now.`,
+      toolChoice: 'auto',
+    })
+  }
+}
+
+const refusesForcedTool = (error: unknown): boolean =>
+  error instanceof Error &&
+  /required tool|tool_choice|tool choice|forced tool/i.test(error.message)
 
 /**
  * The engine's two checks on what the model produced. Neither is a formality:
@@ -132,7 +191,14 @@ export async function answerQuestion(
  */
 function sign(answer: Answer | undefined, witnessed: ReadonlySet<string>): Answer {
   if (answer === undefined) {
-    return unanswerable('the search ended without an answer')
+    // Say what happened, not how the loop is built. An empty witness set means
+    // the catalogue held nothing for this — very often because it was not a
+    // question about the catalogue at all.
+    return unanswerable(
+      witnessed.size === 0
+        ? 'nothing in the catalogue matched this, and it may not be a question about it'
+        : 'the search read entities but did not settle on an answer',
+    )
   }
 
   if (answer.outcome === 'entities') {
@@ -144,7 +210,11 @@ function sign(answer: Answer | undefined, witnessed: ReadonlySet<string>): Answe
   }
 
   if (answer.outcome === 'nothing' && witnessed.size > 0) {
-    return unanswerable('the answer claimed nothing matches, but the tools returned entities')
+    // Refused, and said so in terms the reader can act on rather than in terms
+    // of the check that caught it.
+    return unanswerable(
+      'the model contradicted what it read, so its answer was not used; try a more specific question',
+    )
   }
 
   return answer
