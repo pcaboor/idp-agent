@@ -1275,7 +1275,7 @@ git commit -m "feat(agents): give the model four bounded read-only tools and a w
   - `interface AnalystOutcome { answer: Answer; witnessed: ReadonlySet<string>; calls: string[] }`
   - `function answerQuestion(client, tools, input, emit): Promise<AnalystOutcome>`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/unit/analyst.test.ts`:
 
@@ -1404,12 +1404,12 @@ describe('answerQuestion', () => {
 })
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `pnpm vitest run tests/unit/analyst.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement the loop**
+- [x] **Step 3: Implement the loop**
 
 Create `src/agents/analyst.ts`. Plain TypeScript, no framework:
 
@@ -1433,7 +1433,7 @@ export const LOOP_LIMITS = { maxTurns: 4, maxCallsPerTurn: 3 } as const
   accepted only when `witnessed.size === 0`.
 - Exhausting `maxTurns` yields `unanswerable`, never a partial answer.
 
-- [ ] **Step 4: Run the tests and commit**
+- [x] **Step 4: Run the tests and commit**
 
 ```bash
 pnpm vitest run tests/unit/analyst.test.ts && pnpm typecheck
