@@ -33,7 +33,12 @@ jobs:
 
       # No API key, no network, no Docker: the suite never reaches a model.
       # A contributor — or a reviewer who just cloned the repository — runs
-      # exactly these four commands.
+      # exactly these five commands.
       - run: pnpm test
 
       - run: pnpm build
+
+      # The packaged binary, which the unit suite never runs: it imports the
+      # modules instead. bin.js resolves the fixture SI from import.meta.url, so
+      # a dist layout change ships broken with every test green.
+      - run: pnpm smoke
