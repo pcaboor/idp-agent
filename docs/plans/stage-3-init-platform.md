@@ -408,7 +408,7 @@ must be the one to refuse"* (§4.4). Pure, in `core/`, over a snapshot it does n
   - `interface RepositorySnapshot { folders: readonly string[]; witnesses: readonly string[]; files: readonly RepositoryFile[] }`
   - `function checkRepository(snapshot: RepositorySnapshot): Violation[]`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/unit/validate-rules.test.ts`:
 
@@ -552,12 +552,12 @@ describe('checkRepository', () => {
 })
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `pnpm vitest run tests/unit/validate-rules.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `src/core/validate/rules.ts`. Pure: it imports `resolveEntityPath` and the entity
 types, and nothing that touches a disk. Rules, in order of severity:
@@ -577,7 +577,7 @@ types, and nothing that touches a disk. Rules, in order of severity:
 
 Sort errors first, then warnings; within a severity, by `file`.
 
-- [ ] **Step 4: Run the tests and commit**
+- [x] **Step 4: Run the tests and commit**
 
 ```bash
 pnpm vitest run tests/unit/validate-rules.test.ts && pnpm typecheck
