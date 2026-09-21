@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 305 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 306 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -40,7 +40,8 @@ forbids.
 
 ## Current state — 2026-09-21
 
-Stages 0 and 1 are merged on `main`; history is linear, no merge commits.
+Stages 0 through 3 are merged on `main`; history is linear, no merge commits. The
+stage 4 plan is written and open as a pull request, not merged.
 
 | # | Stage | State |
 |---|---|---|
@@ -56,22 +57,28 @@ Stages 0 and 1 are merged on `main`; history is linear, no merge commits.
 The order is imposed by the doctrine: read first, validate before the first write,
 preview before the merge request. Writing arrives only at stage 5.
 
-Shipped and working: `graph` and `show` over a fixture SI of 33 entities, no AI, no
-network, no writes.
+Shipped and working: `graph` and `show` over a fixture SI of 33 entities; `ask`,
+answered by the Supervisor and the Analyst against recordings with no API key; `validate`,
+six rules over an IaC repository; and `init platform`, which writes twelve files and
+clobbers nothing. **`init platform` is the only command that writes**, and only into the
+directory it was handed.
 
 ## Layering
 
 ```
 cli/  ──→  context/  ──→  core/
+  ├──→  agents/  ──→  llm/client.ts   (types only)
+  └──→  scaffold/  ──→  core/
 ```
 
 | Folder | Responsibility |
 |---|---|
-| `core/` | schemas (Zod), deterministic YAML serialiser, entity paths, textual surgery |
-| `context/` | `ContextProvider` (today: `fixtures`), `EntityGraph` and its queries |
+| `core/` | schemas (Zod), the six validation rules, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery |
+| `context/` | `ContextProvider` (one implementation: `fixtures`), `iac-fs` snapshots of a real repository with provenance, `EntityGraph` and its queries |
 | `cli/` | argument parsing, commands, rendering — the only layer that writes to stdout |
-| `llm/` | the single crossing point: `client.ts` is types only, `runtime.ts` alone imports the SDK |
+| `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |
 | `agents/` | Supervisor, Analyst, the bounded loop, the tool registry — reaches no disk, transitively |
+| `scaffold/` | the `init platform` layout, the packaged templates, and the only writer we own |
 
 Rendering returns strings and commands take a graph and return a string, so each is
 tested without a terminal. Keep it that way.
@@ -120,13 +127,18 @@ changing that section first.
 - The catalogue lags the repository by ~2 min: check the repository before proposing,
   **and again at the moment of writing**.
 
-## The trust boundary — not built yet (stage 4)
+## The trust boundary — half built, stage 4 completes it
 
-None of this exists in `src/` today. It is the contract the agent layer must respect
-when it lands, and the reason `core/` is shaped the way it is.
+The `Plan` and its closed `Operation` union exist and are tested (`core/schemas/plan.ts`),
+and the Supervisor runs. The Inspector, the Architect, the Reviewer, `propose()` and the
+diff do not. What follows is the contract they must respect, and the reason `core/` is
+shaped the way it is.
 
-Exactly one object crosses from the AI side to the deterministic side: the **`Plan`**
-(JSON).
+One object crosses **per direction of authority** (design §5.1, ADR-0007). The **`Plan`**
+crosses when the AI side asks for a change. The **`Answer`** crosses when it reports a
+read — a union of `entities` / `nothing` / `unanswerable` that authorises nothing and
+carries only references the engine's own tools returned, each re-read before printing.
+That witness check is a **read-side** guarantee and does not transfer to `propose()`.
 
 ```
 Supervisor → Inspector → Architect → Reviewer  │  Zod → Policies → Reviewer
@@ -152,11 +164,13 @@ stops and asks. Orchestration is plain TypeScript; no agent decides the sequence
   checklist; tick its boxes as you go — Stage 1 shipped with all 36 unticked, which is
   how a plan stops being a status signal.
 - No `switch` on a closed union without `const _exhaustive: never = value` in `default`.
-- Seven architecture rules are enforced by `tests/architecture/`: `core/` imports neither
-  `agents/`, `llm/`, the network nor the model SDK; `agents/` imports neither `fs`,
-  `child_process` nor a git client, **and nothing reachable from it does either** — the
-  test walks the transitive closure; only `llm/` imports the model SDK, and `agents/`
-  imports `llm/client.js` and nothing else from `llm/`. Add a rule when you add a layer.
+- **Eleven** architecture rules are enforced by `tests/architecture/`. `core/` imports
+  neither `agents/`, `llm/`, the disk, the network nor the model SDK. `agents/` imports
+  neither `fs`, `child_process` nor a git client — **and nothing reachable from it does
+  either**, the test walks the transitive closure. Only `llm/` imports the model SDK, and
+  `agents/` imports `llm/client.js` and nothing else from it. `scaffold/` imports `core/`
+  and nothing else of ours; only `write.ts` and `templates.ts` touch the disk there, and
+  only `write.ts` imports a writing function. Add a rule when you add a layer.
 - `fixtures/si-demo/` is a valid IaC repository, not a test-only shape: one file per
   entity, in the folder `computeEntityPath` produces, witness files included. Later
   stages write into it directly.
@@ -165,6 +179,10 @@ stops and asks. Orchestration is plain TypeScript; no agent decides the sequence
 
 ## Open questions
 
-- `src/agents/README.md` and `src/llm/README.md` follow when those folders do. Everything
-  else `docs/design.md` §12 asks for now exists: `README.md`, `SECURITY.md`,
-  `CONTRIBUTING.md`, the per-folder READMEs and `docs/adr/0001`–`0006`.
+- **The package is not on npm.** `0.1.0-rc.1` was published and unpublished the same
+  hour; the generated `validate.yml` ships with its validation step commented out and
+  says so. `package.json` still carries that version and its metadata, ready for the day
+  it is published again — which must be `0.1.0-rc.2`, since a version number is never
+  reusable.
+- A copy of the unpublished tarball is still served by `registry.npmmirror.com`; removal
+  has to be requested from them.
