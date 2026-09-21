@@ -1526,7 +1526,7 @@ point of the stage:
   `unsupported: true`.
 - `NoModelConfiguredError` → the message on stderr, and `main` maps it to `EXIT.badUsage`.
 
-- [ ] **Step 5: Record the five recordings**
+- [x] **Step 5: Record the five recordings**
 
 With a provider configured:
 
@@ -1549,7 +1549,7 @@ If no key is available, record nothing and write each turn with `"handAuthored":
 test asserting that no recording carries that flag — which will fail until they are recorded for
 real. **Do not ship a fabricated recording as a real one.**
 
-- [ ] **Step 6: Write `tests/scenarios/question-mode.test.ts`**
+- [x] **Step 6: Write `tests/scenarios/question-mode.test.ts`**
 
 One case per recording, driving `main(['ask', ...])` with `recordingDir` pointing at
 `tests/recordings` and asserting the exit code and stdout. The load-bearing one:
@@ -1605,7 +1605,7 @@ pnpm typecheck && pnpm test && pnpm build && pnpm smoke
 ```
 Expected: PASS, with no key in the environment.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src tests scripts docs AGENTS.md README.md SECURITY.md package.json
