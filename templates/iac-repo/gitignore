@@ -1,0 +1,4 @@
+# Nothing generated lives here. Every file in this repository is declared by
+# a human and reviewed by another one.
+.DS_Store
+*.log

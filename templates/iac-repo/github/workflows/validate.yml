@@ -1,0 +1,20 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # The catalogue ingests a duplicate in silence and lets the first source
+      # win. This is what refuses it, before the merge rather than after.
+      - run: npx --yes idp-agent@__VERSION__ validate .
