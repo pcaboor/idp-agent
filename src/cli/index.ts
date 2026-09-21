@@ -168,12 +168,14 @@ async function ask(
   const env = deps.env ?? process.env
   const recording = resolveMode(env['IDP_RECORDING'])
 
-  // A scenario means a test replaying a recording: no model, no credential.
-  // Without one this is a real run, which calls the model and records nothing
-  // unless asked to. Replay is never the default for a real run — it would
-  // send someone hunting for a recording they never made.
+  // IDP_RECORDING=record wins: that is the one run that is meant to call a
+  // model and write the turns down, scenario or not. Otherwise a scenario
+  // means a test replaying a recording — no model, no credential — and no
+  // scenario means a real run, which calls the model and records nothing.
+  // Replay is never the default for a real run: it would send someone hunting
+  // for a recording they never made.
   const mode: ClientMode =
-    deps.scenario !== undefined ? 'replay' : recording === 'record' ? 'record' : 'live'
+    recording === 'record' ? 'record' : deps.scenario !== undefined ? 'replay' : 'live'
 
   const choice = mode === 'replay' ? undefined : chooseModel(env)
   const tape =
@@ -186,7 +188,7 @@ async function ask(
           warn: (message) => err(`${message}\n`),
         })
 
-  return runAsk({
+  const result = await runAsk({
     graph,
     client: createClient({
       mode,
@@ -197,4 +199,10 @@ async function ask(
     emit: deps.events ?? ((): void => {}),
     err,
   })
+
+  // Recording in memory and never writing it down is the whole run wasted,
+  // and it is silent: the turns are there, the file never appears.
+  if (mode === 'record' && tape !== undefined) await tape.save()
+
+  return result
 }
