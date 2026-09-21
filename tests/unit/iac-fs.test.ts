@@ -32,6 +32,14 @@ describe('readRepository', () => {
     expect(snapshot.files.map((file) => file.path).join()).not.toContain('.witness.yml')
   })
 
+  it('does not read a hidden directory as catalogue', async () => {
+    // .github holds workflows: YAML, and not entities. Reading them would make
+    // a freshly scaffolded repository fail its own validator.
+    const snapshot = await readRepository(FIXTURES)
+    expect(snapshot.files.map((file) => file.path).join()).not.toContain('.github')
+    expect(snapshot.folders.join()).not.toContain('.github')
+  })
+
   it('counts documents, not only entities', async () => {
     const snapshot = await readRepository(path.join(GOLDEN, 'multi-doc'))
     expect(snapshot.files[0]?.documents).toBe(2)

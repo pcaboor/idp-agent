@@ -24,7 +24,12 @@ async function yamlFiles(dir: string): Promise<string[]> {
   const nested = await Promise.all(
     entries.map(async (entry) => {
       const full = path.join(dir, entry.name)
-      if (entry.isDirectory()) return yamlFiles(full)
+      // A hidden directory is tooling, not catalogue: .github holds workflows
+      // that are YAML and are not entities. Reading them would make a freshly
+      // scaffolded repository report rejections for its own CI config.
+      if (entry.isDirectory()) {
+        return entry.name.startsWith('.') || entry.name === 'node_modules' ? [] : yamlFiles(full)
+      }
       return YAML_EXTENSIONS.has(path.extname(entry.name)) ? [full] : []
     }),
   )

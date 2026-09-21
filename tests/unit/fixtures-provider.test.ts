@@ -20,6 +20,13 @@ describe('FixtureProvider', () => {
     expect(rejected[0]?.reason).toMatch(/group|user/)
   })
 
+  it('does not read a hidden directory as catalogue', async () => {
+    // The provider reads a directory laid out as an IaC repository, and a real
+    // one has .github/workflows. Those are YAML and are not entities.
+    const { rejected } = await new FixtureProvider(ROOT).load()
+    expect(rejected.filter((r) => r.source.includes('.github'))).toEqual([])
+  })
+
   it('reads several documents from one file', async () => {
     const multi = path.resolve(import.meta.dirname, '../golden/multi-doc')
     const { entities } = await new FixtureProvider(multi).load()
