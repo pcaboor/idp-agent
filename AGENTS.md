@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 221 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 239 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -148,9 +148,11 @@ stops and asks. Orchestration is plain TypeScript; no agent decides the sequence
   checklist; tick its boxes as you go — Stage 1 shipped with all 36 unticked, which is
   how a plan stops being a status signal.
 - No `switch` on a closed union without `const _exhaustive: never = value` in `default`.
-- Three architecture rules are enforced by `tests/architecture/`: `core/` imports
-  neither `agents/` nor `llm/`, `core/` never reaches the network, and `agents/` never
-  imports `fs`, `child_process` or a git client. Add a rule when you add a layer.
+- Seven architecture rules are enforced by `tests/architecture/`: `core/` imports neither
+  `agents/`, `llm/`, the network nor the model SDK; `agents/` imports neither `fs`,
+  `child_process` nor a git client, **and nothing reachable from it does either** — the
+  test walks the transitive closure; only `llm/` imports the model SDK, and `agents/`
+  imports `llm/client.js` and nothing else from `llm/`. Add a rule when you add a layer.
 - `fixtures/si-demo/` is a valid IaC repository, not a test-only shape: one file per
   entity, in the folder `computeEntityPath` produces, witness files included. Later
   stages write into it directly.
