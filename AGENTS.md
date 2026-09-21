@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 111 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 121 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck
 pnpm build            # then: node dist/cli/bin.js graph --env prod
 ```
@@ -73,6 +73,11 @@ changing that section first.
 **Model**
 - A resource is an object; an **access is a right over it**, and the access — not the
   resource — carries the list of its consumers.
+- **A declaration is read from both ends.** Which side wrote the edge down —
+  `dependsOn` on the consumer, `dependencyOf` on the access — decides which file a
+  reviewer sees, never which question may be answered. `dependenciesOf` is the exact
+  transpose of `dependantsOf`, resolving one declared hop; composing several hops is a
+  separate, separately named walk (`consumersOf`).
 - The **environment is part of an access's identity**: dev and staging are two entities.
 - **Declare, never infer.** What is unknown is reported as unknown, never filled with a
   plausible value. A dangling reference is surfaced, never pruned.
@@ -144,11 +149,6 @@ stops and asks. Orchestration is plain TypeScript; no agent decides the sequence
 
 ## Open questions
 
-- **`dependsOn` / `dependencyOf` is read in one direction only.** An access declares
-  `dependencyOf: [component:default/billing-api]`, and that edge feeds the reverse index
-  in `src/context/graph/entity-graph.ts` — but `dependenciesOf()` reads only the
-  entity's own `spec.dependsOn`. So `show billing-api` prints `depends on: none` while
-  `show billing-db-prod` names the component. Undecided: symmetrise, or document why not.
 - `main()` in `src/cli/index.ts` has no test. The Stage 1 criterion "an invalid entity is
   reported on stderr" is implemented and exercised only by hand — and the fixture SI has
   zero rejections, so a manual run never reaches it.
