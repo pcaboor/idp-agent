@@ -16,7 +16,8 @@ data and return a string. Pure functions, asserted directly in `tests/unit/rende
 
 **Exit codes.** `EXIT.ok` is 0, `EXIT.notFound` is 1 (the query resolved nothing: a filter that
 matches nothing, or an ambiguous name, is not a success), `EXIT.badUsage` is 2 (the arguments were
-refused). Only `cli/index.ts` turns `CommandResult.found` into an exit code — a command
+refused, or no model is configured), `EXIT.unsupported` is 3 (understood, and this build
+will not act on it). Only `cli/index.ts` turns `CommandResult.found` into an exit code — a command
 states the fact and stays free of the process — and `bin.ts` assigns it to
 `process.exitCode`.
 

@@ -8,7 +8,7 @@ reviewed, then merged.
 
 ```bash
 git clone https://github.com/pcaboor/idp-agent && cd idp-agent
-pnpm install && pnpm test     # 129 tests, no API key, no network, no cost
+pnpm install && pnpm test     # 221 tests, no API key, no network, no cost
 ```
 
 That is the whole setup. The suite never reaches a model, and it never will: that is a
@@ -51,13 +51,20 @@ walking access declarations, with no model involved.
 ```bash
 idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource]
 idp-agent show <name-or-reference>
+idp-agent ask "<question>"      # needs IDP_PROVIDER and IDP_MODEL
 ```
+
+`ask` puts a model in front of the same graph. It chooses which questions to ask; the
+engine answers them and prints the result, and a reference the tools never returned is
+refused rather than printed. **No provider is configured by default** — set `IDP_PROVIDER`
+(anthropic, mistral or openai) and `IDP_MODEL` to the model you want.
 
 (`idp-agent` and the short alias `idpa` are the names the `bin` entry declares; they
 work today through `pnpm link --global`.)
 
 Exit codes: `0` succeeded · `1` the query resolved nothing · `2` the arguments were
-refused. An ambiguous name resolves nothing rather than picking the first candidate.
+refused, or no model is configured · `3` the request was understood and this build will
+not act on it. An ambiguous name resolves nothing rather than picking the first candidate.
 
 ## What it is really about
 
@@ -87,7 +94,7 @@ The doctrine that follows from running such a system is written down in
 |---|---|---|
 | 0 | Foundations — schemas, serialiser, paths, invariants | done |
 | 1 | Read-only — `graph`, `show <entity>` | done |
-| 2 | Question mode — Supervisor, recordings | next |
+| 2 | Question mode — Supervisor, recordings | in progress |
 | 3 | `init` — scaffold, CI, CODEOWNERS, witnesses | |
 | 4 | Preview only — Inspector, Architect, `Plan`, diff; writes nothing | |
 | 5 | Write + local branch — atomicity, idempotence | |

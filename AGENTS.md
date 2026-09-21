@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 129 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 221 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -28,9 +28,11 @@ pnpm smoke            # runs the built dist/cli/bin.js, which the suite never do
 CI runs exactly those five, on Node 22 and 24. A suite that demands a key is a
 regression, not a configuration problem.
 
-**Exit codes:** `0` succeeded · `1` the query resolved nothing (no match, or an
-ambiguous name — a script must be able to tell) · `2` the arguments were refused.
-A command returns `{ text, found }`; only `cli/index.ts` turns that into a code.
+**Exit codes:** `0` succeeded · `1` the query resolved nothing (no match, an ambiguous
+name, or an unexpected failure) · `2` the arguments were refused, or no model is
+configured · `3` the request was understood and this build will not act on it (a change
+request, or a question the model refused). A command returns `{ text, found, unsupported? }`;
+only `cli/index.ts` turns that into a code.
 
 ## Current state — 2026-09-21
 
@@ -40,7 +42,7 @@ Stages 0 and 1 are merged on `main`; history is linear, no merge commits.
 |---|---|---|
 | 0 | Foundations — schemas, serialiser, paths, invariants | done |
 | 1 | Read-only — `graph`, `show <entity>` over fixtures | done |
-| 2 | Question mode — Supervisor, recordings | **next, no plan written yet** |
+| 2 | Question mode — Supervisor, recordings | in progress: 8 of 8 tasks written, recordings pending |
 | 3 | `init` — scaffold, CI, CODEOWNERS, witnesses | |
 | 4 | Preview only — Inspector, Architect, `Plan`, diff; writes nothing | |
 | 5 | Write + local branch — `ForgeProvider`, atomicity, idempotence | |
@@ -64,7 +66,8 @@ cli/  ──→  context/  ──→  core/
 | `core/` | schemas (Zod), deterministic YAML serialiser, entity paths, textual surgery |
 | `context/` | `ContextProvider` (today: `fixtures`), `EntityGraph` and its queries |
 | `cli/` | argument parsing, commands, rendering — the only layer that writes to stdout |
-| `agents/`, `llm/` | not written yet; stage 2 opens them |
+| `llm/` | the single crossing point: `client.ts` is types only, `runtime.ts` alone imports the SDK |
+| `agents/` | Supervisor, Analyst, the bounded loop, the tool registry — reaches no disk, transitively |
 
 Rendering returns strings and commands take a graph and return a string, so each is
 tested without a terminal. Keep it that way.

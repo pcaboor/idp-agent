@@ -118,8 +118,20 @@ follows from the documentation of the tools involved.
 
 ### 5.1 Trust boundary
 
-One object crosses the boundary between the AI side and the deterministic side: the
-**`Plan`**.
+One object crosses the boundary **per direction of authority**.
+
+The **`Plan`** crosses when the AI side asks for a change: it authorises writes and
+carries values the model chose, so everything downstream of it — Zod, policies, the
+Reviewer, the repository re-check — exists to refuse it.
+
+The **`Answer`** crosses when the AI side reports a read (stage 2, ADR-0007). It
+authorises nothing and names no value: it carries only identifiers the engine itself
+returned, and the engine re-reads every one of them from the graph before printing. An
+identifier the tools never produced is refused and named.
+
+The carve-out has a limit, and it does not travel: the witness check is a read-side
+guarantee. `propose()` will need its own, because a `Plan` proposes values that were
+never in the catalogue to begin with.
 
 ```
 ┌───────────────────── AI ZONE (untrusted) ─────────────────────────┐
@@ -129,7 +141,7 @@ One object crosses the boundary between the AI side and the deterministic side: 
 │                              + propose()                          │
 └────────────────────────────────┬──────────────────────────────────┘
                                  │
-                        ═══ Plan (JSON) ═══   ◄── the only crossing
+                        ═══ Plan (JSON) ═══   ◄── the write crossing
                                  │
 ┌────────────────────────────────┼──────── DETERMINISTIC ZONE ──────┐
 │  Zod ──► Policies ──► Reviewer ──► repo re-check ──► Diff         │
@@ -201,6 +213,7 @@ sequences the steps. No agent decides the sequence.
 | Agent | Input | Tools | Output |
 |---|---|---|---|
 | Supervisor | the request + a numeric SI summary | none | `MUTATION` or `QUESTION` |
+| Analyst | a question + the SI summary | `search_entities`, `get_entity`, `get_dependencies`, `answer` | an `Answer` |
 | Inspector | the local repository | `list_files`, `read_file`, `read_manifest` | `ProjectFacts` |
 | Architect | `ProjectFacts` + SI + rules | `search_entities`, `get_entity`, `get_dependencies`, `get_governance_rule`, `propose` | `Plan` |
 | Reviewer | the `Plan` + the original request | SI reads | `OK` or a rejection reason |
@@ -230,7 +243,11 @@ The harness renders nothing. It emits:
 
 ```ts
 type AgentEvent =
-  | { type: 'agent:start'; agent: 'inspector' | 'architect' | 'reviewer' }
+  | { type: 'agent:start'; agent: 'supervisor' | 'analyst' | 'inspector' | 'architect' | 'reviewer' }
+  | { type: 'classified';  classification: 'MUTATION' | 'QUESTION' }
+  | { type: 'tool:result'; name: string; rows: number; truncated: number }
+  | { type: 'answer:ready'; refs: string[] }
+  | { type: 'refused';     agent: string; reason: string }
   | { type: 'tool:call';   name: string; args: unknown }
   | { type: 'repair';      attempt: 1 | 2 | 3; reason: string }
   | { type: 'plan:ready';  plan: Plan }
@@ -426,11 +443,12 @@ idp-agent/
 │  │  ├─ local/          local branch + MR preview (no token)
 │  │  └─ github/         GitHub API
 │  ├─ llm/
-│  │  ├─ client.ts       the single crossing point
-│  │  ├─ recording.ts     record / replay
+│  │  ├─ client.ts       the single crossing point — types only
+│  │  ├─ recording.ts    record / replay
+│  │  ├─ runtime.ts      the only file importing the model SDK
 │  │  └─ providers.ts    anthropic · mistral · openai
 │  ├─ agents/          cannot import fs, git, child_process
-│  │  ├─ supervisor.ts · inspector.ts · architect.ts · reviewer.ts
+│  │  ├─ supervisor.ts · analyst.ts · inspector.ts · architect.ts · reviewer.ts
 │  │  ├─ tools/          registry: read-only + propose
 │  │  ├─ repair.ts       loop, 3 attempts max
 │  │  └─ events.ts
@@ -493,6 +511,7 @@ ADR-0003  provider interfaces for context and forge
 ADR-0004  recordings as the default suite, live evals as nightly
 ADR-0005  structured entities, never model-authored YAML
 ADR-0006  the merge request is the act of authorisation
+ADR-0007  the answer crosses the boundary, under a witness check
 ```
 
 ### 12.2 The whole suite runs without an API key
