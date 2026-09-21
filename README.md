@@ -19,10 +19,10 @@ constraint of the design, not a stage the project is passing through.
 Stages 0 and 1 of 7 are shipped: two read-only commands over a fictional information
 system of 33 entities. No AI, no network, no writes.
 
-On npm as a release candidate:
+Not published yet. From a clone:
 
 ```bash
-npx --yes idp-agent@0.1.0-rc.1 show billing-db-prod
+pnpm build && node dist/cli/bin.js show billing-db-prod
 ```
 
 ```

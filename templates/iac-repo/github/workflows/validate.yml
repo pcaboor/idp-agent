@@ -5,6 +5,17 @@ on:
     branches: [main]
   pull_request:
 
+# The catalogue ingests a duplicate in silence and lets the first source win.
+# This is what refuses it, before the merge rather than after.
+#
+# HOW TO TURN THIS ON. idp-agent is not published yet, so the step below is
+# commented out and this workflow currently does nothing. Once the package is
+# on a registry you can reach from CI, uncomment it. Until then, run
+# `idp-agent validate .` yourself before opening a merge request.
+#
+# A workflow that names a package nobody can install fails on its first push
+# with no explanation, which is worse than a workflow that says it is waiting.
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -15,6 +26,6 @@ jobs:
         with:
           node-version: 22
 
-      # The catalogue ingests a duplicate in silence and lets the first source
-      # win. This is what refuses it, before the merge rather than after.
-      - run: npx --yes idp-agent@__VERSION__ validate .
+      - run: echo "validation is not wired up yet — see the comment in this file"
+
+      # - run: npx --yes idp-agent@__VERSION__ validate .

@@ -22,10 +22,17 @@ merge requests never conflict over one.
 pattern matching no file returns an empty set, and an empty set reads as "nothing to do".
 With the witness, a folder that disappeared is a read error instead of a silent zero.
 
-## What CI refuses
+## What CI refuses — once you turn it on
 
-`.github/workflows/validate.yml` runs `idp-agent validate`, which refuses what the
-catalogue would accept:
+`.github/workflows/validate.yml` is written but **its validation step is commented out**,
+because `idp-agent` is not published to a registry yet. As shipped, the workflow runs and
+does nothing. Uncomment the step once the package is installable from your CI, and run
+`idp-agent validate .` by hand until then.
+
+A workflow naming a package nobody can install fails on its first push with no
+explanation, which is worse than one that says it is waiting.
+
+Once on, it refuses what the catalogue would accept:
 
 - two files declaring the same entity — the catalogue keeps the first and says nothing;
 - an entity the schema rejects;
