@@ -4,7 +4,7 @@
 
 **Goal:** Answer a natural-language question about the SI by letting a model choose *which*
 questions to ask the graph — never by letting it write the answer — and put the record/replay
-cassette harness in place so the whole suite still runs with no API key.
+recording harness in place so the whole suite still runs with no API key.
 
 **Architecture:** A hand-written, bounded read-only tool loop. The model calls three tools over
 `EntityGraph` and must terminate through an `answer` tool whose output is a Zod-validated closed
@@ -25,7 +25,7 @@ Inherited and still binding — see `docs/design.md`, `AGENTS.md`.
 - **No provider is privileged.** The design ships anthropic · mistral · openai behind one
   interface. There is **no default provider and no default model**: with nothing configured the
   CLI refuses with `no model configured` and exit 2. A contributor plugs in the model they want.
-- **A cassette carries its own provider and model, and replay uses the cassette's, never the
+- **A recording carries its own provider and model, and replay uses the recording's, never the
   configured one.** This is what lets a contributor run the whole suite without holding the key
   the recording was made with.
 - **English throughout** — code, comments, commit messages, test names, CLI output.
@@ -33,7 +33,7 @@ Inherited and still binding — see `docs/design.md`, `AGENTS.md`.
   network, transitively.** Enforced by `tests/architecture` (Task 1).
 - **Declare, never infer.** An ambiguous question resolves nothing. A model that names an entity
   no tool returned is refused, and the offending reference is named.
-- **Never ignore in silence.** A missing cassette entry, an unparseable classification and a
+- **Never ignore in silence.** A missing recording entry, an unparseable classification and a
   refused answer all reach stderr. None of them becomes an empty result.
 - **The agent drafts, the engine signs** — applied to reads: the model chooses which question to
   ask; `cli/render/` prints the rows.
@@ -76,12 +76,12 @@ into a 0.
 |---|---|
 | `src/core/schemas/query.ts` | `searchCriteriaSchema`, the tool input schemas, `answerSchema`, `QUERY_LIMITS` |
 | `src/context/graph/summary.ts` | `summariseGraph` — bucketed counts and the closed vocabulary |
-| `src/llm/client.ts` | **types only**: `LlmClient`, `GenerateRequest`, `Transcript`, `CassetteMissError` |
-| `src/llm/cassette.ts` | record/replay, pure: takes a `CassetteStore`, touches no disk |
+| `src/llm/client.ts` | **types only**: `LlmClient`, `GenerateRequest`, `Transcript`, `RecordingMissError` |
+| `src/llm/recording.ts` | record/replay, pure: takes a `RecordingStore`, touches no disk |
 | `src/llm/providers.ts` | the three provider adapters; no default, `no model configured` when unset |
 | `src/llm/runtime.ts` | the only file importing `ai` — `generateText` + `wrapLanguageModel` |
 | `src/llm/README.md` | why the crossing point is one file, and how to plug in your own model |
-| `src/cli/cassette-fs.ts` | `fileCassetteStore(dir)` — the only place `node:fs` meets a cassette |
+| `src/cli/recording-fs.ts` | `fileRecordingStore(dir)` — the only place `node:fs` meets a recording |
 | `src/agents/events.ts` | `AgentEvent`, `EventSink` |
 | `src/agents/supervisor.ts` | `classify()` — one turn, no tools, MUTATION or QUESTION |
 | `src/agents/analyst.ts` | the bounded loop: 4 turns, 3 calls per turn, terminal `answer` |
@@ -90,10 +90,10 @@ into a 0.
 | `src/agents/README.md` | why `agents/` may not reach the disk, and what that costs |
 | `src/cli/commands/ask.ts` | `runAsk` — wires it together, signs the answer, returns a `CommandResult` |
 | `tests/setup/offline.ts` | replaces `globalThis.fetch` with a thrower unless recording |
-| `tests/cassettes/*.json` | five recorded scenarios |
+| `tests/recordings/*.json` | five recorded scenarios |
 
 Why `client.ts` holds only types: `agents/` imports it, and the architecture test walks the
-**transitive** closure. If the crossing point pulled in `ai`, or the cassette pulled in `node:fs`
+**transitive** closure. If the crossing point pulled in `ai`, or the recording pulled in `node:fs`
 through it, `agents/` would reach the disk through the back door — which `SECURITY.md` currently
 claims is impossible. Task 1 makes that claim true before any of it is written.
 
@@ -125,7 +125,7 @@ const NETWORK = /^(node:)?(http|https|net|dgram|tls)$|^(undici|axios|node-fetch|
 /**
  * Relative specifiers are resolved and walked; a bare specifier is checked and
  * not walked. The shipped rules grep the files under a directory, which would
- * let agents/ -> llm/client -> cassette -> node:fs pass while SECURITY.md claims
+ * let agents/ -> llm/client -> recording -> node:fs pass while SECURITY.md claims
  * there is no code path from an agent to the disk.
  */
 async function closureOf(entry: string, seen = new Set<string>()): Promise<Import[]> {
@@ -199,17 +199,17 @@ Create `tests/setup/offline.ts`:
 ```typescript
 /**
  * The suite must never reach the network — not by accident, not through a
- * dependency, not when someone forgets a cassette. Recording is the one
- * exception, and it is opt-in through IDP_CASSETTE=record.
+ * dependency, not when someone forgets a recording. Recording is the one
+ * exception, and it is opt-in through IDP_RECORDING=record.
  */
-const recording = process.env['IDP_CASSETTE'] === 'record'
+const recording = process.env['IDP_RECORDING'] === 'record'
 
 if (!recording) {
   globalThis.fetch = (input: RequestInfo | URL): never => {
     const target = typeof input === 'string' ? input : String(input)
     throw new Error(
       `the test suite reached the network (${target}). ` +
-        'Replay a cassette, or record one with IDP_CASSETTE=record pnpm test.',
+        'Replay a recording, or record one with IDP_RECORDING=record pnpm test.',
     )
   }
 }
@@ -244,32 +244,32 @@ git commit -m "test: forbid the network in the suite and the disk under agents/,
 
 ---
 
-### Task 2: The cassette, pure
+### Task 2: The recording, pure
 
 **Files:**
 - Create: `src/llm/client.ts` (types only)
-- Create: `src/llm/cassette.ts`
-- Create: `src/cli/cassette-fs.ts`
-- Create: `tests/unit/cassette.test.ts`
+- Create: `src/llm/recording.ts`
+- Create: `src/cli/recording-fs.ts`
+- Create: `tests/unit/recording.test.ts`
 
 **Interfaces:**
 - Produces:
-  - `interface CassetteStore { read(scenario: string): Promise<Cassette | undefined>; write(scenario: string, cassette: Cassette): Promise<void> }`
+  - `interface RecordingStore { read(scenario: string): Promise<Recording | undefined>; write(scenario: string, recording: Recording): Promise<void> }`
   - `function resolveMode(raw: string | undefined): 'replay' | 'record'`
-  - `function openCassette(options: { scenario: string; store: CassetteStore; mode: 'replay' | 'record'; warn: (message: string) => void }): Promise<CassetteTape>`
-  - `interface CassetteTape { replay(key: TurnKey, digest: string): TurnRecord; record(key: TurnKey, record: TurnRecord): void; save(): Promise<void> }`
-  - `class CassetteMissError extends Error`
+  - `function openRecording(options: { scenario: string; store: RecordingStore; mode: 'replay' | 'record'; warn: (message: string) => void }): Promise<OpenRecording>`
+  - `interface OpenRecording { replay(key: TurnKey, digest: string): TurnRecord; record(key: TurnKey, record: TurnRecord): void; save(): Promise<void> }`
+  - `class RecordingMissError extends Error`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `tests/unit/cassette.test.ts`:
+Create `tests/unit/recording.test.ts`:
 
 ```typescript
 import { describe, expect, it, vi } from 'vitest'
-import { CassetteMissError, openCassette, resolveMode } from '../../src/llm/cassette.js'
-import type { Cassette, CassetteStore } from '../../src/llm/cassette.js'
+import { RecordingMissError, openRecording, resolveMode } from '../../src/llm/recording.js'
+import type { Recording, RecordingStore } from '../../src/llm/recording.js'
 
-const tape: Cassette = {
+const tape: Recording = {
   version: 1,
   scenario: 'demo',
   turns: [
@@ -285,11 +285,11 @@ const tape: Cassette = {
   ],
 }
 
-const storeOf = (cassette?: Cassette): CassetteStore & { written: Cassette[] } => {
-  const written: Cassette[] = []
+const storeOf = (recording?: Recording): RecordingStore & { written: Recording[] } => {
+  const written: Recording[] = []
   return {
     written,
-    read: async () => cassette,
+    read: async () => recording,
     write: async (_scenario, value) => void written.push(value),
   }
 }
@@ -304,14 +304,14 @@ describe('resolveMode', () => {
   })
 
   it('refuses a value it does not recognise, rather than guessing a mode', () => {
-    // A contributor who types IDP_CASSETTE=1 must not silently diverge from CI.
-    expect(() => resolveMode('1')).toThrow(/IDP_CASSETTE/)
+    // A contributor who types IDP_RECORDING=1 must not silently diverge from CI.
+    expect(() => resolveMode('1')).toThrow(/IDP_RECORDING/)
   })
 })
 
-describe('cassette replay', () => {
+describe('recording replay', () => {
   it('returns the recorded turn for its key', async () => {
-    const played = await openCassette({
+    const played = await openRecording({
       scenario: 'demo', store: storeOf(tape), mode: 'replay', warn: () => {},
     })
     expect(played.replay({ agent: 'supervisor', turn: 0 }, 'sha256:aaa').result.finishReason)
@@ -320,27 +320,27 @@ describe('cassette replay', () => {
 
   it('fails on a missing entry, naming how to record it', async () => {
     // A warning here would let a brand new scenario pass green replaying nothing.
-    const played = await openCassette({
+    const played = await openRecording({
       scenario: 'demo', store: storeOf(tape), mode: 'replay', warn: () => {},
     })
     expect(() => played.replay({ agent: 'analyst', turn: 0 }, 'sha256:aaa'))
-      .toThrow(CassetteMissError)
+      .toThrow(RecordingMissError)
     expect(() => played.replay({ agent: 'analyst', turn: 0 }, 'sha256:aaa'))
-      .toThrow(/IDP_CASSETTE=record/)
+      .toThrow(/IDP_RECORDING=record/)
   })
 
-  it('fails when the whole cassette is absent', async () => {
-    const played = await openCassette({
+  it('fails when the whole recording is absent', async () => {
+    const played = await openRecording({
       scenario: 'demo', store: storeOf(undefined), mode: 'replay', warn: () => {},
     })
     expect(() => played.replay({ agent: 'supervisor', turn: 0 }, 'sha256:aaa'))
-      .toThrow(CassetteMissError)
+      .toThrow(RecordingMissError)
   })
 
   it('warns and still replays when the prompt changed since recording', async () => {
     // design 9.3: a prompt that changed produces a warning, not an error.
     const warn = vi.fn()
-    const played = await openCassette({
+    const played = await openRecording({
       scenario: 'demo', store: storeOf(tape), mode: 'replay', warn,
     })
     const record = played.replay({ agent: 'supervisor', turn: 0 }, 'sha256:different')
@@ -350,19 +350,19 @@ describe('cassette replay', () => {
 
   it('is keyed on the turn, never on the prompt', async () => {
     // The key is (scenario, agent, turn). Keying on a hash would invalidate every
-    // cassette on a single changed comma (design 9.3).
+    // recording on a single changed comma (design 9.3).
     const warn = vi.fn()
-    const played = await openCassette({
+    const played = await openRecording({
       scenario: 'demo', store: storeOf(tape), mode: 'replay', warn,
     })
     expect(() => played.replay({ agent: 'supervisor', turn: 0 }, 'sha256:zzz')).not.toThrow()
   })
 })
 
-describe('cassette record', () => {
+describe('recording record', () => {
   it('writes the turns it was given, sorted by agent and turn', async () => {
     const store = storeOf(undefined)
-    const played = await openCassette({
+    const played = await openRecording({
       scenario: 'demo', store, mode: 'record', warn: () => {},
     })
     played.record({ agent: 'analyst', turn: 1 }, { ...tape.turns[0]!, agent: 'analyst', turn: 1 })
@@ -375,7 +375,7 @@ describe('cassette record', () => {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm vitest run tests/unit/cassette.test.ts`
+Run: `pnpm vitest run tests/unit/recording.test.ts`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Write the types**
@@ -426,9 +426,9 @@ export interface LlmClient {
 }
 ```
 
-- [ ] **Step 4: Write the cassette**
+- [ ] **Step 4: Write the recording**
 
-Create `src/llm/cassette.ts`:
+Create `src/llm/recording.ts`:
 
 ```typescript
 import type { AgentName } from './client.js'
@@ -448,43 +448,43 @@ export interface TurnRecord extends TurnKey {
   result: { content: unknown[]; finishReason: string; usage?: unknown }
 }
 
-export interface Cassette {
+export interface Recording {
   version: 1
   scenario: string
   turns: TurnRecord[]
 }
 
-export interface CassetteStore {
-  read(scenario: string): Promise<Cassette | undefined>
-  write(scenario: string, cassette: Cassette): Promise<void>
+export interface RecordingStore {
+  read(scenario: string): Promise<Recording | undefined>
+  write(scenario: string, recording: Recording): Promise<void>
 }
 
-export class CassetteMissError extends Error {}
+export class RecordingMissError extends Error {}
 
 const keyOf = (key: TurnKey): string => `${key.agent}#${key.turn}`
 
 /**
- * The mode comes from IDP_CASSETTE alone — never from whether a key happens to
+ * The mode comes from IDP_RECORDING alone — never from whether a key happens to
  * be present, or a contributor's run diverges from CI without either noticing.
  */
 export function resolveMode(raw: string | undefined): 'replay' | 'record' {
   if (raw === undefined || raw === '') return 'replay'
   if (raw === 'record') return 'record'
-  throw new Error(`IDP_CASSETTE must be unset or "record", got "${raw}"`)
+  throw new Error(`IDP_RECORDING must be unset or "record", got "${raw}"`)
 }
 
-export interface CassetteTape {
+export interface OpenRecording {
   replay(key: TurnKey, digest: string): TurnRecord
   record(key: TurnKey, record: TurnRecord): void
   save(): Promise<void>
 }
 
-export async function openCassette(options: {
+export async function openRecording(options: {
   scenario: string
-  store: CassetteStore
+  store: RecordingStore
   mode: 'replay' | 'record'
   warn: (message: string) => void
-}): Promise<CassetteTape> {
+}): Promise<OpenRecording> {
   const existing = await options.store.read(options.scenario)
   const turns = new Map((existing?.turns ?? []).map((turn) => [keyOf(turn), turn]))
 
@@ -492,9 +492,9 @@ export async function openCassette(options: {
     replay(key, digest) {
       const found = turns.get(keyOf(key))
       if (found === undefined) {
-        throw new CassetteMissError(
+        throw new RecordingMissError(
           `no recording for ${options.scenario} ${key.agent} turn ${key.turn}. ` +
-            'Record it with IDP_CASSETTE=record pnpm test.',
+            'Record it with IDP_RECORDING=record pnpm test.',
         )
       }
       // A changed prompt is a warning, not an error (design 9.3): the digest is
@@ -502,7 +502,7 @@ export async function openCassette(options: {
       // one changed fixture row cascades warnings down the rest of a scenario.
       if (found.digest !== digest) {
         options.warn(
-          `cassette ${options.scenario} ${key.agent} turn ${key.turn}: ` +
+          `recording ${options.scenario} ${key.agent} turn ${key.turn}: ` +
             'the prompt changed since recording; replaying anyway',
         )
       }
@@ -527,25 +527,25 @@ export async function openCassette(options: {
 }
 ```
 
-Create `src/cli/cassette-fs.ts` — the only place `node:fs` meets a cassette, and it lives in
+Create `src/cli/recording-fs.ts` — the only place `node:fs` meets a recording, and it lives in
 `cli/` so that nothing reachable from `agents/` can touch the disk:
 
 ```typescript
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { Cassette, CassetteStore } from '../llm/cassette.js'
+import type { Recording, RecordingStore } from '../llm/recording.js'
 
-export function fileCassetteStore(directory: string): CassetteStore {
+export function fileRecordingStore(directory: string): RecordingStore {
   const fileOf = (scenario: string): string => path.join(directory, `${scenario}.json`)
 
   return {
     async read(scenario) {
       const raw = await readFile(fileOf(scenario), 'utf8').catch(() => undefined)
-      return raw === undefined ? undefined : (JSON.parse(raw) as Cassette)
+      return raw === undefined ? undefined : (JSON.parse(raw) as Recording)
     },
-    async write(scenario, cassette) {
+    async write(scenario, recording) {
       await mkdir(directory, { recursive: true })
-      await writeFile(fileOf(scenario), `${JSON.stringify(cassette, null, 2)}\n`, 'utf8')
+      await writeFile(fileOf(scenario), `${JSON.stringify(recording, null, 2)}\n`, 'utf8')
     },
   }
 }
@@ -553,13 +553,13 @@ export function fileCassetteStore(directory: string): CassetteStore {
 
 - [ ] **Step 5: Run the tests**
 
-Run: `pnpm vitest run tests/unit/cassette.test.ts && pnpm typecheck`
+Run: `pnpm vitest run tests/unit/recording.test.ts && pnpm typecheck`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/llm/client.ts src/llm/cassette.ts src/cli/cassette-fs.ts tests/unit/cassette.test.ts
+git add src/llm/client.ts src/llm/recording.ts src/cli/recording-fs.ts tests/unit/recording.test.ts
 git commit -m "feat(llm): record and replay a model turn, keyed on scenario, agent and turn"
 ```
 
@@ -575,12 +575,12 @@ git commit -m "feat(llm): record and replay a model turn, keyed on scenario, age
 - Modify: `package.json` (dependencies)
 
 **Interfaces:**
-- Consumes: `LlmClient`, `GenerateRequest` from `llm/client.ts`; `CassetteTape` from `llm/cassette.ts`
+- Consumes: `LlmClient`, `GenerateRequest` from `llm/client.ts`; `OpenRecording` from `llm/recording.ts`
 - Produces:
   - `interface ModelChoice { provider: 'anthropic' | 'mistral' | 'openai'; model: string }`
   - `function chooseModel(env: Record<string, string | undefined>): ModelChoice` — throws `NoModelConfiguredError` when unset
   - `class NoModelConfiguredError extends Error`
-  - `function createClient(options: { tape: CassetteTape; mode: 'replay' | 'record'; choice?: ModelChoice }): LlmClient`
+  - `function createClient(options: { tape: OpenRecording; mode: 'replay' | 'record'; choice?: ModelChoice }): LlmClient`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -628,7 +628,7 @@ pnpm add ai @ai-sdk/anthropic @ai-sdk/mistral @ai-sdk/openai
 ```
 
 Pin exact versions in `package.json` (no `^`): a provider adapter's request shape is part of
-what a cassette recorded. Cassettes stay **out** of the `files` array — they are test material,
+what a recording recorded. Recordings stay **out** of the `files` array — they are test material,
 not shipped.
 
 - [ ] **Step 4: Write the providers**
@@ -683,7 +683,7 @@ export function chooseModel(env: Record<string, string | undefined>): ModelChoic
   return { provider: provider as ProviderName, model }
 }
 
-/** Replay uses the cassette's own provider and model, never the configured one. */
+/** Replay uses the recording's own provider and model, never the configured one. */
 export function modelFor(choice: ModelChoice): LanguageModel {
   return ADAPTERS[choice.provider](choice.model)
 }
@@ -697,15 +697,15 @@ Create `src/llm/runtime.ts` — the only file importing `ai`:
 import { generateText, wrapLanguageModel } from 'ai'
 import { createHash } from 'node:crypto'
 import type { AgentName, GenerateRequest, GenerateResult, LlmClient } from './client.js'
-import type { CassetteTape } from './cassette.js'
+import type { OpenRecording } from './recording.js'
 import { modelFor, type ModelChoice } from './providers.js'
 
-/** Compared, never keyed on. Keying on it would invalidate every cassette on a comma. */
+/** Compared, never keyed on. Keying on it would invalidate every recording on a comma. */
 const digestOf = (value: unknown): string =>
   `sha256:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`
 
 export function createClient(options: {
-  tape: CassetteTape
+  tape: OpenRecording
   mode: 'replay' | 'record'
   choice?: ModelChoice
 }): LlmClient {
@@ -727,7 +727,7 @@ export function createClient(options: {
         throw new Error('recording needs a configured model')
       }
       // No temperature: it is rejected on several current models, and
-      // determinism comes from the cassette, not from sampling settings.
+      // determinism comes from the recording, not from sampling settings.
       const response = await generateText({
         model: wrapLanguageModel({ model: modelFor(options.choice), middleware: [] }),
         system: request.system,
@@ -760,7 +760,7 @@ shapes and the four types in `client.ts`. Write them in this file; they are the 
 and is the only file `agents/` may import, which is what keeps `ai` and `node:fs` out of the
 agent closure; there is no default provider; how to plug in your own model
 (`IDP_PROVIDER`/`IDP_MODEL`, and what to add for a fourth adapter); that replay uses the
-cassette's provider, so the suite runs without your key; and that a changed fixture cascades
+recording's provider, so the suite runs without your key; and that a changed fixture cascades
 digest warnings down a scenario because turn *n* embeds turn *n−1*'s output.
 
 - [ ] **Step 7: Run the tests**
@@ -781,7 +781,7 @@ git commit -m "feat(llm): add the provider adapters and the recording runtime"
 
 The Supervisor's input is "the request + a numeric SI summary" (design §6). Numeric, and
 **bucketed** — stages 3 and 4 both add fixtures, and 33 → 41 entities must not re-record a single
-cassette.
+recording.
 
 **Files:**
 - Create: `src/context/graph/summary.ts`
@@ -849,7 +849,7 @@ describe('summariseGraph', () => {
 
 describe('formatSummary', () => {
   it('does not move when an entity of a known type, env and owner is added', async () => {
-    // This is the test that keeps every cassette valid through stages 3 and 4.
+    // This is the test that keeps every recording valid through stages 3 and 4.
     const before = summariseGraph(await load())
     const after = summariseGraph(
       EntityGraph.from([...(await load()).all(), extraDatabase]),
@@ -886,7 +886,7 @@ data, so `agents/` never holds a graph.
 
 Create `src/agents/summary.ts`. Emit sorted `key: value` lines, one per field, then the four
 vocabulary lists. Deterministic bytes: the prompt digest depends on it, and so does every
-cassette.
+recording.
 
 - [ ] **Step 5: Run the tests and commit**
 
@@ -1072,7 +1072,7 @@ export async function classify(
 
 15-25 lines: why `agents/` may import neither disk nor network, **transitively** — the guardrail
 is structural, there is no code path from an agent to a file; why that forces `client.ts` to be
-types only and the cassette store to live in `cli/`; what an agent receives (plain data, never a
+types only and the recording store to live in `cli/`; what an agent receives (plain data, never a
 graph, never a provider); that orchestration is plain TypeScript and no agent decides the
 sequence; and the cost, honestly: every capability an agent needs has to be handed to it, which
 makes adding one a change in two places.
@@ -1425,7 +1425,7 @@ export const LOOP_LIMITS = { maxTurns: 4, maxCallsPerTurn: 3 } as const
 - On the **last allowed turn**, set `toolChoice: { tool: 'answer' }` to force termination. Some
   models reject forced tool use with a 400; catch it, retry the same turn with `toolChoice:
   'auto'` and a system line naming the `answer` tool. Both paths are recorded, so the fallback
-  is exercised by whichever provider recorded the cassette.
+  is exercised by whichever provider recorded the recording.
 - When the model calls `answer`, parse with `answerSchema`. A parse failure is put back in the
   transcript and the loop continues; it is not a crash.
 - **The two engine checks**, before returning: every `refs` entry must be in `witnessed`,
@@ -1443,13 +1443,13 @@ git commit -m "feat(agents): bound the question loop and refuse an answer the gr
 
 ---
 
-### Task 8: `ask`, the CLI, the cassettes and the documentation
+### Task 8: `ask`, the CLI, the recordings and the documentation
 
 **Files:**
 - Create: `src/cli/commands/ask.ts`
 - Modify: `src/cli/index.ts`, `src/cli/commands/result.ts`, `scripts/smoke.mjs`
 - Create: `tests/unit/ask.test.ts`, `tests/scenarios/question-mode.test.ts`
-- Create: `tests/cassettes/*.json` (five scenarios)
+- Create: `tests/recordings/*.json` (five scenarios)
 - Create: `docs/adr/0007-the-answer-crosses-the-boundary.md`
 - Modify: `docs/design.md`, `AGENTS.md`, `README.md`, `SECURITY.md`, `src/cli/README.md`
 
@@ -1459,7 +1459,7 @@ git commit -m "feat(agents): bound the question loop and refuse an answer the gr
 
 - [ ] **Step 1: Write the failing test**
 
-Create `tests/unit/ask.test.ts` covering `runAsk` against a scripted `LlmClient` (no cassette):
+Create `tests/unit/ask.test.ts` covering `runAsk` against a scripted `LlmClient` (no recording):
 one entity found renders the detail view and `found` is true; several render the table; `nothing`
 gives `found: false`; `unanswerable` sets `unsupported: true` and writes the reason to stderr;
 MUTATION sets `unsupported: true` and never touches the graph. Then extend `tests/unit/main.test.ts`:
@@ -1468,7 +1468,7 @@ MUTATION sets `unsupported: true` and never touches the graph. Then extend `test
 it('returns 3 when the request is a change this build will not make', async () => {
   const io = capture()
   const code = await main(['ask', 'give billing-api access to orders-db'], {
-    root: FIXTURES, cassetteDir: CASSETTES, env: {},
+    root: FIXTURES, recordingDir: RECORDINGS, env: {},
     out: (s) => io.out.push(s), err: (s) => io.err.push(s),
   })
   expect(code).toBe(3)
@@ -1505,14 +1505,14 @@ export interface CommandResult {
 
 `src/cli/index.ts`: `export const EXIT = { ok: 0, notFound: 1, badUsage: 2, unsupported: 3 } as const`,
 an `ask` branch in `parseArguments` (`{ name: 'ask'; intent: string }`, error when the intent is
-missing or longer than `PLAN_LIMITS.maxIntentLength`), `MainDeps` gains `env?`, `cassetteDir?`,
-`scenario?` (which cassette to replay; the scenario tests set it) and `events?`, and the result mapping becomes
+missing or longer than `PLAN_LIMITS.maxIntentLength`), `MainDeps` gains `env?`, `recordingDir?`,
+`scenario?` (which recording to replay; the scenario tests set it) and `events?`, and the result mapping becomes
 `result.unsupported === true ? EXIT.unsupported : result.found ? EXIT.ok : EXIT.notFound`.
 Add the `ask` line to `HELP`.
 
 - [ ] **Step 4: Write `runAsk`**
 
-Create `src/cli/commands/ask.ts`. In order: summarise the graph, open the cassette, build the
+Create `src/cli/commands/ask.ts`. In order: summarise the graph, open the recording, build the
 client, `classify`, and on `QUESTION` run `answerQuestion`. Then **sign the answer** — the whole
 point of the stage:
 
@@ -1526,12 +1526,12 @@ point of the stage:
   `unsupported: true`.
 - `NoModelConfiguredError` → the message on stderr, and `main` maps it to `EXIT.badUsage`.
 
-- [ ] **Step 5: Record the five cassettes**
+- [ ] **Step 5: Record the five recordings**
 
 With a provider configured:
 
 ```bash
-IDP_PROVIDER=<yours> IDP_MODEL=<yours> IDP_CASSETTE=record pnpm test
+IDP_PROVIDER=<yours> IDP_MODEL=<yours> IDP_RECORDING=record pnpm test
 ```
 
 Scenarios: `question-prod-databases`, `question-consumers-of-billing-db`,
@@ -1541,24 +1541,24 @@ Scenarios: `question-prod-databases`, `question-consumers-of-billing-db`,
 Then verify the recording is real and clean:
 
 ```bash
-grep -rlE 'sk-[A-Za-z0-9_-]{8}' tests/cassettes && echo "SECRET LEAKED" || echo "clean"
+grep -rlE 'sk-[A-Za-z0-9_-]{8}' tests/recordings && echo "SECRET LEAKED" || echo "clean"
 pnpm test          # replays, offline, no key in the environment
 ```
 
 If no key is available, record nothing and write each turn with `"handAuthored": true`, plus a
-test asserting that no cassette carries that flag — which will fail until they are recorded for
+test asserting that no recording carries that flag — which will fail until they are recorded for
 real. **Do not ship a fabricated recording as a real one.**
 
 - [ ] **Step 6: Write `tests/scenarios/question-mode.test.ts`**
 
-One case per cassette, driving `main(['ask', ...])` with `cassetteDir` pointing at
-`tests/cassettes` and asserting the exit code and stdout. The load-bearing one:
+One case per recording, driving `main(['ask', ...])` with `recordingDir` pointing at
+`tests/recordings` and asserting the exit code and stdout. The load-bearing one:
 
 ```typescript
 it('prints exactly what renderTable would print, and nothing the model wrote', async () => {
   const io = capture()
   const code = await main(['ask', 'which databases are in prod?'], {
-    root: FIXTURES, cassetteDir: CASSETTES, scenario: 'question-prod-databases',
+    root: FIXTURES, recordingDir: RECORDINGS, scenario: 'question-prod-databases',
     env: {}, out: (s) => io.out.push(s), err: (s) => io.err.push(s),
   })
   expect(code).toBe(0)
@@ -1625,7 +1625,7 @@ git commit -m "feat(cli): answer a question about the SI, and sign the answer be
 - `pnpm test` still needs no API key, no network and no Docker — and now cannot reach the
   network even by accident
 - No module reachable from `agents/` imports `fs`, `child_process` or the network, transitively
-- Every cassette carries the provider and model it was recorded against, and replay uses those
+- Every recording carries the provider and model it was recorded against, and replay uses those
 
 Stage 3 (`init`) scaffolds a repository. Stage 4 puts the Inspector and the Architect behind the
 same event stream, and the `Plan` — not the `Answer` — becomes what crosses.

@@ -38,7 +38,7 @@ harness more verifiable over the one that adds an integration.
 | Source of truth | Backstage to **explore**, the git repository to **decide on writes** |
 | Provider schedule | fixtures in stages 1-2, `iac-fs` from stage 4, `backstage-http` at MVP |
 | LLM layer | Vercel AI SDK, low-level mode — multi-provider, loop written by hand |
-| Reliability proof | Record/replay cassettes + property-based invariants + negative tests |
+| Reliability proof | Record/replay recordings + property-based invariants + negative tests |
 | Terminal | Ink; the harness emits events, the TUI draws them |
 | Forge | `ForgeProvider` interface — `local` and `github` in v0.1, GitLab in v0.2 |
 | v0.1 scope | `init` and `link`, both ending in a merge request |
@@ -277,7 +277,7 @@ $ npx idp-agent
     Connect this app         (needs an existing IaC repository)
 ```
 
-The guided tour replays cassettes: no API key, no Docker, no network. This is the
+The guided tour replays recordings: no API key, no Docker, no network. This is the
 sixty seconds that decide whether the project is examined or closed.
 
 ### 7.2 `idp-agent init platform` — once per organisation
@@ -373,23 +373,23 @@ Schemas, serialiser, path computation, diff. No I/O. Around 60 % of the suite.
 The fourth is "textual surgery, never a reparse" made executable: replacing insertion
 with `parse + stringify` breaks it. The fifth encodes "absent means already done".
 
-### 9.3 Cassettes — end to end, no API key
+### 9.3 Recordings — end to end, no API key
 
 ```
-tests/cassettes/link-db-exists.json
-tests/cassettes/link-db-missing.json
-tests/cassettes/link-ambiguous-env.json
-tests/cassettes/link-already-declared.json
-tests/cassettes/repair-malformed-owner.json
+tests/recordings/link-db-exists.json
+tests/recordings/link-db-missing.json
+tests/recordings/link-ambiguous-env.json
+tests/recordings/link-already-declared.json
+tests/recordings/repair-malformed-owner.json
 ```
 
 ```bash
-IDP_CASSETTE=record pnpm test   # once, with a key
+IDP_RECORDING=record pnpm test   # once, with a key
 pnpm test                       # CI and contributors: free, offline
 ```
 
 Indexed on `(scenario, agent, turn number)` — **never** on a hash of the full prompt,
-which would invalidate every cassette on a single changed comma. A prompt that changed
+which would invalidate every recording on a single changed comma. A prompt that changed
 since recording produces a warning, not an error.
 
 ### 9.4 Tests that must fail
@@ -427,7 +427,7 @@ idp-agent/
 │  │  └─ github/         GitHub API
 │  ├─ llm/
 │  │  ├─ client.ts       the single crossing point
-│  │  ├─ cassette.ts     record / replay
+│  │  ├─ recording.ts     record / replay
 │  │  └─ providers.ts    anthropic · mistral · openai
 │  ├─ agents/          cannot import fs, git, child_process
 │  │  ├─ supervisor.ts · inspector.ts · architect.ts · reviewer.ts
@@ -439,7 +439,7 @@ idp-agent/
 │  └─ cli/             index · init · link
 ├─ fixtures/si-demo/   ~30 realistic entities
 ├─ templates/iac-repo/ scaffolds laid down by `init`
-└─ tests/              unit · invariants · cassettes · architecture
+└─ tests/              unit · invariants · recordings · architecture
 ```
 
 ---
@@ -453,7 +453,7 @@ preview before the merge request.
 |---|---|---|---|
 | 0 | Foundations | schemas, serialiser, paths, invariants green | 1 wk |
 | 1 | Read-only | `graph`, `show <entity>` over fixtures | 1 wk |
-| 2 | Question mode | Supervisor + answers; **cassettes in place** | 1 wk |
+| 2 | Question mode | Supervisor + answers; **recordings in place** | 1 wk |
 | 3 | `init` | scaffold + CI + CODEOWNERS + witnesses | 1 wk |
 | 4 | Preview only | Inspector + Architect + Plan + diff — writes nothing | 1.5 wk |
 | 5 | Write + local branch | local `ForgeProvider`, atomicity, idempotence | 1 wk |
@@ -490,7 +490,7 @@ Initial set:
 ADR-0001  deterministic orchestration over model-driven
 ADR-0002  no write tools for agents; the Plan as trust boundary
 ADR-0003  provider interfaces for context and forge
-ADR-0004  cassettes as the default suite, live evals as nightly
+ADR-0004  recordings as the default suite, live evals as nightly
 ADR-0005  structured entities, never model-authored YAML
 ADR-0006  the merge request is the act of authorisation
 ```
