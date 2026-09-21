@@ -994,7 +994,7 @@ The one thing that can catch "green tests, broken package". The generated workfl
 - Produces: no new symbol — a published package, `idp-agent@0.1.0-rc.1` under the `next`
   tag, and a `pnpm smoke` that finally checks the tarball its own header claims it checks
 
-- [ ] **Step 1: Write the failing check**
+- [x] **Step 1: Write the failing check**
 
 In `scripts/smoke.mjs`, add three checks against the built binary in a temp directory:
 
@@ -1007,17 +1007,17 @@ and a packaging assertion — `npm pack --dry-run --json` must list `templates/i
 and the mapped `gitignore`. The existing header comment claims the script guards packaging
 and it never has: it runs against the repository's own `dist/`.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `pnpm build && pnpm smoke`
 Expected: FAIL — `templates/` is absent from the tarball, `files` lists only
 `dist, fixtures, LICENSE, NOTICE`.
 
-- [ ] **Step 3: Fix the packaging**
+- [x] **Step 3: Fix the packaging**
 
 Add `templates` to `package.json#files`. Re-run: the tarball carries the templates.
 
-- [ ] **Step 4: Scaffold from the packed tarball**
+- [x] **Step 4: Scaffold from the packed tarball**
 
 ```bash
 npm pack
@@ -1028,7 +1028,7 @@ npx idp-agent validate repo
 Expected: twelve files written, then `0 violations`. This is the only test of the real
 thing: a scaffold produced by an installed package, validated by an installed package.
 
-- [ ] **Step 5: Publish `0.1.0-rc.1`**
+- [x] **Step 5: Publish `0.1.0-rc.1`**
 
 Requires `npm login` — the account is not authenticated today. Bump the version, then:
 
@@ -1040,7 +1040,7 @@ Published under the `next` tag, not `latest`: this is a release candidate shippe
 the stage-7 schedule so that a scaffolded repository's CI works on its first run, and
 nothing else about it claims to be finished.
 
-- [ ] **Step 6: Verify the generated CI can actually run**
+- [x] **Step 6: Verify the generated CI can actually run**
 
 ```bash
 cd "$(mktemp -d)" && npx --yes idp-agent@0.1.0-rc.1 validate .
@@ -1048,7 +1048,7 @@ cd "$(mktemp -d)" && npx --yes idp-agent@0.1.0-rc.1 validate .
 Expected: it runs. It will report violations on an empty directory — that is the correct
 answer, and it proves the workflow the scaffold writes is not fiction.
 
-- [ ] **Step 7: Update the counts and commit**
+- [x] **Step 7: Update the counts and commit**
 
 `AGENTS.md` and `README.md`: the test count, the new commands, the smoke count, the stage
 table to 3/7.
