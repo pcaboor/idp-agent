@@ -1,0 +1,250 @@
+{
+  "version": 1,
+  "scenario": "question-prod-databases",
+  "turns": [
+    {
+      "agent": "analyst",
+      "turn": 0,
+      "provider": "mistral",
+      "model": "mistral-small-2603",
+      "digest": "sha256:3746e0f86ed24cc95bb1ad3a0a26e278f16d99610389b911a8dbbfaa07c89f7e",
+      "recordedAt": "2026-09-21T11:37:35.000Z",
+      "call": {
+        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  nothing       when no entity matches\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "question: which databases are in prod?\n\nsi:\n  entities: 10-99\n  components: 1-9\n  resources: 10-99\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: api, cache, database, database-access, network-access, service\n  environments: dev, prod, staging\n  owners: group:default/common, group:default/dodowarriors, group:default/elephant, group:default/tiger\n"
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "rRsYUNvaa",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "rRsYUNvaa",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/billing-db-prod",
+                  "name": "billing-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                },
+                {
+                  "ref": "resource:default/compliance-db-prod",
+                  "name": "compliance-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/common"
+                },
+                {
+                  "ref": "resource:default/mysql-prod-01",
+                  "name": "mysql-prod-01",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/common"
+                },
+                {
+                  "ref": "resource:default/orders-db-prod",
+                  "name": "orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "sOwctbj85",
+                "name": "answer",
+                "args": {
+                  "outcome": "entities",
+                  "refs": [
+                    "resource:default/billing-db-prod",
+                    "resource:default/compliance-db-prod",
+                    "resource:default/mysql-prod-01",
+                    "resource:default/orders-db-prod"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "rRsYUNvaa",
+            "toolName": "search_entities",
+            "input": {
+              "kind": "Resource",
+              "type": "database",
+              "env": "prod"
+            }
+          }
+        ],
+        "finishReason": "tool-calls"
+      }
+    },
+    {
+      "agent": "analyst",
+      "turn": 1,
+      "provider": "mistral",
+      "model": "mistral-small-2603",
+      "digest": "sha256:278526176cefbe048a5429e944e9b5cb59b9887debd101c5ae85207b86734bd5",
+      "recordedAt": "2026-09-21T11:37:36.000Z",
+      "call": {
+        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  nothing       when no entity matches\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "question: which databases are in prod?\n\nsi:\n  entities: 10-99\n  components: 1-9\n  resources: 10-99\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: api, cache, database, database-access, network-access, service\n  environments: dev, prod, staging\n  owners: group:default/common, group:default/dodowarriors, group:default/elephant, group:default/tiger\n"
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "rRsYUNvaa",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "rRsYUNvaa",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/billing-db-prod",
+                  "name": "billing-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                },
+                {
+                  "ref": "resource:default/compliance-db-prod",
+                  "name": "compliance-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/common"
+                },
+                {
+                  "ref": "resource:default/mysql-prod-01",
+                  "name": "mysql-prod-01",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/common"
+                },
+                {
+                  "ref": "resource:default/orders-db-prod",
+                  "name": "orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "sOwctbj85",
+                "name": "answer",
+                "args": {
+                  "outcome": "entities",
+                  "refs": [
+                    "resource:default/billing-db-prod",
+                    "resource:default/compliance-db-prod",
+                    "resource:default/mysql-prod-01",
+                    "resource:default/orders-db-prod"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "sOwctbj85",
+            "toolName": "answer",
+            "input": {
+              "outcome": "entities",
+              "refs": [
+                "resource:default/billing-db-prod",
+                "resource:default/compliance-db-prod",
+                "resource:default/mysql-prod-01",
+                "resource:default/orders-db-prod"
+              ]
+            }
+          }
+        ],
+        "finishReason": "tool-calls"
+      }
+    },
+    {
+      "agent": "supervisor",
+      "turn": 0,
+      "provider": "mistral",
+      "model": "mistral-small-2603",
+      "digest": "sha256:cfdbd5db34a0c21501ccde70968e7de6671a535ea0d8bd34266b38f6398567b3",
+      "recordedAt": "2026-09-21T11:37:35.000Z",
+      "call": {
+        "system": "You classify a request about an infrastructure catalogue.\n\nAnswer with exactly one word:\n  QUESTION  the request asks about what exists\n  MUTATION  the request asks for something to change\n\nNo explanation, no punctuation, no other word.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "request: which databases are in prod?\n\nsi:\n  entities: 10-99\n  components: 1-9\n  resources: 10-99\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: api, cache, database, database-access, network-access, service\n  environments: dev, prod, staging\n  owners: group:default/common, group:default/dodowarriors, group:default/elephant, group:default/tiger"
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "QUESTION"
+          }
+        ],
+        "finishReason": "stop"
+      }
+    }
+  ]
+}
