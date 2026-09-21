@@ -113,7 +113,7 @@ Nothing else may be written until the suite cannot reach the network by accident
 **Interfaces:**
 - Produces: nothing importable. This task produces guarantees.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/architecture/dependencies.test.ts`, above the existing `describe`:
 
@@ -177,7 +177,7 @@ You will need `sourceFiles(dir)` and `importsOf(file)` — the existing `imports
 walks a directory and reads imports; extract those two helpers from it rather than duplicating
 the walk.
 
-- [ ] **Step 2: Prove the first rule is not vacuous**
+- [x] **Step 2: Prove the first rule is not vacuous**
 
 `src/agents/` does not exist, so the closure is empty and the rule passes over nothing. Create
 `src/agents/probe.ts`:
@@ -192,7 +192,7 @@ Run: `pnpm vitest run tests/architecture/dependencies.test.ts`
 Expected: FAIL — `no module reachable from agents/ touches the disk or the network`, listing
 `agents/probe.ts` → `node:fs/promises`.
 
-- [ ] **Step 3: Add the offline floor**
+- [x] **Step 3: Add the offline floor**
 
 Create `tests/setup/offline.ts`:
 
@@ -227,7 +227,7 @@ export default defineConfig({
 })
 ```
 
-- [ ] **Step 4: Delete the probe and run everything**
+- [x] **Step 4: Delete the probe and run everything**
 
 ```bash
 rm src/agents/probe.ts
@@ -235,7 +235,7 @@ pnpm vitest run
 ```
 Expected: PASS — 129 + 4 architecture tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/setup/offline.ts vitest.config.ts tests/architecture/dependencies.test.ts
