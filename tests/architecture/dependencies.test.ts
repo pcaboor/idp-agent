@@ -124,6 +124,51 @@ describe('architecture', () => {
     expect(offending).toEqual([])
   })
 
+  it('scaffold/ imports core/ and nothing else of ours', async () => {
+    // It derives a layout and writes it. It has no business knowing about a
+    // model, a graph, or the CLI that calls it.
+    const offending = (await importsUnder(path.join(SOURCE_ROOT, 'scaffold'))).filter(
+      ({ specifier }) => /(^|\/)(agents|llm|context|cli)\//.test(specifier),
+    )
+    expect(offending).toEqual([])
+  })
+
+  it('only two modules in scaffold/ touch the disk, and only one of them writes', async () => {
+    // Two different interactions, and conflating them made this rule wrong on
+    // its first run: templates.ts *reads* files shipped inside the package,
+    // write.ts *writes* into someone else's repository. Only the second is the
+    // seam stage 5's atomic applier replaces — one file is a refactor, five
+    // would be a rewrite — but both have to be named, or the rule is a lie.
+    const allowed = new Set(['scaffold/write.ts', 'scaffold/templates.ts'])
+    const offending = (await importsUnder(path.join(SOURCE_ROOT, 'scaffold'))).filter(
+      ({ file, specifier }) => DISK.test(specifier) && !allowed.has(file),
+    )
+    expect(offending).toEqual([])
+  })
+
+  it('nothing in scaffold/ but write.ts imports a writing function', async () => {
+    // The distinction the rule above cannot make from a module specifier.
+    const writers = /\b(writeFile|mkdir|rm|rename|appendFile|cp)\b/
+    const sources = await sourceFiles(path.join(SOURCE_ROOT, 'scaffold'))
+    const offending: string[] = []
+    for (const source of sources) {
+      const relative = path.relative(SOURCE_ROOT, source)
+      if (relative === 'scaffold/write.ts') continue
+      const body = await readFile(source, 'utf8')
+      const imports = body.match(/^import \{[^}]*\} from '[^']*fs[^']*'/gm) ?? []
+      if (imports.some((line) => writers.test(line))) offending.push(relative)
+    }
+    expect(offending).toEqual([])
+  })
+
+  it('core/ neither reads nor writes', async () => {
+    // core/README.md has said so since stage 2 and nothing checked it.
+    const offending = (await importsUnder(path.join(SOURCE_ROOT, 'core'))).filter(({ specifier }) =>
+      DISK.test(specifier),
+    )
+    expect(offending).toEqual([])
+  })
+
   it('core/ does not reach the model SDK', async () => {
     const offending = (await importsUnder(path.join(SOURCE_ROOT, 'core'))).filter(({ specifier }) =>
       MODEL_SDK.test(specifier),
