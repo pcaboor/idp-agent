@@ -76,7 +76,7 @@ deterministic orchestration, structural guardrails, a closed repair loop, and te
 that reproduce without an API key. Platform GitOps is the application domain, not the
 subject.
 
-It builds on a declarative reconciliation system shipped to production at Orange — CI/CD
+It builds on a declarative reconciliation system shipped to production — CI/CD
 triggered on `catalog-info.yml`, a central IaC repository, provisioning through an API
 gateway, firewall automation and ticketing — and adds the multi-agent orchestration
 layer that system never had.

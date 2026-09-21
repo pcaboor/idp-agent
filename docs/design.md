@@ -10,7 +10,7 @@ A CLI framework that turns a natural-language intent into versioned infrastructu
 declarations that are reviewed, then merged.
 
 It builds on a declarative reconciliation system designed and shipped to production
-at Orange (CI/CD trigger on `catalog-info.yml`, central IaC repository, provisioning
+(CI/CD trigger on `catalog-info.yml`, central IaC repository, provisioning
 through an API gateway, firewall automation and ticketing), adding the multi-agent
 orchestration layer that system never had.
 
