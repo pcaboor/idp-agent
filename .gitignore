@@ -10,3 +10,6 @@ coverage/
 
 .DS_Store
 *.log
+
+# Written by vitest when a reporter is attached; never part of the build.
+.vitest/
