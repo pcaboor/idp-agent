@@ -106,7 +106,12 @@ function composed(
 function enumerated(vocabulary: Vocabulary, path: string, value: string): boolean {
   if (path.endsWith('.owner')) return vocabulary.owners.includes(value)
   if (path.endsWith('.type')) return vocabulary.types.includes(value)
-  if (path.endsWith('.env')) return vocabulary.environments.includes(value)
+  // Deliberately no `.env`. An environment is the one field where "the
+  // catalogue already uses this value" is not provenance: `prod` always
+  // exists, so enumerating it would let a model pick production for a request
+  // that named no environment at all, and the plan would sign cleanly. §4.1
+  // says being authorised in dev grants nothing elsewhere; an environment is
+  // therefore echoed — the user named it — or novel, and novel means asked.
   if (path.endsWith('.kind')) return vocabulary.kinds.includes(value)
   return false
 }
