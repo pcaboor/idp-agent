@@ -433,7 +433,7 @@ The debt ADR-0007 named. Every leaf classified by where its value came from.
   - `interface SignatureContext { witnessed; vocabulary; repoRoot; declared }`
   - `function signPlan(plan: Plan, context: SignatureContext): SignedPlan | PlanRefusal`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `tests/unit/sign.test.ts` asserts, with a hand-built Plan and context:
 
@@ -478,11 +478,11 @@ it('every path a signature produces stays inside the repository', () => {
 })
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Expected: FAIL — module not found, `arbitraryPlan` undefined.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `signPlan` walks the Plan the way `findUnknowns` does — iteratively, bounded by
 `PLAN_LIMITS`, visiting every terminal value. For each leaf:
@@ -501,7 +501,7 @@ annotation for an update — read from the entity, never re-derived (§4.3). Bot
 The brand: `declare const signature: unique symbol`, not exported. Only this module can
 produce a value of the type.
 
-- [ ] **Step 4: Prove the brand holds**
+- [x] **Step 4: Prove the brand holds**
 
 Add to the test file, and check it typechecks as a failure:
 
@@ -510,7 +510,7 @@ Add to the test file, and check it typechecks as a failure:
 planEdits(plan, new Map())
 ```
 
-- [ ] **Step 5: Run everything and commit**
+- [x] **Step 5: Run everything and commit**
 
 ```bash
 pnpm test && pnpm typecheck
