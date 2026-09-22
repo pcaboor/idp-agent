@@ -1,11 +1,11 @@
-import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { main } from '../../src/cli/index.js'
 import { runInitPlatform } from '../../src/cli/commands/init.js'
 import { runPlan } from '../../src/cli/commands/plan.js'
+import { hashTree } from '../support/tree.js'
 
 const capture = (): { out: string[]; err: string[] } => ({ out: [], err: [] })
 
@@ -28,48 +28,6 @@ const scaffoldedRepository = async (): Promise<string> => {
   const repo = path.join(root, 'repo')
   await runInitPlatform({ root: repo, owner: '@acme/platform', version: '0.0.0-test' })
   return repo
-}
-
-/**
- * Every ENTRY under `root`, repository-relative, POSIX, dotfiles included —
- * directories among them, marked with a trailing slash.
- *
- * Files alone were not enough: an mkdir inside the repository left the digest
- * untouched, so a command that created a folder and wrote nothing into it
- * passed a check named "writes nothing".
- */
-async function entriesUnder(root: string, directory = root): Promise<string[]> {
-  const entries = await readdir(directory, { withFileTypes: true })
-  const found = await Promise.all(
-    entries.map(async (entry) => {
-      const full = path.join(directory, entry.name)
-      const relative = path.relative(root, full).split(path.sep).join('/')
-      if (entry.isDirectory()) return [`${relative}/`, ...(await entriesUnder(root, full))]
-      return [relative]
-    }),
-  )
-  return found.flat()
-}
-
-/**
- * Paths as well as contents, and directories as well as files. Hashing contents
- * alone would let a file appear or disappear without moving the digest, and an
- * added file is exactly the failure "writes nothing" is a claim about. Hashing
- * files alone let an mkdir pass the very check that names it.
- */
-async function hashTree(root: string): Promise<string> {
-  const entries = (await entriesUnder(root)).sort()
-  const digest = createHash('sha256')
-  for (const entry of entries) {
-    digest.update(entry)
-    digest.update('\x00')
-    // A directory has no bytes; its presence in the list is the whole point.
-    if (!entry.endsWith('/')) {
-      digest.update(await readFile(path.join(root, ...entry.split('/'))))
-    }
-    digest.update('\x00')
-  }
-  return digest.digest('hex')
 }
 
 const entityDocument = (
@@ -328,10 +286,10 @@ describe('plan --from', () => {
     expect(err).toContain('nowhere')
   })
 
-  it('needs --from, and says the intent form is not this build', async () => {
+  it('needs something to preview: an intent, or a plan in a file', async () => {
     const { code, err } = await run(['plan', '--repo', '/tmp'])
     expect(code).toBe(2)
-    expect(err).toContain('--from')
+    expect(err).toContain('plan needs an intent, or --from <plan.json>')
   })
 
   it('needs --repo: a preview is decided against the repository, never the catalogue', async () => {
@@ -340,9 +298,18 @@ describe('plan --from', () => {
     expect(err).toContain('--repo')
   })
 
-  it('names the flag when handed an intent, rather than reporting a stray argument', async () => {
-    const { code, err } = await run(['plan', 'give billing-api access to orders-db'])
+  it('refuses an intent AND a file, rather than picking one of them', async () => {
+    // Two roads to one renderer, and nothing decides which wins. Silently
+    // preferring the file would draft nothing and say nothing about it.
+    const { code, err } = await run([
+      'plan',
+      'give billing-api access to orders-db',
+      '--from',
+      '/tmp/plan.json',
+      '--repo',
+      '/tmp',
+    ])
     expect(code).toBe(2)
-    expect(err).toContain('--from')
+    expect(err).toContain('never both')
   })
 })

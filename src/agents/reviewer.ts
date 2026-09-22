@@ -136,7 +136,7 @@ const opening = (input: { plan: Plan; intent: string }): string =>
   )}`
 
 /**
- * The substance gate (design § 6.1, gate [3]). Zod refuses what cannot be
+ * The substance gate (design § 6.1, gate [4]). Zod refuses what cannot be
  * expressed; this refuses what is expressible, well-formed, and still not what
  * was asked for.
  *

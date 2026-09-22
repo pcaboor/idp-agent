@@ -193,3 +193,66 @@ describe('the question it writes', () => {
     expect(JSON.stringify(asked)).not.toContain('this 0;')
   })
 })
+
+describe('a vocabulary is not a request', () => {
+  it('does not let a declared environment vouch for a name segment', () => {
+    // The same hole `enumerated` had, one layer along. An environment is never
+    // provenance: `prod` always exists, and one declared in a config file
+    // exists more trivially still. Letting the vocabulary vouch for it flipped
+    // `metadata.name` from a question to `echoed` — the strongest claim a
+    // value can carry — for a name the request never mentioned, on a request
+    // that said dev. Three documents stated the opposite guarantee verbatim.
+    const wrongEnv = {
+      ...access,
+      metadata: { name: 'billing-api-orders-db-prod', env: 'dev' },
+    }
+    const result = signed(
+      plan(wrongEnv, 'give billing-api access to orders-db in dev'),
+      context({
+        witnessed: new Set(['component:default/billing-api', 'resource:default/orders-db']),
+      }),
+    )
+
+    const name = result.classified.find((leaf) => leaf.path.endsWith('.name'))
+    expect(name?.class).toBe('novel')
+  })
+
+  it('still vouches for a segment a witnessed reference carries', () => {
+    // The catalogue actually returned this entity, so its segments are facts.
+    const result = signed(
+      plan(access, 'give billing-api access to orders-db in prod'),
+      context({
+        witnessed: new Set([
+          'component:default/billing-api',
+          'resource:default/orders-db-prod',
+        ]),
+      }),
+    )
+
+    expect(result.classified.find((leaf) => leaf.path.endsWith('.name'))?.class).toBe('echoed')
+  })
+})
+
+describe('a closed union is not a vocabulary', () => {
+  it('vouches for a resource type the repository has never used yet', () => {
+    // The circular block this closed. `spec.type` is `z.enum(RESOURCE_TYPE_NAMES)`
+    // — a model cannot write one that is not in it, and a type outside the
+    // union is refused by the schema before the signature ever sees it.
+    // Measuring it against `vocabulary.types` — what the repository ALREADY
+    // uses — meant the FIRST access of a repository could never be proposed:
+    // no access exists, so `database-access` is in no vocabulary, so it is a
+    // question, so no access is ever written. Structural, like `kind`.
+    const firstEver = signed(
+      plan(access, 'give billing-api access to orders-db in prod'),
+      context({
+        // A repository holding one database and nothing else.
+        vocabulary: { ...vocabulary, types: ['database'] },
+      }),
+    )
+
+    expect(firstEver.classified.find((leaf) => leaf.path.endsWith('.type'))?.class).toBe(
+      'derived',
+    )
+    expect(findUnknowns(firstEver.plan)).toEqual([])
+  })
+})
