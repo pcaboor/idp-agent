@@ -538,7 +538,7 @@ because the catalogue lags the repository.
   - `function recheckPlan(signed: SignedPlan, snapshot: RepositorySnapshot): Recheck`
   - `function questionsOf(plan: Plan): Question[]` · `function answer(plan: Plan, path: string, value: string): Plan`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/unit/policies.test.ts`:
 
@@ -596,9 +596,9 @@ question carrying its dotted path; `answer(plan, 'operations.0.entity.spec.owner
 returns a Plan with that leaf filled and the others untouched; an answer aimed at a path
 that is not an unknown is refused rather than silently ignored.
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `policies.ts` is pure: three predicates over a `SignedPlan` and a context, each returning
 violations with a message a human can act on. No model, no disk. The list is a constant
@@ -619,7 +619,7 @@ Amend `docs/design.md` §6.1 with the definition:
 > `governance/`, and the `get_governance_rule` tool of §6 — is deferred past v0.1: three
 > predicates that run are worth more than an extension point that does not.
 
-- [ ] **Step 4: Run everything and commit**
+- [x] **Step 4: Run everything and commit**
 
 ```bash
 pnpm test && pnpm typecheck
