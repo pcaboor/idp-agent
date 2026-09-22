@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { componentSchema, entityRefSchema } from './entity.js'
+import { entityRefSchema, ownerRefSchema } from './entity.js'
+import { RESOURCE_TYPE_NAMES } from './resource-types.js'
 
 /**
  * An explicitly undetermined value. Declare, never infer (design 4.1): what the
@@ -26,6 +27,75 @@ export const PLAN_LIMITS = {
 } as const
 
 /**
+ * A proposal is stricter than an entity read from disk, and the asymmetry is
+ * the point.
+ *
+ * `entitySchema` READS a real Backstage repository, whose files legitimately
+ * carry fields this tool does not model — making it strict would break
+ * `readRepository` on any real catalogue. A PROPOSAL is the other direction:
+ * an unmodelled field there is either an invention or a field that will be
+ * dropped in silence when `ordered()` serialises it. Both are unacceptable.
+ *
+ * Three things are deliberately absent, and each absence is a guarantee:
+ *
+ *   no `apiVersion`     the engine derives it
+ *   no `annotations`    the environment is a named field and every other
+ *                       annotation is engine-computed, so there is nowhere to
+ *                       put `idp-agent.dev/source-file` — which resolveEntityPath
+ *                       reads to decide where a file goes. Without this, a model
+ *                       aims at its own path, and design 5.2 promises it cannot.
+ *   no path, anywhere   the engine chooses it (design 5.2)
+ */
+const or = <T extends z.ZodType>(schema: T): z.ZodType =>
+  z.union([schema, unknownSchema])
+
+const proposedName = z
+  .string()
+  .regex(/^[a-z0-9]([a-z0-9._-]{0,61}[a-z0-9])?$/, 'invalid Backstage name')
+
+export const proposedResourceSchema = z.strictObject({
+  kind: z.literal('Resource'),
+  metadata: z.strictObject({
+    name: proposedName,
+    description: z.string().max(PLAN_LIMITS.maxStringLength).optional(),
+    /** Required: being authorised in dev grants nothing in staging (design 4.1). */
+    env: or(z.string().min(1).max(63)),
+  }),
+  spec: z.strictObject({
+    type: or(z.enum(RESOURCE_TYPE_NAMES)),
+    owner: or(ownerRefSchema),
+    dependsOn: z.array(entityRefSchema).optional(),
+    dependencyOf: z.array(entityRefSchema).optional(),
+  }),
+})
+
+export const proposedComponentSchema = z.strictObject({
+  kind: z.literal('Component'),
+  metadata: z.strictObject({
+    name: proposedName,
+    description: z.string().max(PLAN_LIMITS.maxStringLength).optional(),
+  }),
+  spec: z.strictObject({
+    type: or(z.string().min(1).max(63)),
+    lifecycle: or(z.enum(['experimental', 'production', 'deprecated'])),
+    owner: or(ownerRefSchema),
+    dependsOn: z.array(entityRefSchema).optional(),
+  }),
+})
+
+/**
+ * A patch is a closed union too. "What is not modelled cannot be requested"
+ * applies to a change as much as to a creation — a free-form patch is a write
+ * tool with no shape.
+ */
+export const patchSchema = z.discriminatedUnion('patch', [
+  z.strictObject({
+    patch: z.literal('add-dependency-of'),
+    consumer: entityRefSchema,
+  }),
+])
+
+/**
  * The closed set of things an agent may ask for. Anything outside it is rejected
  * at the boundary, before its content is even looked at.
  *
@@ -33,24 +103,19 @@ export const PLAN_LIMITS = {
  * still-open flow, so removal is a human decision (design 4.4).
  */
 export const operationSchema = z.discriminatedUnion('op', [
-  z.object({
+  z.strictObject({
     op: z.literal('create-entity'),
-    /**
-     * Deliberately not narrowed to `entitySchema`: a proposal may legitimately
-     * carry `{ unknown }` in place of a field. Strict entity validation happens
-     * once unknowns are resolved, at application time.
-     */
-    entity: z.record(z.string(), z.unknown()),
+    entity: z.union([proposedResourceSchema, proposedComponentSchema]),
   }),
-  z.object({
+  z.strictObject({
     op: z.literal('update-entity'),
     entityRef: entityRefSchema,
-    patch: z.record(z.string(), z.unknown()),
+    patch: patchSchema,
   }),
-  z.object({
+  z.strictObject({
     op: z.literal('create-catalog-info'),
-    repoPath: z.string().min(1),
-    entity: componentSchema,
+    repoPath: z.string().min(1).max(512),
+    entity: proposedComponentSchema,
   }),
 ])
 
