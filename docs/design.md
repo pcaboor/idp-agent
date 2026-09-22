@@ -237,6 +237,30 @@ Plan ─► [1] Zod ─► [2] Policies ─► [3] Reviewer ─► [4] repo re-c
 
 Past three attempts: clean stop, partial plan shown with the reason. No file is written.
 
+**A Policy is a deterministic predicate over a signed Plan.** No model, no disk. That is
+the whole definition, and it is what makes gate [2] free to run and testable without a
+repository: gate [1] rejects what cannot be *expressed*, the signature asks about what
+nobody can *vouch for*, and a policy refuses what is expressible, vouched for, and still
+wrong.
+
+Three ship in v0.1:
+
+| policy | refuses |
+|---|---|
+| `environment-mismatch` | an environment the intent did not name |
+| `unwitnessed-folder` | a write into a folder the repository never declared |
+| `cross-environment-consumer` | an access whose environment differs from its consumer's |
+
+A configurable rule engine — `governance/`, and the `get_governance_rule` tool of §6 — is
+deferred past v0.1: three predicates that run are worth more than an extension point that
+does not.
+
+Gate [4] is not a second set of rules. It applies the Plan **virtually** — builds the
+snapshot that would exist if the plan landed — and runs the same six `validate` rules CI
+runs over the result. It exists because the catalogue lags the repository by about two
+minutes (§4.4): what was true when the plan was drafted may not be true now, so an entity
+may have appeared, or appeared somewhere else.
+
 ### 6.2 Events
 
 The harness renders nothing. It emits:
