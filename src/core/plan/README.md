@@ -1,0 +1,75 @@
+# `core/plan/` — everything between a proposal and a diff
+
+A `Plan` arrives from the untrusted side. Nothing in this folder decides whether it is a
+good idea; every module here decides whether it may be *offered to a reviewer*, and the
+merge is still what authorises it (ADR-0006).
+
+Pure, like the rest of `core/`: no disk, no model, no clock. The bytes a plan would replace
+are handed in as a map, which is why the diff a reviewer sees and the write that follows it
+are the same computation rather than two that agree until they do not.
+
+## The gates, in the order §7.4 runs them
+
+| Module | Question it answers |
+|---|---|
+| `../schemas/plan.ts` | can this even be expressed? — the closed `Operation` union |
+| `sign.ts` | where did each value come from? |
+| `clarify.ts` | what has to be asked before anything happens? |
+| `policies.ts` | is it expressible, vouched for, and still wrong? |
+| `recheck.ts` | is it still true, against the repository as it is now? |
+| `edits.ts` | what bytes would it leave behind? |
+
+Four gates, four different kinds of refusal, and none of them substitutes for another. The
+schema rejects what cannot be requested. The signature turns a value nobody can vouch for
+into a question rather than a refusal — *declare, never infer* means asking, not guessing
+and not giving up. A policy refuses what is expressible, vouched for, and still wrong; the
+design named that gate four times and defined it nowhere, so `policies.ts` opens with the
+definition. The re-check exists because the catalogue lags the repository by about two
+minutes (§4.4): what was true when the plan was drafted may not be true now.
+
+## Why there is one producer of a `SignedPlan`
+
+`signPlan` is the only function that can mint one. The brand on `SignedPlan` is a
+`declare const` symbol that is never exported, so nothing downstream takes a bare `Plan`
+and "the engine signs" is a compile error rather than a slogan. `checkPolicies`,
+`recheckPlan` and `planEdits` all take a `SignedPlan`, which is how the order above is
+enforced by the type checker instead of by review.
+
+The cast inside `signPlan` is the seam, and it is admitted in that file. One place, on
+purpose.
+
+## What the signature does not claim
+
+It says **where a value came from**. It says nothing about whether the value is right. An
+owner that exists and is the wrong team is `enumerated` and signs cleanly. That gap is what
+a policy is for, and what a diff is for after that, and what the merge is for after that.
+
+An environment is deliberately not enumerable: `prod` always exists, so accepting it
+because the catalogue uses it would let a model pick production for a request that named no
+environment at all. §4.1 says being authorised in dev grants nothing elsewhere, so an
+environment is echoed — the user named it — or novel, and novel means asked.
+
+## The translation nobody owns
+
+A proposal is not an `Entity`. It carries `metadata.env` where an entity carries the
+`company.fr/env` annotation, and no `apiVersion` at all — both absences are guarantees the
+proposal schema makes, because an annotation map is also where a model would put
+`idp-agent.dev/source-file` and aim at its own path (§5.2).
+
+So `materialise.ts` is one function, imported by `recheck.ts` and `edits.ts`. Neither owns
+it: the same proposal becoming the same entity in two places is two places for the
+annotation to drift.
+
+## What it never does
+
+It never reads, writes or asks. `planEdits` takes the bytes that exist and returns the
+bytes that would exist; putting them on disk is stage 5's business, in a layer that is
+allowed to have one. `recheckPlan` applies the plan **virtually** — a new snapshot, never a
+mutation of the one it was handed — and runs `checkRepository` over the result, so the
+re-check is the six rules CI already runs asked about a repository that does not exist yet,
+rather than a second set of rules to keep in agreement with the first.
+
+And `planEdits` does not judge. Whether the entity already lives in another file is
+`recheckPlan`'s `moved` verdict, whether the folder was ever declared is a policy, and
+whether the result satisfies the six rules is `checkRepository`. This folder computes text
+and verdicts; only `cli/` decides whether that text is ever shown.

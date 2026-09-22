@@ -42,7 +42,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json",
     "build": "tsc -p tsconfig.build.json",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "demo": "bash scripts/demo.sh"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.58",

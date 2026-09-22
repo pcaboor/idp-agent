@@ -13,9 +13,10 @@ import { EntityGraph } from '../context/graph/entity-graph.js'
 import { runGraph, type GraphOptions } from './commands/graph.js'
 import { runShow } from './commands/show.js'
 import { runValidate } from './commands/validate.js'
+import { PlanInputError, runPlan } from './commands/plan.js'
+import { wantsColour } from './render/diff.js'
 import { INIT_DEFERRED, runInit, runInitPlatform } from './commands/init.js'
 import { isForgeHandle } from '../scaffold/codeowners.js'
-import { assertInsideRepo } from '../core/paths/entity-path.js'
 import { VERSION } from '../core/index.js'
 import type { CommandResult } from './commands/result.js'
 
@@ -24,6 +25,7 @@ export type Command =
   | { name: 'show'; query: string }
   | { name: 'ask'; intent: string }
   | { name: 'validate'; directory: string }
+  | { name: 'plan'; from: string; repo: string; json: boolean }
   | { name: 'init-platform'; directory: string; owner: string }
   | { name: 'init' }
   | { name: 'help' }
@@ -35,6 +37,7 @@ const HELP = `idp-agent - read-only view of the service catalogue
   idp-agent show <name-or-reference>
   idp-agent ask "<question>"     needs IDP_PROVIDER and IDP_MODEL
   idp-agent validate <directory>
+  idp-agent plan --from <plan.json> --repo <directory> [--json]
   idp-agent init platform <directory> --owner @org/team
 `
 
@@ -80,6 +83,44 @@ export function parseArguments(argv: string[]): Command {
     const directory = rest[0]
     if (directory === undefined) return { name: 'error', message: 'validate needs a directory' }
     return { name: 'validate', directory }
+  }
+
+  if (commandName === 'plan') {
+    try {
+      const { values, positionals } = parseArgs({
+        args: rest,
+        options: {
+          from: { type: 'string' },
+          repo: { type: 'string' },
+          json: { type: 'boolean' },
+        },
+        // Accepted so an intent can be named as the thing this build does not
+        // do yet, rather than reported as a stray argument.
+        allowPositionals: true,
+        strict: true,
+      })
+      const from = values.from
+      if (from === undefined) {
+        return {
+          name: 'error',
+          message:
+            positionals.length > 0
+              ? 'plan takes an intent only once the agents that draft one exist; for now, plan --from <plan.json>'
+              : 'plan needs --from <plan.json>',
+        }
+      }
+      const repo = values.repo
+      if (repo === undefined) {
+        return {
+          name: 'error',
+          message:
+            'plan needs --repo <directory>: a write preview is decided against the repository, never against the catalogue',
+        }
+      }
+      return { name: 'plan', from, repo, json: values.json === true }
+    } catch (error) {
+      return { name: 'error', message: (error as Error).message }
+    }
   }
 
   if (commandName === 'ask') {
@@ -180,13 +221,13 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   }
 
   if (command.name === 'init-platform') {
-    let root: string
-    try {
-      root = assertInsideRepo(deps.cwd ?? process.cwd(), command.directory)
-    } catch (error) {
-      err(`${error instanceof Error ? error.message : String(error)}\n`)
-      return EXIT.badUsage
-    }
+    // Resolved, not contained. This command CREATES the repository, so its
+    // root has no reason to sit under the working directory —
+    // `init platform ~/my-iac` is the first thing anyone types. Containment
+    // belongs to the files written UNDER that root, and `scaffold/write.ts`
+    // checks every one of them against it; applying it to the root itself
+    // refused a path the user typed in their own shell.
+    const root = path.resolve(deps.cwd ?? process.cwd(), command.directory)
     const result = await runInitPlatform({ root, owner: command.owner, version: VERSION })
     out(`${result.text}\n`)
     return EXIT.ok
@@ -197,6 +238,39 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   if (command.name === 'validate') {
     const result = await runValidate(command.directory)
     out(`${result.text}\n`)
+    return result.found ? EXIT.ok : EXIT.notFound
+  }
+
+  // Reads the repository it was handed, like validate, and a model would have
+  // nothing to do here: the Plan arrives in a file.
+  if (command.name === 'plan') {
+    // Colour belongs to a terminal, and only main knows whether it holds one:
+    // an injected `out` is a string sink — a test, a pipe, the TUI at stage 7 —
+    // and painting it would put escape codes in someone's assertion.
+    const colour =
+      deps.out === undefined && wantsColour(deps.env ?? process.env, process.stdout.isTTY === true)
+
+    let result: CommandResult
+    try {
+      result = await runPlan({
+        from: command.from,
+        repo: command.repo,
+        json: command.json,
+        colour,
+      })
+    } catch (error) {
+      if (error instanceof PlanInputError) {
+        err(`${error.message}\n`)
+        return EXIT.badUsage
+      }
+      // Still a failure, and it must not leave as exit 0 with a stack trace:
+      // that is indistinguishable from success to a script.
+      err(`${error instanceof Error ? error.message : String(error)}\n`)
+      return EXIT.notFound
+    }
+
+    out(`${result.text}\n`)
+    if (result.unsupported === true) return EXIT.unsupported
     return result.found ? EXIT.ok : EXIT.notFound
   }
 

@@ -3,19 +3,8 @@ import path from 'node:path'
 import { parseAllDocuments } from 'yaml'
 import { entitySchema, type Entity } from '../../core/schemas/entity.js'
 import type { ContextProvider, LoadResult, Rejection } from '../provider.js'
+import { reasonOf } from '../../core/schemas/reject.js'
 
-/**
- * Zod puts the offending field in the issue's path and not in its message, so
- * `issues[0].message` alone says something is wrong without saying what. The
- * dotted path is the half a reader needs — the same form `findUnknowns`
- * already reports for a Plan.
- */
-function reasonOf(error: { issues: readonly { path: readonly PropertyKey[]; message: string }[] }): string {
-  const issue = error.issues[0]
-  if (issue === undefined) return 'invalid entity'
-  const where = issue.path.map(String).join('.')
-  return where === '' ? issue.message : `${where}: ${issue.message}`
-}
 
 const YAML_EXTENSIONS = new Set(['.yml', '.yaml'])
 

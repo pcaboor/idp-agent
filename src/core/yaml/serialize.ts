@@ -1,5 +1,6 @@
-import { parse, stringify } from 'yaml'
+import { parse, parseAllDocuments, stringify } from 'yaml'
 import { entitySchema, type Entity } from '../schemas/entity.js'
+import { reasonOf } from '../schemas/reject.js'
 
 /**
  * The model never emits YAML; it emits a structure, and this is the only place
@@ -63,4 +64,35 @@ export function serializeEntity(entity: Entity): string {
 /** Reads one document back. Used by round-trip tests and by repository readers. */
 export function parseEntity(document: string): Entity {
   return entitySchema.parse(parse(document))
+}
+
+/**
+ * Every entity in a multi-document file, and one message per document the
+ * schema refused.
+ *
+ * The repository readers in `context/` do this against a disk; this does it
+ * against bytes, so `core/` can read back what it is about to write without
+ * one. Rejections are returned rather than thrown for the same reason the
+ * readers report them: a file with one bad document still has good ones, and
+ * dropping either fact hides a defect.
+ */
+export function parseDocuments(text: string): {
+  entities: Entity[]
+  rejections: string[]
+} {
+  const entities: Entity[] = []
+  const rejections: string[] = []
+
+  for (const document of parseAllDocuments(text)) {
+    const value: unknown = document.toJS()
+    // A witness is a null document (design 7.2): present on purpose, and not
+    // an entity. Counting it as a rejection would make every witnessed folder
+    // report one.
+    if (value === null || value === undefined) continue
+    const parsed = entitySchema.safeParse(value)
+    if (parsed.success) entities.push(parsed.data)
+    else rejections.push(reasonOf(parsed.error))
+  }
+
+  return { entities, rejections }
 }
