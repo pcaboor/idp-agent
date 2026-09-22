@@ -315,7 +315,7 @@ git commit -m "refactor(core): move the environment annotation where the engine 
 - Produces: `proposedResourceSchema`, `proposedComponentSchema`, `patchSchema`,
   `RESERVED_ANNOTATION_PREFIX`, and a rewritten `operationSchema`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 import { describe, expect, it } from 'vitest'
@@ -390,12 +390,12 @@ describe('a proposal is stricter than an entity read from disk', () => {
 })
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `pnpm vitest run tests/unit/proposal-schema.test.ts`
 Expected: FAIL on four of the six — the permissive schema accepts everything.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/core/schemas/plan.ts`, add the strict proposal schemas. `z.strictObject`
 throughout. No `apiVersion` — derived. **No `annotations` map** — the environment is a
@@ -406,7 +406,7 @@ has nowhere to land. Wrap each model-chosen field in `z.union([field, unknownSch
 
 Keep `planJsonSchema()` exporting — the stage-3 test must stay green.
 
-- [ ] **Step 4: Run the tests and commit**
+- [x] **Step 4: Run the tests and commit**
 
 ```bash
 pnpm test && pnpm typecheck
