@@ -83,10 +83,43 @@ describe('init platform', () => {
     expect(err).toContain('group:default/tiger')
   })
 
-  it('refuses a directory that would escape', async () => {
-    const root = await temp()
-    const { code } = await init(['init', 'platform', '../elsewhere', '--owner', '@a/b'], root)
-    expect(code).toBe(2)
+  it('creates the repository where it was told to, absolute path included', async () => {
+    // `init platform` CREATES the repository: its root has no reason to sit
+    // under the working directory, and `idp-agent init platform ~/my-iac` is
+    // the first thing anyone types. Containment belongs to the files written
+    // UNDER that root — `write.ts` checks every one of them against it — not
+    // to the root the user named in their own shell.
+    const elsewhere = path.join(await temp(), 'somewhere-else')
+    const cwd = await temp()
+
+    const { code } = await init(['init', 'platform', elsewhere, '--owner', '@a/b'], cwd)
+
+    expect(code).toBe(0)
+    // The witness of the folder layout itself, read straight off the disk:
+    // readRepository reports catalogue documents, and a fresh scaffold has
+    // none — the folders and their witnesses are what it wrote.
+    expect(await readFile(path.join(elsewhere, 'README.md'), 'utf8')).toContain('#')
+  })
+
+  it('writes every file under the root it was given, and none outside it', async () => {
+    // The containment that actually matters, asserted where it lives.
+    const root = path.join(await temp(), 'iac')
+    await init(['init', 'platform', root, '--owner', '@a/b'], await temp())
+
+    // Every path the scaffold reports is repository-relative, and every one of
+    // them resolves back under the root it was given.
+    const { out } = await init(['init', 'platform', root, '--owner', '@a/b'], await temp())
+    const listed = out
+      .split('\n')
+      .filter((line) => /^ {2}[+=] /.test(line))
+      .map((line) => line.slice(4))
+
+    expect(listed.length).toBeGreaterThan(0)
+    for (const file of listed) {
+      expect(path.isAbsolute(file)).toBe(false)
+      expect(file.split('/')).not.toContain('..')
+      expect(path.resolve(root, file).startsWith(`${root}${path.sep}`)).toBe(true)
+    }
   })
 
   it('needs a directory', async () => {

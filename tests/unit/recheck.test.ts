@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { planEdits } from '../../src/core/plan/edits.js'
 import { recheckPlan } from '../../src/core/plan/recheck.js'
 import { signPlan } from '../../src/core/plan/sign.js'
 import type { SignatureContext, SignedPlan } from '../../src/core/plan/sign.js'
 import { planSchema } from '../../src/core/schemas/plan.js'
+import { serializeEntity } from '../../src/core/yaml/serialize.js'
 import { ENV_ANNOTATION } from '../../src/core/schemas/vocabulary.js'
 import type { RepositoryFile, RepositorySnapshot } from '../../src/core/validate/rules.js'
 
@@ -81,9 +83,25 @@ const snapshot = (files: RepositoryFile[] = []): RepositorySnapshot => ({
   ],
 })
 
+
+/**
+ * The re-check reads the bytes a plan would leave, so a test has to hand it
+ * the same edits the preview would show. Computing them here rather than
+ * hand-writing a virtual file is the point: the check and the preview are one
+ * object, and a test that built its own would stop proving that.
+ */
+const bytesOf = (snap: RepositorySnapshot): ReadonlyMap<string, string> =>
+  new Map(snap.files.map((file) => [file.path, textOf(file)]))
+
+const textOf = (file: RepositoryFile): string =>
+  file.entities.map((entity) => `---\n${serializeEntity(entity)}`).join('\n')
+
+const recheck = (signed: SignedPlan, snap: RepositorySnapshot) =>
+  recheckPlan(signed, snap, planEdits(signed, bytesOf(snap)).edits)
+
 describe('recheckPlan', () => {
   it('reports fresh when nothing changed', () => {
-    expect(recheckPlan(sign(), snapshot()).outcomes.get(0)).toBe('fresh')
+    expect(recheck(sign(), snapshot()).outcomes.get(0)).toBe('fresh')
   })
 
   it('reports already-declared when the entity appeared meanwhile', () => {
@@ -95,7 +113,7 @@ describe('recheckPlan', () => {
       'billing-api-orders-db-prod',
     )
 
-    expect(recheckPlan(sign(), snapshot([already])).outcomes.get(0)).toBe('already-declared')
+    expect(recheck(sign(), snapshot([already])).outcomes.get(0)).toBe('already-declared')
   })
 
   it('reports moved when the entity exists at a different path', () => {
@@ -107,7 +125,7 @@ describe('recheckPlan', () => {
       'billing-api-orders-db-prod',
     )
 
-    expect(recheckPlan(sign(), snapshot([elsewhere])).outcomes.get(0)).toBe('moved')
+    expect(recheck(sign(), snapshot([elsewhere])).outcomes.get(0)).toBe('moved')
   })
 
   it('refuses a plan that would introduce a duplicate', () => {
@@ -118,7 +136,7 @@ describe('recheckPlan', () => {
       'billing-api-orders-db-prod',
     )
 
-    const { violations } = recheckPlan(sign(), snapshot([elsewhere]))
+    const { violations } = recheck(sign(), snapshot([elsewhere]))
 
     expect(violations.some((violation) => violation.rule === 'duplicate-name')).toBe(true)
   })
@@ -130,7 +148,7 @@ describe('recheckPlan', () => {
       ...access,
       spec: { ...access.spec, dependsOn: ['resource:default/ghost'] },
     }
-    const { violations } = recheckPlan(
+    const { violations } = recheck(
       sign(dangling, { witnessed: new Set(['resource:default/ghost']) }),
       snapshot(),
     )
@@ -139,7 +157,7 @@ describe('recheckPlan', () => {
   })
 
   it('finds no violation in a plan that lands cleanly', () => {
-    expect(recheckPlan(sign(), snapshot()).violations).toEqual([])
+    expect(recheck(sign(), snapshot()).violations).toEqual([])
   })
 
   it('leaves the snapshot it was handed untouched', () => {
@@ -148,7 +166,7 @@ describe('recheckPlan', () => {
     const given = snapshot()
     const before = JSON.stringify(given)
 
-    recheckPlan(sign(), given)
+    recheck(sign(), given)
 
     expect(JSON.stringify(given)).toBe(before)
   })
@@ -157,6 +175,67 @@ describe('recheckPlan', () => {
     // No path, no virtual file. The CLI asks before any of this matters.
     const unnamed = { ...access, metadata: { name: 'ghost-backdoor-prod', env: 'prod' } }
 
-    expect(recheckPlan(sign(unnamed), snapshot()).outcomes.get(0)).toBe('unresolved')
+    expect(recheck(sign(unnamed), snapshot()).outcomes.get(0)).toBe('unresolved')
+  })
+
+  it('does not report an already-declared entity as a duplicate of itself', () => {
+    // The re-check used to model the plan a second time and push a virtual
+    // file for an operation it had just called 'already-declared' — so the
+    // entity came out declared in one file, named twice, and a PARTIALLY
+    // applied plan was refused with no diff at all.
+    const already = fileHolding(
+      'dependencies/access/billing-api-orders-db-prod.yml',
+      'billing-api-orders-db-prod',
+    )
+    const snap = snapshot([already])
+
+    const { outcomes, violations } = recheck(sign(), snap)
+
+    expect(outcomes.get(0)).toBe('already-declared')
+    expect(violations.filter((violation) => violation.rule === 'duplicate-name')).toEqual([])
+  })
+
+  it('sees what an update-entity would change, not creations alone', () => {
+    // Modelling creations only made an update invisible here: `plan` exited 0
+    // on a diff these same six rules reject once applied. Reading the edits
+    // back is what closed it — the check and the preview are one object.
+    const existing = fileHolding(
+      'dependencies/access/billing-api-orders-db-prod.yml',
+      'billing-api-orders-db-prod',
+    )
+    const parsed = planSchema.parse({
+      intent: 'let ghost-service consume orders-db in prod',
+      operations: [
+        {
+          op: 'update-entity',
+          entityRef: 'resource:default/billing-api-orders-db-prod',
+          patch: { patch: 'add-dependency-of', consumer: 'component:default/ghost-service' },
+        },
+      ],
+    })
+    const result = signPlan(
+      parsed,
+      // Both references must be vouched for or the signer turns them into
+      // questions — which is the signature doing its job, not a fixture detail.
+      // ghost-service is in the catalogue and in no file yet: exactly the lag
+      // §4.4 describes, and exactly what the re-check exists to catch.
+      signature({
+        witnessed: new Set([
+          'component:default/ghost-service',
+          'resource:default/billing-api-orders-db-prod',
+        ]),
+      }),
+    )
+    if ('outcome' in result) throw new Error('refused')
+
+    const snap = snapshot([existing])
+    const { violations } = recheckPlan(result, snap, planEdits(result, bytesOf(snap)).edits)
+
+    // The consumer the patch adds is declared nowhere, and the rules say so —
+    // which they could only do by reading the amended file.
+    expect(violations.some((violation) => violation.rule === 'dangling-reference')).toBe(true)
+    expect(
+      violations.some((violation) => violation.message.includes('ghost-service')),
+    ).toBe(true)
   })
 })

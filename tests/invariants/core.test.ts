@@ -10,6 +10,7 @@ import { parseEntity, serializeEntity } from '../../src/core/yaml/serialize.js'
 import { planSchema } from '../../src/core/schemas/plan.js'
 import { signPlan } from '../../src/core/plan/sign.js'
 import {
+  appendSequenceItem,
   insertDocument,
   listDocumentNames,
   removeDocument,
@@ -55,6 +56,34 @@ describe('invariants', () => {
         const grown = insertDocument(file, serializeEntity(entity))
         expect(removeDocument(grown, entity.metadata.name)).toBe(file)
       }),
+    )
+  })
+
+  it('insert then append then remove yields the file byte for byte', () => {
+    // Appending reaches only inside the document it was aimed at: whatever line
+    // it added leaves with that document, and the hand-written neighbours come
+    // back exactly as they were. Same reason the file is not built with
+    // insertDocument — a normalised input would make this vacuous.
+    fc.assert(
+      fc.property(
+        arbitraryHandWrittenFile,
+        arbitraryEntity,
+        entityName,
+        (file, entity, consumer) => {
+          fc.pre(!listDocumentNames(file).includes(entity.metadata.name))
+          const grown = insertDocument(file, serializeEntity(entity))
+          const amended = appendSequenceItem(
+            grown,
+            entity.metadata.name,
+            'dependencyOf',
+            `component:default/${consumer}`,
+          )
+          // Without this the property would hold for a function that returned
+          // its argument, which is exactly the failure mode it must exclude.
+          expect(amended).not.toBe(grown)
+          expect(removeDocument(amended, entity.metadata.name)).toBe(file)
+        },
+      ),
     )
   })
 

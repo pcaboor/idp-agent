@@ -177,3 +177,19 @@ describe('the brand', () => {
     expect(forged.paths.get(0)).toBe('dependencies/access/x.yml')
   })
 })
+
+describe('the question it writes', () => {
+  it('names the list an array element belongs to, not its index', () => {
+    // "nothing vouches for this 0" names nothing a person can act on.
+    const result = signed(
+      plan({
+        ...access,
+        spec: { ...access.spec, dependsOn: ['resource:default/never-seen'] },
+      }),
+    )
+
+    const asked = result.plan.operations[0]
+    expect(JSON.stringify(asked)).toContain('dependsOn entry')
+    expect(JSON.stringify(asked)).not.toContain('this 0;')
+  })
+})

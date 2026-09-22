@@ -1,5 +1,6 @@
+import type { FileEdit } from '../diff/unified.js'
 import type { Entity } from '../schemas/entity.js'
-import { ENV_ANNOTATION } from '../schemas/vocabulary.js'
+import { parseDocuments } from '../yaml/serialize.js'
 import type { RepositoryFile, RepositorySnapshot, Violation } from '../validate/rules.js'
 import { checkRepository } from '../validate/rules.js'
 import type { SignedPlan } from './sign.js'
@@ -35,48 +36,11 @@ export interface Recheck {
 const refOf = (entity: Entity): string =>
   `${entity.kind.toLowerCase()}:default/${entity.metadata.name}`
 
-/**
- * The entity a proposal would become. A proposal is not an Entity: it carries
- * `metadata.env` where an entity carries an annotation, and no `apiVersion` at
- * all — task 5 owns that translation for real. Here it only has to be faithful
- * enough for the six rules, which read kind, name, annotations and references.
- */
-function materialise(entity: unknown): Entity | undefined {
-  if (typeof entity !== 'object' || entity === null) return undefined
-  const { kind, metadata, spec } = entity as {
-    kind?: unknown
-    metadata?: unknown
-    spec?: unknown
-  }
-  if (typeof metadata !== 'object' || metadata === null) return undefined
-  if (typeof spec !== 'object' || spec === null) return undefined
-
-  const { name, env, description } = metadata as {
-    name?: unknown
-    env?: unknown
-    description?: unknown
-  }
-  if (typeof name !== 'string') return undefined
-
-  const annotations: Record<string, string> = {}
-  if (typeof env === 'string') annotations[ENV_ANNOTATION] = env
-
-  return {
-    apiVersion: 'backstage.io/v1alpha1',
-    kind,
-    metadata: {
-      name,
-      annotations,
-      ...(typeof description === 'string' ? { description } : {}),
-    },
-    spec,
-    // The cast is the seam this module admits to: a proposal has been through
-    // the strict schema, so its shape is known, but it is not an Entity until
-    // task 5 writes one. Nothing here reads a field the schema did not check.
-  } as unknown as Entity
-}
-
-export function recheckPlan(signed: SignedPlan, snapshot: RepositorySnapshot): Recheck {
+export function recheckPlan(
+  signed: SignedPlan,
+  snapshot: RepositorySnapshot,
+  edits: readonly FileEdit[],
+): Recheck {
   const outcomes = new Map<number, RecheckOutcome>()
 
   // Where the repository already declares each reference. Built once: a plan
@@ -85,8 +49,6 @@ export function recheckPlan(signed: SignedPlan, snapshot: RepositorySnapshot): R
   for (const file of snapshot.files) {
     for (const entity of file.entities) declaredAt.set(refOf(entity), file.path)
   }
-
-  const added: RepositoryFile[] = []
 
   for (const [opIndex] of signed.plan.operations.entries()) {
     const path = signed.paths.get(opIndex)
@@ -101,14 +63,33 @@ export function recheckPlan(signed: SignedPlan, snapshot: RepositorySnapshot): R
       opIndex,
       existing === undefined ? 'fresh' : existing === path ? 'already-declared' : 'moved',
     )
+  }
 
-    const operation = signed.plan.operations[opIndex]
-    if (operation === undefined) continue
-    if (operation.op !== 'create-entity' && operation.op !== 'create-catalog-info') continue
-
-    const entity = materialise(operation.entity)
-    if (entity === undefined) continue
-    added.push({ path, entities: [entity], rejections: [], documents: 1 })
+  /**
+   * The repository the plan would leave behind, read back from the very bytes
+   * the reviewer is about to see.
+   *
+   * This used to re-model the plan a second time — materialise each proposal
+   * and push a virtual file per create operation — and that second model
+   * disagreed with the first in two ways. It pushed a file for an operation it
+   * had just called `already-declared`, so the entity came out a duplicate of
+   * itself and a partially applied plan was refused. And it modelled creations
+   * only, so an update-entity was invisible: `plan` exited 0 on a diff these
+   * same six rules reject once applied.
+   *
+   * Parsing the edits instead makes the check and the preview the same object.
+   * It is the repository's own habit — write then read back — applied to a
+   * write that has not happened.
+   */
+  const edited = new Map<string, RepositoryFile>()
+  for (const edit of edits) {
+    const { entities, rejections } = parseDocuments(edit.after)
+    edited.set(edit.path, {
+      path: edit.path,
+      entities,
+      rejections,
+      documents: entities.length + rejections.length,
+    })
   }
 
   // Virtually means virtually: a new snapshot, never a mutation of the one we
@@ -118,10 +99,11 @@ export function recheckPlan(signed: SignedPlan, snapshot: RepositorySnapshot): R
     return cut === -1 ? '' : path.slice(0, cut)
   }
 
+  const kept = snapshot.files.filter((file) => !edited.has(file.path))
   const would: RepositorySnapshot = {
-    folders: [...new Set([...snapshot.folders, ...added.map((file) => folder(file.path))])],
+    folders: [...new Set([...snapshot.folders, ...[...edited.keys()].map(folder)])],
     witnesses: snapshot.witnesses,
-    files: [...snapshot.files, ...added],
+    files: [...kept, ...edited.values()],
   }
 
   return { outcomes, violations: checkRepository(would) }

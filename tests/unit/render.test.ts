@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { paintDiff } from '../../src/cli/render/diff.js'
 import { renderTable } from '../../src/cli/render/table.js'
 import { renderEntityDetail } from '../../src/cli/render/entity.js'
 import { EntityGraph } from '../../src/context/graph/entity-graph.js'
@@ -75,5 +76,28 @@ describe('renderEntityDetail', () => {
     expect(listed).toHaveLength(2)
     expect(listed[0]?.endsWith('dev')).toBe(true)
     expect(listed[1]?.endsWith('prod')).toBe(true)
+  })
+})
+
+describe('paintDiff', () => {
+  const RED = '\u001B[31m'
+  const BOLD = '\u001B[1m'
+
+  it('paints a removed document marker as a removal, not as a file header', () => {
+    // Every entity document in this repository starts with `---`, so a removed
+    // one is `----`: four dashes. Testing `startsWith('---')` claimed it as a
+    // file header and painted it bold — the likeliest removal line there is,
+    // shown as though the header itself had changed.
+    const painted = paintDiff('--- a/x.yml\n+++ b/x.yml\n@@ -1,1 +0,0 @@\n----\n', true)
+    const lines = painted.split('\n')
+
+    expect(lines[0]?.startsWith(BOLD)).toBe(true)
+    expect(lines[3]?.startsWith(RED)).toBe(true)
+  })
+
+  it('still paints the file headers bold', () => {
+    const painted = paintDiff('--- /dev/null\n+++ b/x.yml\n', true)
+
+    expect(painted.split('\n')[0]?.startsWith(BOLD)).toBe(true)
   })
 })

@@ -247,7 +247,10 @@ function askAbout(plan: Plan, asked: ReadonlyMap<string, string>): Plan {
       if (typeof next !== 'object' || next === null) break
       cursor = next as Record<string, unknown>
     }
-    cursor[field] = { unknown: `nothing vouches for this ${field}; which one is it?` }
+    // An array element's field is its index, and "nothing vouches for this 0"
+    // names nothing a person can act on. The list it belongs to is the noun.
+    const noun = /^\d+$/.test(field) ? `${parts[parts.length - 1] ?? 'value'} entry` : field
+    cursor[field] = { unknown: `nothing vouches for this ${noun}; which one is it?` }
   }
   return clone as unknown as Plan
 }
