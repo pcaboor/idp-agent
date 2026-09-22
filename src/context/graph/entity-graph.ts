@@ -1,4 +1,5 @@
 import type { Entity } from '../../core/schemas/entity.js'
+import { ENV_ANNOTATION } from '../../core/schemas/vocabulary.js'
 
 export interface SearchCriteria {
   kind?: 'Component' | 'Resource'
@@ -8,7 +9,7 @@ export interface SearchCriteria {
   owner?: string
 }
 
-export const ENV_ANNOTATION = 'company.fr/env'
+export { ENV_ANNOTATION } from '../../core/schemas/vocabulary.js'
 
 /** `kind:namespace/name`, the form Backstage uses in dependsOn and dependencyOf. */
 export function refOf(entity: Entity): string {
