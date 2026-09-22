@@ -798,7 +798,7 @@ git commit -m "feat(context): read an application repository without its secrets
   - `function buildProjectTools(snapshot)` · `function buildProposeTool()`
   - `function draftPlan(client, tools, input, emit): Promise<Plan>`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 With `scripted()`, the stub `LlmClient` from `analyst.test.ts`:
 
@@ -813,9 +813,9 @@ With `scripted()`, the stub `LlmClient` from `analyst.test.ts`:
 - `ProjectFacts` never carries a forge handle translated into an owner reference —
   `codeowners.ts` already refuses that round trip, and this is the same refusal one layer up.
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `inspector.ts` is handed a `ProjectSnapshot` and returns `ProjectFacts` — it reads nothing.
 `architect.ts` follows `analyst.ts`'s shape: a hand-written bounded loop, tools closing
@@ -823,7 +823,7 @@ over pre-read data, a forced terminal `propose`. `propose-tool.ts` validates aga
 strict proposal schemas and fills the buffer; it also accumulates the witness set the
 signature will use.
 
-- [ ] **Step 4: Run everything and commit**
+- [x] **Step 4: Run everything and commit**
 
 ```bash
 git commit -m "feat(agents): inspect a repository and draft a plan into a typed buffer"
