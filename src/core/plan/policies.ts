@@ -1,3 +1,4 @@
+import { echoes } from './echoes.js'
 import type { Vocabulary } from '../schemas/vocabulary.js'
 import type { SignedPlan } from './sign.js'
 
@@ -38,11 +39,6 @@ export interface PolicyContext {
   readonly environments: ReadonlyMap<string, string>
 }
 
-/** Whole-word and case-insensitive, the same test the signature echoes with. */
-function names(intent: string, value: string): boolean {
-  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(intent)
-}
 
 const folderOf = (path: string): string => {
   const cut = path.lastIndexOf('/')
@@ -94,7 +90,7 @@ export function checkPolicies(
   // environment policy stays silent: the signer already turned that into a
   // question, and firing here would report the same thing twice.
   const asked = context.vocabulary.environments.filter((environment) =>
-    names(intent, environment),
+    echoes(intent, environment),
   )
 
   for (const [opIndex, operation] of operations.entries()) {
