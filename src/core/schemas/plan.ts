@@ -71,11 +71,29 @@ export const proposedName = z
   .string()
   .regex(/^[a-z0-9]([a-z0-9._-]{0,61}[a-z0-9])?$/, 'invalid Backstage name')
 
+/**
+ * Deliberately no `description`, on either proposal.
+ *
+ * The signature asks one question of every value: where did it come from? Free
+ * prose has no answer — a sentence a model writes is echoed by nothing and
+ * enumerated by nothing, so it classifies as `novel` and becomes a question.
+ * That is not a theoretical objection: it dead-ended the whole run. A draft
+ * carrying a perfectly reasonable description exited as "nothing vouches for
+ * this description; which one is it?", asked of the user, about a sentence the
+ * model had just written — and the Architect was never asked again and the
+ * Reviewer never called.
+ *
+ * The field could have been exempted from the walk instead. It is not, for the
+ * same reason `ProjectFacts` has no description either: it is a second
+ * free-text channel out of a model and into a file in the repository, serving
+ * no field that needs it. What is not modelled cannot be requested.
+ *
+ * A human adds one in the merge request, where prose belongs.
+ */
 export const proposedResourceSchema = z.strictObject({
   kind: z.literal('Resource'),
   metadata: z.strictObject({
     name: proposedName,
-    description: z.string().max(PLAN_LIMITS.maxStringLength).optional(),
     /** Required: being authorised in dev grants nothing in staging (design 4.1). */
     env: or(z.string().min(1).max(63)),
   }),
@@ -91,7 +109,6 @@ export const proposedComponentSchema = z.strictObject({
   kind: z.literal('Component'),
   metadata: z.strictObject({
     name: proposedName,
-    description: z.string().max(PLAN_LIMITS.maxStringLength).optional(),
   }),
   spec: z.strictObject({
     type: or(z.string().min(1).max(63)),

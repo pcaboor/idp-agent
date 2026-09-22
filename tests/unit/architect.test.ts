@@ -585,7 +585,7 @@ describe('the repair loop, where it was dead', () => {
 
     expect(outcome.plan).toBeDefined()
     expect(outcome.rejections).toBe(1)
-    expect(events.filter((event) => event.type === 'repair')).toHaveLength(1)
+    expect(events.filter((event) => event.type === 'retry')).toHaveLength(1)
   })
 
   it('stops granting them, so a model that never gets it right still ends', async () => {
