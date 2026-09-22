@@ -1,6 +1,7 @@
 import { answerSchema, type Answer } from '../core/schemas/query.js'
 import type { LlmClient, Transcript } from '../llm/client.js'
 import type { EventSink } from './events.js'
+import { MAX_REPAIRS, takeTurn } from './forced-turn.js'
 import type { buildTools } from './tools/graph-tools.js'
 
 /**
@@ -67,10 +68,18 @@ export async function answerQuestion(
   let answer: Answer | undefined
   let truncated = 0
   let barren = 0
+  /** What the model said on a turn that called nothing. Becomes the reason. */
+  let said = ''
+  /** Turns granted back for a refused terminal call. See MAX_REPAIRS. */
+  let repairs = 0
 
   let stop = false
 
-  for (let turn = 0; turn < LOOP_LIMITS.maxTurns && answer === undefined && !stop; turn += 1) {
+  for (
+    let turn = 0;
+    turn < LOOP_LIMITS.maxTurns + repairs && answer === undefined && !stop;
+    turn += 1
+  ) {
     // Two turns that read nothing mean the catalogue has nothing to say here.
     // One more turn to ask for the answer, then out — whether the model
     // cooperates or not.
@@ -79,9 +88,35 @@ export async function answerQuestion(
     const last = turn === LOOP_LIMITS.maxTurns - 1 || barrenOut
     // The last allowed turn forces termination rather than letting the loop
     // fall off its bound with nothing to show.
-    const result = await generate(client, transcript, tools.specs, last)
+    const result = await takeTurn({
+      client,
+      agent: 'analyst',
+      system: SYSTEM,
+      transcript,
+      tools: tools.specs,
+      terminal: 'answer',
+      last,
+    })
 
-    if (result.toolCalls.length === 0) break
+    if (result.toolCalls.length === 0) {
+      // Prose is not a stopping condition. A model that answers in words has
+      // not used the terminal channel, and breaking here meant the forced turn
+      // — the one thing that exists to stop the loop falling off its bound —
+      // was never reached. It counts as a barren turn instead, and the text is
+      // kept: it is the model saying why it did nothing, and it was being
+      // discarded before it reached the transcript, the sink or the refusal.
+      if (last) {
+        said = result.text
+        break
+      }
+      transcript.push({ role: 'assistant', text: result.text, toolCalls: [] })
+      transcript.push({
+        role: 'user',
+        text: 'That turn called no tool. Answer by calling one, not in prose.',
+      })
+      barren += 1
+      continue
+    }
 
     let read = 0
     const executed = result.toolCalls.slice(0, LOOP_LIMITS.maxCallsPerTurn)
@@ -113,7 +148,10 @@ export async function answerQuestion(
           break
         }
         // Put back in the transcript, not thrown: the model gets to correct
-        // itself rather than the whole question failing on a malformed call.
+        // itself rather than the whole question failing on a malformed call —
+        // and a turn is granted back, or on the forced turn the correction is
+        // written into a transcript that is never sent again.
+        if (repairs < MAX_REPAIRS) repairs += 1
         transcript.push({
           role: 'tool',
           id: call.id,
@@ -138,7 +176,9 @@ export async function answerQuestion(
     }
   }
 
-  const signed = sign(answer, tools.witnessed)
+  // A turn of prose on the last allowed turn is the model saying why, and it
+  // was being thrown away. It becomes the reason when there is nothing better.
+  const signed = sign(answer, tools.witnessed, said)
   if (signed.outcome === 'unanswerable' && answer?.outcome !== 'unanswerable') {
     emit({ type: 'refused', agent: 'analyst', reason: signed.reason })
   } else {
@@ -152,48 +192,16 @@ export async function answerQuestion(
 }
 
 /**
- * Forcing a tool is model-dependent: some providers reject `tool_choice` with
- * a 400, and the SDK throws when a forced call does not come back. Neither is
- * a reason to lose the question, so the forced turn degrades to an open choice
- * with the instruction spelled out instead. A failure that is not about the
- * tool choice is re-thrown: it is not ours to swallow.
- */
-async function generate(
-  client: LlmClient,
-  transcript: Transcript[],
-  specs: ReturnType<typeof buildTools>['specs'],
-  last: boolean,
-): Promise<Awaited<ReturnType<LlmClient['generate']>>> {
-  const request = { agent: 'analyst' as const, system: SYSTEM, transcript, tools: specs }
-
-  if (!last) return client.generate({ ...request, toolChoice: 'auto' })
-
-  try {
-    return await client.generate({ ...request, toolChoice: { tool: 'answer' } })
-  } catch (error) {
-    if (!refusesForcedTool(error)) throw error
-    return client.generate({
-      ...request,
-      system: `${SYSTEM}\n\nThis is your last turn. Call the "answer" tool now.`,
-      toolChoice: 'auto',
-    })
-  }
-}
-
-const refusesForcedTool = (error: unknown): boolean =>
-  error instanceof Error &&
-  /required tool|tool_choice|tool choice|forced tool/i.test(error.message)
-
-/**
  * The engine's two checks on what the model produced. Neither is a formality:
  * the first is the whole read-side guarantee, the second catches a model that
  * saw rows and then claimed emptiness.
  */
-function sign(answer: Answer | undefined, witnessed: ReadonlySet<string>): Answer {
+function sign(answer: Answer | undefined, witnessed: ReadonlySet<string>, said: string): Answer {
   if (answer === undefined) {
     // Say what happened, not how the loop is built. An empty witness set means
     // the catalogue held nothing for this — very often because it was not a
     // question about the catalogue at all.
+    if (said !== '') return unanswerable(said.slice(0, 400))
     return unanswerable(
       witnessed.size === 0
         ? 'nothing in the catalogue matched this, and it may not be a question about it'
