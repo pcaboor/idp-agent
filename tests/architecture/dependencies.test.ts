@@ -161,6 +161,22 @@ describe('architecture', () => {
     expect(offending).toEqual([])
   })
 
+  it('only context/iac-fs and context/project-fs read a user repository', async () => {
+    // Three readers, and the layer's whole disk surface. `project-fs` holds
+    // every confinement rule for the application repository — the exclusion
+    // list, the symlink refusal, the three caps — and a fourth module reading
+    // that repository would be a second, unreviewed copy of them.
+    const allowed = new Set([
+      'context/iac-fs/snapshot.ts',
+      'context/project-fs/snapshot.ts',
+      'context/fixtures/index.ts',
+    ])
+    const offending = (await importsUnder(path.join(SOURCE_ROOT, 'context'))).filter(
+      ({ file, specifier }) => DISK.test(specifier) && !allowed.has(file),
+    )
+    expect(offending).toEqual([])
+  })
+
   it('core/ imports nothing from context/, cli/ or scaffold/', async () => {
     // core/ is the deterministic half: schemas, paths, serialisation, rules.
     // A dependency on a layer that reads a disk would make it one by proxy,
