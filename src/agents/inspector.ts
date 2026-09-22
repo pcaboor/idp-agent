@@ -215,10 +215,10 @@ export async function inspect(
         rejections += 1
         if (repairs < MAX_REPAIRS) repairs += 1
         emit({
-          type: 'repair',
-          attempt: Math.min(rejections, 3) as 1 | 2 | 3,
+          type: 'retry',
+          agent: 'inspector',
           reason: issueOf(parsed.error),
-        })
+          })
         transcript.push({
           role: 'tool',
           id: call.id,

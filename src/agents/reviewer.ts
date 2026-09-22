@@ -1,0 +1,319 @@
+import { z } from 'zod'
+import type { Plan } from '../core/schemas/plan.js'
+import { QUERY_LIMITS } from '../core/schemas/query.js'
+import { reasonOf } from '../core/schemas/reject.js'
+import type { LlmClient, ModelToolSpec, Transcript } from '../llm/client.js'
+import type { EventSink } from './events.js'
+import { MAX_REPAIRS, takeTurn } from './forced-turn.js'
+
+/** The terminal tool. Named once so the loop and the spec cannot disagree. */
+export const VERDICT_TOOL = 'verdict'
+
+/**
+ * One turn to judge, and one more that is forced onto the verdict.
+ *
+ * There is no `maxBarrenTurns` here and nothing is missing. The Analyst and the
+ * Architect count turns that read nothing because reading is how those agents
+ * make progress; this one reads nothing at all — it is handed the plan and the
+ * request and holds a single tool — so a turn of prose is the only
+ * non-terminal turn there is, and `maxTurns` is already the bound on those.
+ */
+export const REVIEWER_LIMITS = { maxTurns: 2, maxCallsPerTurn: 1 } as const
+
+/**
+ * The verdict, and refusal is a MEMBER of the union — `answerSchema`'s shape
+ * for `answerSchema`'s reason: a model with no legal way to object invents a
+ * defect in order to stay in schema. Here that cuts both ways, because this
+ * verdict BLOCKS. An invented defect stops a sound plan, and an approval the
+ * model could not express any other way lets an unsound one through.
+ *
+ * The reason is bounded by `QUERY_LIMITS.maxReason` and not by
+ * `PLAN_LIMITS.maxStringLength`. Those two ceilings are for two jobs: 8 192
+ * bounds a value that will be WRITTEN into a declaration, where a description
+ * has to fit; 300 bounds one sentence a human reads on a terminal when
+ * something was refused — which is exactly what this is, and
+ * `unanswerable.reason` is its twin. Borrowed rather than restated, so the two
+ * refusals cannot drift apart.
+ */
+export const verdictSchema = z.discriminatedUnion('verdict', [
+  z.object({ verdict: z.literal('ok') }),
+  z.object({
+    verdict: z.literal('reject'),
+    reason: z.string().min(1).max(QUERY_LIMITS.maxReason),
+  }),
+])
+
+/**
+ * What the Reviewer returns, which is not quite what the model may say.
+ *
+ * `no-opinion` is a THIRD outcome and not a flavour of rejection, because the
+ * difference decides what happens next and what the user is told. Collapsed
+ * into `reject`, a review that never happened read as a review that refused:
+ * the repair loop spent all three paid attempts asking the Architect to fix a
+ * plan nobody had found fault with, and the run ended telling the user their
+ * plan had been refused. The file said in a comment that this must never
+ * happen; it was a comment, not a type.
+ *
+ * The direction is unchanged — this gate blocks, and no-opinion is not an
+ * approval. What changes is that the caller can now say which of the two it
+ * was, and stop instead of repairing.
+ */
+export type Verdict =
+  | z.infer<typeof verdictSchema>
+  | { readonly verdict: 'no-opinion'; readonly reason: string }
+
+const SYSTEM = `You review one plan of infrastructure declarations against the request that asked for it.
+
+You are given the request in the user's own words, and the operations the plan would
+apply. That is everything: there is no conversation to consult and nothing to read. Judge
+what the plan does, not how it came to be written.
+
+The shape has already been checked. Yours is the question a schema cannot ask: does this
+plan do what the request asked for, and nothing beyond it? An environment nobody named,
+an owner nobody mentioned, access wider than what was asked for — those are rejections.
+
+An empty list of operations is a legitimate plan. It says the catalogue already declares
+what the request asks for; that is an answer, not a failure.
+
+Finish by calling "${VERDICT_TOOL}":
+  ok      the plan does what the request asked for, and goes no further
+  reject  with a reason naming what is wrong, in the terms the request used
+
+Your rejection stops the plan. It is not a note for someone to weigh later. Rejecting is a
+valid outcome and so is accepting: do not invent a defect in order to have something to
+say, and do not accept a plan you cannot account for.`
+
+/**
+ * The only tool, and it is the terminal channel.
+ *
+ * Design § 6 lists SI reads beside the Reviewer. They are absent here, and the
+ * absence is the independence rule made structural rather than remembered: a
+ * read tool is one more channel for something that is not the plan to reach the
+ * gate that can veto it, and this gate is meant to answer one question — does
+ * this plan match what was asked for — out of two inputs and nothing else.
+ */
+const TOOLS: ModelToolSpec[] = [
+  {
+    name: VERDICT_TOOL,
+    description:
+      'Give your verdict on the plan. "ok" accepts it. "reject" stops it, and needs a ' +
+      'reason saying what is wrong, in the terms the request used. You must call this ' +
+      'to finish.',
+    parameters: verdictSchema,
+  },
+]
+
+/**
+ * A reason this file writes obeys the same ceiling the model's does.
+ *
+ * What comes back is typed `Verdict`, and a `Verdict` the schema would refuse is
+ * a lie told by the type: anything that re-parses one — a recording, the gate
+ * that reports which check ended the run — would refuse the engine's own words.
+ */
+const bounded = (reason: string): string => reason.slice(0, QUERY_LIMITS.maxReason)
+
+/**
+ * What the Reviewer is shown, and it is the whole of what it is shown.
+ *
+ * The request appears once, from the argument the caller passed. `plan.intent`
+ * holds the same string — `draftPlan` fills it in from the user's words and the
+ * model cannot write it — and printing it a second time would invite the model
+ * to measure the plan against a field OF the plan. One authority for what was
+ * asked.
+ *
+ * The operations cross as JSON rather than as prose lines. A formatter of our
+ * own would be one field away from hiding the field that mattered, and the
+ * field that mattered is the whole reason this gate exists: an environment
+ * nobody named is a line in an operation, not a paragraph. The bytes are
+ * deterministic for a plan that came through `planSchema` — the only way one is
+ * minted (see `architect.ts`) — which is what a recording digest depends on.
+ */
+const opening = (input: { plan: Plan; intent: string }): string =>
+  `request: ${input.intent}\n\noperations the plan would apply:\n${JSON.stringify(
+    input.plan.operations,
+    null,
+    2,
+  )}`
+
+/**
+ * The substance gate (design § 6.1, gate [3]). Zod refuses what cannot be
+ * expressed; this refuses what is expressible, well-formed, and still not what
+ * was asked for.
+ *
+ * It BLOCKS, deliberately, and that decision is what makes its input list
+ * mandatory rather than tidy. The Architect and the Reviewer are the same
+ * weights behind the same provider, so their errors are correlated by
+ * construction; fed the Architect's own transcript, a second opinion becomes an
+ * echo — and this echo holds a veto. So: the Plan and the original request,
+ * never the draft's reasoning, never which attempt this is, never what an
+ * earlier gate said.
+ *
+ * What that does NOT buy is independence of judgement. Two runs of the same
+ * model over the same plan are not two reviewers, and no amount of input
+ * hygiene makes them so. This catches the mismatch between a request and a
+ * plan; it does not catch a blind spot the model has about both.
+ */
+export async function reviewPlan(
+  client: LlmClient,
+  input: { plan: Plan; intent: string },
+  emit: EventSink,
+): Promise<Verdict> {
+  emit({ type: 'agent:start', agent: 'reviewer' })
+
+  const transcript: Transcript[] = [{ role: 'user', text: opening(input) }]
+  let verdict: Verdict | undefined
+  /** What the model said on a turn that called nothing. Becomes the reason. */
+  let said = ''
+  /** Turns granted back for a refused terminal call. See MAX_REPAIRS. */
+  let repairs = 0
+  let rejections = 0
+
+  for (
+    let turn = 0;
+    turn < REVIEWER_LIMITS.maxTurns + repairs && verdict === undefined;
+    turn += 1
+  ) {
+    // Every turn after the first is forced, granted-back ones included. A turn
+    // bought by a repair exists so the model can correct a verdict it already
+    // gave; spending it on an open choice would spend it on a turn that need
+    // not conclude.
+    const last = turn >= REVIEWER_LIMITS.maxTurns - 1
+    let result
+    try {
+      result = await takeTurn({
+        client,
+        agent: 'reviewer',
+        system: SYSTEM,
+        transcript,
+        tools: TOOLS,
+        terminal: VERDICT_TOOL,
+        last,
+      })
+    } catch (error) {
+      // Not swallowed — a provider failure is not this loop's to absorb, and a
+      // caller is owed the difference between "the plan was rejected" and "no
+      // opinion was obtained". Both stop the plan; only one is about the plan.
+      //
+      // But it IS this loop's to CLOSE, for the reason the Architect and the
+      // Inspector both give: `agent:start` is already on the sink, and letting
+      // the rejection through untouched leaves a stream showing an agent that
+      // began and never ended.
+      emit({
+        type: 'refused',
+        agent: 'reviewer',
+        reason: bounded(
+          `the run stopped: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      })
+      throw error
+    }
+
+    if (result.toolCalls.length === 0) {
+      // Prose is not a verdict. A model that reviews in words has not used the
+      // terminal channel, and stopping here would skip the forced turn — the
+      // one thing that exists to stop the loop falling off its bound. The text
+      // is kept either way: it is the model saying why it did not conclude, and
+      // it is the only account of that the refusal will have.
+      //
+      // The last turn that said SOMETHING wins, not simply the last turn: a
+      // forced turn that comes back empty is the common shape here, and letting
+      // it overwrite an earlier statement trades the model's own account of why
+      // for the generic sentence below.
+      if (result.text !== '') said = result.text
+      if (last) break
+      transcript.push({ role: 'assistant', text: result.text, toolCalls: [] })
+      transcript.push({
+        role: 'user',
+        text: 'That turn called no tool. Give your verdict by calling one, not in prose.',
+      })
+      continue
+    }
+
+    const executed = result.toolCalls.slice(0, REVIEWER_LIMITS.maxCallsPerTurn)
+    const dropped = result.toolCalls.length - executed.length
+    transcript.push({ role: 'assistant', text: result.text, toolCalls: executed })
+
+    for (const call of executed) {
+      if (call.name !== VERDICT_TOOL) {
+        // Not listed, so a model asking for it is asking for something that is
+        // not there. Refused in the transcript rather than ignored: a call that
+        // vanishes leaves the model waiting on a result it will never read.
+        transcript.push({
+          role: 'tool',
+          id: call.id,
+          name: call.name,
+          result: { error: `${call.name} is not a tool this agent has` },
+        })
+        continue
+      }
+
+      const parsed = verdictSchema.safeParse(call.args)
+      if (parsed.success) {
+        verdict = parsed.data
+        break
+      }
+
+      // Put back in the transcript, not thrown: the model gets to correct
+      // itself rather than the whole review failing on one malformed call. The
+      // error names the field, which is what makes the correction possible —
+      // and a turn is granted back, or the correction would be written into a
+      // transcript that is never sent again.
+      const why = reasonOf(parsed.error)
+      rejections += 1
+      if (repairs < MAX_REPAIRS) repairs += 1
+      emit({ type: 'retry', agent: 'reviewer', reason: why })
+      transcript.push({
+        role: 'tool',
+        id: call.id,
+        name: call.name,
+        result: { error: `${VERDICT_TOOL}: ${why}` },
+      })
+    }
+
+    // Dropped calls are told, never dropped in silence: the model must know its
+    // request was not executed in full.
+    if (dropped > 0) {
+      transcript.push({
+        role: 'user',
+        text: `${dropped} further tool call(s) in that turn were not executed; the limit is ${REVIEWER_LIMITS.maxCallsPerTurn} per turn.`,
+      })
+    }
+  }
+
+  if (verdict === undefined) {
+    // Fail closed, and the direction is the decision rather than a default. A
+    // review that did not happen is not an approval: this gate blocks, so
+    // returning "ok" here would turn every provider hiccup into the silent
+    // removal of the gate — a run that got no second opinion would be
+    // indistinguishable, in its output and in its exit code, from one that got
+    // a favourable one. Rejecting costs a user a run they must ask for again;
+    // approving costs them the only check that reads the plan against what they
+    // actually asked for.
+    //
+    // What this does NOT say is that the plan is wrong, and that is now a
+    // TYPE rather than a sentence in a comment: `no-opinion` is its own member
+    // of the union, so the repair loop can tell "nobody reviewed this" from
+    // "the reviewer refused it" — and stop, rather than spending three paid
+    // attempts repairing a plan no one found fault with.
+    const reason = bounded(
+      said === ''
+        ? 'the review ended with no verdict, so this plan has not been reviewed'
+        : `the review ended with no verdict: ${said}`,
+    )
+    emit({ type: 'refused', agent: 'reviewer', reason })
+    return { verdict: 'no-opinion', reason }
+  }
+
+  if (verdict.verdict === 'reject') {
+    // A rejection is the Reviewer doing its job, and it stops the plan (design
+    // § 6.1). It is audible for the reason the Architect's refusal is: a run
+    // that ends with no diff has to say which gate ended it.
+    emit({ type: 'refused', agent: 'reviewer', reason: verdict.reason })
+  }
+
+  // Nothing is emitted when the plan passes. The event union has no verdict of
+  // its own (design § 6.2 lists none) and inventing one is not this file's to
+  // do: a plan that cleared this gate is reported by the gate after it, and in
+  // the end by the diff.
+  return verdict
+}

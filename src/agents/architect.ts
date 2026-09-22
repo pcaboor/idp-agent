@@ -263,10 +263,10 @@ export async function draftPlan(
             break
           }
           emit({
-            type: 'repair',
-            attempt: Math.min(rejections + 1, 3) as 1 | 2 | 3,
+            type: 'retry',
+            agent: 'architect',
             reason: reasonOf(parsed.error),
-          })
+            })
           rejections += 1
           if (repairs < MAX_REPAIRS) repairs += 1
           transcript.push({
@@ -285,10 +285,10 @@ export async function draftPlan(
         rejections += 1
         if (repairs < MAX_REPAIRS) repairs += 1
         emit({
-          type: 'repair',
-          attempt: Math.min(rejections, 3) as 1 | 2 | 3,
+          type: 'retry',
+          agent: 'architect',
           reason: 'the proposal did not match the schema',
-        })
+          })
         transcript.push({ role: 'tool', id: call.id, name: call.name, result: outcome.result })
         continue
       }
