@@ -645,7 +645,7 @@ git commit -m "feat(core): define a policy, and re-check the plan against the re
   - `function appendSequenceItem(text: string, entityName: string, field: string, item: string): string`
   - `function runPlan(options): Promise<CommandResult>`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 The load-bearing one, in `tests/unit/plan-command.test.ts`:
 
@@ -680,9 +680,9 @@ then remove yields the file byte for byte` as a fast-check property beside the e
 surgery invariants; a plan whose target was declared meanwhile renders an **empty** diff
 and exits 0; `--json` emits the signed plan and the violations, for a machine.
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `edits.ts` takes the signed Plan and the bytes that exist, and returns the bytes that
 would exist — `serializeEntity` + `insertDocument` for a creation, `appendSequenceItem`
@@ -695,7 +695,7 @@ string, so it is tested without one.
 re-checks, computes the edits, renders. On an `{unknown}`, prints the questions and
 returns exit 3. Every run that produced a diff ends on §7.4's closing line.
 
-- [ ] **Step 4: Run everything, then try it by hand**
+- [x] **Step 4: Run everything, then try it by hand**
 
 ```bash
 pnpm test && pnpm typecheck && pnpm build
@@ -704,7 +704,7 @@ idpa plan --from examples/add-access.json --repo /tmp/iac
 ```
 Expected: a unified diff, exit 0, and `/tmp/iac` unchanged.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src tests
