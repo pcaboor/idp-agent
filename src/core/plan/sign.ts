@@ -1,3 +1,4 @@
+import { echoes } from './echoes.js'
 import type { Plan } from '../schemas/plan.js'
 import { PLAN_LIMITS } from '../schemas/plan.js'
 import { computeEntityPath } from '../paths/entity-path.js'
@@ -69,11 +70,6 @@ export interface SignedPlan {
 const isUnknown = (value: unknown): boolean =>
   typeof value === 'object' && value !== null && 'unknown' in value
 
-/** Whole-word, case-insensitive: "prod" in "in prod" counts, "pro" does not. */
-function echoes(intent: string, value: string): boolean {
-  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(intent)
-}
 
 /**
  * A name is the one thing design 5.2 hands the model outright, and a composed
