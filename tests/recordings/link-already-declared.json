@@ -1,0 +1,1554 @@
+{
+  "version": 1,
+  "scenario": "link-already-declared",
+  "turns": [
+    {
+      "agent": "architect",
+      "turn": 0,
+      "provider": "mistral",
+      "model": "mistral-small-latest",
+      "digest": "sha256:865051cabd0286af036888b500d5426e43727b95831ad31f685abb7f2107e1c4",
+      "recordedAt": "2026-09-22T18:47:59.000Z",
+      "call": {
+        "system": "You draft a plan of infrastructure declarations for one request.\n\nYou are given the request, the facts established about the application repository,\nand a summary of the catalogue. Use the read tools to find out what the catalogue\nalready holds: whether the resource exists is what decides between proposing the\nresource and the access to it, or the access alone.\n\nYou may not name anything you have not read: every entity reference you give must\nhave come back from a tool in this conversation.\n\nYou choose no file, no folder and no path. The engine computes where a declaration\nis filed, from its type and its name — there is no field to put one in and no tool\nthat will tell you one.\n\nA value no tool returned and no fact states is {\"unknown\": \"<why>\"}, never a\nplausible one. A guessed owner is authorisation handed to the wrong team, and a\nguessed environment is access somewhere nobody asked for.\n\nFinish by calling \"propose\". Propose an empty list of operations when the\ncatalogue already declares everything the request asks for; that is an answer, not\na failure.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "request: give billing-api read access to orders-db in prod\n\nrepository:\n  name: billing-api\n  type: unknown (No file in the repository states the application type.)\n  lifecycle: unknown (No file in the repository states the lifecycle stage (e.g., experimental, production, deprecated).)\n  runtime: unknown (No file in the repository states the runtime or execution environment.)\n  owner: unknown (No file in the repository states the owner as an entity reference (e.g., group:<namespace>/<name>).)\n  forge handle: unknown (No file in the repository states a forge handle (e.g., @acme/platform).)\n  declared dependencies:\n    pg: database\n\nsi:\n  entities: 1-9\n  components: 1-9\n  resources: 1-9\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: database, database-access, service\n  environments: prod\n  owners: group:default/tiger\n"
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "m0XwcubPP",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Resource",
+                  "env": "prod",
+                  "nameContains": "orders-db"
+                }
+              },
+              {
+                "id": "muikXqJQQ",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Component",
+                  "nameContains": "billing-api"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "m0XwcubPP",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/orders-db-prod",
+                  "name": "orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                },
+                {
+                  "ref": "resource:default/billing-api-orders-db-prod",
+                  "name": "billing-api-orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "tool",
+            "id": "muikXqJQQ",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "component:default/billing-api",
+                  "name": "billing-api",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "SrNyyriKG",
+                "name": "get_entity",
+                "args": {
+                  "ref": "resource:default/orders-db-prod"
+                }
+              },
+              {
+                "id": "0QHSBouHr",
+                "name": "get_entity",
+                "args": {
+                  "ref": "component:default/billing-api"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "SrNyyriKG",
+            "name": "get_entity",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/orders-db-prod",
+                  "name": "orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "tool",
+            "id": "0QHSBouHr",
+            "name": "get_entity",
+            "result": {
+              "rows": [
+                {
+                  "ref": "component:default/billing-api",
+                  "name": "billing-api",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "nCF500zSy",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "nameContains": "billing-api-orders-db"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "nCF500zSy",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/billing-api-orders-db-prod",
+                  "name": "billing-api-orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "E7vS8h5wI",
+                "name": "get_entity",
+                "args": {
+                  "ref": "resource:default/billing-api-orders-db-prod"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "E7vS8h5wI",
+            "name": "get_entity",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/billing-api-orders-db-prod",
+                  "name": "billing-api-orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "m0XwcubPP",
+            "toolName": "search_entities",
+            "input": {
+              "kind": "Resource",
+              "env": "prod",
+              "nameContains": "orders-db"
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "muikXqJQQ",
+            "toolName": "search_entities",
+            "input": {
+              "kind": "Component",
+              "nameContains": "billing-api"
+            }
+          }
+        ],
+        "finishReason": "tool-calls"
+      }
+    },
+    {
+      "agent": "architect",
+      "turn": 1,
+      "provider": "mistral",
+      "model": "mistral-small-latest",
+      "digest": "sha256:3c3f00661579b367a54423549a9cf3ab03ae93e315c61761d0114cd01a0b2137",
+      "recordedAt": "2026-09-22T18:47:59.000Z",
+      "call": {
+        "system": "You draft a plan of infrastructure declarations for one request.\n\nYou are given the request, the facts established about the application repository,\nand a summary of the catalogue. Use the read tools to find out what the catalogue\nalready holds: whether the resource exists is what decides between proposing the\nresource and the access to it, or the access alone.\n\nYou may not name anything you have not read: every entity reference you give must\nhave come back from a tool in this conversation.\n\nYou choose no file, no folder and no path. The engine computes where a declaration\nis filed, from its type and its name — there is no field to put one in and no tool\nthat will tell you one.\n\nA value no tool returned and no fact states is {\"unknown\": \"<why>\"}, never a\nplausible one. A guessed owner is authorisation handed to the wrong team, and a\nguessed environment is access somewhere nobody asked for.\n\nFinish by calling \"propose\". Propose an empty list of operations when the\ncatalogue already declares everything the request asks for; that is an answer, not\na failure.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "request: give billing-api read access to orders-db in prod\n\nrepository:\n  name: billing-api\n  type: unknown (No file in the repository states the application type.)\n  lifecycle: unknown (No file in the repository states the lifecycle stage (e.g., experimental, production, deprecated).)\n  runtime: unknown (No file in the repository states the runtime or execution environment.)\n  owner: unknown (No file in the repository states the owner as an entity reference (e.g., group:<namespace>/<name>).)\n  forge handle: unknown (No file in the repository states a forge handle (e.g., @acme/platform).)\n  declared dependencies:\n    pg: database\n\nsi:\n  entities: 1-9\n  components: 1-9\n  resources: 1-9\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: database, database-access, service\n  environments: prod\n  owners: group:default/tiger\n"
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "m0XwcubPP",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Resource",
+                  "env": "prod",
+                  "nameContains": "orders-db"
+                }
+              },
+              {
+                "id": "muikXqJQQ",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Component",
+                  "nameContains": "billing-api"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "m0XwcubPP",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/orders-db-prod",
+                  "name": "orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                },
+                {
+                  "ref": "resource:default/billing-api-orders-db-prod",
+                  "name": "billing-api-orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "tool",
+            "id": "muikXqJQQ",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "component:default/billing-api",
+                  "name": "billing-api",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "SrNyyriKG",
+                "name": "get_entity",
+                "args": {
+                  "ref": "resource:default/orders-db-prod"
+                }
+              },
+              {
+                "id": "0QHSBouHr",
+                "name": "get_entity",
+                "args": {
+                  "ref": "component:default/billing-api"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "SrNyyriKG",
+            "name": "get_entity",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/orders-db-prod",
+                  "name": "orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "tool",
+            "id": "0QHSBouHr",
+            "name": "get_entity",
+            "result": {
+              "rows": [
+                {
+                  "ref": "component:default/billing-api",
+                  "name": "billing-api",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "nCF500zSy",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "nameContains": "billing-api-orders-db"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "nCF500zSy",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/billing-api-orders-db-prod",
+                  "name": "billing-api-orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "E7vS8h5wI",
+                "name": "get_entity",
+                "args": {
+                  "ref": "resource:default/billing-api-orders-db-prod"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "E7vS8h5wI",
+            "name": "get_entity",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/billing-api-orders-db-prod",
+                  "name": "billing-api-orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "SrNyyriKG",
+            "toolName": "get_entity",
+            "input": {
+              "ref": "resource:default/orders-db-prod"
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "0QHSBouHr",
+            "toolName": "get_entity",
+            "input": {
+              "ref": "component:default/billing-api"
+            }
+          }
+        ],
+        "finishReason": "tool-calls"
+      }
+    },
+    {
+      "agent": "architect",
+      "turn": 2,
+      "provider": "mistral",
+      "model": "mistral-small-latest",
+      "digest": "sha256:05856b8eedc8d6ec8e775be1cf93011b947276cf2ed9ab2d3a09af045321280d",
+      "recordedAt": "2026-09-22T18:48:00.000Z",
+      "call": {
+        "system": "You draft a plan of infrastructure declarations for one request.\n\nYou are given the request, the facts established about the application repository,\nand a summary of the catalogue. Use the read tools to find out what the catalogue\nalready holds: whether the resource exists is what decides between proposing the\nresource and the access to it, or the access alone.\n\nYou may not name anything you have not read: every entity reference you give must\nhave come back from a tool in this conversation.\n\nYou choose no file, no folder and no path. The engine computes where a declaration\nis filed, from its type and its name — there is no field to put one in and no tool\nthat will tell you one.\n\nA value no tool returned and no fact states is {\"unknown\": \"<why>\"}, never a\nplausible one. A guessed owner is authorisation handed to the wrong team, and a\nguessed environment is access somewhere nobody asked for.\n\nFinish by calling \"propose\". Propose an empty list of operations when the\ncatalogue already declares everything the request asks for; that is an answer, not\na failure.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "request: give billing-api read access to orders-db in prod\n\nrepository:\n  name: billing-api\n  type: unknown (No file in the repository states the application type.)\n  lifecycle: unknown (No file in the repository states the lifecycle stage (e.g., experimental, production, deprecated).)\n  runtime: unknown (No file in the repository states the runtime or execution environment.)\n  owner: unknown (No file in the repository states the owner as an entity reference (e.g., group:<namespace>/<name>).)\n  forge handle: unknown (No file in the repository states a forge handle (e.g., @acme/platform).)\n  declared dependencies:\n    pg: database\n\nsi:\n  entities: 1-9\n  components: 1-9\n  resources: 1-9\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: database, database-access, service\n  environments: prod\n  owners: group:default/tiger\n"
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "m0XwcubPP",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Resource",
+                  "env": "prod",
+                  "nameContains": "orders-db"
+                }
+              },
+              {
+                "id": "muikXqJQQ",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Component",
+                  "nameContains": "billing-api"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "m0XwcubPP",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/orders-db-prod",
+                  "name": "orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                },
+                {
+                  "ref": "resource:default/billing-api-orders-db-prod",
+                  "name": "billing-api-orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "tool",
+            "id": "muikXqJQQ",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "component:default/billing-api",
+                  "name": "billing-api",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "SrNyyriKG",
+                "name": "get_entity",
+                "args": {
+                  "ref": "resource:default/orders-db-prod"
+                }
+              },
+              {
+                "id": "0QHSBouHr",
+                "name": "get_entity",
+                "args": {
+                  "ref": "component:default/billing-api"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "SrNyyriKG",
+            "name": "get_entity",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/orders-db-prod",
+                  "name": "orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "tool",
+            "id": "0QHSBouHr",
+            "name": "get_entity",
+            "result": {
+              "rows": [
+                {
+                  "ref": "component:default/billing-api",
+                  "name": "billing-api",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "nCF500zSy",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "nameContains": "billing-api-orders-db"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "nCF500zSy",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/billing-api-orders-db-prod",
+                  "name": "billing-api-orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "E7vS8h5wI",
+                "name": "get_entity",
+                "args": {
+                  "ref": "resource:default/billing-api-orders-db-prod"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "E7vS8h5wI",
+            "name": "get_entity",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/billing-api-orders-db-prod",
+                  "name": "billing-api-orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "nCF500zSy",
+            "toolName": "search_entities",
+            "input": {
+              "kind": "Resource",
+              "type": "database-access",
+              "env": "prod",
+              "nameContains": "billing-api-orders-db"
+            }
+          }
+        ],
+        "finishReason": "tool-calls"
+      }
+    },
+    {
+      "agent": "architect",
+      "turn": 3,
+      "provider": "mistral",
+      "model": "mistral-small-latest",
+      "digest": "sha256:058d252731ef844b7ef1ee90347fde70a504b84a65436bd393102c55496c65fa",
+      "recordedAt": "2026-09-22T18:48:01.000Z",
+      "call": {
+        "system": "You draft a plan of infrastructure declarations for one request.\n\nYou are given the request, the facts established about the application repository,\nand a summary of the catalogue. Use the read tools to find out what the catalogue\nalready holds: whether the resource exists is what decides between proposing the\nresource and the access to it, or the access alone.\n\nYou may not name anything you have not read: every entity reference you give must\nhave come back from a tool in this conversation.\n\nYou choose no file, no folder and no path. The engine computes where a declaration\nis filed, from its type and its name — there is no field to put one in and no tool\nthat will tell you one.\n\nA value no tool returned and no fact states is {\"unknown\": \"<why>\"}, never a\nplausible one. A guessed owner is authorisation handed to the wrong team, and a\nguessed environment is access somewhere nobody asked for.\n\nFinish by calling \"propose\". Propose an empty list of operations when the\ncatalogue already declares everything the request asks for; that is an answer, not\na failure.\n\nThis is your last turn. Call the \"propose\" tool now.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "request: give billing-api read access to orders-db in prod\n\nrepository:\n  name: billing-api\n  type: unknown (No file in the repository states the application type.)\n  lifecycle: unknown (No file in the repository states the lifecycle stage (e.g., experimental, production, deprecated).)\n  runtime: unknown (No file in the repository states the runtime or execution environment.)\n  owner: unknown (No file in the repository states the owner as an entity reference (e.g., group:<namespace>/<name>).)\n  forge handle: unknown (No file in the repository states a forge handle (e.g., @acme/platform).)\n  declared dependencies:\n    pg: database\n\nsi:\n  entities: 1-9\n  components: 1-9\n  resources: 1-9\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: database, database-access, service\n  environments: prod\n  owners: group:default/tiger\n"
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "m0XwcubPP",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Resource",
+                  "env": "prod",
+                  "nameContains": "orders-db"
+                }
+              },
+              {
+                "id": "muikXqJQQ",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Component",
+                  "nameContains": "billing-api"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "m0XwcubPP",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/orders-db-prod",
+                  "name": "orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                },
+                {
+                  "ref": "resource:default/billing-api-orders-db-prod",
+                  "name": "billing-api-orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "tool",
+            "id": "muikXqJQQ",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "component:default/billing-api",
+                  "name": "billing-api",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "SrNyyriKG",
+                "name": "get_entity",
+                "args": {
+                  "ref": "resource:default/orders-db-prod"
+                }
+              },
+              {
+                "id": "0QHSBouHr",
+                "name": "get_entity",
+                "args": {
+                  "ref": "component:default/billing-api"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "SrNyyriKG",
+            "name": "get_entity",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/orders-db-prod",
+                  "name": "orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "tool",
+            "id": "0QHSBouHr",
+            "name": "get_entity",
+            "result": {
+              "rows": [
+                {
+                  "ref": "component:default/billing-api",
+                  "name": "billing-api",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "nCF500zSy",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "nameContains": "billing-api-orders-db"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "nCF500zSy",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/billing-api-orders-db-prod",
+                  "name": "billing-api-orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "E7vS8h5wI",
+                "name": "get_entity",
+                "args": {
+                  "ref": "resource:default/billing-api-orders-db-prod"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "E7vS8h5wI",
+            "name": "get_entity",
+            "result": {
+              "rows": [
+                {
+                  "ref": "resource:default/billing-api-orders-db-prod",
+                  "name": "billing-api-orders-db-prod",
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "E7vS8h5wI",
+            "toolName": "get_entity",
+            "input": {
+              "ref": "resource:default/billing-api-orders-db-prod"
+            }
+          }
+        ],
+        "finishReason": "tool-calls"
+      }
+    },
+    {
+      "agent": "inspector",
+      "turn": 0,
+      "provider": "mistral",
+      "model": "mistral-small-latest",
+      "digest": "sha256:74c18865dba109d0c502196e0d2bbc7b83cd13643ef55eac3f690c5c8c0c90fa",
+      "recordedAt": "2026-09-22T18:47:56.000Z",
+      "call": {
+        "system": "You establish facts about ONE application repository.\n\nUse list_files and read_file to read it. You may not state anything the files do\nnot state: a fact no file carries is unknown, with a short reason naming what you\nlooked for and did not find.\n\nFinish by calling \"report_facts\". Every field is required. Give a value the\nfiles state, or {\"unknown\": \"<why>\"}. Never omit a field and never fill one with\na plausible value — a guessed owner is authorisation handed to the wrong team,\nand a name taken from a directory is a name nobody chose.\n\nThe owner is an entity reference, \"group:<namespace>/<name>\" or\n\"user:<namespace>/<name>\". A CODEOWNERS entry is not one: \"@acme/platform\" is a\nforge handle, a different namespace, and translating it would invent a reference\nnobody declared. Put the handle verbatim in \"forgeHandle\" and leave \"owner\"\nunknown, unless a file states an entity reference in full.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "A snapshot of one application repository. 1 file(s) were read;\ncall list_files for their paths and read_file to read one.\n\nNothing was excluded: every file in the repository is in this snapshot.\n\nNo cap stopped the harvest: everything not named above was read.\n\nA fact that lives only in a file you were not given is unknown, not absent."
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "ucqbt4S75",
+                "name": "list_files",
+                "args": {}
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "ucqbt4S75",
+            "name": "list_files",
+            "result": {
+              "paths": [
+                "package.json"
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "ESjRn1z0F",
+                "name": "read_file",
+                "args": {
+                  "path": "package.json"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "ESjRn1z0F",
+            "name": "read_file",
+            "result": {
+              "path": "package.json",
+              "text": "{\n  \"name\": \"billing-api\",\n  \"dependencies\": {\n    \"pg\": \"^8.11.0\"\n  }\n}"
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "tTfM62uFF",
+                "name": "report_facts",
+                "args": {
+                  "name": "billing-api",
+                  "type": "unknown",
+                  "lifecycle": "unknown",
+                  "runtime": "unknown",
+                  "owner": "unknown",
+                  "forgeHandle": "unknown",
+                  "dependencies": [
+                    {
+                      "name": "pg",
+                      "type": "database"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "tTfM62uFF",
+            "name": "report_facts",
+            "result": {
+              "error": "report_facts: lifecycle: Invalid input"
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "QpoGIJiKi",
+                "name": "report_facts",
+                "args": {
+                  "name": "billing-api",
+                  "type": {
+                    "unknown": "No file in the repository states the application type."
+                  },
+                  "lifecycle": {
+                    "unknown": "No file in the repository states the lifecycle stage (e.g., experimental, production, deprecated)."
+                  },
+                  "runtime": {
+                    "unknown": "No file in the repository states the runtime or execution environment."
+                  },
+                  "owner": {
+                    "unknown": "No file in the repository states the owner as an entity reference (e.g., group:<namespace>/<name>)."
+                  },
+                  "forgeHandle": {
+                    "unknown": "No file in the repository states a forge handle (e.g., @acme/platform)."
+                  },
+                  "dependencies": [
+                    {
+                      "name": "pg",
+                      "type": "database"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "ucqbt4S75",
+            "toolName": "list_files",
+            "input": {}
+          }
+        ],
+        "finishReason": "tool-calls"
+      }
+    },
+    {
+      "agent": "inspector",
+      "turn": 1,
+      "provider": "mistral",
+      "model": "mistral-small-latest",
+      "digest": "sha256:c48017a2fb3619480db2ae2c9542fbd2f1cc5f9884ba97ca71feadaf79806c20",
+      "recordedAt": "2026-09-22T18:47:57.000Z",
+      "call": {
+        "system": "You establish facts about ONE application repository.\n\nUse list_files and read_file to read it. You may not state anything the files do\nnot state: a fact no file carries is unknown, with a short reason naming what you\nlooked for and did not find.\n\nFinish by calling \"report_facts\". Every field is required. Give a value the\nfiles state, or {\"unknown\": \"<why>\"}. Never omit a field and never fill one with\na plausible value — a guessed owner is authorisation handed to the wrong team,\nand a name taken from a directory is a name nobody chose.\n\nThe owner is an entity reference, \"group:<namespace>/<name>\" or\n\"user:<namespace>/<name>\". A CODEOWNERS entry is not one: \"@acme/platform\" is a\nforge handle, a different namespace, and translating it would invent a reference\nnobody declared. Put the handle verbatim in \"forgeHandle\" and leave \"owner\"\nunknown, unless a file states an entity reference in full.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "A snapshot of one application repository. 1 file(s) were read;\ncall list_files for their paths and read_file to read one.\n\nNothing was excluded: every file in the repository is in this snapshot.\n\nNo cap stopped the harvest: everything not named above was read.\n\nA fact that lives only in a file you were not given is unknown, not absent."
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "ucqbt4S75",
+                "name": "list_files",
+                "args": {}
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "ucqbt4S75",
+            "name": "list_files",
+            "result": {
+              "paths": [
+                "package.json"
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "ESjRn1z0F",
+                "name": "read_file",
+                "args": {
+                  "path": "package.json"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "ESjRn1z0F",
+            "name": "read_file",
+            "result": {
+              "path": "package.json",
+              "text": "{\n  \"name\": \"billing-api\",\n  \"dependencies\": {\n    \"pg\": \"^8.11.0\"\n  }\n}"
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "tTfM62uFF",
+                "name": "report_facts",
+                "args": {
+                  "name": "billing-api",
+                  "type": "unknown",
+                  "lifecycle": "unknown",
+                  "runtime": "unknown",
+                  "owner": "unknown",
+                  "forgeHandle": "unknown",
+                  "dependencies": [
+                    {
+                      "name": "pg",
+                      "type": "database"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "tTfM62uFF",
+            "name": "report_facts",
+            "result": {
+              "error": "report_facts: lifecycle: Invalid input"
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "QpoGIJiKi",
+                "name": "report_facts",
+                "args": {
+                  "name": "billing-api",
+                  "type": {
+                    "unknown": "No file in the repository states the application type."
+                  },
+                  "lifecycle": {
+                    "unknown": "No file in the repository states the lifecycle stage (e.g., experimental, production, deprecated)."
+                  },
+                  "runtime": {
+                    "unknown": "No file in the repository states the runtime or execution environment."
+                  },
+                  "owner": {
+                    "unknown": "No file in the repository states the owner as an entity reference (e.g., group:<namespace>/<name>)."
+                  },
+                  "forgeHandle": {
+                    "unknown": "No file in the repository states a forge handle (e.g., @acme/platform)."
+                  },
+                  "dependencies": [
+                    {
+                      "name": "pg",
+                      "type": "database"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "ESjRn1z0F",
+            "toolName": "read_file",
+            "input": {
+              "path": "package.json"
+            }
+          }
+        ],
+        "finishReason": "tool-calls"
+      }
+    },
+    {
+      "agent": "inspector",
+      "turn": 2,
+      "provider": "mistral",
+      "model": "mistral-small-latest",
+      "digest": "sha256:85323bb75ab7bb9531d51f4cbe0af85e2fc52522ec1a5d312b419f69b963f3ea",
+      "recordedAt": "2026-09-22T18:47:57.000Z",
+      "call": {
+        "system": "You establish facts about ONE application repository.\n\nUse list_files and read_file to read it. You may not state anything the files do\nnot state: a fact no file carries is unknown, with a short reason naming what you\nlooked for and did not find.\n\nFinish by calling \"report_facts\". Every field is required. Give a value the\nfiles state, or {\"unknown\": \"<why>\"}. Never omit a field and never fill one with\na plausible value — a guessed owner is authorisation handed to the wrong team,\nand a name taken from a directory is a name nobody chose.\n\nThe owner is an entity reference, \"group:<namespace>/<name>\" or\n\"user:<namespace>/<name>\". A CODEOWNERS entry is not one: \"@acme/platform\" is a\nforge handle, a different namespace, and translating it would invent a reference\nnobody declared. Put the handle verbatim in \"forgeHandle\" and leave \"owner\"\nunknown, unless a file states an entity reference in full.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "A snapshot of one application repository. 1 file(s) were read;\ncall list_files for their paths and read_file to read one.\n\nNothing was excluded: every file in the repository is in this snapshot.\n\nNo cap stopped the harvest: everything not named above was read.\n\nA fact that lives only in a file you were not given is unknown, not absent."
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "ucqbt4S75",
+                "name": "list_files",
+                "args": {}
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "ucqbt4S75",
+            "name": "list_files",
+            "result": {
+              "paths": [
+                "package.json"
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "ESjRn1z0F",
+                "name": "read_file",
+                "args": {
+                  "path": "package.json"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "ESjRn1z0F",
+            "name": "read_file",
+            "result": {
+              "path": "package.json",
+              "text": "{\n  \"name\": \"billing-api\",\n  \"dependencies\": {\n    \"pg\": \"^8.11.0\"\n  }\n}"
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "tTfM62uFF",
+                "name": "report_facts",
+                "args": {
+                  "name": "billing-api",
+                  "type": "unknown",
+                  "lifecycle": "unknown",
+                  "runtime": "unknown",
+                  "owner": "unknown",
+                  "forgeHandle": "unknown",
+                  "dependencies": [
+                    {
+                      "name": "pg",
+                      "type": "database"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "tTfM62uFF",
+            "name": "report_facts",
+            "result": {
+              "error": "report_facts: lifecycle: Invalid input"
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "QpoGIJiKi",
+                "name": "report_facts",
+                "args": {
+                  "name": "billing-api",
+                  "type": {
+                    "unknown": "No file in the repository states the application type."
+                  },
+                  "lifecycle": {
+                    "unknown": "No file in the repository states the lifecycle stage (e.g., experimental, production, deprecated)."
+                  },
+                  "runtime": {
+                    "unknown": "No file in the repository states the runtime or execution environment."
+                  },
+                  "owner": {
+                    "unknown": "No file in the repository states the owner as an entity reference (e.g., group:<namespace>/<name>)."
+                  },
+                  "forgeHandle": {
+                    "unknown": "No file in the repository states a forge handle (e.g., @acme/platform)."
+                  },
+                  "dependencies": [
+                    {
+                      "name": "pg",
+                      "type": "database"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "tTfM62uFF",
+            "toolName": "report_facts",
+            "input": {
+              "name": "billing-api",
+              "type": "unknown",
+              "lifecycle": "unknown",
+              "runtime": "unknown",
+              "owner": "unknown",
+              "forgeHandle": "unknown",
+              "dependencies": [
+                {
+                  "name": "pg",
+                  "type": "database"
+                }
+              ]
+            },
+            "dynamic": true,
+            "invalid": true,
+            "error": {
+              "name": "AI_InvalidToolInputError",
+              "cause": {
+                "name": "AI_TypeValidationError",
+                "cause": {
+                  "name": "ZodError",
+                  "message": "[\n  {\n    \"code\": \"invalid_union\",\n    \"errors\": [\n      [\n        {\n          \"code\": \"invalid_value\",\n          \"values\": [\n            \"experimental\",\n            \"production\",\n            \"deprecated\"\n          ],\n          \"path\": [],\n          \"message\": \"Invalid option: expected one of \\\"experimental\\\"|\\\"production\\\"|\\\"deprecated\\\"\"\n        }\n      ],\n      [\n        {\n          \"expected\": \"object\",\n          \"code\": \"invalid_type\",\n          \"path\": [],\n          \"message\": \"Invalid input: expected object, received string\"\n        }\n      ]\n    ],\n    \"path\": [\n      \"lifecycle\"\n    ],\n    \"message\": \"Invalid input\"\n  },\n  {\n    \"origin\": \"string\",\n    \"code\": \"invalid_format\",\n    \"format\": \"regex\",\n    \"pattern\": \"/^(group|user):[a-z0-9-]+\\\\/[a-z0-9._-]+$/\",\n    \"path\": [\n      \"owner\"\n    ],\n    \"message\": \"expected group:... or user:...\"\n  }\n]"
+                },
+                "value": {
+                  "name": "billing-api",
+                  "type": "unknown",
+                  "lifecycle": "unknown",
+                  "runtime": "unknown",
+                  "owner": "unknown",
+                  "forgeHandle": "unknown",
+                  "dependencies": [
+                    {
+                      "name": "pg",
+                      "type": "database"
+                    }
+                  ]
+                }
+              },
+              "toolInput": "{\"name\": \"billing-api\", \"type\": \"unknown\", \"lifecycle\": \"unknown\", \"runtime\": \"unknown\", \"owner\": \"unknown\", \"forgeHandle\": \"unknown\", \"dependencies\": [{\"name\": \"pg\", \"type\": \"database\"}]}",
+              "toolName": "report_facts"
+            }
+          },
+          {
+            "type": "tool-error",
+            "toolCallId": "tTfM62uFF",
+            "toolName": "report_facts",
+            "input": {
+              "name": "billing-api",
+              "type": "unknown",
+              "lifecycle": "unknown",
+              "runtime": "unknown",
+              "owner": "unknown",
+              "forgeHandle": "unknown",
+              "dependencies": [
+                {
+                  "name": "pg",
+                  "type": "database"
+                }
+              ]
+            },
+            "error": "AI_InvalidToolInputError: Invalid input for tool report_facts: AI_TypeValidationError: Type validation failed: Value: {\"name\":\"billing-api\",\"type\":\"unknown\",\"lifecycle\":\"unknown\",\"runtime\":\"unknown\",\"owner\":\"unknown\",\"forgeHandle\":\"unknown\",\"dependencies\":[{\"name\":\"pg\",\"type\":\"database\"}]}.\nError message: [\n  {\n    \"code\": \"invalid_union\",\n    \"errors\": [\n      [\n        {\n          \"code\": \"invalid_value\",\n          \"values\": [\n            \"experimental\",\n            \"production\",\n            \"deprecated\"\n          ],\n          \"path\": [],\n          \"message\": \"Invalid option: expected one of \\\"experimental\\\"|\\\"production\\\"|\\\"deprecated\\\"\"\n        }\n      ],\n      [\n        {\n          \"expected\": \"object\",\n          \"code\": \"invalid_type\",\n          \"path\": [],\n          \"message\": \"Invalid input: expected object, received string\"\n        }\n      ]\n    ],\n    \"path\": [\n      \"lifecycle\"\n    ],\n    \"message\": \"Invalid input\"\n  },\n  {\n    \"origin\": \"string\",\n    \"code\": \"invalid_format\",\n    \"format\": \"regex\",\n    \"pattern\": \"/^(group|user):[a-z0-9-]+\\\\/[a-z0-9._-]+$/\",\n    \"path\": [\n      \"owner\"\n    ],\n    \"message\": \"expected group:... or user:...\"\n  }\n]",
+            "dynamic": true
+          }
+        ],
+        "finishReason": "tool-calls"
+      }
+    },
+    {
+      "agent": "inspector",
+      "turn": 3,
+      "provider": "mistral",
+      "model": "mistral-small-latest",
+      "digest": "sha256:742c9e44a45f02a834f1020705692eea86c6e3d2f0493c61c4671fef8e698aa9",
+      "recordedAt": "2026-09-22T18:47:58.000Z",
+      "call": {
+        "system": "You establish facts about ONE application repository.\n\nUse list_files and read_file to read it. You may not state anything the files do\nnot state: a fact no file carries is unknown, with a short reason naming what you\nlooked for and did not find.\n\nFinish by calling \"report_facts\". Every field is required. Give a value the\nfiles state, or {\"unknown\": \"<why>\"}. Never omit a field and never fill one with\na plausible value — a guessed owner is authorisation handed to the wrong team,\nand a name taken from a directory is a name nobody chose.\n\nThe owner is an entity reference, \"group:<namespace>/<name>\" or\n\"user:<namespace>/<name>\". A CODEOWNERS entry is not one: \"@acme/platform\" is a\nforge handle, a different namespace, and translating it would invent a reference\nnobody declared. Put the handle verbatim in \"forgeHandle\" and leave \"owner\"\nunknown, unless a file states an entity reference in full.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "A snapshot of one application repository. 1 file(s) were read;\ncall list_files for their paths and read_file to read one.\n\nNothing was excluded: every file in the repository is in this snapshot.\n\nNo cap stopped the harvest: everything not named above was read.\n\nA fact that lives only in a file you were not given is unknown, not absent."
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "ucqbt4S75",
+                "name": "list_files",
+                "args": {}
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "ucqbt4S75",
+            "name": "list_files",
+            "result": {
+              "paths": [
+                "package.json"
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "ESjRn1z0F",
+                "name": "read_file",
+                "args": {
+                  "path": "package.json"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "ESjRn1z0F",
+            "name": "read_file",
+            "result": {
+              "path": "package.json",
+              "text": "{\n  \"name\": \"billing-api\",\n  \"dependencies\": {\n    \"pg\": \"^8.11.0\"\n  }\n}"
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "tTfM62uFF",
+                "name": "report_facts",
+                "args": {
+                  "name": "billing-api",
+                  "type": "unknown",
+                  "lifecycle": "unknown",
+                  "runtime": "unknown",
+                  "owner": "unknown",
+                  "forgeHandle": "unknown",
+                  "dependencies": [
+                    {
+                      "name": "pg",
+                      "type": "database"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "tTfM62uFF",
+            "name": "report_facts",
+            "result": {
+              "error": "report_facts: lifecycle: Invalid input"
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "QpoGIJiKi",
+                "name": "report_facts",
+                "args": {
+                  "name": "billing-api",
+                  "type": {
+                    "unknown": "No file in the repository states the application type."
+                  },
+                  "lifecycle": {
+                    "unknown": "No file in the repository states the lifecycle stage (e.g., experimental, production, deprecated)."
+                  },
+                  "runtime": {
+                    "unknown": "No file in the repository states the runtime or execution environment."
+                  },
+                  "owner": {
+                    "unknown": "No file in the repository states the owner as an entity reference (e.g., group:<namespace>/<name>)."
+                  },
+                  "forgeHandle": {
+                    "unknown": "No file in the repository states a forge handle (e.g., @acme/platform)."
+                  },
+                  "dependencies": [
+                    {
+                      "name": "pg",
+                      "type": "database"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "QpoGIJiKi",
+            "toolName": "report_facts",
+            "input": {
+              "name": "billing-api",
+              "type": {
+                "unknown": "No file in the repository states the application type."
+              },
+              "lifecycle": {
+                "unknown": "No file in the repository states the lifecycle stage (e.g., experimental, production, deprecated)."
+              },
+              "runtime": {
+                "unknown": "No file in the repository states the runtime or execution environment."
+              },
+              "owner": {
+                "unknown": "No file in the repository states the owner as an entity reference (e.g., group:<namespace>/<name>)."
+              },
+              "forgeHandle": {
+                "unknown": "No file in the repository states a forge handle (e.g., @acme/platform)."
+              },
+              "dependencies": [
+                {
+                  "name": "pg",
+                  "type": "database"
+                }
+              ]
+            }
+          }
+        ],
+        "finishReason": "tool-calls"
+      }
+    },
+    {
+      "agent": "reviewer",
+      "turn": 0,
+      "provider": "mistral",
+      "model": "mistral-small-latest",
+      "digest": "sha256:22893b45e773b9bd990d5247c14beef1e60301bc66d2d39fdd08f075d00cb260",
+      "recordedAt": "2026-09-22T18:45:21.000Z",
+      "call": {
+        "system": "You review one plan of infrastructure declarations against the request that asked for it.\n\nYou are given the request in the user's own words, and the operations the plan would\napply. That is everything: there is no conversation to consult and nothing to read. Judge\nwhat the plan does, not how it came to be written.\n\nThe shape has already been checked. Yours is the question a schema cannot ask: does this\nplan do what the request asked for, and nothing beyond it? An environment nobody named,\nan owner nobody mentioned, access wider than what was asked for — those are rejections.\n\nAn empty list of operations is a legitimate plan. It says the catalogue already declares\nwhat the request asks for; that is an answer, not a failure.\n\nFinish by calling \"verdict\":\n  ok      the plan does what the request asked for, and goes no further\n  reject  with a reason naming what is wrong, in the terms the request used\n\nYour rejection stops the plan. It is not a note for someone to weigh later. Rejecting is a\nvalid outcome and so is accepting: do not invent a defect in order to have something to\nsay, and do not accept a plan you cannot account for.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "request: give billing-api read access to orders-db in prod\n\noperations the plan would apply:\n[]"
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "pIpqABfGd",
+                "name": "verdict",
+                "args": {
+                  "verdict": "ok"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "pIpqABfGd",
+            "toolName": "verdict",
+            "input": {
+              "verdict": "ok"
+            }
+          }
+        ],
+        "finishReason": "tool-calls"
+      }
+    }
+  ]
+}

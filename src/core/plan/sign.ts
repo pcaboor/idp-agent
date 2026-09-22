@@ -88,8 +88,17 @@ function composed(
   const segments = name.split('-').filter((segment) => segment.length > 0)
   if (segments.length === 0) return false
 
+  // Deliberately no `vocabulary.environments` — the same hole `enumerated`
+  // had, one layer along. An environment is never provenance: `prod` always
+  // exists, and one declared in `.idp-agent.yml` exists more trivially still.
+  // Letting it vouch for a segment flipped `metadata.name` from a question to
+  // `echoed` — the strongest claim a value can carry — for a name the request
+  // never mentioned, on a request that named dev.
+  //
+  // A witnessed reference is different, and stays: the catalogue actually
+  // returned that entity, so `orders-db-prod` carrying `prod` is a fact about
+  // something that exists rather than a list of what could.
   const known = [
-    ...vocabulary.environments,
     ...vocabulary.types,
     ...[...witnessed].flatMap((ref) => (ref.split('/').pop() ?? '').split('-')),
   ]
@@ -101,7 +110,9 @@ function composed(
 
 function enumerated(vocabulary: Vocabulary, path: string, value: string): boolean {
   if (path.endsWith('.owner')) return vocabulary.owners.includes(value)
-  if (path.endsWith('.type')) return vocabulary.types.includes(value)
+  // No `.type` either: it is structural, classified above, and reaching here
+  // would measure a closed union against a list of what the repository has
+  // happened to use.
   // Deliberately no `.env`. An environment is the one field where "the
   // catalogue already uses this value" is not provenance: `prod` always
   // exists, so enumerating it would let a model pick production for a request
@@ -173,8 +184,26 @@ export function signPlan(plan: Plan, context: SignatureContext): SignedPlan | Pl
     const text = String(value)
     let leafClass: LeafClass = 'novel'
 
-    if (path.endsWith('.op') || path.endsWith('.patch') || path.endsWith('.kind')) {
+    if (
+      path.endsWith('.op') ||
+      path.endsWith('.patch') ||
+      path.endsWith('.kind') ||
+      path.endsWith('.type')
+    ) {
       // Structural: the closed union already decided these.
+      //
+      // `.type` joined them because measuring it against the vocabulary — what
+      // the repository ALREADY uses — made the FIRST access of a repository
+      // unproposable: no access exists, so `database-access` is in no
+      // vocabulary, so it is a question, so no access is ever written. It is
+      // `z.enum(RESOURCE_TYPE_NAMES)`, and a type outside that union is
+      // refused by the schema before the signature sees it, so asking where it
+      // came from has one answer: the union.
+      //
+      // What this does NOT cover: whether the type is the RIGHT one. A model
+      // proposing `database` where an access belongs signs cleanly, and the
+      // diff is where a human sees it — the same limit the module states at the
+      // top and the reason the merge is the act of authorisation.
       leafClass = 'derived'
     } else if (echoes(plan.intent, text)) {
       // Checked before the vocabulary on purpose. A value can be both, and

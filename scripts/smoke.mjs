@@ -8,12 +8,14 @@
  * Run after `pnpm build`. No network, no API key, no Docker.
  */
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const BIN = path.resolve(fileURLToPath(import.meta.url), '../../dist/cli/bin.js')
+const ROOT = path.resolve(fileURLToPath(import.meta.url), '../..')
+const BIN = path.join(ROOT, 'dist/cli/bin.js')
 
 // Deliberately not the repository root: the binary must find the fixture SI
 // from its own location, not from wherever the user happens to stand.
@@ -29,9 +31,14 @@ const CLEAN_ENV = Object.fromEntries(
 )
 
 const failures = []
+// Counted, never written down. The total was a literal, it had drifted from the
+// number of checks, and a smoke run that miscounts its own checks is the one
+// thing this script may not do.
+let checks = 0
 
 /** @param {{args: string[], code: number, stdout?: RegExp, stderr?: RegExp}} expected */
 function check({ args, code, stdout, stderr }) {
+  checks += 1
   const label = `idp-agent ${args.join(' ')}`
   let out = ''
   let err = ''
@@ -56,6 +63,56 @@ function check({ args, code, stdout, stderr }) {
   console.log(`  ${failures.length === before ? 'ok  ' : 'FAIL'} ${label}`)
 }
 
+/**
+ * A check that is not a process invocation, counted by the same counter. Two
+ * counting disciplines is how the total drifted from the checks in the first
+ * place.
+ *
+ * @param {string} label @param {boolean} held @param {string} failure
+ */
+function assert(label, held, failure) {
+  checks += 1
+  if (!held) failures.push(failure)
+  console.log(`  ${held ? 'ok  ' : 'FAIL'} ${label}`)
+}
+
+/**
+ * Every path and every byte under a directory, as one digest.
+ *
+ * Stage 4's whole claim is that a preview reads a repository and leaves it
+ * exactly as it found it, and an exit code does not state that: a command that
+ * wrote the two files its diff describes and then printed the diff exits 0 too.
+ * The unit suite hashes both repositories around a run for the same reason
+ * (`tests/support/tree.ts`); this is that assertion made about the SHIPPED
+ * binary, which is the one thing `pnpm test` never runs.
+ *
+ * @param {string} dir @returns {string}
+ */
+function hashTree(dir) {
+  const digest = createHash('sha256')
+  /** @param {string} current @param {string} prefix */
+  const walk = (current, prefix) => {
+    const entries = readdirSync(current, { withFileTypes: true })
+    // Sorted, so the digest is about the tree and not about the order the
+    // filesystem happened to hand it over in.
+    for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      const full = path.join(current, entry.name)
+      const relative = prefix === '' ? entry.name : `${prefix}/${entry.name}`
+      if (entry.isDirectory()) {
+        // The directory itself, named: an emptied folder and a deleted one are
+        // different facts, and a digest over file contents alone conflates them.
+        digest.update(`d ${relative}\n`)
+        walk(full, relative)
+      } else {
+        digest.update(`f ${relative}\n`)
+        digest.update(readFileSync(full))
+      }
+    }
+  }
+  walk(dir, '')
+  return digest.digest('hex')
+}
+
 check({ args: ['help'], code: 0, stdout: /idp-agent graph/ })
 check({ args: ['graph', '--env', 'prod'], code: 0, stdout: /billing-db-prod/ })
 check({ args: ['show', 'billing-db-prod'], code: 0, stdout: /reached by services/ })
@@ -68,10 +125,51 @@ check({ args: ['nope'], code: 2 })
 // repository is in — the built binary must refuse cleanly, not crash.
 check({ args: ['ask', 'which databases are in prod?'], code: 2, stderr: /no model configured/ })
 check({ args: ['ask'], code: 2, stderr: /needs a question/ })
-check({ args: ['init'], code: 3, stderr: /stage 4/ })
+// `init` and `plan "<intent>"` both reach a model now, so with nothing
+// configured they must refuse for want of one — not for want of a recording,
+// and not by walking a repository first.
+check({ args: ['init'], code: 2, stderr: /no model configured/ })
+check({ args: ['plan', 'give billing-api access to orders-db', '--repo', '.'], code: 2, stderr: /no model configured/ })
+check({ args: ['plan', '--repo', '.'], code: 2, stderr: /needs an intent/ })
 check({ args: ['init', 'platform', 'repo'], code: 2, stderr: /--owner/ })
 check({ args: ['init', 'platform', 'repo', '--owner', '@acme/platform'], code: 0, stdout: /wrote 12/ })
 check({ args: ['validate', 'repo'], code: 0, stdout: /0 violations/ })
+
+// `plan --from` against the repository the two checks above just scaffolded and
+// validated, using a plan that ships with the project. No model is involved and
+// none can be — the whole point of the file form — so this is the one
+// agent-adjacent path the built binary can be driven down with nothing
+// configured.
+//
+// The example is resolved from this script's own location, not from the working
+// directory: the binary runs in ELSEWHERE, and `examples/` is not packaged.
+const PREVIEWED = path.join(ELSEWHERE, 'repo')
+const EXAMPLE = path.join(ROOT, 'examples/add-access.json')
+const untouched = hashTree(PREVIEWED)
+// ELSEWHERE as well, not just the repository inside it. The binary RUNS in
+// ELSEWHERE, so a command writing into its own working directory — a stray
+// log, a cache, a lockfile — passed a check named "writes nothing" while
+// hashing only the directory the diff was about.
+const cwdUntouched = hashTree(ELSEWHERE)
+
+check({
+  args: ['plan', '--from', EXAMPLE, '--repo', 'repo'],
+  code: 0,
+  stdout: /\+\+\+ b\/catalog\/databases\/orders-db-prod\.yml[\s\S]*nothing written/,
+})
+
+// The stage's claim, and the reason the check above is not enough on its own.
+assert(
+  'plan --from left the repository byte for byte',
+  hashTree(PREVIEWED) === untouched,
+  'plan --from changed the repository it previewed against; stage 4 writes nothing',
+)
+
+assert(
+  'plan --from wrote nothing into its working directory either',
+  hashTree(ELSEWHERE) === cwdUntouched,
+  'plan --from wrote into the directory it ran in; stage 4 writes nothing anywhere',
+)
 
 // The one check that can catch "green tests, broken package": the templates
 // live outside dist/, so nothing in the suite notices if they are missing from
@@ -79,7 +177,7 @@ check({ args: ['validate', 'repo'], code: 0, stdout: /0 violations/ })
 // that never cloned this repository.
 const packed = JSON.parse(
   execFileSync('npm', ['pack', '--dry-run', '--json'], {
-    cwd: path.resolve(fileURLToPath(import.meta.url), '../..'),
+    cwd: ROOT,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
   }),
@@ -87,8 +185,11 @@ const packed = JSON.parse(
 
 const shipped = packed.files.map((file) => file.path)
 for (const required of ['templates/iac-repo/witness.yml', 'templates/iac-repo/gitignore']) {
-  if (shipped.includes(required)) console.log(`  ok   packaged ${required}`)
-  else failures.push(`the tarball does not carry ${required}`)
+  assert(
+    `packaged ${required}`,
+    shipped.includes(required),
+    `the tarball does not carry ${required}`,
+  )
 }
 
 if (failures.length > 0) {
@@ -96,4 +197,4 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`  ${failure}`)
   process.exit(1)
 }
-console.log(`\n${15} smoke checks passed against ${path.relative(process.cwd(), BIN)}`)
+console.log(`\n${checks} smoke checks passed against ${path.relative(process.cwd(), BIN)}`)

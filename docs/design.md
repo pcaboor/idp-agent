@@ -130,8 +130,10 @@ returned, and the engine re-reads every one of them from the graph before printi
 identifier the tools never produced is refused and named.
 
 The carve-out has a limit, and it does not travel: the witness check is a read-side
-guarantee. `propose()` will need its own, because a `Plan` proposes values that were
-never in the catalogue to begin with.
+guarantee. `propose()` needed its own, because a `Plan` proposes values that were never in
+the catalogue to begin with — that is the **signature**, gate [2] of § 6.1, which
+classifies every leaf of a proposal by where it came from and turns what nobody can vouch
+for into a question rather than a value.
 
 ```
 ┌───────────────────── AI ZONE (untrusted) ─────────────────────────┐
@@ -144,13 +146,16 @@ never in the catalogue to begin with.
                         ═══ Plan (JSON) ═══   ◄── the write crossing
                                  │
 ┌────────────────────────────────┼──────── DETERMINISTIC ZONE ──────┐
-│  Zod ──► Policies ──► Reviewer ──► repo re-check ──► Diff         │
-│    │                                                    │         │
-│    └── failure ──► report ──► back to Architect (3 max) │         │
-│                                                          ▼        │
+│  Zod ─► signature ─► policies ─► Reviewer ─► re-check ─► Diff     │
+│    │                                                        │     │
+│    └── failure ──► report ──► back to Architect (3 max)     │     │
+│                                                             ▼     │
 │                              [ CONFIRMATION ] ──► branch + MR     │
 └───────────────────────────────────────────────────────────────────┘
 ```
+
+The last box is not built. Stage 4 ends at the diff, and the branch and the merge request
+arrive at stages 5 and 6 — see § 7.4.
 
 ### 5.2 What `propose()` actually is
 
@@ -181,27 +186,99 @@ So `propose()` is a write tool — but it writes into a typed buffer, not to dis
 
 ### 5.3 Operations
 
-A closed discriminated union. What is not modelled cannot be requested.
+A closed discriminated union. What is not modelled cannot be requested. As it ships, in
+`core/schemas/plan.ts`:
 
 ```ts
 type Operation =
-  | { op: 'create-entity';       kind: EntityKind; entity: EntityInput }
-  | { op: 'update-entity';       entityRef: string; patch: EntityPatch }
-  | { op: 'create-catalog-info'; repoPath: string; entity: ComponentInput }
+  | { op: 'create-entity';       entity: ProposedResource | ProposedComponent }
+  | { op: 'update-entity';       entityRef: string; patch: Patch }
+  | { op: 'create-catalog-info'; repoPath: string; entity: ProposedComponent }
 ```
+
+`create-entity` carries no separate `kind` field: the entity is itself discriminated on
+`kind`, so "the operation says Resource and the entity says Component" is unrepresentable
+rather than a case someone has to remember to check. It is a *discriminated* union and not
+a bare one for the sake of the message — a bare union reports `invalid_union` at
+`operations.0.entity` and swallows the issue that actually failed, and a repair loop
+(§ 6.1) cannot correct a field nobody named.
+
+`Patch` is closed for the same reason and holds exactly one member today:
+`add-dependency-of`, carrying the consumer. A free-form patch is a write tool with no
+shape.
+
+**The proposal schemas are strict, and deliberately stricter than `entitySchema`.** That
+asymmetry is the point. `entitySchema` READS a real Backstage catalogue, whose files
+legitimately carry fields this tool does not model, so making it strict would break the
+reader on any real repository. A PROPOSAL travels the other way: an unmodelled field there
+is either an invention, or a field the deterministic serialiser will drop in silence.
+Both are unacceptable.
+
+Four things are absent from a proposal, and each absence is a guarantee rather than an
+omission:
+
+| absent | what the absence guarantees |
+|---|---|
+| `apiVersion` | the engine derives it — one repository, one version string |
+| `annotations` | there is nowhere to put `idp-agent.dev/source-file`, which `resolveEntityPath` reads to decide where a file goes. Without this absence a model aims at its own path and § 5.2 is a promise nothing keeps. The environment is a named field, `metadata.env`, precisely so the map is not needed for it |
+| `description` | free prose has no provenance. The signature asks one question of every value — where did it come from? — and a sentence a model writes is echoed by nothing and enumerated by nothing, so it classifies as novel and becomes a question put to the user about a sentence the model had just invented. That dead-ended a whole run once: the Architect was never asked again and the Reviewer never called. Prose belongs in the merge request, where a human writes it |
+| a path, anywhere | the engine chooses it (§ 5.2) |
+
+The bounds are part of the boundary, not a style rule: a plan is untrusted input. Fifty
+operations, 2 000 characters of intent, 32 levels of nesting, 10 000 values, 8 192
+characters per string — including the reason inside `{ unknown }`, or the one escape hatch
+for "I do not know" becomes the one unbounded channel out of a model and into the next
+agent's opening message. The operation ceiling is low on purpose: a plan a human cannot
+read in one merge request is not a plan, it is a migration, and it needs a different tool.
+Depth and node count are walked iteratively, because a proposal nested fifty thousand deep
+would otherwise kill the CLI by overflowing a call stack, which is a cheap thing for a
+steered model to achieve.
+
+A proposed name is `/^[a-z0-9]([a-z0-9._-]{0,61}[a-z0-9])?$/`, and that pattern is
+exported rather than restated. The Inspector reports a name that lands in `metadata.name`,
+and "a name it cannot express is `{unknown}` and the CLI asks" is only true if both ends
+measure *expressible* with the same regex.
 
 No delete operation in v0.1 (see § 4.4).
 
 ### 5.4 Unknown fields
 
-Every `Plan` field is either a value or `{ unknown: string }`. A `Plan` holding an
-`unknown` **cannot be applied**: the CLI stops and asks the user. This is
+Every `Plan` field a model *chooses* is either a value or `{ unknown: string }`. A `Plan`
+holding an `unknown` **cannot be applied**: the CLI stops and asks the user. This is
 "declare, never infer" made executable.
+
+Three fields are outside that, and none of them is a choice. `metadata.name` cannot be
+`{unknown}`: an entity with no name is not an entity, so a proposal that cannot name what
+it proposes is refused at gate [1] rather than turned into a question — the Inspector's
+`ProjectFacts` *can* report an unknown name, which is where that question belongs.
+`dependsOn` and `dependencyOf` are lists, where absent is already a complete answer and an
+`unknown` inside one would be a reference nobody could resolve. And `repoPath` was never
+the model's to write (§ 5.3).
 
 ### 5.5 Dependency rules, enforced in CI
 
+Two rules were written here first; **thirteen** are enforced today, in
+`tests/architecture/dependencies.test.ts`. The two founding ones:
+
 1. `core/` never imports `agents/` or `llm/`.
 2. `agents/` never imports `fs`, `child_process`, or a git client.
+
+Rule 2 is checked over the **transitive** import closure, and that is the part that does
+the work: `agents/ → llm/client → recording → node:fs` passes a grep of one directory and
+fails this test. `SECURITY.md` states there is no code path from an agent to a file; this
+is that statement, made checkable.
+
+Two consequences look odd until the rule is known. `llm/client.ts` holds types only — an
+agent imports it, so a runtime import there would put `ai` inside the agent closure. And
+the filesystem implementation of the recording store lives in `cli/`, not in `llm/`, for
+the same reason.
+
+The other eleven extend the same idea to the layers added since: `core/` reaches neither
+the network, nor the disk, nor the model SDK, nor `context/`, `cli/` or `scaffold/`; only
+`llm/` imports the model SDK, and `agents/` imports `llm/client.js` and nothing else from
+it; `scaffold/` imports `core/` and nothing else of ours, and exactly one module in it
+writes; only `context/iac-fs` and `context/project-fs` read a user's repository. **Add a
+rule when you add a layer** — the count in this paragraph is the one that drifts first.
 
 ---
 
@@ -210,16 +287,36 @@ Every `Plan` field is either a value or `{ unknown: string }`. A `Plan` holding 
 Orchestration is **deterministic**. The Supervisor classifies intent; plain TypeScript
 sequences the steps. No agent decides the sequence.
 
+Five agents, and the tool column is what each one actually holds. The terminal tool — the
+one call that ends the agent's turn — is the last in each row.
+
 | Agent | Input | Tools | Output |
 |---|---|---|---|
-| Supervisor | the request + a numeric SI summary | none | `MUTATION` or `QUESTION` |
+| Supervisor | the request + a bucketed SI summary | none | `MUTATION` or `QUESTION` |
 | Analyst | a question + the SI summary | `search_entities`, `get_entity`, `get_dependencies`, `answer` | an `Answer` |
-| Inspector | the local repository | `list_files`, `read_file`, `read_manifest` | `ProjectFacts` |
-| Architect | `ProjectFacts` + SI + rules | `search_entities`, `get_entity`, `get_dependencies`, `get_governance_rule`, `propose` | `Plan` |
-| Reviewer | the `Plan` + the original request | SI reads | `OK` or a rejection reason |
+| Inspector | a project snapshot, already read and capped | `list_files`, `read_file`, `report_facts` | `ProjectFacts` |
+| Architect | `ProjectFacts` + the SI summary + the repair report | `search_entities`, `get_entity`, `get_dependencies`, `propose` | `Plan` |
+| Reviewer | the `Plan` + the original request | `verdict` | `ok` or a rejection reason |
 
-`Inspector` is confined to the current repository: any escaping path is refused, and
-`.env`, `.git/` and key files are excluded; size is capped.
+The Architect has **no** `get_governance_rule`: the configurable rule engine is deferred
+past v0.1 (§ 6.1), and a tool that names a feature nobody built is a prompt for the model
+to ask about one. It also has no `answer` — that is the Analyst's terminal call, and an
+agent with two ways to finish has two ways to finish something it was not asked to.
+
+The Reviewer has **no SI reads at all**, and the emptiness is the design. It and the
+Architect are the same weights behind the same provider, so their errors are correlated by
+construction; a second opinion fed the first one's transcript is an echo, and this echo
+holds a veto. It sees the Plan and the original request, never the draft's reasoning,
+never which attempt this is, never what an earlier gate said.
+
+The Inspector never touches a disk, because nothing reachable from `agents/` may (§ 5.5).
+`context/project-fs` reads the repository on the deterministic side and hands over a
+snapshot, with every exclusion already applied: `.env*`, key material, credential files,
+`.git/`, `node_modules/` and hidden directories bar `.github`, plus a content check for a
+PEM header behind an innocent name, a symlink refusal, and three caps — 200 files, 64 KB
+each, 1 MB in total. `list_files` and `read_file` read that snapshot and nothing else, so
+"confined to the current repository" is a property of the data the agent was handed rather
+than a check it performs.
 
 **Why a Reviewer LLM on top of Zod** — Zod validates *shape* (`owner: tiger` instead of
 `group:default/tiger`); the Reviewer validates *substance* (the request was about dev,
@@ -227,21 +324,30 @@ the plan opens prod access). Perfectly valid YAML can answer the wrong question.
 
 ### 6.1 Repair loop
 
+Five gates as it ships, in the order `agents/repair.ts` runs them. The signature was prose
+in this section before it was a gate; it is one now, and the CLI names it by that word when
+it refuses, so it is numbered here too.
+
 ```
-Plan ─► [1] Zod ─► [2] Policies ─► [3] Reviewer ─► [4] repo re-check ─► Diff
-          │            │               │                │
-          └────────────┴───────────────┴────────────────┘
-                     structured report ─► Architect
-                         (3 attempts maximum)
+Plan ─► [1] Zod ─► [2] signature ─► [3] policies ─► [4] Reviewer ─► [5] re-check ─► Diff
+          │             │                │               │              │
+          └─────────────┴────────────────┴───────────────┴──────────────┘
+                          structured report ─► Architect
+                              (3 attempts maximum)
 ```
+
+The three free gates run first, and that ordering is not tidiness: gates [1] to [3] cost
+nothing, so a draft that cannot survive them never reaches the one gate that spends a
+model call.
 
 Past three attempts: clean stop, partial plan shown with the reason. No file is written.
 
 **A Policy is a deterministic predicate over a signed Plan.** No model, no disk. That is
-the whole definition, and it is what makes gate [2] free to run and testable without a
-repository: gate [1] rejects what cannot be *expressed*, the signature asks about what
-nobody can *vouch for*, and a policy refuses what is expressible, vouched for, and still
-wrong.
+the whole definition, and it is what makes gate [3] free to run and testable without a
+repository: gate [1] rejects what cannot be *expressed*, gate [2] asks about what nobody
+can *vouch for* — and asks rather than refuses, because *declare, never infer* means
+putting the question to the user, not guessing and not giving up — and a policy refuses
+what is expressible, vouched for, and still wrong.
 
 Three ship in v0.1:
 
@@ -251,11 +357,13 @@ Three ship in v0.1:
 | `unwitnessed-folder` | a write into a folder the repository never declared |
 | `cross-environment-consumer` | an access whose environment differs from its consumer's |
 
-A configurable rule engine — `governance/`, and the `get_governance_rule` tool of §6 — is
-deferred past v0.1: three predicates that run are worth more than an extension point that
-does not.
+A configurable rule engine — `governance/`, and the `get_governance_rule` tool this
+document once gave the Architect in § 6 — is deferred past v0.1: three predicates that run
+are worth more than an extension point that does not. The tool is absent from the
+Architect's registry for the same reason, because a tool naming a feature nobody built is
+a prompt for the model to ask about one.
 
-Gate [4] is not a second set of rules. It applies the Plan **virtually** — builds the
+Gate [5] is not a second set of rules. It applies the Plan **virtually** — builds the
 snapshot that would exist if the plan landed — and runs the same six `validate` rules CI
 runs over the result. It exists because the catalogue lags the repository by about two
 minutes (§4.4): what was true when the plan was drafted may not be true now, so an entity
@@ -266,21 +374,40 @@ may have appeared, or appeared somewhere else.
 The harness renders nothing. It emits:
 
 ```ts
+type AgentName = 'supervisor' | 'analyst' | 'inspector' | 'architect' | 'reviewer'
+
 type AgentEvent =
-  | { type: 'agent:start'; agent: 'supervisor' | 'analyst' | 'inspector' | 'architect' | 'reviewer' }
-  | { type: 'classified';  classification: 'MUTATION' | 'QUESTION' }
-  | { type: 'tool:result'; name: string; rows: number; truncated: number }
+  | { type: 'agent:start';  agent: AgentName }
+  | { type: 'classified';   classification: 'MUTATION' | 'QUESTION' }
+  | { type: 'tool:call';    name: string; args: unknown }
+  | { type: 'tool:result';  name: string; rows: number; truncated: number }
   | { type: 'answer:ready'; refs: string[] }
-  | { type: 'refused';     agent: string; reason: string }
-  | { type: 'tool:call';   name: string; args: unknown }
-  | { type: 'repair';      attempt: 1 | 2 | 3; reason: string }
-  | { type: 'plan:ready';  plan: Plan }
-  | { type: 'ask';         question: Question }
+  | { type: 'refused';      agent: AgentName; reason: string }
+  | { type: 'repair';       attempt: 1 | 2 | 3; gate: Gate; reason: string }
+  | { type: 'retry';        agent: AgentName; reason: string }
+  | { type: 'plan:ready';   operations: number }
+  | { type: 'ask';          question: Question }
 ```
 
-Ink consumes the stream; tests consume the same stream and assert the sequence. The
-harness is therefore testable without a terminal, and the future MCP server reuses
-these events.
+Three details in that list were learned rather than designed.
+
+`plan:ready` carries a **count, not the plan**. An event says that something happened; one
+carrying the plan itself would be a second way for the plan to travel, next to the signed
+object, and the whole signature exists to make sure there is exactly one.
+
+`repair` and `retry` are two facts and used to be one. `repair` is an attempt of the loop
+above, and its `gate` is mandatory: an attempt that cannot say which of the five refused it
+is a number with no fact attached. `retry` is an agent handing its own malformed terminal
+call back to the model, inside its own turn — it has failed no gate, and naming one there
+would invent it. Sharing a field put two counters under one name, one restarting inside
+every attempt of the other, and the rendered sequence went backwards within a run.
+
+Ink consumes the stream at stage 7; tests consume the same stream and assert the sequence,
+and `cli/index.ts` renders one line per event on **stderr** until then — stdout carries
+the diff and the `--json` report, and both are piped. `ask` and `answer:ready` render
+nothing there, deliberately: they *are* the command's output and they reach the user on
+stdout, so a copy on stderr would state one fact twice. The harness is therefore testable
+without a terminal, and the future MCP server reuses these events.
 
 ---
 
@@ -303,6 +430,31 @@ It holds **no secret**. Model credentials come from the environment or
 
 The absence of `.idp-agent.yml` is what makes the CLI offer a guided tour rather
 than fail.
+
+**Read from stage 4, written at stage 5.** `cli/config.ts` reads it today, and the three
+fields above are the whole schema — strict, so `enviroments:` is a named error rather than
+a silent fallback to "this repository declared nothing". There is deliberately no field
+that could carry a credential: a token in a committed file is a token in every clone of
+it. Writing the file is § 7.3's last clause, and writing arrives at stage 5, so `init`
+previews the `catalog-info.yml` and leaves this one to the stage allowed to create it.
+
+What the read buys is `environments`, which seeds the vocabulary the deterministic gates
+measure a proposal against. That vocabulary is otherwise empirical — what the catalogue
+currently holds — and on a repository with no entities yet it is empty, which leaves
+`environment-mismatch` structurally unable to fire and leaves the engine unable to
+recognise an environment segment inside a composed name. The declaration fills that gap
+before the first entity exists. It is merged with what the entities show, never
+substituted for it: an environment in use that the file forgot is still in use.
+
+Seeding is not vouching. An environment listed here is still echoed by the request or
+still asked about — `prod` always exists, so enumerating it would let a model pick
+production for a request that named no environment at all (§ 4.1). The seed widens what
+the gates can *see*, never what a proposal may claim.
+
+Absent and malformed are two different facts and the reader refuses to blur them. Absent
+is a repository that never declared one, and the run proceeds on what the entities show.
+Present and unparseable is refused, naming the field, because falling back there would
+answer a typo with a run that silently asks about everything.
 
 ### 7.1 First contact — no configuration
 
@@ -358,24 +510,52 @@ Inspects the repository (manifest, git remote, CODEOWNERS), proposes a
 `catalog-info.yml` through the same `propose()` path as any other entity, confirms
 the owner it inferred rather than assuming it, and writes `.idp-agent.yml`.
 
-Three of those four need the Inspector and `propose()`, which arrive at stage 4. The
-command exists from stage 3 and refuses until then, naming what it waits for — a boundary
-with a test, rather than a stub.
+Three of those four need the Inspector and `propose()`. The command existed from stage 3
+as a tested refusal naming what it waited for; stage 4 answers that refusal, and the shape
+of the answer is what stops the model choosing where the file goes. The Architect's
+`propose` tool is built from the operation union **minus** `create-catalog-info`,
+because that operation carries `repoPath` and a path field in front of a model is a path a
+model chooses — so there is no field to write one into. What it proposes is a Component;
+anything else is refused by name rather than dropped, and the engine mints the real
+`create-catalog-info` out of the **signed** proposal afterwards. That order is load-bearing:
+minting first puts a path in front of a gate that classifies a value by where it came
+from, and the engine's own choice comes out as "nobody vouches for this" — a question the
+CLI would put to the user about a path chosen by the code asking.
+
+The fourth clause waits for stage 5. The `catalog-info.yml` is previewed as a diff and
+nothing is written, `.idp-agent.yml` included — and "confirms the owner it inferred rather
+than assuming it" is a human reading that diff. The signature says a proposed value
+matches what the inspection established; the Inspector is a model reading files, so it
+says nothing about whether the inspection was right.
 
 ### 7.4 `idp-agent "<intent>"` — the daily gesture
 
 ```
 1. load the SI          Backstage to explore · git repo to decide
 2. Supervisor           MUTATION or QUESTION?
-3. Inspector            reads the local repository        [read-only]
-4. Architect            does the resource exist?          [read + propose]
+3. Inspector            reads the local repository            [read-only]
+4. Architect            does the resource exist?              [read + propose]
        yes -> access declarations only
        no  -> resource declaration + access declarations
-5. validation           Zod · policies · Reviewer         [3 attempts max]
+5. validation           Zod · signature · policies · Reviewer [3 attempts max]
 6. re-check             against the repository (catalogue lag)
 7. diff + confirmation  "I am submitting my request"
 8. branch + MR          an architect reviews -> merge = AUTHORISATION
 ```
+
+**Steps 3 to 7 ship at stage 4. Step 8 arrives with the forge, at stages 5 and 6.**
+`idp-agent plan "<intent>" --repo <dir>` runs the Inspector over the repository the user
+is standing in, the Architect over the declarations repository, the five gates of § 6.1,
+and renders the diff — then stops. There is no confirmation prompt at step 7 yet, because
+there is nothing on the other side of it to confirm: the branch is stage 5 and the merge
+request is stage 6. Until they exist, "diff + confirmation" is a diff and the closing line
+below, and the honest reading of "writes nothing" is that no code between the diff and a
+write has been written.
+
+The two `--repo` flags on this page name two different repositories, and the difference is
+the whole reason the flag exists. `plan --repo` is the **declarations** repository, which
+the preview is decided against (§ 4.4). `init --repo` is the **application** repository,
+the one being declared.
 
 Every run ends on the same line, so no one mistakes submission for permission:
 
