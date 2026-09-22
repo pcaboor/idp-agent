@@ -7,8 +7,6 @@ import { RESOURCE_TYPE_NAMES } from './resource-types.js'
  * system does not know is reported as unknown, never filled in with a plausible
  * value. The reason is mandatory — it is the question the CLI puts to the user.
  */
-export const unknownSchema = z.object({ unknown: z.string().min(1) })
-export type UnknownValue = z.infer<typeof unknownSchema>
 
 /**
  * Bounds on a proposal. A plan is produced by a model, so it is untrusted input:
@@ -25,6 +23,21 @@ export const PLAN_LIMITS = {
   maxNodes: 10_000,
   maxStringLength: 8_192,
 } as const
+
+/**
+ * A question, in the model's words.
+ *
+ * Bounded like every other string a model writes. Every stated value in a
+ * proposal is length-capped, and leaving the reason uncapped made `{unknown}`
+ * the one field with no ceiling: a channel for an unbounded run of arbitrary
+ * text — a path, a file's contents, an instruction — to travel verbatim
+ * through the engine and into the next agent's opening message. The escape
+ * hatch for "I do not know" is not a place to put a payload.
+ */
+export const unknownSchema = z.object({
+  unknown: z.string().min(1).max(PLAN_LIMITS.maxStringLength),
+})
+export type UnknownValue = z.infer<typeof unknownSchema>
 
 /**
  * A proposal is stricter than an entity read from disk, and the asymmetry is
@@ -49,7 +62,12 @@ export const PLAN_LIMITS = {
 const or = <T extends z.ZodType>(schema: T): z.ZodType =>
   z.union([schema, unknownSchema])
 
-const proposedName = z
+/**
+ * Exported because the Inspector reports a name that lands in `metadata.name`
+ * here. A name it cannot express is `{unknown}` and the CLI asks — which is only
+ * true if both ends measure "expressible" with the same pattern.
+ */
+export const proposedName = z
   .string()
   .regex(/^[a-z0-9]([a-z0-9._-]{0,61}[a-z0-9])?$/, 'invalid Backstage name')
 

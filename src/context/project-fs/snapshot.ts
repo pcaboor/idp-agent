@@ -2,6 +2,7 @@ import { constants } from 'node:fs'
 import { lstat, open, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
 import { assertInsideRepo, PathEscapeError } from '../../core/paths/entity-path.js'
+import type { ProjectFile, ProjectSnapshot, SkippedFile } from './types.js'
 
 /**
  * Reads the APPLICATION repository — the one a service lives in, not the
@@ -38,33 +39,14 @@ export const PROJECT_LIMITS = {
   maxTotalBytes: 1_048_576,
 } as const
 
-export interface ProjectFile {
-  /** Project-relative, POSIX separators whatever the platform. */
-  readonly path: string
-  readonly text: string
-}
-
-/** Never omitted, never silent: see `NEVER IGNORE IN SILENCE` below. */
-export interface SkippedFile {
-  readonly path: string
-  /** Human-readable, non-empty, and never naming a path outside the project. */
-  readonly reason: string
-}
-
-export interface ProjectSnapshot {
-  /** The real root: what containment was actually decided against. */
-  readonly root: string
-  readonly files: readonly ProjectFile[]
-  readonly skipped: readonly SkippedFile[]
-  /**
-   * True only when a cap STOPPED the harvest — the file cap, the total-byte
-   * cap, or the directory budget — so that candidates exist which are neither
-   * read nor named. A single oversized or binary file leaves this false: it is
-   * named in `skipped`, and the rest of the project was read.
-   */
-  readonly truncated: boolean
-}
-
+/**
+ * The three shapes live in `types.ts`, which imports nothing. `agents/` has to
+ * name `ProjectSnapshot` and the architecture test walks its import closure, so
+ * a type reachable only through this module would drag `node:fs/promises` into
+ * that closure. Re-exported here so this file stays the one import site for
+ * everyone who wants the bytes as well as the shape.
+ */
+export type { ProjectFile, ProjectSnapshot, SkippedFile } from './types.js'
 
 /**
  * A walk budget the three public caps do not provide. They bound what is READ
