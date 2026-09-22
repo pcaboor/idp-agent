@@ -123,3 +123,29 @@ export const arbitraryHandWrittenFile = fc
       })
       .join('\n'),
   )
+
+/**
+ * A proposal, not an entity read from disk. Generated against the strict
+ * schemas so a property can assert something about every plan the model is
+ * allowed to emit — including the nested and the awkward.
+ */
+export const arbitraryProposal = fc.record({
+  kind: fc.constant('Resource' as const),
+  metadata: fc.record({
+    name: entityName,
+    env: fc.constantFrom('dev', 'staging', 'prod'),
+  }),
+  spec: fc.record({
+    type: fc.constantFrom('database', 'cache', 'api', 'database-access', 'network-access'),
+    owner: fc.constantFrom('group:default/tiger', 'group:default/common', 'group:default/ghost'),
+  }),
+})
+
+export const arbitraryPlan = fc.record({
+  intent: fc.string({ minLength: 1, maxLength: 120 }),
+  operations: fc
+    .array(
+      arbitraryProposal.map((entity) => ({ op: 'create-entity' as const, entity })),
+      { minLength: 1, maxLength: 5 },
+    ),
+})

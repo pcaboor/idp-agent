@@ -105,7 +105,12 @@ export const patchSchema = z.discriminatedUnion('patch', [
 export const operationSchema = z.discriminatedUnion('op', [
   z.strictObject({
     op: z.literal('create-entity'),
-    entity: z.union([proposedResourceSchema, proposedComponentSchema]),
+    // Discriminated on kind, not a bare union: a bare union reports
+    // `invalid_union` at `operations.0.entity` and swallows the issue that
+    // actually failed, so a rejection cannot name the field. Stage 1 fixed the
+    // same defect in the readers with reasonOf(); the proposal boundary owes
+    // the repair loop (task 8) the same courtesy.
+    entity: z.discriminatedUnion('kind', [proposedResourceSchema, proposedComponentSchema]),
   }),
   z.strictObject({
     op: z.literal('update-entity'),
