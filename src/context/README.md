@@ -22,5 +22,15 @@ present entities only, and `dependenciesOf` returns own declarations in file ord
 edges sorted. `consumersOf` is the multi-hop walk: breadth-first to the `Component`s behind the
 accesses, with a visited set, because a hand-edited repository does contain cycles.
 
+`project-fs/snapshot.ts` reads the other repository: the **application** one, the one a service
+lives in. `readProject(root)` returns the text of what it read and a `skipped` entry, with a
+reason, for every single thing it did not — a file dropped without a word is a file the user
+believes was read. It exists here rather than in `agents/` because no module reachable from an
+agent may import a filesystem, and everything it returns is on its way to a model at a third
+party: hence the exclusion list (`.env*`, key material, credential files, `.git/`, `node_modules/`
+and hidden directories bar `.github`), the content test for a PEM header behind an innocent name,
+the `lstat`-then-`realpath` symlink refusal, and three caps — 200 files, 64 KB each, 1 MB in total.
+`truncated` is true only when a cap stopped the read, never when one file was skipped.
+
 `context/` may reach the network later — `backstage/` will be an HTTP client. `core/` never may,
 and `tests/architecture/dependencies.test.ts` fails the build if that slips.
