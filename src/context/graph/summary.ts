@@ -1,4 +1,5 @@
-import { ENV_ANNOTATION, type EntityGraph } from './entity-graph.js'
+import { type EntityGraph } from './entity-graph.js'
+import { ENV_ANNOTATION, type Vocabulary } from '../../core/schemas/vocabulary.js'
 
 /**
  * Counts are bucketed, never exact. Stages 3 and 4 both add fixtures, and
@@ -15,13 +16,7 @@ export interface SiSummary {
   danglingReferences: number
 }
 
-/** The closed value space the model may filter on — never the entity list. */
-export interface Vocabulary {
-  kinds: string[]
-  types: string[]
-  environments: string[]
-  owners: string[]
-}
+export type { Vocabulary } from '../../core/schemas/vocabulary.js'
 
 const bucket = (count: number): Bucket =>
   count === 0 ? '0' : count < 10 ? '1-9' : count < 100 ? '10-99' : '100+'

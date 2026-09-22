@@ -161,6 +161,17 @@ describe('architecture', () => {
     expect(offending).toEqual([])
   })
 
+  it('core/ imports nothing from context/, cli/ or scaffold/', async () => {
+    // core/ is the deterministic half: schemas, paths, serialisation, rules.
+    // A dependency on a layer that reads a disk would make it one by proxy,
+    // and its own README says it is not. Nothing enforced this until the
+    // signer needed a symbol that had been parked in context/.
+    const offending = (await importsUnder(path.join(SOURCE_ROOT, 'core'))).filter(
+      ({ specifier }) => /(^|\/)(context|cli|scaffold)\//.test(specifier),
+    )
+    expect(offending).toEqual([])
+  })
+
   it('core/ neither reads nor writes', async () => {
     // core/README.md has said so since stage 2 and nothing checked it.
     const offending = (await importsUnder(path.join(SOURCE_ROOT, 'core'))).filter(({ specifier }) =>
