@@ -849,7 +849,7 @@ git commit -m "feat(agents): inspect a repository and draft a plan into a typed 
 **The Reviewer blocks.** That was decided deliberately, and it makes the test below
 mandatory rather than nice to have.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```typescript
 it('shows the reviewer the original request, never the architect transcript', async () => {
@@ -888,9 +888,9 @@ it('runs the gates in the order the design fixes', async () => {
 })
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `repair.ts` is plain TypeScript: five gates in fixed order, three attempts, each failure
 producing a structured report handed back to the Architect. Past three: clean stop, the
@@ -902,7 +902,7 @@ a legal way to object without having to invent a defect.
 
 Events: `repair { attempt, gate, reason }`, `plan:ready { plan }`, `clarify { questions }`.
 
-- [ ] **Step 4: Run everything and commit**
+- [x] **Step 4: Run everything and commit**
 
 ```bash
 git commit -m "feat(agents): bound the repair loop, and keep the reviewer independent"
