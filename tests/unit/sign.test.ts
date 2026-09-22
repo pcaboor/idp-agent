@@ -111,6 +111,29 @@ describe('signPlan', () => {
   })
 })
 
+describe('the environment', () => {
+  it('asks which one when the request named none, rather than picking prod', () => {
+    // The one field where "the catalogue already uses this value" is not
+    // provenance. `prod` always exists, so enumerating it would let a model
+    // choose production for a request that named no environment at all — and
+    // the plan would sign cleanly. §4.1 says being authorised in dev grants
+    // nothing elsewhere; nobody asked for anything here.
+    const result = signed(plan(access, 'give billing-api access to orders-db'))
+
+    const env = result.classified.find((leaf) => leaf.path.endsWith('.env'))
+    expect(env?.class).toBe('novel')
+    expect(findUnknowns(result.plan)).toContain('operations.0.entity.metadata.env')
+  })
+
+  it('accepts the one the request named', () => {
+    const result = signed(plan(access, 'give billing-api access to orders-db in prod'))
+
+    const env = result.classified.find((leaf) => leaf.path.endsWith('.env'))
+    expect(env?.class).toBe('echoed')
+    expect(findUnknowns(result.plan)).toEqual([])
+  })
+})
+
 describe('the closed union', () => {
   it('refuses a type outside it rather than asking about it', () => {
     // The plan's own words. A vocabulary miss is a question because the
