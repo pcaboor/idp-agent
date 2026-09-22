@@ -919,7 +919,7 @@ git commit -m "feat(agents): bound the repair loop, and keep the reviewer indepe
 - Create: `tests/scenarios/plan-mode.test.ts`
 - Modify: `docs/design.md` §5.3, §7.0, §7.4 · `AGENTS.md` · `README.md` · `scripts/smoke.mjs`
 
-- [ ] **Step 1: Wire the intent form and the config**
+- [x] **Step 1: Wire the intent form and the config**
 
 `plan "<intent>"` runs Inspector → Architect → repair → diff. `init --repo` finally
 answers the refusal stage 3 shipped: Inspector → Architect restricted to
@@ -928,7 +928,7 @@ answers the refusal stage 3 shipped: Inspector → Architect restricted to
 
 Amend §7.0 to say the file is **read from stage 4**, though written at stage 5.
 
-- [ ] **Step 2: Record the five scenarios**
+- [x] **Step 2: Record the five scenarios**
 
 ```bash
 IDP_PROVIDER=<yours> IDP_MODEL=<yours> IDP_RECORDING=record pnpm vitest run tests/scenarios
@@ -944,7 +944,7 @@ the rule, not from hoping the model slips.
 Then verify, as stage 2 did: no secret in any recording, and the whole suite replays with
 no key and no network.
 
-- [ ] **Step 3: The owed hygiene test**
+- [x] **Step 3: The owed hygiene test**
 
 ```typescript
 it('no shipped recording is hand-authored', async () => {
@@ -957,7 +957,7 @@ it('no shipped recording is hand-authored', async () => {
 })
 ```
 
-- [ ] **Step 4: Amend the documents**
+- [x] **Step 4: Amend the documents**
 
 - §5.3 — the operation union as it ships, over the strict proposal schemas.
 - §7.4 — step 8 (branch + MR) arrives with the forge at stage 5-6; stage 4 stops at 7.
@@ -967,7 +967,7 @@ it('no shipped recording is hand-authored', async () => {
 - `scripts/smoke.mjs` — `plan --from` against the built binary, and replace the hard-coded
   count with `checks.length`, which has been a maintenance trap since stage 3.
 
-- [ ] **Step 5: Run everything and commit**
+- [x] **Step 5: Run everything and commit**
 
 ```bash
 pnpm typecheck && pnpm test && pnpm build && pnpm smoke
