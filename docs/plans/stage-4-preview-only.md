@@ -270,7 +270,7 @@ Reused rather than rewritten: `findUnknowns` / `isApplicable` / `PLAN_LIMITS`,
 The signer needs to know which annotation carries an environment. It lives in `context/`,
 and `core/` may not import `context/` — except nothing enforces that today.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 it('core/ imports nothing from context/, cli/ or scaffold/', async () => {
@@ -283,19 +283,19 @@ it('core/ imports nothing from context/, cli/ or scaffold/', async () => {
 })
 ```
 
-- [ ] **Step 2: Prove the rule bites**
+- [x] **Step 2: Prove the rule bites**
 
 Add a throwaway `import { ENV_ANNOTATION } from '../../context/graph/entity-graph.js'` to
 any file under `src/core/`. Run the architecture tests, watch the rule name it, delete it.
 A rule that has never failed has not been tested.
 
-- [ ] **Step 3: Move the symbols**
+- [x] **Step 3: Move the symbols**
 
 Create `src/core/schemas/vocabulary.ts` holding `ENV_ANNOTATION` and the `Vocabulary`
 interface. Have `context/graph/entity-graph.ts` and `context/graph/summary.ts` re-export
 them, so no other file changes and the 306 existing tests stay green.
 
-- [ ] **Step 4: Run everything and commit**
+- [x] **Step 4: Run everything and commit**
 
 ```bash
 pnpm test && pnpm typecheck
