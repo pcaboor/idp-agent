@@ -731,7 +731,7 @@ transitively. So the reading lives in `context/`, and the facts are handed over.
   - `interface ProjectSnapshot { root; files; skipped; truncated }`
   - `function readProject(root: string): Promise<ProjectSnapshot>`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 it('never returns a secret, and says what it skipped', async () => {
@@ -759,9 +759,9 @@ it('stops at the file cap and says it truncated', async () => { ... })
 it('reads a manifest', async () => { ... })
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
-- [ ] **Step 3: Implement, and add the architecture rule**
+- [x] **Step 3: Implement, and add the architecture rule**
 
 `readProject` walks with `readdir`, applies the exclusion list and the three caps, and
 records **every** exclusion with its reason. Add to `tests/architecture`:
@@ -776,7 +776,7 @@ it('only context/iac-fs and context/project-fs read a user repository', async ()
 })
 ```
 
-- [ ] **Step 4: Run everything and commit**
+- [x] **Step 4: Run everything and commit**
 
 ```bash
 git commit -m "feat(context): read an application repository without its secrets"
