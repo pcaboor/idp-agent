@@ -1,4 +1,5 @@
 import type { Entity } from '../schemas/entity.js'
+import { findUnknowns } from '../schemas/plan.js'
 import { ENV_ANNOTATION } from '../schemas/vocabulary.js'
 
 /**
@@ -22,6 +23,18 @@ import { ENV_ANNOTATION } from '../schemas/vocabulary.js'
  * `entitySchema`. Judging that belongs to the rules, which is exactly what
  * `checkRepository` is asked about the virtual snapshot. Here the cast is the
  * seam, admitted: nothing below reads a field the proposal schema did not check.
+ *
+ * THE ONE THING IT DOES REFUSE is a proposal still carrying `{unknown}`. That
+ * is not validation creeping back in; it is the difference between a question
+ * and a value, and this function's whole job is to produce something that gets
+ * SERIALISED. Without the guard, `owner: {unknown: "which team?"}` becomes a
+ * YAML mapping under `owner:` — a question written into a declaration as
+ * though it were an answer.
+ *
+ * Both callers already check: `planEdits` drops an operation that carries one,
+ * and `catalogInfoEdits` relies on ITS caller having checked. The audit's
+ * point (F12) is that relying is not the same as being unable to, and the
+ * cheap end of that is here, in the one function both of them go through.
  */
 export function materialise(entity: unknown): Entity | undefined {
   if (typeof entity !== 'object' || entity === null) return undefined
@@ -39,6 +52,10 @@ export function materialise(entity: unknown): Entity | undefined {
     description?: unknown
   }
   if (typeof name !== 'string') return undefined
+  // Structural, not defensive. See above: a question serialised as a value is
+  // the shape this whole design exists to prevent, and no caller should have
+  // to remember to check.
+  if (findUnknowns(entity).length > 0) return undefined
 
   const annotations: Record<string, string> = {}
   if (typeof env === 'string') annotations[ENV_ANNOTATION] = env

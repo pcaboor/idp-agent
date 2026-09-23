@@ -217,6 +217,47 @@ describe('plan --from', () => {
     expect(await hashTree(root)).toBe(before)
   })
 
+  it('does not report "nothing to change" for a plan that simply did nothing', async () => {
+    // F12's third bullet. A Component is filed in its own repository, so the
+    // engine computes no path for one and `planEdits` drops it — leaving an
+    // empty diff, which the renderer reported as `nothing to change.` on exit
+    // 0. Two opposite facts shared one sentence: the repository already grants
+    // what you asked, and this plan grants nothing. The reasons were printed
+    // underneath, and a reason printed under a sentence that contradicts it is
+    // not saying it.
+    const root = await scaffoldedRepository()
+    const intent =
+      'declare the component billing-api, a service in production owned by group:default/tiger'
+    const from = await planFile(root, {
+      intent,
+      operations: [
+        {
+          op: 'create-entity',
+          entity: {
+            kind: 'Component',
+            metadata: { name: 'billing-api' },
+            spec: {
+              type: 'service',
+              lifecycle: 'production',
+              owner: 'group:default/tiger',
+            },
+          },
+        },
+      ],
+    })
+    const before = await hashTree(root)
+
+    const { code, out } = await run(['plan', '--from', from, '--repo', root])
+
+    expect(code).toBe(3)
+    expect(out).toContain('this plan changes nothing')
+    expect(out).not.toContain('nothing to change')
+    // The reason is still there — this changes which sentence sits above it,
+    // never whether it is reported.
+    expect(out).toContain('the engine computed no path for it')
+    expect(await hashTree(root)).toBe(before)
+  })
+
   it('prints the questions and exits 3, with no diff', async () => {
     // A plan holding an {unknown} cannot be applied, and guessing the owner is
     // precisely what declare-never-infer forbids.

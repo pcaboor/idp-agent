@@ -106,6 +106,8 @@ const WITNESSED = new Set([
 ])
 
 const signature = (over: Partial<SignatureContext> = {}): SignatureContext => ({
+  // A person's own request, which is what every fixture here models.
+  wordsOf: 'user',
   witnessed: WITNESSED,
   vocabulary: VOCABULARY,
   repoRoot: '/repo',

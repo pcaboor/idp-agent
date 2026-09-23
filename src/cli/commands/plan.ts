@@ -264,6 +264,9 @@ function contextsOf(
     owners,
     summary: summarised.summary,
     signature: {
+      // `plan "<intent>"` and `plan --from` both carry the request a person
+      // typed, so the word test stands.
+      wordsOf: 'user',
       witnessed: seed.witnessed ?? new Set(declared.keys()),
       vocabulary,
       repoRoot: root,
@@ -299,6 +302,42 @@ function settled(signed: SignedPlan, recheck: Recheck): string[] {
   return lines.length === 0
     ? ['nothing to change.']
     : ['nothing to change — the repository already says it:', '', ...lines]
+}
+
+/**
+ * Whether an empty diff is an ANSWER or a failure to act, which are two
+ * outcomes that used to share one sentence and one exit code.
+ *
+ * `nothing to change.` on exit 0 says the repository already grants what was
+ * asked for. It is true when the re-check says `already-declared`: the plan
+ * restated a declaration and the bytes it would write are the ones on disk.
+ *
+ * It is NOT true when every operation was dropped instead — a Component the
+ * engine computed no path for, a proposal that could not be read back as an
+ * entity, an update whose target is in no file this plan can see. The reasons
+ * are printed underneath either way, and printing a reason under a sentence
+ * that contradicts it is not saying it: somebody asked for an authorisation,
+ * got exit 0 and the words "nothing to change", and nothing happened.
+ *
+ * `create-catalog-info` is the one drop that is not a failure here, and it is
+ * why this asks the re-check rather than counting dropped operations: its
+ * bytes go to the SERVICE repository, which this preview does not cover, so a
+ * plan carrying one has done what it said even though this diff is empty.
+ */
+const changedNothing = (
+  signed: SignedPlan,
+  dropped: readonly DroppedOperation[],
+  recheck: Recheck | undefined,
+): boolean => {
+  if (recheck === undefined || dropped.length === 0) return false
+  const accounted = new Set<number>()
+  for (const [opIndex, outcome] of recheck.outcomes) {
+    if (outcome === 'already-declared') accounted.add(opIndex)
+  }
+  for (const [opIndex, operation] of signed.plan.operations.entries()) {
+    if (operation.op === 'create-catalog-info') accounted.add(opIndex)
+  }
+  return signed.plan.operations.every((_, opIndex) => !accounted.has(opIndex))
 }
 
 /**
@@ -381,15 +420,25 @@ export function renderPreview(preview: {
   const diff = renderUnifiedDiff(edits)
 
   if (diff === '') {
+    const acted = !changedNothing(signed, dropped, recheck)
     return {
       text: [
-        ...(recheck === undefined ? ['nothing to change.'] : settled(signed, recheck)),
+        ...(acted
+          ? recheck === undefined
+            ? ['nothing to change.']
+            : settled(signed, recheck)
+          : ['this plan changes nothing, and the repository does not already say it:']),
         ...droppedLines(dropped),
         '',
         '0 files · nothing written',
         CLOSING,
       ].join('\n'),
       found: true,
+      // Exit 3 rather than 0: understood, and this build will not act on it.
+      // The run produced no bytes and nothing states the request was already
+      // satisfied, so reporting success would be the one falsehood this tool
+      // must never tell.
+      ...(acted ? {} : { unsupported: true }),
     }
   }
 

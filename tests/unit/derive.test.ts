@@ -46,6 +46,8 @@ const OWNERS: ReadonlyMap<string, string> = new Map(
 const VOCABULARY = summariseGraph(EntityGraph.from([...CATALOGUE])).vocabulary
 
 const context = (over: Partial<SignatureContext> = {}): SignatureContext => ({
+  // A person's own request, which is what every fixture here models.
+  wordsOf: 'user',
   witnessed: new Set(OWNERS.keys()),
   vocabulary: VOCABULARY,
   repoRoot: '/repo',

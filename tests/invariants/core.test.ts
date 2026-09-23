@@ -19,6 +19,7 @@ import {
 import { assertInsideRepo, resolveEntityPath } from '../../src/core/paths/entity-path.js'
 
 const signatureContext = {
+  wordsOf: 'user' as const,
   witnessed: new Set<string>(),
   vocabulary: {
     kinds: ['Component', 'Resource'],

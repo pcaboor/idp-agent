@@ -12,6 +12,16 @@ import { planSchema, type Plan } from '../../src/core/schemas/plan.js'
 import type { GenerateRequest, GenerateResult, LlmClient } from '../../src/llm/client.js'
 
 const context = (over: Partial<SignatureContext> = {}): SignatureContext => ({
+  // A request somebody typed. Added when `wordsOf` was: without it this
+  // fixture silently became engine-composed, and G's first test failed for a
+  // fixture reason rather than because the defect it asserts was closed —
+  // which would have read here as a closure that never happened.
+  wordsOf: 'user',
+  // Likewise: `answered` arrived with the level question in 84fde41, and this
+  // fixture never gained it — so every test here threw on `context.answered`
+  // instead of asserting, and a crash counts as "failing", which in this
+  // folder reads as "closed". The oracle was lying in the safe direction.
+  answered: new Set<string>(),
   witnessed: new Set(['resource:default/orders-db-prod', 'component:default/billing-api']),
   vocabulary: {
     kinds: ['Component', 'Resource'],

@@ -258,12 +258,28 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
   }
 
   const signed = signPlan({ intent: request, operations: narrowed.proposals }, {
+    // `requestOf` wrote this sentence, so it vouches for no word in it — a
+    // Component named `repository-files` used to sign echoed against "declare
+    // this repository ... from what its own files state", which is the engine
+    // vouching for the model with its own prose.
+    //
+    // What the inspection actually READ out of the project stands behind
+    // itself, in `answered`: the same four values the sentence names, and the
+    // same guarantee this block always claimed — a name, type, lifecycle or
+    // owner the Architect invents is vouched for by nothing and becomes a
+    // question.
+    wordsOf: 'engine',
     // Nothing the engine returned, because nothing was read: see the graph
-    // above. Every value is vouched for by the request or by nothing.
+    // above. Every value is vouched for by the inspection or by nothing.
     witnessed: tools.witnessed,
     vocabulary: seeded,
     repoRoot: options.project,
-    declared: new Map(), answered: new Set<string>(),
+    declared: new Map(),
+    answered: new Set(
+      [facts.name, facts.type, facts.lifecycle, facts.owner]
+        .map(stated)
+        .filter((value): value is string => value !== undefined),
+    ),
   })
   if ('outcome' in signed) {
     return {

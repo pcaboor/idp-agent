@@ -12,7 +12,12 @@ const vocabulary = {
   owners: ['group:default/tiger', 'group:default/common'],
 }
 
+/** An `init` repository: nothing read, so nothing enumerated. */
+const EMPTY = { kinds: [], types: [], environments: [], owners: [] }
+
 const context = (over: Partial<SignatureContext> = {}): SignatureContext => ({
+  // A person's own request, which is what every fixture here models.
+  wordsOf: 'user',
   // Both ends of the grant: a right is over something and held by somebody,
   // and in a real repository both are declared before it is written.
   witnessed: new Set(['resource:default/orders-db-prod', 'component:default/billing-api']),
@@ -392,6 +397,92 @@ describe('a closed union is not a vocabulary', () => {
       'derived',
     )
     expect(findUnknowns(firstEver.plan)).toEqual([])
+  })
+})
+
+describe('whose words the request is', () => {
+  const composedByEngine = 'declare this repository in the catalogue, from what its own files state'
+
+  it('vouches for no word of a sentence the engine wrote', () => {
+    // F12. `init` composes that sentence and `signPlan` measures every value
+    // against it, so a Component named `repository-files` signed echoed —
+    // the strongest claim a leaf can carry, "the person asked for it" — on
+    // two words the engine had written about itself.
+    const plan = planSchema.parse({
+      intent: composedByEngine,
+      operations: [
+        {
+          op: 'create-entity',
+          entity: {
+            kind: 'Component',
+            metadata: { name: 'repository-files' },
+            spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
+          },
+        },
+      ],
+    })
+
+    const result = signed(plan, context({ wordsOf: 'engine', vocabulary: EMPTY }))
+
+    expect(
+      result.classified.find((one) => one.path === 'operations.0.entity.metadata.name')?.class,
+    ).toBe('novel')
+  })
+
+  it('still vouches for what the inspection actually read', () => {
+    // The other half, and the reason this is not simply a removal: the four
+    // values an inspection establishes are read out of the project's own
+    // files, and they stand behind themselves through `answered`.
+    const plan = planSchema.parse({
+      intent: composedByEngine,
+      operations: [
+        {
+          op: 'create-entity',
+          entity: {
+            kind: 'Component',
+            metadata: { name: 'billing-api' },
+            spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
+          },
+        },
+      ],
+    })
+
+    const result = signed(
+      plan,
+      context({
+        wordsOf: 'engine',
+        vocabulary: EMPTY,
+        answered: new Set(['billing-api', 'service', 'production', 'group:default/tiger']),
+      }),
+    )
+
+    expect(
+      result.classified.find((one) => one.path === 'operations.0.entity.metadata.name')?.class,
+    ).toBe('echoed')
+    expect(findUnknowns(result.plan)).toEqual([])
+  })
+
+  it('keeps vouching for the words of a person who typed them', () => {
+    // The same name, the same empty catalogue, and a request somebody wrote.
+    const plan = planSchema.parse({
+      intent: 'declare the component billing-api',
+      operations: [
+        {
+          op: 'create-entity',
+          entity: {
+            kind: 'Component',
+            metadata: { name: 'billing-api' },
+            spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
+          },
+        },
+      ],
+    })
+
+    const result = signed(plan, context({ vocabulary: EMPTY }))
+
+    expect(
+      result.classified.find((one) => one.path === 'operations.0.entity.metadata.name')?.class,
+    ).toBe('echoed')
   })
 })
 

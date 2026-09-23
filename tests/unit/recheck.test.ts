@@ -16,6 +16,8 @@ const vocabulary = {
 }
 
 const signature = (over: Partial<SignatureContext> = {}): SignatureContext => ({
+  // A person's own request, which is what every fixture here models.
+  wordsOf: 'user',
   witnessed: new Set(['resource:default/orders-db-prod', 'component:default/billing-api']),
   vocabulary,
   repoRoot: '/repo',

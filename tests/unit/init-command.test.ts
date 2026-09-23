@@ -256,6 +256,45 @@ describe('init, per application', () => {
     expect(await hashTree(project)).toBe(before)
   })
 
+  it('does not let its own sentence vouch for a name the inspection never read', async () => {
+    // F12. `requestOf` composes "declare this repository in the catalogue,
+    // from what its own files state", and `signPlan` measures every value
+    // against the intent — so a Component named `repository-files` signed
+    // ECHOED, the claim that means "the person asked for it", on two words the
+    // engine had written about itself.
+    //
+    // The inspection read `billing-api`. Anything else the Architect writes
+    // into that field is now vouched for by nothing and becomes a question,
+    // which is the guarantee this command has always claimed to make.
+    const project = await application()
+    const before = await hashTree(project)
+    const client = drafting([
+      {
+        ...COMPONENT,
+        entity: { ...COMPONENT.entity, metadata: { name: 'repository-files' } },
+      },
+    ])
+
+    const result = await runInitRepo({ project, client, emit: () => {} })
+
+    expect(result.text).toContain('metadata.name')
+    expect(result.text).not.toContain('+++ b/catalog-info.yaml')
+    expect(await hashTree(project)).toBe(before)
+  })
+
+  it('still writes the name the inspection did read', async () => {
+    // The other half: `answered` carries what the project's own files state,
+    // so the four values an inspection establishes still stand behind
+    // themselves and the ordinary run is unchanged.
+    const project = await application()
+    const client = drafting([COMPONENT])
+
+    const result = await runInitRepo({ project, client, emit: () => {} })
+
+    expect(result.text).toContain('+++ b/catalog-info.yaml')
+    expect(result.text).toContain('billing-api')
+  })
+
   it('refuses anything that is not this repository’s own declaration', async () => {
     // "Restricted to create-catalog-info" is structural: the engine can only
     // mint that operation out of a Component, so a Resource has nowhere to go.
