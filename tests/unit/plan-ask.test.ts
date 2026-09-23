@@ -244,7 +244,7 @@ describe('plan "<intent>" asks, and carries on with the answer', () => {
       // The round that ended on the question: the three free gates, and no
       // round-trip was ever paid for it.
       ['zod', 'signature', 'policy'],
-      ['zod', 'signature', 'policy', 'reviewer', 'recheck'],
+      ['zod', 'signature', 'policy', 'recheck', 'reviewer'],
     ])
     // `echoed`, and that is the claim being made: the user said it. Not
     // `enumerated` — a fresh repository enumerates no owner at all.

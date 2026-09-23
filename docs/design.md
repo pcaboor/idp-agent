@@ -152,7 +152,7 @@ for into a question rather than a value.
                         ═══ Plan (JSON) ═══   ◄── the write crossing
                                  │
 ┌────────────────────────────────┼──────── DETERMINISTIC ZONE ──────┐
-│  Zod ─► signature ─► policies ─► Reviewer ─► re-check ─► Diff     │
+│  Zod ─► signature ─► policies ─► re-check ─► Reviewer ─► Diff     │
 │    │                                                        │     │
 │    └── failure ──► report ──► back to Architect (3 max)     │     │
 │                                                             ▼     │
@@ -351,16 +351,25 @@ in this section before it was a gate; it is one now, and the CLI names it by tha
 it refuses, so it is numbered here too.
 
 ```
-Plan ─► [1] Zod ─► [2] signature ─► [3] policies ─► [4] Reviewer ─► [5] re-check ─► Diff
+Plan ─► [1] Zod ─► [2] signature ─► [3] policies ─► [4] re-check ─► [5] Reviewer ─► Diff
           │             │                │               │              │
           └─────────────┴────────────────┴───────────────┴──────────────┘
                           structured report ─► Architect
                               (3 attempts maximum)
 ```
 
-The three free gates run first, and that ordering is not tidiness: gates [1] to [3] cost
+The four free gates run first, and that ordering is not tidiness: gates [1] to [4] cost
 nothing, so a draft that cannot survive them never reaches the one gate that spends a
 model call.
+
+The re-check was last until it was measured. It sat there because it is the only gate
+whose answer can go stale — but nothing goes stale inside one repair loop: the snapshot
+and the bytes are read once, before the Inspector runs, and never re-read. What the old
+order cost is in a recorded scenario: `link-already-declared` paid three Reviewer
+round-trips for three approvals, each followed by a re-check refusal the free gate could
+have delivered first. Moving it earlier costs a preview computed for a plan the Reviewer
+might reject — bytes in memory against a paid call — and buys something besides: the
+Reviewer now judges a plan that **would land**, rather than one that merely parses.
 
 Past three attempts: clean stop, partial plan shown with the reason. No file is written.
 
