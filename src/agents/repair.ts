@@ -3,14 +3,17 @@ import { deriveOwners, type DerivedOwner } from '../core/plan/derive.js'
 import { planEdits, type DroppedOperation } from '../core/plan/edits.js'
 import { checkPolicies, type PolicyContext } from '../core/plan/policies.js'
 import { recheckPlan, type Recheck } from '../core/plan/recheck.js'
+import { declaredLevel } from '../core/plan/grant.js'
 import { signPlan, type SignatureContext, type SignedPlan } from '../core/plan/sign.js'
 import type { FileEdit } from '../core/diff/unified.js'
+import type { Entity } from '../core/schemas/entity.js'
 import { planSchema, type Plan } from '../core/schemas/plan.js'
 import { reasonOf } from '../core/schemas/reject.js'
+import { ENV_ANNOTATION } from '../core/schemas/vocabulary.js'
 import type { RepositorySnapshot } from '../core/validate/rules.js'
 import type { ArchitectOutcome } from './architect.js'
 import type { EventSink } from './events.js'
-import type { Verdict } from './reviewer.js'
+import type { OperationEffect, UpdateTarget, Verdict } from './reviewer.js'
 
 /**
  * The repair loop of design §6.1, and it is **plain TypeScript**.
@@ -50,6 +53,19 @@ export const REPAIR_LIMITS = { maxAttempts: 3 } as const
  * would be a gate nobody can see from the stream.
  */
 export type Gate = 'zod' | 'signature' | 'policy' | 'reviewer' | 'recheck'
+
+/**
+ * What the engine established about a plan, handed to the gate that judges it.
+ *
+ * One object rather than three arguments, because the list grew once already
+ * and will again: a new fact should break every caller's build, not slip in
+ * behind a default.
+ */
+export interface ReviewFacts {
+  readonly derived: readonly DerivedOwner[]
+  readonly targets: readonly UpdateTarget[]
+  readonly effects: readonly OperationEffect[]
+}
 
 export interface RepairAttempt {
   readonly attempt: 1 | 2 | 3
@@ -133,15 +149,19 @@ export interface RepairInput {
    * the caller cannot make by accident.
    */
   /**
-   * Gate [4]. Takes the derivations as well as the plan: a derived owner is a
-   * fact the engine computed, and a Reviewer that cannot tell it from a value
-   * the model chose refuses arithmetic — which it did, three attempts a run.
-   * Facts, never reasoning; the independence rule is unchanged.
+   * Gate [5]. Takes the engine's facts as well as the plan, in one object so
+   * that adding a fact is a change this signature forces every caller to make
+   * rather than one they can forget.
+   *
+   * Every field is something the ENGINE established: a derived owner, what the
+   * snapshot declares about an update's target, what the preview says each
+   * operation would do. None of it is the Architect's reasoning, which is the
+   * independence rule and is unchanged. The reason it matters was measured:
+   * without the derivations the Reviewer refused arithmetic three attempts a
+   * run, and without the other two it judged an authorisation with the
+   * authorisation withheld.
    */
-  readonly review: (
-    plan: Plan,
-    derived: readonly DerivedOwner[],
-  ) => Promise<Verdict>
+  readonly review: (plan: Plan, facts: ReviewFacts) => Promise<Verdict>
   readonly signature: SignatureContext
   readonly policy: PolicyContext
   /**
@@ -425,7 +445,11 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
     // stands. The question it answers is the one none of them can ask — is
     // this what was asked for.
     gates.push('reviewer')
-    const verdict = await input.review(signed.plan, derivation.derived)
+    const verdict = await input.review(signed.plan, {
+      derived: derivation.derived,
+      targets: targetsOf(signed.plan, input.snapshot),
+      effects: effectsOf(signed.plan, dropped, recheck),
+    })
     if (verdict.verdict === 'no-opinion') {
       // No opinion is not a rejection, and repairing is not the answer to it.
       // Nobody found fault with this plan — nobody read it — so handing the
@@ -472,4 +496,68 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
     truncated,
     rejections,
   }
+}
+
+
+/**
+ * What the repository declares about every entity an `update-entity` targets.
+ *
+ * Read off the snapshot rather than the plan, because the plan is what a model
+ * proposed and this is what is already true. An operation whose target the
+ * repository does not declare contributes no line: `planEdits` drops it by
+ * name a moment later, and inventing a row of blanks for it would tell a
+ * reviewer that a grant exists with nothing stated about it.
+ */
+function targetsOf(plan: Plan, snapshot: RepositorySnapshot): UpdateTarget[] {
+  const declares = new Map<string, Entity>()
+  for (const file of snapshot.files) {
+    for (const entity of file.entities) {
+      declares.set(`${entity.kind.toLowerCase()}:default/${entity.metadata.name}`, entity)
+    }
+  }
+
+  const targets: UpdateTarget[] = []
+  for (const [opIndex, operation] of plan.operations.entries()) {
+    if (operation.op !== 'update-entity') continue
+    const entity = declares.get(operation.entityRef)
+    if (entity === undefined) continue
+    targets.push({
+      opIndex,
+      entityRef: operation.entityRef,
+      level: declaredLevel(entity),
+      environment: entity.metadata.annotations[ENV_ANNOTATION],
+      owner: entity.spec.owner,
+      consumers: entity.kind === 'Resource' ? (entity.spec.dependencyOf ?? []) : [],
+    })
+  }
+  return targets
+}
+
+/**
+ * One line per operation, saying what it would do — including the ones that do
+ * nothing.
+ *
+ * `dropped` wins over the re-check outcome when both speak: an operation that
+ * produced no bytes has no outcome worth reporting beyond the reason it
+ * produced none. An operation neither mentions is one that writes what it
+ * says, which is stated rather than left as the absence of a line.
+ */
+function effectsOf(
+  plan: Plan,
+  dropped: readonly DroppedOperation[],
+  recheck: Recheck,
+): OperationEffect[] {
+  const reasons = new Map(dropped.map((one) => [one.opIndex, one.reason]))
+  return plan.operations.map((_, opIndex) => {
+    const reason = reasons.get(opIndex)
+    if (reason !== undefined) return { opIndex, effect: `writes nothing: ${reason}` }
+    const outcome = recheck.outcomes.get(opIndex)
+    if (outcome === 'already-declared') {
+      return { opIndex, effect: 'changes nothing: the repository already declares it' }
+    }
+    if (outcome === 'moved') {
+      return { opIndex, effect: 'names an entity the repository declares in another file' }
+    }
+    return { opIndex, effect: 'would be written to the repository' }
+  })
 }

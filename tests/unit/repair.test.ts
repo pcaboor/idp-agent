@@ -7,6 +7,7 @@ import {
   type Gate,
   type RepairInput,
   type RepairOutcome,
+  type ReviewFacts,
 } from '../../src/agents/repair.js'
 import { reviewPlan, VERDICT_TOOL, type Verdict } from '../../src/agents/reviewer.js'
 import { buildTools } from '../../src/agents/tools/graph-tools.js'
@@ -202,6 +203,20 @@ const bytesOf = (snapshot: RepositorySnapshot): ReadonlyMap<string, string> =>
     ]),
   )
 
+/** The same access, as the repository would already hold it. */
+const DECLARED_ACCESS: Entity = {
+  apiVersion: 'backstage.io/v1alpha1',
+  kind: 'Resource',
+  metadata: { name: 'billing-api-orders-db-prod', annotations: { [ENV_ANNOTATION]: 'prod' } },
+  spec: {
+    type: 'database-access',
+    access: 'read',
+    owner: 'group:default/tiger',
+    dependsOn: ['resource:default/orders-db-prod'],
+    dependencyOf: ['component:default/billing-api'],
+  },
+}
+
 /** The access declaration a sound draft proposes. */
 const ACCESS = {
   kind: 'Resource',
@@ -306,12 +321,17 @@ const drafting = (
 }
 
 /** The Reviewer, likewise — and it counts, because its verdict costs a round-trip. */
-const reviewing = (verdict: Verdict): { review: RepairInput['review']; seen: Plan[] } => {
+const reviewing = (
+  verdict: Verdict,
+): { review: RepairInput['review']; seen: Plan[]; facts: ReviewFacts[] } => {
   const seen: Plan[] = []
+  const facts: ReviewFacts[] = []
   return {
     seen,
-    review: async (plan: Plan): Promise<Verdict> => {
+    facts,
+    review: async (plan: Plan, given: ReviewFacts): Promise<Verdict> => {
       seen.push(plan)
+      facts.push(given)
       return verdict
     },
   }
@@ -716,8 +736,8 @@ describe('wired to the agents it calls back into', () => {
               { intent: INTENT, facts: FACTS, summary: 'si:\n  entities: 2', vocabulary: '' },
               emit,
             ),
-          review: (plan, derived) =>
-            reviewPlan(reviewer, { plan, intent: INTENT, derived }, emit),
+          review: (plan, facts) =>
+            reviewPlan(reviewer, { plan, intent: INTENT, ...facts }, emit),
         }),
         emit,
       ),
@@ -943,5 +963,119 @@ describe('the free gate runs before the paid one', () => {
 
     expect(reviewer.seen).toHaveLength(1)
     expect(outcome.attempts[0]?.gates).toEqual(ORDER)
+  })
+
+  it('hands it what the SNAPSHOT says about an update target, not what the plan says', async () => {
+    // F9, from the side that matters: these facts are read off the repository
+    // by the engine. A fact that arrived through the model would be the
+    // Architect's claim wearing the engine's clothes, and this gate exists
+    // because the two cannot be told apart once they are in one document.
+    const grant: Entity = {
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Resource',
+      metadata: {
+        name: 'billing-api-orders-db-prod',
+        annotations: { [ENV_ANNOTATION]: 'prod' },
+      },
+      spec: {
+        type: 'database-access',
+        access: 'readwrite',
+        owner: 'group:default/lynx',
+        dependsOn: ['resource:default/orders-db-prod'],
+        dependencyOf: ['component:default/checkout-web'],
+      },
+    }
+    const holding: RepositorySnapshot = {
+      ...SNAPSHOT,
+      // Filed where the engine computes, or `misplaced-entity` refuses the
+      // plan before the Reviewer is reached at all.
+      files: [
+        ...SNAPSHOT.files,
+        fileHolding('dependencies/access/billing-api-orders-db-prod.yml', grant),
+      ],
+    }
+    const join: Plan = planSchema.parse({
+      intent: INTENT,
+      operations: [
+        {
+          op: 'update-entity',
+          entityRef: 'resource:default/billing-api-orders-db-prod',
+          patch: {
+            patch: 'add-dependency-of',
+            consumer: 'component:default/billing-api',
+            access: 'readwrite',
+          },
+        },
+      ],
+    })
+    const reviewer = reviewing({ verdict: 'ok' })
+    const { emit } = collect()
+
+    await repair(
+      inputs({
+        draft: drafting(join).draft,
+        snapshot: holding,
+        contents: bytesOf(holding),
+        review: reviewer.review,
+        policy: policy({
+          levels: new Map([['resource:default/billing-api-orders-db-prod', 'readwrite']]),
+          natures: new Map<string, Nature>([
+            ['resource:default/billing-api-orders-db-prod', 'right'],
+          ]),
+          environments: new Map([
+            ['resource:default/billing-api-orders-db-prod', 'prod'],
+            ['component:default/billing-api', 'prod'],
+          ]),
+        }),
+        signature: signature({
+          witnessed: new Set([
+            'resource:default/billing-api-orders-db-prod',
+            'component:default/billing-api',
+          ]),
+          // The level is asked, never read out of the request, so a fixture
+          // that wants to reach gate [5] answers for it — and the answer is
+          // the level this grant declares, because an update hands over what
+          // the grant already grants.
+          answered: new Set(['readwrite']),
+        }),
+      }),
+      emit,
+    )
+
+    // Every fact comes from the entity on disk: the level it grants, where it
+    // is scoped, who owns it, and who already holds it — none of which the
+    // operation carries.
+    expect(reviewer.facts[0]?.targets).toEqual([
+      {
+        opIndex: 0,
+        entityRef: 'resource:default/billing-api-orders-db-prod',
+        level: 'readwrite',
+        environment: 'prod',
+        owner: 'group:default/lynx',
+        consumers: ['component:default/checkout-web'],
+      },
+    ])
+  })
+
+  it('hands it an operation that would change nothing, said as such', async () => {
+    // The plan is a creation the repository has already made, so the preview
+    // produces bytes identical to the ones on disk. Before F10 this gate ran
+    // first and could approve it as though it did something.
+    const declared: RepositorySnapshot = {
+      ...SNAPSHOT,
+      files: [
+        ...SNAPSHOT.files,
+        fileHolding('dependencies/access/billing-api-orders-db-prod.yml', DECLARED_ACCESS),
+      ],
+    }
+    const reviewer = reviewing({ verdict: 'ok' })
+    const { emit } = collect()
+
+    await repair(
+      inputs({ snapshot: declared, contents: bytesOf(declared), review: reviewer.review }),
+      emit,
+    )
+
+    expect(reviewer.facts[0]?.effects[0]?.effect).toContain('already declares it')
   })
 })

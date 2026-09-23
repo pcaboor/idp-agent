@@ -142,7 +142,7 @@ describe('the Reviewer is not an echo', () => {
     // Architect's own reasoning turns a second opinion into an echo — and this
     // one holds a veto.
     const client = capturing([turnCalling(VERDICT_TOOL, { verdict: 'ok' })])
-    await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [] }, () => {})
+    await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [], targets: [], effects: [] }, () => {})
 
     const sent = sentTo(client).toLowerCase()
     expect(client.seen).toHaveLength(1)
@@ -156,7 +156,7 @@ describe('the Reviewer is not an echo', () => {
     // the tools too: a read tool is one more channel for something that is not
     // the plan to reach the gate that can veto it.
     const client = capturing([turnCalling(VERDICT_TOOL, { verdict: 'ok' })])
-    await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [] }, () => {})
+    await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [], targets: [], effects: [] }, () => {})
 
     expect(client.seen.map((request) => request.tools.map((spec) => spec.name))).toEqual([
       [VERDICT_TOOL],
@@ -168,7 +168,7 @@ describe('the Reviewer is not an echo', () => {
     // operations would be one field away from hiding the field that matters —
     // an environment nobody named is a line in an operation.
     const client = capturing([turnCalling(VERDICT_TOOL, { verdict: 'ok' })])
-    await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [] }, () => {})
+    await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [], targets: [], effects: [] }, () => {})
 
     const sent = sentTo(client)
     expect(sent).toContain('billing-api-orders-db-prod')
@@ -248,7 +248,7 @@ describe('what this gate judges', () => {
     const { events, emit } = collect()
 
     expect(
-      await reviewPlan(client, { plan: WIDER, intent: READ_INTENT, derived: [] }, emit),
+      await reviewPlan(client, { plan: WIDER, intent: READ_INTENT, derived: [], targets: [], effects: [] }, emit),
     ).toEqual({ verdict: 'reject', reason })
     expect(sentTo(client)).toContain('readwrite')
     expect(events.find((event) => event.type === 'refused')).toEqual({
@@ -258,9 +258,87 @@ describe('what this gate judges', () => {
     })
   })
 
+  it('is told what the repository says about the grant an update would extend', async () => {
+    // F9: an update names its target by REFERENCE and carries no entity, so
+    // the operations JSON for one is `{op, entityRef, patch}` and nothing
+    // more. Asked "is this what was requested" about a grant whose level,
+    // environment, owner and current holders it cannot see, the Reviewer was
+    // judging an authorisation with the authorisation withheld — and an
+    // `add-dependency-of` hands over exactly those facts.
+    const client = capturing([turnCalling(VERDICT_TOOL, { verdict: 'ok' })])
+
+    await reviewPlan(
+      client,
+      {
+        plan: PLAN,
+        intent: INTENT,
+        derived: [],
+        targets: [
+          {
+            opIndex: 0,
+            entityRef: 'resource:default/billing-api-orders-db-prod',
+            level: 'readwrite',
+            environment: 'prod',
+            owner: 'group:default/tiger',
+            consumers: ['component:default/checkout-web'],
+          },
+        ],
+        effects: [],
+      },
+      () => {},
+    )
+
+    const sent = sentTo(client)
+    expect(sent).toContain('it grants readwrite')
+    expect(sent).toContain('it is scoped to prod')
+    expect(sent).toContain('group:default/tiger owns it')
+    expect(sent).toContain('already held by component:default/checkout-web')
+  })
+
+  it('is told when an operation would change nothing at all', async () => {
+    // The other half of F9. This gate used to run BEFORE the preview existed,
+    // so it could approve a plan whose only operation produces no bytes —
+    // which is what an "empty diff, exit 0" run is. F10 moved the free gate
+    // first so these facts exist by the time this one runs; this is what that
+    // bought, and an operation that changes nothing is the difference between
+    // a request satisfied and a request silently ignored.
+    const client = capturing([turnCalling(VERDICT_TOOL, { verdict: 'ok' })])
+
+    await reviewPlan(
+      client,
+      {
+        plan: PLAN,
+        intent: INTENT,
+        derived: [],
+        targets: [],
+        effects: [{ opIndex: 0, effect: 'changes nothing: the repository already declares it' }],
+      },
+      () => {},
+    )
+
+    expect(sentTo(client)).toContain('operations.0 changes nothing')
+  })
+
+  it('says nothing about facts it was given none of', async () => {
+    // A plan of creations targets no existing entity, so there is no line
+    // about one. An empty section is left out rather than printed as a
+    // heading with nothing under it: a reviewer reading "what is already
+    // declared:" followed by nothing has been told something false.
+    const client = capturing([turnCalling(VERDICT_TOOL, { verdict: 'ok' })])
+
+    await reviewPlan(
+      client,
+      { plan: PLAN, intent: INTENT, derived: [], targets: [], effects: [] },
+      () => {},
+    )
+
+    expect(sentTo(client)).not.toContain('already declared about')
+    expect(sentTo(client)).not.toContain('what each operation would do')
+  })
+
   it('is told to judge all of what was asked, and nothing beyond it', async () => {
     const client = capturing([turnCalling(VERDICT_TOOL, { verdict: 'ok' })])
-    await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [] }, () => {})
+    await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [], targets: [], effects: [] }, () => {})
 
     const system = toldTo(client)
     expect(system).toContain('all of it, and nothing more')
@@ -284,7 +362,7 @@ describe('what this gate judges', () => {
     const { emit } = collect()
 
     expect(
-      await reviewPlan(client, { plan: DERIVED_PLAN, intent: INTENT, derived: DERIVED }, emit),
+      await reviewPlan(client, { plan: DERIVED_PLAN, intent: INTENT, derived: DERIVED, targets: [], effects: [] }, emit),
     ).toEqual({ verdict: 'ok' })
 
     const sent = sentTo(client)
@@ -308,7 +386,7 @@ describe('what this gate judges', () => {
     // type and the name (design 5.2). A second opinion re-checking them costs
     // a paid attempt to restate what ran for free.
     const client = capturing([turnCalling(VERDICT_TOOL, { verdict: 'ok' })])
-    await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [] }, () => {})
+    await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [], targets: [], effects: [] }, () => {})
 
     const system = toldTo(client)
     expect(system).toContain('do not re-check')
@@ -322,7 +400,7 @@ describe('what this gate judges', () => {
     // what would be the earlier gate's reasoning arriving by another door, and
     // this gate holds a veto over the agent whose reasoning it would be.
     const client = capturing([turnCalling(VERDICT_TOOL, { verdict: 'ok' })])
-    await reviewPlan(client, { plan: DERIVED_PLAN, intent: INTENT, derived: DERIVED }, () => {})
+    await reviewPlan(client, { plan: DERIVED_PLAN, intent: INTENT, derived: DERIVED, targets: [], effects: [] }, () => {})
 
     const system = toldTo(client)
     for (const leak of ['architect', 'attempt', 'repair', 'violation', 'signature', 'policy']) {
@@ -343,7 +421,7 @@ describe('reviewPlan', () => {
     const client = scripted([turnCalling(VERDICT_TOOL, { verdict: 'ok' })])
     const { events, emit } = collect()
 
-    expect(await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [] }, emit)).toEqual({
+    expect(await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [], targets: [], effects: [] }, emit)).toEqual({
       verdict: 'ok',
     })
     expect(client.calls).toBe(1)
@@ -360,7 +438,7 @@ describe('reviewPlan', () => {
     const client = scripted([turnCalling(VERDICT_TOOL, { verdict: 'reject', reason })])
     const { events, emit } = collect()
 
-    expect(await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [] }, emit)).toEqual({
+    expect(await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [], targets: [], effects: [] }, emit)).toEqual({
       verdict: 'reject',
       reason,
     })
@@ -378,7 +456,7 @@ describe('reviewPlan', () => {
     ])
     const { events, emit } = collect()
 
-    expect(await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [] }, emit)).toEqual({
+    expect(await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [], targets: [], effects: [] }, emit)).toEqual({
       verdict: 'ok',
     })
     expect(client.calls).toBe(2)
@@ -401,7 +479,7 @@ describe('reviewPlan', () => {
     ])
     const { events, emit } = collect()
 
-    expect(await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [] }, emit)).toEqual({
+    expect(await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [], targets: [], effects: [] }, emit)).toEqual({
       verdict: 'reject',
       reason,
     })
@@ -414,7 +492,7 @@ describe('reviewPlan', () => {
     )
     const { emit } = collect()
 
-    const verdict = await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [] }, emit)
+    const verdict = await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [], targets: [], effects: [] }, emit)
 
     expect(client.calls).toBe(REVIEWER_LIMITS.maxTurns + MAX_REPAIRS)
     // Twenty malformed verdicts are not twenty rejections: no verdict ever
@@ -443,7 +521,7 @@ describe('reviewPlan', () => {
     }
     const { emit } = collect()
 
-    expect(await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [] }, emit)).toEqual({
+    expect(await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [], targets: [], effects: [] }, emit)).toEqual({
       verdict: 'ok',
     })
     expect(seen).toContainEqual({ tool: VERDICT_TOOL })
@@ -459,7 +537,7 @@ describe('a review that did not happen is not an approval', () => {
     const client = scripted([saying('the plan seems reasonable to me')])
     const { events, emit } = collect()
 
-    const verdict = await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [] }, emit)
+    const verdict = await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [], targets: [], effects: [] }, emit)
     // Its OWN member of the union, not a flavour of rejection. Collapsed into
     // `reject`, a review that never happened read as one that refused: the
     // repair loop spent all three paid attempts on a plan nobody had found
@@ -477,7 +555,7 @@ describe('a review that did not happen is not an approval', () => {
     const client = scripted([saying('x'.repeat(5_000))])
     const { emit } = collect()
 
-    const verdict = await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [] }, emit)
+    const verdict = await reviewPlan(client, { plan: PLAN, intent: INTENT, derived: [], targets: [], effects: [] }, emit)
 
     expect(verdict.verdict).toBe('no-opinion')
     const reason = 'reason' in verdict ? verdict.reason : ''
@@ -494,7 +572,7 @@ describe('a review that did not happen is not an approval', () => {
     }
     const { events, emit } = collect()
 
-    await expect(reviewPlan(exploding, { plan: PLAN, intent: INTENT, derived: [] }, emit)).rejects.toThrow('502')
+    await expect(reviewPlan(exploding, { plan: PLAN, intent: INTENT, derived: [], targets: [], effects: [] }, emit)).rejects.toThrow('502')
 
     expect(events.map((event) => event.type)).toEqual(['agent:start', 'refused'])
     expect(reasonOf(events.find((event) => event.type === 'refused'))).toContain('502')
