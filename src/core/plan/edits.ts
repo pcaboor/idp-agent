@@ -2,12 +2,8 @@ import type { FileEdit } from '../diff/unified.js'
 import type { Entity } from '../schemas/entity.js'
 import { findUnknowns } from '../schemas/plan.js'
 import { parseDocuments, serializeEntity } from '../yaml/serialize.js'
-import {
-  appendSequenceItem,
-  insertDocument,
-  listDocumentNames,
-  SurgeryError,
-} from '../yaml/surgery.js'
+import { appendSequenceItem, insertDocument, SurgeryError } from '../yaml/surgery.js'
+import { declaredLevel, proposedLevel, restates, statedAs } from './grant.js'
 import { materialise } from './materialise.js'
 import type { SignedPlan } from './sign.js'
 
@@ -113,13 +109,51 @@ export function planEdits(signed: SignedPlan, before: ReadonlyMap<string, string
       }
 
       const existing = contentOf(path)
-      const declared =
-        existing !== undefined && listDocumentNames(existing).includes(entity.metadata.name)
-      // Already declared there: an edit whose two sides are equal, so the diff
-      // comes out empty rather than absent. "Nothing to do" and "the operation
-      // was dropped" are different answers, and the caller has to tell them
-      // apart — absent means already done (§4.3), but only if it is visible.
-      touch(path, declared ? existing : insertDocument(existing ?? '', serializeEntity(entity)))
+      // Parsed and resolved by REFERENCE, the same way `declaredAt` above is
+      // and for the same reason: a name is not a reference, and a document the
+      // entity schema refuses is not a declaration of anything —
+      // `checkRepository` is what reports that.
+      const there =
+        existing === undefined
+          ? undefined
+          : parseDocuments(existing).entities.find(
+              (candidate) => refOf(candidate) === refOf(entity),
+            )
+
+      // Already declared there means the file states the same GRANT, never
+      // merely a document of the same name. Asked by name, a plan stating
+      // `read` against a file granting `readwrite` produced an edit whose two
+      // sides were equal — an empty diff, and a run reporting "the repository
+      // already says it" about the opposite authorisation.
+      //
+      // When the levels disagree there is no honest edit to show: appending
+      // cannot rewrite a scalar (§4.3), so the operation produces no bytes and
+      // NAMES the two levels. The `declared-level-mismatch` policy refuses
+      // such a plan before a preview is offered at all; this is the same fact
+      // where the bytes are computed, so a caller reaching here without that
+      // gate still cannot be told "nothing to change".
+      if (there !== undefined && !restates(there, operation.entity)) {
+        dropped.push({
+          opIndex,
+          reason:
+            `${path} already declares ${refOf(entity)} and ${statedAs(declaredLevel(there))}, ` +
+            `while this plan ${statedAs(proposedLevel(operation.entity))}; a level is not ` +
+            `something an append can rewrite`,
+        })
+        continue
+      }
+
+      // Already declared, identically: an edit whose two sides are equal, so
+      // the diff comes out empty rather than absent. "Nothing to do" and "the
+      // operation was dropped" are different answers, and the caller has to
+      // tell them apart — absent means already done (§4.3), but only if it is
+      // visible.
+      touch(
+        path,
+        there !== undefined && existing !== undefined
+          ? existing
+          : insertDocument(existing ?? '', serializeEntity(entity)),
+      )
       // Declared by THIS plan now, so a later operation can patch it. Without
       // this an update naming an entity the same plan creates was dropped in
       // silence, and the preview showed the creation without the grant.
@@ -153,6 +187,15 @@ export function planEdits(signed: SignedPlan, before: ReadonlyMap<string, string
         // for the same reason a re-declared entity does — and refuses loudly
         // on a shape it cannot edit textually, which is caught here so one
         // unamendable file does not lose the rest of the plan.
+        //
+        // `patch.access` writes NOTHING, and that is not an oversight. §5.3
+        // put the level in the operation so the signature can classify it and
+        // `declared-level-mismatch` can compare it to the declaration; it is a
+        // claim about the grant being extended, and the grant already states
+        // its level. Appending cannot rewrite that scalar (§4.3), so the level
+        // is also the one thing this edit cannot show a reviewer: `access:`
+        // sits further from the inserted line than the three lines of context
+        // a hunk carries, and it stays an unchanged line.
         touch(path, appendSequenceItem(existing, name, 'dependencyOf', operation.patch.consumer))
       } catch (error) {
         if (!(error instanceof SurgeryError)) throw error

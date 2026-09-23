@@ -110,9 +110,14 @@ function composed(
 
 function enumerated(vocabulary: Vocabulary, path: string, value: string): boolean {
   if (path.endsWith('.owner')) return vocabulary.owners.includes(value)
-  // No `.type` either: it is structural, classified above, and reaching here
-  // would measure a closed union against a list of what the repository has
-  // happened to use.
+  // A COMPONENT's type, and only a Component's. A Resource's is the closed
+  // union and never reaches here — the structural branch takes it, and
+  // measuring it against a list of what the repository has happened to use is
+  // the circular block that branch exists to avoid. A Component's is
+  // `z.string().min(1).max(63)`, so the same list is the only thing that can
+  // say a service type was already in use rather than composed: `summariseGraph`
+  // maps `spec.type` over EVERY entity, Components included.
+  if (path.endsWith('.type')) return vocabulary.types.includes(value)
   // Deliberately no `.env`. An environment is the one field where "the
   // catalogue already uses this value" is not provenance: `prod` always
   // exists, so enumerating it would let a model pick production for a request
@@ -127,6 +132,15 @@ interface Frame {
   readonly value: unknown
   readonly path: string
   readonly opIndex: number
+  /**
+   * The `kind` the nearest enclosing entity states, or undefined above one.
+   *
+   * It decides one thing: whether `spec.type` is the closed union or free
+   * text. Carried on the frame rather than read off the path, because a path
+   * says where a leaf sits and not what declares it — `operations.0.entity`
+   * is a Resource in one plan and a Component in the next.
+   */
+  readonly kind: string | undefined
 }
 
 /**
@@ -143,6 +157,7 @@ export function signPlan(plan: Plan, context: SignatureContext): SignedPlan | Pl
     value: operation,
     path: `operations.${index}`,
     opIndex: index,
+    kind: undefined,
   }))
   let nodes = 0
 
@@ -158,7 +173,7 @@ export function signPlan(plan: Plan, context: SignatureContext): SignedPlan | Pl
       }
     }
 
-    const { value, path, opIndex } = frame
+    const { value, path, opIndex, kind } = frame
 
     if (isUnknown(value)) {
       // Already a question. Nothing to vouch for, nothing to refuse.
@@ -168,14 +183,20 @@ export function signPlan(plan: Plan, context: SignatureContext): SignedPlan | Pl
 
     if (Array.isArray(value)) {
       for (const [index, item] of value.entries()) {
-        stack.push({ value: item, path: `${path}.${index}`, opIndex })
+        stack.push({ value: item, path: `${path}.${index}`, opIndex, kind })
       }
       continue
     }
 
     if (typeof value === 'object' && value !== null) {
+      // An entity states its own kind, and every leaf below inherits that
+      // statement. Read off the object rather than off the path so a proposal
+      // nested one level deeper — `create-catalog-info` carries its entity the
+      // same way — needs no second rule.
+      const stated = (value as { kind?: unknown }).kind
+      const inherited = typeof stated === 'string' ? stated : kind
       for (const [key, nested] of Object.entries(value)) {
-        stack.push({ value: nested, path: `${path}.${key}`, opIndex })
+        stack.push({ value: nested, path: `${path}.${key}`, opIndex, kind: inherited })
       }
       continue
     }
@@ -188,17 +209,30 @@ export function signPlan(plan: Plan, context: SignatureContext): SignedPlan | Pl
       path.endsWith('.op') ||
       path.endsWith('.patch') ||
       path.endsWith('.kind') ||
-      path.endsWith('.type')
+      (path.endsWith('.type') && kind === 'Resource')
     ) {
       // Structural: the closed union already decided these.
       //
-      // `.type` joined them because measuring it against the vocabulary — what
-      // the repository ALREADY uses — made the FIRST access of a repository
-      // unproposable: no access exists, so `database-access` is in no
-      // vocabulary, so it is a question, so no access is ever written. It is
-      // `z.enum(RESOURCE_TYPE_NAMES)`, and a type outside that union is
+      // A RESOURCE's `.type` joined them because measuring it against the
+      // vocabulary — what the repository ALREADY uses — made the FIRST access
+      // of a repository unproposable: no access exists, so `database-access` is
+      // in no vocabulary, so it is a question, so no access is ever written. It
+      // is `z.enum(RESOURCE_TYPE_NAMES)`, and a type outside that union is
       // refused by the schema before the signature sees it, so asking where it
       // came from has one answer: the union.
+      //
+      // **A COMPONENT's is not, and the condition is `kind` for that reason.**
+      // `proposedComponentSchema.spec.type` is `or(z.string().min(1).max(63))`
+      // — Backstage's own `spec.type` on a Component is conventional, not
+      // closed, and `componentSchema` reads `z.string().min(1)` off a
+      // repository that already exists, which `validate` may not invalidate.
+      // So the branch was vouching for 63 characters a model composed: the one
+      // free-text field in a proposal, reaching `catalog-info.yaml` through
+      // `init --repo` and the Reviewer's opening message verbatim. It now falls
+      // through to echoed / enumerated / novel like any other leaf, and novel
+      // means asked. Nothing is lost on the way in: a Resource's type still
+      // never meets the vocabulary, and a Component's type is a value and never
+      // a path — `computeEntityPath` is only ever asked about a Resource below.
       //
       // What this does NOT cover: whether the type is the RIGHT one. A model
       // proposing `database` where an access belongs signs cleanly, and the
@@ -225,7 +259,13 @@ export function signPlan(plan: Plan, context: SignatureContext): SignedPlan | Pl
 
   // A value nobody can vouch for becomes a question rather than a refusal:
   // "declare, never infer" means asking, not guessing and not giving up.
-  const withQuestions = asked.size === 0 ? plan : askAbout(plan, asked)
+  //
+  // Cloned even when nothing was asked, so the object this function freezes is
+  // never the one the caller handed it. `deriveOwners` states the same rule
+  // where it clones: the caller still holds the plan it passed — `repair` keeps
+  // one as the partial plan a clean stop shows — and freezing it underneath
+  // them would change the behaviour of an object nobody signed.
+  const withQuestions = asked.size === 0 ? structuredClone(plan) : askAbout(plan, asked)
 
   const paths = new Map<number, string>()
   const refs = new Map<number, string>()
@@ -256,7 +296,107 @@ export function signPlan(plan: Plan, context: SignatureContext): SignedPlan | Pl
   // The brand exists only in the type: `declare const` has no runtime value,
   // and constructing the property would let anyone forge one. The cast here is
   // the whole point — this module is the only place it is allowed.
-  return { plan: withQuestions, paths, refs, classified } as unknown as SignedPlan
+  //
+  // Frozen, and that is the second half of what the brand promises. See
+  // `bound` below for what it does and does not buy.
+  return bound({
+    plan: deepFreeze(withQuestions),
+    paths: sealed(paths),
+    refs: sealed(refs),
+    classified: Object.freeze(classified),
+  })
+}
+
+/** What a mutation of a signed plan is told, wherever this module can say it. */
+const SEALED = 'a signed plan is what was signed; sign the plan you changed'
+
+/**
+ * The signature, bound to CONTENT and not only to identity.
+ *
+ * The brand proved `signPlan` returned this object once. It did not prove the
+ * object still held what was signed: `Plan` is `z.infer<…>` and mutable,
+ * `SignedPlan` marks only its own four fields readonly, and nothing froze
+ * anything — so `spec.owner = 'group:default/nobody'` compiled, ran, reached
+ * `planEdits` and was written, while `classified` went on reporting the owner
+ * the gate had vouched for. Stage 5 hands a `SignedPlan` to a writer, and
+ * "signed" has to mean the bytes it composes are the ones the gates judged.
+ *
+ * Freezing rather than carrying a digest, and the reason is reach: a digest
+ * protects whichever caller remembers to compare it, and the readers of a
+ * signed plan are `checkPolicies`, `recheckPlan`, `planEdits`, the Reviewer's
+ * opening message, both renderers and whatever stage 5 adds. A frozen object
+ * protects all of them at once, including the ones not written yet, and turns
+ * a mutation into a throw at the line that wrote it rather than a refusal one
+ * gate later.
+ *
+ * What this does NOT cover, stated as plainly as the module states its own:
+ *
+ *   - **A copy is not covered, deliberately.** `structuredClone`, a spread and
+ *     a JSON round trip all yield a mutable Plan, and they have to:
+ *     `clarify.answer` and §7.5's ask loop produce a NEW plan from an answered
+ *     one, and that plan goes back through all five gates and is signed again.
+ *     What stops a copy reaching a writer is the brand — a bare Plan does not
+ *     typecheck — not the freeze.
+ *   - It is a runtime guarantee, not a compile-time one. `Plan` stays mutable
+ *     in the types, so a mutation is a `TypeError` where it runs and not a red
+ *     squiggle where it is written.
+ *   - It says nothing about whether the frozen values are RIGHT. That is the
+ *     limit this module opens with, and the reason the merge is the act of
+ *     authorisation.
+ *   - It stops at the bytes. `planEdits` returns plain `FileEdit`s, and what a
+ *     writer does with the strings afterwards is that writer's guarantee.
+ */
+const bound = (signed: {
+  plan: Plan
+  paths: ReadonlyMap<number, string>
+  refs: ReadonlyMap<number, string>
+  classified: readonly LeafFinding[]
+}): SignedPlan => Object.freeze(signed) as unknown as SignedPlan
+
+/**
+ * Iterative, in the shape of the walk above and bounded by it: a plan holding
+ * more than `PLAN_LIMITS.maxNodes` values was refused before this runs, and a
+ * recursive freeze would make a deeply nested proposal a denial of service in
+ * the one function whose whole job is to close that door.
+ */
+function deepFreeze<T>(value: T): T {
+  const stack: unknown[] = [value]
+
+  while (stack.length > 0) {
+    const current = stack.pop()
+    if (typeof current !== 'object' || current === null) continue
+    if (Object.isFrozen(current)) continue
+    Object.freeze(current)
+    for (const nested of Object.values(current)) stack.push(nested)
+  }
+
+  return value
+}
+
+/**
+ * A Map that refuses to change.
+ *
+ * `Object.freeze` does nothing to one: `set` lives on the prototype and writes
+ * internal slots, so a frozen Map is still a writable Map. `paths` is the
+ * field §5.2 is about — the engine chooses where bytes go, and a model cannot
+ * aim at a path — so leaving it writable would leave the strongest guarantee
+ * in the design as the one field a mutation could still move. The mutators are
+ * shadowed on the instance (non-writable and non-configurable by
+ * `defineProperty`'s defaults, so the shadow cannot be removed), and the
+ * instance is then frozen.
+ *
+ * What this does NOT cover: `ReadonlyMap` already said no at compile time, and
+ * this only answers the cast that ignores it.
+ */
+const sealed = <K, V>(entries: ReadonlyMap<K, V>): ReadonlyMap<K, V> => {
+  const map = new Map(entries)
+  const refuse = (): never => {
+    throw new TypeError(SEALED)
+  }
+  for (const mutator of ['set', 'delete', 'clear']) {
+    Object.defineProperty(map, mutator, { value: refuse })
+  }
+  return Object.freeze(map)
 }
 
 /** Replaces each novel leaf with the question the CLI will put to the user. */

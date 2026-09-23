@@ -7,6 +7,7 @@ import {
   getEntityInputSchema,
   searchCriteriaSchema,
 } from '../../core/schemas/query.js'
+import { levelledOf } from '../../core/schemas/resource-types.js'
 import { ENV_ANNOTATION, refOf, type EntityGraph } from '../../context/graph/entity-graph.js'
 import type { ModelToolCall, ModelToolSpec } from '../../llm/client.js'
 
@@ -16,22 +17,61 @@ export interface ToolOutcome {
   truncated: number
 }
 
-/** The same shape `renderTable` consumes, so an answer and a table cannot disagree. */
+/** Declare, never infer: an absent value is stated as absent (design 4.1). */
+const UNDECLARED = '(undeclared)'
+
+/**
+ * The columns `renderTable` prints, plus what a right grants — so an answer and
+ * a table cannot disagree about which entities were read.
+ *
+ * `access` is the one field the table has not got, and the asymmetry is the
+ * point: a reader who wants the level of one grant runs `show`, which prints
+ * it; a model has only the row. Without it, deciding whether an existing grant
+ * already covers the request — or may be joined with `add-dependency-of`, whose
+ * `access` states that grant's level — is a guess, and `declared-level-mismatch`
+ * then refuses the plan for a fact the model was never shown.
+ */
 interface Row {
   ref: string
   name: string
   kind: string
   type: string
+  access?: string
   env: string
   owner: string
 }
+
+/**
+ * What a row says about the level a right grants.
+ *
+ * Only a levelled type gets the field at all. An object grants nothing, and a
+ * `network-access` is opened or it is not — `proposedResourceSchema` refuses a
+ * level on either, so offering one here would invite the model to state a field
+ * the plan boundary then rejects. This is where the tool and `show` differ on
+ * purpose: `show` prints the line for every right because the registry was not
+ * the thing it was reading; a row is read by the agent that has to propose.
+ *
+ * On a levelled right the field is always present, `(undeclared)` included.
+ * `resourceSchema` leaves `access` optional so a repository written before the
+ * field still parses, and an absent KEY would read as "this tool does not
+ * report levels", which is a different fact from "the repository states none".
+ * What is never written is a level nobody declared: that is the guess
+ * `serialize.ts` refuses on the write side, refused here on the read side.
+ */
+const accessOf = (entity: Entity): { access: string } | Record<string, never> =>
+  entity.kind === 'Resource' && levelledOf(entity.spec.type)
+    ? { access: entity.spec.access ?? UNDECLARED }
+    : {}
 
 const rowOf = (entity: Entity): Row => ({
   ref: refOf(entity),
   name: entity.metadata.name,
   kind: entity.kind,
   type: entity.spec.type,
-  env: entity.metadata.annotations[ENV_ANNOTATION] ?? '(undeclared)',
+  // Directly after the type, for the reason `serialize.ts` files it there: "a
+  // database-access, granting read" is one statement, not two.
+  ...accessOf(entity),
+  env: entity.metadata.annotations[ENV_ANNOTATION] ?? UNDECLARED,
   owner: entity.spec.owner,
 })
 

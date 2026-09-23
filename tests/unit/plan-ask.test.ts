@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -543,5 +543,272 @@ describe('plan through main', () => {
     expect(code).toBe(0)
     expect(out).toContain(`+++ b/${DATABASE_PATH}`)
     expect(await hashTree(repo)).toBe(before)
+  })
+})
+
+/**
+ * F2, end to end: a derived value must die with the evidence it was read from.
+ *
+ * The audit's sequence needs a catalogue rather than a fresh repository — two
+ * components owned by two different teams, so that answering the consumer
+ * question changes WHICH team the owner follows from. Everything below declares
+ * that catalogue on disk, because `contextsOf` builds the owners map and the
+ * vocabulary off the same graph it reads from these bytes, and a hand-written
+ * map would be testing a repository no reader could produce.
+ */
+
+const componentDocument = (name: string, owner: string): string =>
+  [
+    '---',
+    'apiVersion: backstage.io/v1alpha1',
+    'kind: Component',
+    'metadata:',
+    `  name: ${name}`,
+    '  annotations:',
+    '    company.fr/env: prod',
+    'spec:',
+    '  type: service',
+    '  lifecycle: production',
+    `  owner: ${owner}`,
+    '',
+  ].join('\n')
+
+const DATABASE_DOCUMENT = [
+  '---',
+  'apiVersion: backstage.io/v1alpha1',
+  'kind: Resource',
+  'metadata:',
+  '  name: orders-db-prod',
+  '  annotations:',
+  '    company.fr/env: prod',
+  'spec:',
+  '  type: database',
+  '  owner: group:default/tiger',
+  '',
+].join('\n')
+
+/**
+ * The declarations repository, plus the entities these tests read owners off.
+ *
+ * `init platform` scaffolds no Component folder — a service is declared in its
+ * own repository — so the witness goes in beside them, exactly as the scenario
+ * fixtures do: a folder exists in this repository when a witness says so.
+ */
+const catalogued = async (): Promise<string> => {
+  const repo = await scaffoldedRepository()
+  const files: Record<string, string> = {
+    'catalog/components/.witness.yml': '---\n',
+    'catalog/components/billing-api.yml': componentDocument('billing-api', 'group:default/tiger'),
+    'catalog/components/payments-api.yml': componentDocument('payments-api', 'group:default/lion'),
+    'catalog/databases/orders-db-prod.yml': DATABASE_DOCUMENT,
+  }
+  for (const [relative, text] of Object.entries(files)) {
+    const absolute = path.join(repo, ...relative.split('/'))
+    await mkdir(path.dirname(absolute), { recursive: true })
+    await writeFile(absolute, text, 'utf8')
+  }
+  return repo
+}
+
+/** The opening message of a request. Narrowed: a tool entry carries no text. */
+const openingOf = (request: GenerateRequest | undefined): string => {
+  const first = request?.transcript[0]
+  return first !== undefined && first.role === 'user' ? first.text : ''
+}
+
+/**
+ * The one value the request does not carry is the CONSUMER, and that is the
+ * whole point: the owner follows from it, so answering it moves the owner.
+ * Every other leaf is echoed verbatim.
+ */
+const CONSUMER_QUESTION =
+  'open a database-access granting read to resource:default/orders-db-prod in prod, ' +
+  'named billing-api-orders-db-prod'
+
+const CONSUMER_PATH = 'operations.0.entity.spec.dependencyOf.0'
+
+const accessFor = (consumer: string, owner: unknown) => ({
+  op: 'create-entity',
+  entity: {
+    kind: 'Resource',
+    metadata: { name: 'billing-api-orders-db-prod', env: 'prod' },
+    spec: {
+      type: 'database-access', access: 'read',
+      owner,
+      dependsOn: ['resource:default/orders-db-prod'],
+      dependencyOf: [consumer],
+    },
+  },
+})
+
+/** The draft the audit describes: a consumer nobody asked for, and no owner. */
+const PROPOSES_PAYMENTS = accessFor('component:default/payments-api', {
+  unknown: 'the request does not state an owner for this access',
+})
+
+const derivedEvents = (
+  events: readonly AgentEvent[],
+): { owner: string; from: readonly string[] }[] =>
+  events
+    .filter((event): event is Extract<AgentEvent, { type: 'derived' }> => event.type === 'derived')
+    .map((event) => ({ owner: event.owner, from: event.from }))
+
+describe('a derived owner does not outlive the consumer it was read off', () => {
+  it('re-derives the owner from the consumer the user actually answered', async () => {
+    // The audit's sequence. Round 1 reads `payments-api` and writes lion's
+    // reference into the plan; the user rejects that consumer and says
+    // `billing-api`, which tiger owns. The run may not end on a diff carrying
+    // lion's authorisation and billing-api's consumer — `payments-api` is in
+    // neither the request nor the plan by then, so nothing vouches for lion.
+    const repo = await catalogued()
+    const project = await application()
+    const before = await hashBoth(repo, project)
+    const { ask, asked } = answering(['component:default/billing-api'])
+
+    const result = await runIntent({
+      intent: CONSUMER_QUESTION,
+      repo,
+      project,
+      client: converging([PROPOSES_PAYMENTS]),
+      emit: collect().emit,
+      ask,
+    })
+
+    expect(asked.map((question) => question.path)).toEqual([CONSUMER_PATH])
+    expect(result.found).toBe(true)
+    expect(result.text).toContain('+  owner: group:default/tiger')
+    expect(result.text).toContain('+    - component:default/billing-api')
+    expect(result.text).not.toContain('group:default/lion')
+    expect(result.text).not.toContain('payments-api')
+    expect(await hashBoth(repo, project)).toBe(before)
+  })
+
+  it('says both derivations out loud, and the second one supersedes the first', async () => {
+    // Stated, never silent — in every round, not only the one that happened to
+    // run first. The terminal saw lion; it has to see that lion was replaced.
+    const repo = await catalogued()
+    const project = await application()
+    const { events, emit } = collect()
+    const { ask } = answering(['component:default/billing-api'])
+
+    await runIntent({
+      intent: CONSUMER_QUESTION,
+      repo,
+      project,
+      client: converging([PROPOSES_PAYMENTS]),
+      emit,
+      ask,
+    })
+
+    expect(derivedEvents(events)).toEqual([
+      { owner: 'group:default/lion', from: ['component:default/payments-api'] },
+      { owner: 'group:default/tiger', from: ['component:default/billing-api'] },
+    ])
+  })
+
+  it('tells the Reviewer about the derivation that is standing when it runs', async () => {
+    // The half of F2 that made it invisible: the Reviewer runs once, in the
+    // last round, and it was handed an empty `derived` list while lion's
+    // reference sat in the JSON it was reading. It now sees the derivation the
+    // pass it is reviewing actually performed.
+    const repo = await catalogued()
+    const project = await application()
+    const client = converging([PROPOSES_PAYMENTS])
+    const { ask } = answering(['component:default/billing-api'])
+
+    await runIntent({
+      intent: CONSUMER_QUESTION,
+      repo,
+      project,
+      client,
+      emit: collect().emit,
+      ask,
+    })
+
+    const opening = openingOf(client.seen.find((request) => request.agent === 'reviewer'))
+    expect(opening).toContain('values the engine computed')
+    expect(opening).toContain('component:default/billing-api')
+    expect(opening).not.toContain('group:default/lion')
+  })
+
+  it('derives the same owner again when the consumer is answered with itself', async () => {
+    // The case that must not regress into a question: nothing moved, so the
+    // owner the first round derived is the owner the second round derives.
+    const repo = await catalogued()
+    const project = await application()
+    const { events, emit } = collect()
+    const { ask, asked } = answering(['component:default/billing-api'])
+    const proposal = accessFor('component:default/billing-api', {
+      unknown: 'the request does not state an owner for this access',
+    })
+
+    const result = await runIntent({
+      intent: CONSUMER_QUESTION,
+      repo,
+      project,
+      client: converging([proposal]),
+      emit,
+      ask,
+    })
+
+    expect(asked.map((question) => question.path)).toEqual([CONSUMER_PATH])
+    expect(result.found).toBe(true)
+    expect(result.text).toContain('+  owner: group:default/tiger')
+    expect(derivedEvents(events)).toEqual([
+      { owner: 'group:default/tiger', from: ['component:default/billing-api'] },
+      { owner: 'group:default/tiger', from: ['component:default/billing-api'] },
+    ])
+  })
+
+  it('keeps an owner the user stated, through an answer that changes the consumer', async () => {
+    // The rule the fix must not break. `group:default/lynx` is in the request
+    // and nowhere else — not in this catalogue, not in any consumer — and the
+    // request is the strongest claim a value can carry. Answering the consumer
+    // does not move it.
+    const repo = await catalogued()
+    const project = await application()
+    const { events, emit } = collect()
+    const { ask } = answering(['component:default/billing-api'])
+    const proposal = accessFor('component:default/payments-api', 'group:default/lynx')
+
+    const result = await runIntent({
+      intent: `${CONSUMER_QUESTION}, owned by group:default/lynx`,
+      repo,
+      project,
+      client: converging([proposal]),
+      emit,
+      ask,
+    })
+
+    expect(result.found).toBe(true)
+    expect(result.text).toContain('+  owner: group:default/lynx')
+    // Nothing was derived, in either round: the request answered the question
+    // before the catalogue was asked.
+    expect(derivedEvents(events)).toEqual([])
+  })
+
+  it('withdraws a derived owner when the answer leaves nothing to derive from', async () => {
+    // The other half of "dies with its evidence". The user answers the
+    // consumer with a component this catalogue declares nothing about, so
+    // there is no owner to read — and the owner an earlier round wrote is not
+    // a value that may stand in its place. It goes back to being a question.
+    const repo = await catalogued()
+    const project = await application()
+    const before = await hashBoth(repo, project)
+    const { ask, asked } = answering(['component:default/nobody-declares-this'])
+
+    const result = await runIntent({
+      intent: CONSUMER_QUESTION,
+      repo,
+      project,
+      client: converging([PROPOSES_PAYMENTS]),
+      emit: collect().emit,
+      ask,
+    })
+
+    expect(asked.map((question) => question.path)).toEqual([CONSUMER_PATH, OWNER_PATH])
+    expect(result.found).toBe(false)
+    expect(result.text).not.toContain('group:default/lion')
+    expect(await hashBoth(repo, project)).toBe(before)
   })
 })

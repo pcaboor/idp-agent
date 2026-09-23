@@ -1,4 +1,6 @@
 import { echoes } from './echoes.js'
+import { levelClaim, proposedClaim, statedAs, type LevelClaim } from './grant.js'
+import type { AccessLevel } from '../schemas/resource-types.js'
 import type { Vocabulary } from '../schemas/vocabulary.js'
 import type { SignedPlan } from './sign.js'
 
@@ -7,21 +9,34 @@ import type { SignedPlan } from './sign.js'
  * nowhere.
  *
  * **A Policy is a deterministic predicate over a signed Plan.** No model, no
- * disk. That is the whole definition, and it is what makes these three
- * testable without a repository and free to run: the first gate (the schema)
- * rejects what cannot be expressed, the signature asks about what nobody can
- * vouch for, and a policy refuses what is expressible, vouched for, and still
- * wrong.
+ * disk. That is the whole definition, and it is what makes these testable
+ * without a repository and free to run: the first gate (the schema) rejects
+ * what cannot be expressed, the signature asks about what nobody can vouch
+ * for, and a policy refuses what is expressible, vouched for, and still wrong.
  *
- * Three ship in v0.1. A configurable rule engine — `governance/`, and the
- * `get_governance_rule` tool of §6 — is deferred: three predicates that run
- * are worth more than an extension point that does not.
+ * Four ship in v0.1, and the count went DOWN when the level moved into the
+ * operation: `level-mismatch` and `unamendable-level` asked the same question
+ * of two shapes and answered a level-less declaration in opposite directions,
+ * so they are one predicate here. A configurable rule engine — `governance/`,
+ * and the `get_governance_rule` tool of §6 — is deferred: four predicates that
+ * run are worth more than an extension point that does not.
+ *
+ * **Every operation is gated, not only the creations.** This loop once skipped
+ * anything that was not a `create-entity` or a `create-catalog-info`, which
+ * left `update-entity` — the operation that joins a consumer to an EXISTING
+ * grant, and so the one that hands out an authorisation nobody re-declares —
+ * travelling with no gate at all. A request naming `dev` could join a consumer
+ * to a `prod` grant and meet nothing on the way. An update names its target by
+ * reference rather than carrying an entity, so every fact about it is read off
+ * the snapshot this context carries.
  */
 
 export type PolicyName =
   | 'environment-mismatch'
   | 'unwitnessed-folder'
   | 'cross-environment-consumer'
+  /** The level the operation states is not the level the repository declares. */
+  | 'declared-level-mismatch'
 
 export interface PolicyViolation {
   readonly policy: PolicyName
@@ -37,6 +52,18 @@ export interface PolicyContext {
   readonly witnesses: ReadonlySet<string>
   /** ref → the environment that entity declares, from the snapshot. */
   readonly environments: ReadonlyMap<string, string>
+  /**
+   * ref → the level that entity declares, for every entity the snapshot holds.
+   *
+   * `has` and `get` answer different questions and both are needed. `has` says
+   * the repository declares that reference at all — a grant it has never heard
+   * of is a creation, and no level of it is wrong yet. `get` says what level
+   * the declaration states, `undefined` when it states none: §4.1's unstated
+   * level, which is reported as absent and never read as `readwrite`. So a
+   * file with no level does NOT already say `read`, and the map says so
+   * without a second set to carry "declared" separately.
+   */
+  readonly levels: ReadonlyMap<string, AccessLevel | undefined>
 }
 
 
@@ -70,6 +97,72 @@ function environmentsTouched(entity: unknown, vocabulary: Vocabulary): string[] 
   return [...touched]
 }
 
+/**
+ * The level the operation STATES against the level the repository DECLARES.
+ *
+ * One comparison, both shapes of operation, replacing two policies that
+ * compared different things and answered the same declaration in opposite
+ * directions. `level-mismatch` read the requested level out of the request —
+ * `echoes(intent, 'readwrite' | 'write' | 'read')` — which fails on its own
+ * terms: a request arrives in whatever language the person wrote it in (see
+ * `echoes`), so "accès en lecture" named no level, the gate stayed silent, and
+ * a `readwrite` grant was handed to a request for `read` at exit 0. It also
+ * read "read replica" — a database term, in a database-access tool — as a
+ * request for `read`. And it stayed silent when the grant declared no level,
+ * while `unamendable-level` hard-refused that very case on a creation.
+ *
+ * Both halves are now facts: §5.3 puts the level in the `add-dependency-of`
+ * patch, so nothing here reads a word of the request. What the request named
+ * is the SIGNATURE's question — a level the request did not name is novel and
+ * leaves as a question, in every script — and this gate asks the one a
+ * deterministic predicate can answer: does the level the plan states match the
+ * one the repository declares?
+ *
+ * Silence is a claim, not a gap, and that is what makes the two directions
+ * consistent. An operation omitting the level says the grant has none, which
+ * is exactly what a pre-`access` declaration says — so joining a consumer to
+ * one is legitimate work and passes, and the objection that firing here would
+ * refuse every such update is answered by making the claim expressible rather
+ * than by staying silent. The same omission against a grant that declares
+ * `readwrite` is refused, and so is a stated level against a declaration that
+ * states none: an unstated level is unstated (§4.1), never read as anything.
+ *
+ * What this does NOT cover: whether the level is the RIGHT one for what was
+ * asked. It compares the plan to the repository, not to the request. The
+ * signature asks where the value came from, the Reviewer reads the request,
+ * and the merge is the act of authorisation (§4.2).
+ */
+function levelMismatch(
+  context: PolicyContext,
+  opIndex: number,
+  path: string,
+  ref: string | undefined,
+  claim: LevelClaim,
+): PolicyViolation | undefined {
+  // `has`, never `get`: a reference the map does not hold at all is a grant
+  // this repository has never declared, and no level of it is wrong yet. See
+  // PolicyContext.levels for why the two answers are different questions.
+  if (ref === undefined || !context.levels.has(ref)) return undefined
+  // A question is not a claim. The signer already replaced what the model
+  // wrote, `planEdits` drops the operation, and the CLI asks before any
+  // preview is offered — refusing here would state one stop twice.
+  if (claim.said === 'question') return undefined
+
+  const declared = context.levels.get(ref)
+  const stated = claim.said === 'level' ? claim.level : undefined
+  if (declared === stated) return undefined
+
+  return {
+    policy: 'declared-level-mismatch',
+    opIndex,
+    path,
+    message:
+      `${ref} ${statedAs(declared)}, and this plan ${statedAs(stated)}. A level is a scalar ` +
+      `and this tool only ever appends (§4.3), so what would be granted is the level the ` +
+      `repository declares; change that line where a reviewer sees it.`,
+  }
+}
+
 const referencesOf = (entity: unknown): string[] => {
   if (typeof entity !== 'object' || entity === null) return []
   const spec = (entity as { spec?: unknown }).spec
@@ -93,21 +186,95 @@ export function checkPolicies(
     echoes(intent, environment),
   )
 
+  // One sentence, two shapes of operation. A creation touches an environment
+  // through the entity it carries and an update through the references it
+  // names, and "an environment is never inferred" is the same refusal in both.
+  const mismatch = (opIndex: number, path: string, touched: string): PolicyViolation => ({
+    policy: 'environment-mismatch',
+    opIndex,
+    path,
+    message:
+      `the plan touches ${touched}, but the request named ` +
+      `${asked.join(' and ')}. An environment is never inferred.`,
+  })
+
   for (const [opIndex, operation] of operations.entries()) {
+    if (operation.op === 'update-entity') {
+      // `operation.patch.consumer` is read straight off the union: §5.3 keeps
+      // `Patch` closed and it holds one member today, so a second member
+      // without a consumer breaks the build right here — which is the right
+      // way to be told that this gate has a new case to answer for.
+      const { entityRef, patch } = operation
+      const grantEnv = context.environments.get(entityRef)
+      const consumerEnv = context.environments.get(patch.consumer)
+
+      if (asked.length > 0) {
+        // Both ends, because an update touches both: the grant being extended
+        // and the consumer being joined to it. A reference the repository
+        // declares no environment for contributes none — declare, never infer,
+        // and reading one off a name is what `environmentsTouched` is for on
+        // the side where a name is the model's to choose.
+        for (const [path, touched] of [
+          [`operations.${opIndex}.entityRef`, grantEnv],
+          [`operations.${opIndex}.patch.consumer`, consumerEnv],
+        ] as const) {
+          if (touched === undefined || asked.includes(touched)) continue
+          violations.push(mismatch(opIndex, path, touched))
+        }
+      }
+
+      // The same §4.1 rule the creation side reads off `spec.dependencyOf`,
+      // asked of the one reference an update adds: being authorised in dev
+      // grants nothing in prod, and an update is where that authorisation is
+      // handed to somebody without anyone re-declaring it.
+      if (grantEnv !== undefined && consumerEnv !== undefined && grantEnv !== consumerEnv) {
+        violations.push({
+          policy: 'cross-environment-consumer',
+          opIndex,
+          path: `operations.${opIndex}.patch.consumer`,
+          message:
+            `${patch.consumer} lives in ${consumerEnv}, but ${entityRef} is scoped to ` +
+            `${grantEnv}. Being authorised in one environment grants nothing in another.`,
+        })
+      }
+
+      // The level of the grant being extended IS the authorisation being
+      // handed over, and one `add-dependency-of` hands it over whole. Nothing
+      // downstream asks: the unified diff shows an added consumer line in an
+      // otherwise unchanged file, and `access:` sits further from the
+      // insertion than the three lines of context a hunk carries — so the
+      // level is an unchanged line, invisible to whoever does the merging.
+      //
+      // The path names the field the operation would have to change, which is
+      // the field the repair report hands back — including when the operation
+      // omitted it and the claim was the omission.
+      const level = levelMismatch(
+        context,
+        opIndex,
+        `operations.${opIndex}.patch.access`,
+        entityRef,
+        levelClaim(patch.access),
+      )
+      if (level !== undefined) violations.push(level)
+
+      // `unwitnessed-folder` is deliberately not asked here. It is about a
+      // folder the ENGINE computed a path into — §7.2: writing where the
+      // repository never declared structure invents it — and an update
+      // computes no path at all. It amends a file that already exists, in a
+      // folder that already holds it, so there is no structure to invent.
+      // `signed.paths` holds no entry for an update either, so the check below
+      // would be silent anyway; it is stated rather than left to fall out of
+      // the data.
+      continue
+    }
+
     if (operation.op !== 'create-entity' && operation.op !== 'create-catalog-info') continue
     const entity: unknown = operation.entity
 
     if (asked.length > 0) {
       for (const touched of environmentsTouched(entity, context.vocabulary)) {
         if (asked.includes(touched)) continue
-        violations.push({
-          policy: 'environment-mismatch',
-          opIndex,
-          path: `operations.${opIndex}.entity.metadata`,
-          message:
-            `the plan touches ${touched}, but the request named ` +
-            `${asked.join(' and ')}. An environment is never inferred.`,
-        })
+        violations.push(mismatch(opIndex, `operations.${opIndex}.entity.metadata`, touched))
       }
     }
 
@@ -145,6 +312,24 @@ export function checkPolicies(
           `grants nothing in another.`,
       })
     }
+
+    // The same comparison the update branch makes, read off the entity this
+    // operation carries rather than off the patch. "Already declared" compares
+    // the GRANT (`grant.ts`), so a plan restating a different level writes no
+    // bytes — and this is what says so, before a diff is ever offered, rather
+    // than a preview reporting "nothing to change" about a change nobody made.
+    //
+    // `signed.refs` holds an entry only for a `create-entity` of a Resource,
+    // so a Component and a `create-catalog-info` fall out silently: neither
+    // states a level, and neither is a grant.
+    const level = levelMismatch(
+      context,
+      opIndex,
+      `operations.${opIndex}.entity.spec.access`,
+      signed.refs.get(opIndex),
+      proposedClaim(entity),
+    )
+    if (level !== undefined) violations.push(level)
   }
 
   // Every violation, never the first: a caller fixing them one round-trip at

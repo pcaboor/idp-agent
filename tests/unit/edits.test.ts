@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { FileEdit } from '../../src/core/diff/unified.js'
+import { renderUnifiedDiff, type FileEdit } from '../../src/core/diff/unified.js'
 import { planEdits } from '../../src/core/plan/edits.js'
 import type { SignatureContext } from '../../src/core/plan/sign.js'
 import { signPlan } from '../../src/core/plan/sign.js'
@@ -51,7 +51,19 @@ const createAccess = { op: 'create-entity' as const, entity: access }
 /** What signPlan computes for `access`. Asserted below, never assumed. */
 const ACCESS_PATH = 'dependencies/access/billing-api-orders-db-prod.yml'
 
-const document = (name: string, consumers: readonly string[]): string =>
+/** No `access:` line at all — §4.1's unstated level, a third answer again. */
+const NO_LEVEL = ''
+
+/**
+ * A grant as the repository holds it. The level is a parameter because
+ * "already declared" is about what the file SAYS, not about a name it happens
+ * to carry.
+ */
+const document = (
+  name: string,
+  consumers: readonly string[],
+  level: string = 'read',
+): string =>
   [
     '---',
     'apiVersion: backstage.io/v1alpha1',
@@ -62,6 +74,7 @@ const document = (name: string, consumers: readonly string[]): string =>
     '    company.fr/env: prod',
     'spec:',
     '  type: database-access',
+    ...(level === NO_LEVEL ? [] : [`  access: ${level}`]),
     '  owner: group:default/tiger',
     '  dependsOn:',
     '    - resource:default/orders-db-prod',
@@ -170,12 +183,45 @@ describe('planEdits, creating an entity', () => {
   it('still produces an edit when the entity is already declared there', () => {
     // An empty diff, not an absent one. "Nothing to do" and "the operation was
     // dropped" are different answers and the caller has to tell them apart.
-    const existing = document('billing-api-orders-db-prod', [])
+    // Already declared means the file states the same GRANT — same level, not
+    // merely the same name.
+    const existing = document('billing-api-orders-db-prod', [], 'read')
     const edits = planEdits(sign(CREATE_INTENT, [createAccess]), repository([[ACCESS_PATH, existing]])).edits
 
     expect(edits).toHaveLength(1)
     expect(at(edits, 0).before).toBe(existing)
     expect(at(edits, 0).after).toBe(existing)
+  })
+
+  it('produces no bytes when the file declares that grant at another level', () => {
+    // The falsehood this closes: a name match with a different level came out
+    // as an EMPTY diff and "the repository already says it", so a requested
+    // narrowing silently did not happen. Appending cannot rewrite a scalar, so
+    // there is no honest edit to show — and the operation is named, never
+    // dropped in silence.
+    const wider = document('billing-api-orders-db-prod', [], 'readwrite')
+    const { edits, dropped } = planEdits(
+      sign(CREATE_INTENT, [createAccess]),
+      repository([[ACCESS_PATH, wider]]),
+    )
+
+    expect(edits).toEqual([])
+    expect(dropped).toHaveLength(1)
+    expect(dropped[0]?.reason).toContain('readwrite')
+    expect(dropped[0]?.reason).toContain('read')
+  })
+
+  it('produces no bytes when the file declares that grant with no level at all', () => {
+    // §4.1: an unstated level is unstated, never read as anything. A file that
+    // states none does not already say `read`.
+    const unstated = document('billing-api-orders-db-prod', [], NO_LEVEL)
+    const { edits, dropped } = planEdits(
+      sign(CREATE_INTENT, [createAccess]),
+      repository([[ACCESS_PATH, unstated]]),
+    )
+
+    expect(edits).toEqual([])
+    expect(dropped[0]?.reason).toMatch(/states no level|no level/)
   })
 
   it('contributes nothing when the operation still carries a question', () => {
@@ -426,5 +472,83 @@ describe('planEdits, what it refuses to do quietly', () => {
     expect(edits).toEqual([])
     expect(dropped).toHaveLength(1)
     expect(dropped[0]?.reason).toContain('service repository')
+  })
+})
+
+describe('planEdits writes what was signed, and only that', () => {
+  it('cannot be handed a signed plan whose contents moved after signing', () => {
+    // The audit's reproduction, inverted. `Plan` is `z.infer<…>` and mutable
+    // and `SignedPlan` marks only its own fields readonly, so this assignment
+    // used to compile, run, and put `group:default/nobody-vouched-for-this`
+    // into the bytes — while `classified` went on reporting the owner the
+    // signature had vouched for. The brand said this object was signed once;
+    // it did not say it still held what was signed.
+    const signed = sign(CREATE_INTENT, [createAccess])
+    const operation = signed.plan.operations[0]
+    if (operation?.op !== 'create-entity' || operation.entity.kind !== 'Resource') {
+      throw new Error('the fixture is a Resource creation')
+    }
+
+    expect(() => {
+      operation.entity.spec.owner = 'group:default/nobody-vouched-for-this'
+    }).toThrow(TypeError)
+
+    const { edits, dropped } = planEdits(signed, repository([]))
+
+    expect(dropped).toEqual([])
+    expect(at(edits, 0).after).toContain('owner: group:default/tiger')
+    expect(at(edits, 0).after).not.toContain('nobody-vouched-for-this')
+  })
+})
+
+describe('what the diff of an update can and cannot state', () => {
+  it('writes the consumer and not the level, because the level is a claim about the file', () => {
+    // §5.3 put `access` in the patch so the signature can classify it and
+    // `declared-level-mismatch` can compare it. It is a CLAIM about the grant
+    // being extended, not a value to write: the grant already states its level
+    // and this tool only appends (§4.3), so an operation stating `read` against
+    // a file granting `read` leaves that line exactly as it found it. Green
+    // before the field existed and green after — which is the point: adding a
+    // field to the operation must not add a byte to the repository.
+    // Its own intent, naming the level: `AMEND_INTENT` names none, so the
+    // signature would turn `read` into a question and `planEdits` would drop
+    // the operation — which is the ask loop working, not the case under test.
+    const signed = sign('let billing-api share the checkout read access too', [
+      { ...addConsumer('component:default/billing-api'), patch: {
+        patch: 'add-dependency-of' as const,
+        consumer: 'component:default/billing-api',
+        access: 'read',
+      } },
+    ])
+
+    const { edits, dropped } = planEdits(signed, repository([[AMEND_PATH, AMEND_FILE]]))
+
+    expect(dropped).toEqual([])
+    const after = at(edits, 0).after
+    expect(after).toContain('    - component:default/billing-api')
+    // One level line, the one that was already there.
+    expect(after.match(/^ {2}access:/gm)).toHaveLength(1)
+    expect(after).toContain('  access: read')
+  })
+
+
+  it('shows the consumer it adds, and cannot show the level that consumer receives', () => {
+    // The honest limit, asserted rather than implied. `appendSequenceItem`
+    // appends one item to a sequence and nothing in the surgery layer rewrites
+    // a scalar (§4.3), so `access:` is an unchanged line — and `ordered()`
+    // files it above `owner`, `dependsOn` and `dependencyOf`, which is further
+    // from the insertion than the three lines of context a unified diff
+    // carries. So the level cannot reach the hunk, and this is what the
+    // `declared-level-mismatch` policy and the Reviewer's operation JSON exist
+    // to cover: the reviewer of the merge request sees one added consumer line
+    // under `dependencyOf:`, and the authorisation it joins is not in front of
+    // them.
+    const signed = sign(AMEND_INTENT, [addConsumer('component:default/billing-api')])
+
+    const { edits } = planEdits(signed, repository([[AMEND_PATH, AMEND_FILE]]))
+    const diff = renderUnifiedDiff(edits)
+
+    expect(diff).toContain('+    - component:default/billing-api')
+    expect(diff).not.toContain('access:')
   })
 })

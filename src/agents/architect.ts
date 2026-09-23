@@ -26,7 +26,10 @@ const SYSTEM = `You draft a plan of infrastructure declarations for one request.
 You are given the request, the facts established about the application repository,
 and a summary of the catalogue. Use the read tools to find out what the catalogue
 already holds: whether the resource exists is what decides between proposing the
-resource and the access to it, or the access alone.
+resource and the access to it, or the access alone. A grant that exists states
+the level it grants; read it rather than assume it, and state it back in the
+"access" of an "add-dependency-of" patch — the level that grant declares, not the
+level the request asks for. Leave "access" out only when the grant declares none.
 
 You may not name anything you have not read: every entity reference you give must
 have come back from a tool in this conversation.

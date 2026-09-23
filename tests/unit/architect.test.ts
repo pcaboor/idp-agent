@@ -429,6 +429,22 @@ describe('draftPlan', () => {
     ])
   })
 
+  it('tells the model the level is a field of the update, not a thing to infer', async () => {
+    // §5.3 put the level in the `add-dependency-of` patch, and a field nobody
+    // is told about is a field nobody fills in — which is the omission the
+    // policy then reads as the claim "this grant states no level". The model
+    // has to know the field exists AND what it means: the level the EXISTING
+    // grant declares, read off a tool row, not the one the request asks for.
+    const client = capturing([proposing([ACCESS])])
+    const { emit } = collect()
+
+    await draftPlan(client, readTools(), INPUT, emit)
+
+    const system = client.seen[0]?.system ?? ''
+    expect(system).toContain('add-dependency-of')
+    expect(system).toContain('access')
+  })
+
   it('tells the model the established facts, unknowns included', async () => {
     // An unknown that arrives as an absent field reads as a fact nobody needed.
     // `forgeHandle` is unknown here and the model has to be told so, or it

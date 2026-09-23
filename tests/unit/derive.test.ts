@@ -176,7 +176,7 @@ describe('deriveOwners', () => {
     expect(result.derived).toEqual([])
   })
 
-  it('never overwrites a stated owner', () => {
+  it('never overwrites an owner the REQUEST states', () => {
     // The request said it, and that is the stronger claim. Even when the
     // consumer declares something else — especially then.
     const result = deriveOwners(
@@ -185,6 +185,7 @@ describe('deriveOwners', () => {
           owner: 'group:default/lynx',
           dependencyOf: ['component:default/billing-api'],
         }),
+        `${INTENT}, owned by group:default/lynx`,
       ),
       OWNERS,
     )
@@ -296,5 +297,101 @@ describe('a consumer is not anything a reference points at', () => {
 
     expect(result.derived).toHaveLength(1)
     expect(result.derived[0]?.owner).toBe('group:default/tiger')
+  })
+})
+
+/**
+ * F2: a derived value must not outlive the leaf it was read from.
+ *
+ * The audit's sequence, in one function: the owner the engine wrote in one pass
+ * looked exactly like an owner a person had stated, so the next pass skipped it
+ * and lion's authorisation survived on billing-api's access. Every test below
+ * asks the same question — is this owner the REQUEST's, or the engine's own —
+ * and the answer is read off `plan.intent`, which is where the request lives.
+ */
+describe('a derived owner dies with its evidence', () => {
+  it('re-derives the owner when the consumer list changed under it', () => {
+    // The whole of F2. Round 1 read `payments-api` and wrote lion; the user
+    // then answered the consumer question with `billing-api`. Nothing in the
+    // request states lion, so lion is not a value this may keep.
+    const result = deriveOwners(
+      planOf(
+        access({
+          owner: 'group:default/lynx',
+          dependencyOf: ['component:default/billing-api'],
+        }),
+      ),
+      OWNERS,
+    )
+
+    expect(ownerOf(result.plan)).toBe('group:default/tiger')
+    expect(result.derived).toEqual([
+      {
+        path: OWNER_PATH,
+        owner: 'group:default/tiger',
+        from: ['component:default/billing-api'],
+      },
+    ])
+  })
+
+  it('withdraws an owner nothing in the plan determines any more', () => {
+    // The consumer the owner followed from was answered with a reference the
+    // catalogue says nothing about. There is no evidence left, so there is no
+    // value left: it goes back to being the question it always was.
+    const result = deriveOwners(
+      planOf(access({ owner: 'group:default/lynx', dependencyOf: [] })),
+      OWNERS,
+    )
+
+    expect(findUnknowns(result.plan)).toContain(OWNER_PATH)
+    // The reason is mandatory, and it is the sentence the CLI puts to a person.
+    expect(ownerOf(result.plan)).toHaveProperty('unknown', expect.stringMatching(/owner/))
+    expect(result.derived).toEqual([])
+  })
+
+  it('withdraws it when the consumers now disagree', () => {
+    // Contested was already a question when the field was empty. It has to be
+    // one when a value is sitting in it too, or the answer this refused to
+    // guess is the answer an earlier round happened to write.
+    const result = deriveOwners(
+      planOf(
+        access({
+          owner: 'group:default/tiger',
+          dependencyOf: ['component:default/billing-api', 'component:default/reporting-api'],
+        }),
+      ),
+      OWNERS,
+    )
+
+    expect(findUnknowns(result.plan)).toContain(OWNER_PATH)
+    expect(result.contested).toEqual([
+      { path: OWNER_PATH, owners: ['group:default/lynx', 'group:default/tiger'] },
+    ])
+  })
+
+  it('states the derivation again when the value did not change', () => {
+    // A consumer answered with the same value it already had. Nothing moves,
+    // and the engine still says it computed this owner — the Reviewer runs
+    // once, in the last round, and `derived` is the only thing that tells it
+    // which values were not a model's choice.
+    const once = deriveOwners(planOf(access()), OWNERS)
+    const twice = deriveOwners(once.plan, OWNERS)
+
+    expect(ownerOf(twice.plan)).toBe('group:default/tiger')
+    expect(twice.derived).toEqual(once.derived)
+  })
+
+  it('reads the request off the plan it is given, not off the catalogue', () => {
+    // `group:default/lynx` is a real owner in this catalogue and would sign
+    // `enumerated`. That is not what protects it here: the request naming it
+    // is. Same value, request that does not name it — re-derived.
+    const kept = deriveOwners(
+      planOf(access({ owner: 'group:default/lynx' }), `${INTENT} for group:default/lynx`),
+      OWNERS,
+    )
+    const replaced = deriveOwners(planOf(access({ owner: 'group:default/lynx' })), OWNERS)
+
+    expect(ownerOf(kept.plan)).toBe('group:default/lynx')
+    expect(ownerOf(replaced.plan)).toBe('group:default/tiger')
   })
 })

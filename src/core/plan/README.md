@@ -25,8 +25,11 @@ schema rejects what cannot be requested. The signature turns a value nobody can 
 into a question rather than a refusal — *declare, never infer* means asking, not guessing
 and not giving up. A policy refuses what is expressible, vouched for, and still wrong; the
 design named that gate four times and defined it nowhere, so `policies.ts` opens with the
-definition. The re-check exists because the catalogue lags the repository by about two
-minutes (§4.4): what was true when the plan was drafted may not be true now.
+definition. Four ship, and **every operation is gated** — `update-entity` joins a consumer
+to an *existing* grant, so it is the one operation that hands out an authorisation nobody
+re-declares, and the loop once skipped it. The re-check exists because the catalogue lags
+the repository by about two minutes (§4.4): what was true when the plan was drafted may not
+be true now.
 
 `derive.ts` is in that list but it is **not a gate**: it has no refusal to make and hands
 nothing back. It runs between the schema and the signature because a right's owner is not a
@@ -34,10 +37,22 @@ choice, it is a consequence — an access `billing-api → orders-db` belongs to
 `billing-api`, and the catalogue already says who that is. §5.2 gives the model the owner
 "entirely" and the signature says an owner nobody vouches for is a question; both were true
 at once and the run stopped between them. So the field is taken away from the model rather
-than asked of it, exactly as the path already is. Only for a right (`natureOf`), only when
-nothing stated one, and only when its consumers agree: two teams sharing one access is the
-case a human must decide, and picking the first would be the guess this folder exists to
-prevent.
+than asked of it, exactly as the path already is. Only for a right (`natureOf`), and only
+when its consumers agree: two teams sharing one access is the case a human must decide, and
+picking the first would be the guess this folder exists to prevent.
+
+It runs **every pass**, and the only owner it leaves alone is one the request states —
+`echoes`, the signature's own test, is what answers that. "Something is already in the
+field" used to be the rule, and it let the engine's own conclusion protect itself: a run
+read `group:default/lion` off a consumer the user then replaced with a different component,
+and the second pass skipped the field because it was no longer empty. The diff carried
+lion's authorisation and billing-api's consumer, and the Reviewer — which runs once, in the
+last round — was told nothing, because the derivation had happened in a round it never saw.
+So a value one consumer determines is written and reported on every pass, including the one
+where it does not move, and a value nothing determines is **withdrawn** back to a question.
+The record of who stated what is `plan.intent` rather than a list kept beside the plan: the
+ask loop grows that string with every answer, and nothing kept beside the plan survives the
+Architect returning a different plan under the same indices.
 
 ## Why there is one producer of a `SignedPlan`
 
@@ -49,6 +64,13 @@ enforced by the type checker instead of by review.
 
 The cast inside `signPlan` is the seam, and it is admitted in that file. One place, on
 purpose.
+
+The brand proves the object was signed once. What proves it still holds what was signed is
+the **freeze**: `signPlan` deep-freezes the plan it returns and seals `paths` and `refs`,
+so a field changed after signing is a `TypeError` where it is written rather than a value
+`planEdits` puts in the bytes while `classified` vouches for the one it replaced. A copy is
+not covered and must not be — `clarify.answer` makes a new plan out of an answered one, and
+that plan runs the five gates again and is signed again.
 
 ## What the signature does not claim
 
@@ -71,6 +93,26 @@ proposal schema makes, because an annotation map is also where a model would put
 So `materialise.ts` is one function, imported by `recheck.ts` and `edits.ts`. Neither owns
 it: the same proposal becoming the same entity in two places is two places for the
 annotation to drift.
+
+## What "already declared" means
+
+`grant.ts` exists for the reason `materialise.ts` does: two modules ask one question and
+neither may own the answer. It used to mean a **name** — `planEdits` asked
+`listDocumentNames`, `recheckPlan` asked whether the reference was declared at the computed
+path — so a plan stating `read` against a file granting `readwrite` produced an edit whose
+two sides were equal, an empty diff, and a run ending on *nothing to change — the
+repository already says it*. The tool asserted a falsehood about an authorisation in both
+directions: a requested narrowing silently did not happen, and a request for `read` was
+reported satisfied by a standing `readwrite`.
+
+A grant **is** its level (§4.1), so a declaration restates a proposal when it states the
+same level. When it does not, there are no honest bytes to show — appending cannot rewrite
+a scalar — so `planEdits` produces none and names both levels, `recheckPlan` answers
+`differs` rather than `already-declared`, and the `declared-level-mismatch` policy refuses
+the plan before any preview is offered. What it does **not** compare is everything else: a
+declaration whose owner differs still reads as already declared, because a file
+legitimately carries consumers, tags and a description no proposal ever states, and
+comparing documents would call a genuine replay a change.
 
 ## What it never does
 

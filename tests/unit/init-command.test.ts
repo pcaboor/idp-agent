@@ -299,6 +299,33 @@ describe('init, per application', () => {
     expect(await hashTree(project)).toBe(before)
   })
 
+  it('asks about a type the inspection never established', async () => {
+    // `requestOf` names exactly the four values `proposedComponentSchema` lets
+    // a model write, and claims that a name, a type, a lifecycle or an owner
+    // the Architect INVENTS becomes a question. The type was the one of the
+    // four that did not: it classified structurally, on the strength of a
+    // closed union a Component's `spec.type` is not — 63 characters of free
+    // text, straight into `catalog-info.yaml`.
+    const project = await application()
+    const before = await hashTree(project)
+    const invented = {
+      ...COMPONENT,
+      entity: {
+        ...COMPONENT.entity,
+        spec: { ...COMPONENT.entity.spec, type: 'anything-the-model-likes' },
+      },
+    }
+
+    const result = await runInitRepo({ project, client: drafting([invented]), emit: () => {} })
+
+    expect(result.unsupported).toBe(true)
+    expect(result.found).toBe(false)
+    expect(result.text).toContain('operations.0.entity.spec.type')
+    expect(result.text).not.toContain('anything-the-model-likes')
+    expect(result.text).not.toContain('catalog-info.yaml')
+    expect(await hashTree(project)).toBe(before)
+  })
+
   it('never turns a forge handle into an owner, even through the request', async () => {
     // `@acme/platform` and `group:default/platform` are different namespaces,
     // and the CODEOWNERS entry is the one fact that must not reach spec.owner.
