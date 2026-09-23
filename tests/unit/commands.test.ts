@@ -34,7 +34,7 @@ describe('graph', () => {
         apiVersion: 'backstage.io/v1alpha1',
         kind: 'Resource',
         metadata: { name: 'ghost', annotations: {} },
-        spec: { type: 'database-access', owner: 'group:default/tiger', dependsOn: ['resource:default/gone'] },
+        spec: { type: 'database-access', access: 'read', owner: 'group:default/tiger', dependsOn: ['resource:default/gone'] },
       },
     ])
     expect(runGraph(orphan, {}).text).toContain('dangling reference')

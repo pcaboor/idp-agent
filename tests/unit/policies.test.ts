@@ -46,7 +46,7 @@ const accessIn = (env: string, dependsOn: string[] = []) => ({
   kind: 'Resource' as const,
   metadata: { name: `billing-api-orders-db-${env}`, env },
   spec: {
-    type: 'database-access' as const,
+    type: 'database-access' as const, access: 'read',
     owner: 'group:default/tiger',
     ...(dependsOn.length > 0 ? { dependsOn } : {}),
   },
@@ -58,7 +58,7 @@ describe('environment-mismatch', () => {
     // meant to. It is deterministic, so it does not need a model.
     const signed = sign(
       { ...accessIn('dev'), metadata: { name: 'billing-api-orders-db-prod', env: 'dev' } },
-      'give billing-api access to orders-db in dev',
+      'give billing-api read access to orders-db in dev',
     )
 
     const violations = checkPolicies(signed, policies())
@@ -71,13 +71,13 @@ describe('environment-mismatch', () => {
     // Declare, never infer: silence in the request is not permission, but it
     // is not a violation either. The signer already turned it into a question,
     // and a policy that fired here would report the same thing twice.
-    const signed = sign(accessIn('prod'), 'give billing-api access to orders-db')
+    const signed = sign(accessIn('prod'), 'give billing-api read access to orders-db')
 
     expect(checkPolicies(signed, policies())).toEqual([])
   })
 
   it('says nothing when every environment in the plan is the one asked for', () => {
-    const signed = sign(accessIn('prod'), 'give billing-api access to orders-db in prod')
+    const signed = sign(accessIn('prod'), 'give billing-api read access to orders-db in prod')
 
     expect(checkPolicies(signed, policies())).toEqual([])
   })
@@ -87,7 +87,7 @@ describe('unwitnessed-folder', () => {
   it('refuses writing into a folder with no witness', () => {
     // A folder without a witness is a folder the repository never declared.
     // Writing there invents structure, which is what §7.2 forbids.
-    const signed = sign(accessIn('prod'), 'give billing-api access to orders-db in prod')
+    const signed = sign(accessIn('prod'), 'give billing-api read access to orders-db in prod')
 
     const violations = checkPolicies(signed, policies({ witnesses: new Set(['systems']) }))
 
@@ -102,7 +102,7 @@ describe('cross-environment-consumer', () => {
     // whose environment differs from its consumer's is the shape of that bug.
     const signed = sign(
       accessIn('dev', ['resource:default/orders-db-prod']),
-      'give billing-api access to orders-db in dev',
+      'give billing-api read access to orders-db in dev',
     )
 
     const violations = checkPolicies(signed, policies())
@@ -115,7 +115,7 @@ describe('cross-environment-consumer', () => {
   it('says nothing when the reference lives in the same environment', () => {
     const signed = sign(
       accessIn('dev', ['resource:default/orders-db-dev']),
-      'give billing-api access to orders-db in dev',
+      'give billing-api read access to orders-db in dev',
     )
 
     expect(checkPolicies(signed, policies())).toEqual([])
@@ -127,7 +127,7 @@ describe('cross-environment-consumer', () => {
     // version of a violation the repository states precisely.
     const signed = sign(
       accessIn('dev', ['resource:default/ghost']),
-      'give billing-api access to orders-db in dev',
+      'give billing-api read access to orders-db in dev',
       { witnessed: new Set(['resource:default/ghost']) },
     )
 
@@ -142,7 +142,7 @@ describe('the list itself', () => {
     const signed = sign(
       { ...accessIn('dev', ['resource:default/orders-db-prod']),
         metadata: { name: 'billing-api-orders-db-prod', env: 'dev' } },
-      'give billing-api access to orders-db in dev',
+      'give billing-api read access to orders-db in dev',
     )
 
     const violations = checkPolicies(signed, policies({ witnesses: new Set() }))

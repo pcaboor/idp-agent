@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { createInterface } from 'node:readline/promises'
 import { parseArgs } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { FixtureProvider } from '../context/fixtures/index.js'
@@ -13,7 +14,7 @@ import { EntityGraph } from '../context/graph/entity-graph.js'
 import { runGraph, type GraphOptions } from './commands/graph.js'
 import { runShow } from './commands/show.js'
 import { runValidate } from './commands/validate.js'
-import { PlanInputError, runIntent, runPlan } from './commands/plan.js'
+import { PlanInputError, runIntent, runPlan, type Ask } from './commands/plan.js'
 import { wantsColour } from './render/diff.js'
 import { runInitPlatform, runInitRepo } from './commands/init.js'
 import { ConfigError } from './config.js'
@@ -237,6 +238,13 @@ export interface MainDeps {
    * the "no model configured" refusal is asserted on.
    */
   client?: LlmClient
+  /**
+   * How a question reaches a person (§7.5). Injected for the same reason `out`
+   * and `client` are: the whole interactive path is then driven from a test
+   * with no terminal and no stdin. Leaving it out is what a real run does, and
+   * `askOf` decides from the process whether there is anybody there.
+   */
+  ask?: Ask
 }
 
 /**
@@ -283,6 +291,11 @@ export function renderEvent(event: AgentEvent): string | undefined {
       return `  ! attempt ${event.attempt} refused at the ${event.gate} gate: ${oneLine(event.reason)}`
     case 'plan:ready':
       return `· a draft with ${event.operations} operation(s)`
+    case 'derived':
+      // The consumers, not just the owner. A line saying only that an owner
+      // appeared would be the engine asserting a value; naming who it was read
+      // off is what makes it checkable against the diff below it.
+      return `  = ${event.path} follows from ${event.from.join(', ')}: ${event.owner}`
     case 'refused':
       return `! ${event.agent} refused: ${oneLine(event.reason)}`
     case 'ask':
@@ -379,12 +392,24 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   if (command.name === 'plan') {
     const colour = colourOf(deps)
     const source = command.source
+    // Both roads, because both end on the same outcome: a question is a question
+    // whether a model drafted the plan or a file held it (§7.5).
+    const ask = askOf(deps)
 
     if ('from' in source) {
       // A Plan in a file: no model is involved and none can be.
       let result: CommandResult
       try {
-        result = await runPlan({ from: source.from, repo: command.repo, json: command.json, colour })
+        result = await runPlan({
+          from: source.from,
+          repo: command.repo,
+          json: command.json,
+          colour,
+          // Omitted rather than passed as undefined: exactOptionalPropertyTypes
+          // draws the distinction, and "there is nobody to ask" is an absence.
+          ...(ask !== undefined ? { ask } : {}),
+          emit: deps.events ?? progress(err),
+        })
       } catch (error) {
         return failed(error, err)
       }
@@ -395,6 +420,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
       runIntent({
         intent: source.intent,
         repo: command.repo,
+        ...(ask !== undefined ? { ask } : {}),
         // §7.4 step 3: the Inspector reads "the local repository", which is the
         // one the user is standing in. `--repo` names the declarations
         // repository the preview is decided against, and they are two different
@@ -441,6 +467,58 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
  */
 const colourOf = (deps: MainDeps): boolean =>
   deps.out === undefined && wantsColour(deps.env ?? process.env, process.stdout.isTTY === true)
+
+/**
+ * The only implementation that touches a keyboard, and the two decisions in it
+ * are about what a terminal is for.
+ *
+ *   - The prompt goes to **stderr**, never stdout. stdout carries the diff and
+ *     the `--json` report, and both are piped — into `patch`, into `jq`. A
+ *     prompt on it would corrupt the one output this command exists to produce,
+ *     which is the same rule the progress lines already follow (§6.2).
+ *   - The interface is opened per question and closed again. A readline
+ *     interface owns stdin while it lives, and a run that never asks anything
+ *     must not take it at all.
+ *
+ * The wording is the wording the non-interactive form prints, unchanged: the
+ * dotted path says which field, and the model's own reason IS the question — a
+ * prompt showing one without the other asks about a path, or about nothing in
+ * particular.
+ */
+const promptOnTerminal = (): Ask => async (question) => {
+  const reader = createInterface({ input: process.stdin, output: process.stderr })
+  try {
+    // Raced against `close`, because Ctrl-D ends the input without ever
+    // answering: a closed stdin is a decline — which is what `undefined` means
+    // — and not a reason to hang a run or throw at the user.
+    const closed = new Promise<undefined>((resolve) => {
+      reader.once('close', () => resolve(undefined))
+    })
+    return await Promise.race([
+      reader.question(`  ${question.path}\n      ${question.question}\n  > `),
+      closed,
+    ])
+  } finally {
+    reader.close()
+  }
+}
+
+/**
+ * Who answers a question, and the default turns on one fact: is there a person
+ * at the other end.
+ *
+ * An injected sink is the same signal `colourOf` reads, for a stronger reason.
+ * There, painting a string sink puts escape codes in someone's assertion; here,
+ * reading the real stdin under one would block a run nobody is watching, which
+ * is the worst thing a CLI in a pipeline can do. A script has nobody to ask, so
+ * it gets the behaviour this build has always had: the questions print, and the
+ * run exits 3.
+ */
+const askOf = (deps: MainDeps): Ask | undefined => {
+  if (deps.ask !== undefined) return deps.ask
+  if (deps.out !== undefined || deps.err !== undefined) return undefined
+  return process.stdin.isTTY === true ? promptOnTerminal() : undefined
+}
 
 /**
  * Three outcomes, three codes: acted, asked and found nothing, or understood

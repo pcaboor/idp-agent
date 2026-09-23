@@ -3,14 +3,14 @@ import { planSchema } from '../../src/core/schemas/plan.js'
 import { entitySchema } from '../../src/core/schemas/entity.js'
 
 const plan = (entity: unknown): unknown => ({
-  intent: 'give billing-api access to orders-db in prod',
+  intent: 'give billing-api read access to orders-db in prod',
   operations: [{ op: 'create-entity', entity }],
 })
 
 const sound = {
   kind: 'Resource',
   metadata: { name: 'billing-api-orders-db-prod', env: 'prod' },
-  spec: { type: 'database-access', owner: 'group:default/tiger' },
+  spec: { type: 'database-access', owner: 'group:default/tiger', access: 'read' as const },
 }
 
 describe('a proposal is stricter than an entity read from disk', () => {
@@ -66,6 +66,48 @@ describe('a proposal is stricter than an entity read from disk', () => {
     ).toBe(false)
   })
 
+  it('lets a proposal state the level the grant is for', () => {
+    // The field the Reviewer said was missing: the request asked for read
+    // access and `database-access` had no way to say so, which made `read` a
+    // word in a name and nothing more.
+    expect(
+      planSchema.safeParse(plan({ ...sound, spec: { ...sound.spec, access: 'read' } })).success,
+    ).toBe(true)
+  })
+
+  it('lets the level be an unknown, the way owner and type may be', () => {
+    // §5.4: every field the model CHOOSES is a value or `{unknown}`. A level
+    // it cannot determine is a question put to the user — and this is the one
+    // field where guessing hands out write.
+    const asking = {
+      ...sound,
+      spec: { ...sound.spec, access: { unknown: 'read or readwrite?' } },
+    }
+    expect(planSchema.safeParse(plan(asking)).success).toBe(true)
+  })
+
+  it('refuses a level the registry does not declare', () => {
+    expect(
+      planSchema.safeParse(plan({ ...sound, spec: { ...sound.spec, access: 'admin' } })).success,
+    ).toBe(false)
+  })
+
+  it('refuses a level on a type that has none, naming the type', () => {
+    // Unlike `dependencyOf`, this one IS refused at the proposal boundary. The
+    // boundary already reads `spec.type` to know whether a level is required,
+    // so it knows enough to say the level does not belong — and a refusal here
+    // names the field and the type, which the repair loop hands back. Left to
+    // `entitySchema`, the same mistake arrives as a re-check violation about
+    // bytes, which no model can act on.
+    const onAnObject = { ...sound, spec: { type: 'database', owner: sound.spec.owner, access: 'read' } }
+    const parsed = planSchema.safeParse(plan(onAnObject))
+
+    expect(parsed.success).toBe(false)
+    expect(
+      parsed.error?.issues.some((issue) => issue.message.includes('opened or it is not')),
+    ).toBe(true)
+  })
+
   it('lets an unknown stand in for any field the model could not determine', () => {
     // Declare, never infer: the model has a legal way to say "I do not know"
     // for every field it chooses, and the plan then cannot be applied.
@@ -102,5 +144,55 @@ describe('a proposal is stricter than an entity read from disk', () => {
         operations: [{ op: 'create-catalog-info', repoPath: 'apps/billing', entity: component }],
       }).success,
     ).toBe(true)
+  })
+})
+
+describe('a grant states its level, or says it does not know', () => {
+  it('refuses a right that states no level at all', () => {
+    // `.optional()` made "say nothing" a legal proposal: no leaf, so no
+    // question, so a database-access written from a request that said "read
+    // access" landed with no level and exit 0. `metadata.env` set the opposite
+    // precedent for exactly this reason — required, and wrapped in `or()` so
+    // the honest answer is `{unknown}` rather than silence.
+    const parsed = planSchema.safeParse({
+      intent: 'give billing-api read access to orders-db in prod',
+      operations: [
+        {
+          op: 'create-entity',
+          entity: {
+            kind: 'Resource',
+            metadata: { name: 'billing-api-orders-db-prod', env: 'prod' },
+            spec: { type: 'database-access', owner: 'group:default/tiger' },
+          },
+        },
+      ],
+    })
+
+    expect(parsed.success).toBe(false)
+    expect(
+      parsed.error?.issues.some((issue) => issue.path.join('.').endsWith('spec.access')),
+    ).toBe(true)
+  })
+
+  it('accepts a level the model admits it does not know', () => {
+    const parsed = planSchema.safeParse({
+      intent: 'give billing-api read access to orders-db in prod',
+      operations: [
+        {
+          op: 'create-entity',
+          entity: {
+            kind: 'Resource',
+            metadata: { name: 'billing-api-orders-db-prod', env: 'prod' },
+            spec: {
+              type: 'database-access',
+              owner: 'group:default/tiger',
+              access: { unknown: 'the request does not say read or write' },
+            },
+          },
+        },
+      ],
+    })
+
+    expect(parsed.success).toBe(true)
   })
 })

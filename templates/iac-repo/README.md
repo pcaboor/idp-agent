@@ -15,6 +15,11 @@ One folder per nature, and the folder follows from the type rather than from a n
 convention. An object — a database, a cache, an API — lives under `catalog/`. A right over
 an object — an access, a network route — lives under `dependencies/`.
 
+A right may state the level it grants: `spec.access: read` or `readwrite`, and only a
+right may. It is optional, because a network route has no such level and a catalogue
+written before the field still validates — but an absent level is **absent**, never read
+as `readwrite`. A grant whose level nobody wrote down is a grant nobody can review.
+
 **One file per entity.** Two people declaring two things never write the same file, so two
 merge requests never conflict over one.
 

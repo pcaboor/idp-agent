@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 617 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 685 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -135,6 +135,9 @@ changing that section first.
 **Model**
 - A resource is an object; an **access is a right over it**, and the access — not the
   resource — carries the list of its consumers.
+- **A right states the level it grants**, `read` or `readwrite`, and only a right may.
+  Optional, because an existing repository has none and a network flow has no level —
+  but an unstated level is unstated, never read as `readwrite`.
 - **A declaration is read from both ends.** Which side wrote the edge down —
   `dependsOn` on the consumer, `dependencyOf` on the access — decides which file a
   reviewer sees, never which question may be answered. `dependenciesOf` is the exact

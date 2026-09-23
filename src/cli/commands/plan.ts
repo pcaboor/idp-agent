@@ -3,7 +3,7 @@ import path from 'node:path'
 import { draftPlan } from '../../agents/architect.js'
 import type { EventSink } from '../../agents/events.js'
 import { inspect } from '../../agents/inspector.js'
-import { repair, type Gate, type RepairOutcome } from '../../agents/repair.js'
+import { repair, type Gate, type RepairAttempt, type RepairOutcome } from '../../agents/repair.js'
 import { reviewPlan } from '../../agents/reviewer.js'
 import { formatSummary } from '../../agents/summary.js'
 import { buildTools } from '../../agents/tools/graph-tools.js'
@@ -12,12 +12,13 @@ import { summariseGraph, type SiSummary } from '../../context/graph/summary.js'
 import { readRepository } from '../../context/iac-fs/snapshot.js'
 import { readProject } from '../../context/project-fs/snapshot.js'
 import { renderUnifiedDiff, type FileEdit } from '../../core/diff/unified.js'
-import { questionsOf, type Question } from '../../core/plan/clarify.js'
+import { answer, AnswerError, questionsOf, type Question } from '../../core/plan/clarify.js'
+import { deriveOwners } from '../../core/plan/derive.js'
 import { planEdits, type DroppedOperation } from '../../core/plan/edits.js'
 import { checkPolicies, type PolicyContext, type PolicyViolation } from '../../core/plan/policies.js'
 import { recheckPlan, type Recheck } from '../../core/plan/recheck.js'
 import { signPlan, type SignatureContext, type SignedPlan } from '../../core/plan/sign.js'
-import { planSchema, type Plan } from '../../core/schemas/plan.js'
+import { planSchema, PLAN_LIMITS, type Plan } from '../../core/schemas/plan.js'
 import { ENV_ANNOTATION, type Vocabulary } from '../../core/schemas/vocabulary.js'
 import type { RepositorySnapshot, Violation } from '../../core/validate/rules.js'
 import type { LlmClient } from '../../llm/client.js'
@@ -77,6 +78,19 @@ export interface PlanOptions {
   readonly json?: boolean
   /** Only a caller that knows it holds a terminal asks for colour. */
   readonly colour?: boolean
+  /**
+   * How a question reaches a person. Absent means there is nobody to ask — a
+   * pipeline, a test, a `--json` run in CI — and the questions print and the
+   * run exits 3, which is what it did before there was an `ask` at all.
+   */
+  readonly ask?: Ask
+  /**
+   * Where a derivation is stated. Absent means nobody is listening — the
+   * events still travel on the intent road, and this road has no agents to
+   * report; but the engine overwriting an explicit "I do not know" must be
+   * audible wherever it happens.
+   */
+  readonly emit?: EventSink
 }
 
 /**
@@ -159,6 +173,14 @@ interface Contexts {
   readonly policy: PolicyContext
   /** What both gates measure a value against, `.idp-agent.yml` included. */
   readonly vocabulary: Vocabulary
+  /**
+   * ref → the owner that entity declares. What `deriveOwners` reads a right's
+   * owner off, and it is built HERE, beside the vocabulary and off the same
+   * graph, because that is the condition the whole derivation rests on: a
+   * value read from one graph and measured against another is a value the
+   * signature has never heard of.
+   */
+  readonly owners: ReadonlyMap<string, string>
   /** The same counts the Supervisor's summary uses, so the model sees one catalogue. */
   readonly summary: SiSummary
 }
@@ -207,9 +229,13 @@ function contextsOf(
 
   const declared = new Map<string, string>()
   const environments = new Map<string, string>()
+  const owners = new Map<string, string>()
   for (const file of snapshot.files) {
     for (const entity of file.entities) {
       declared.set(refOf(entity), file.path)
+      // Read from the entity, never inferred: `spec.owner` is required on both
+      // kinds, so every entity the reader accepted contributes exactly one.
+      owners.set(refOf(entity), entity.spec.owner)
       const env = entity.metadata.annotations[ENV_ANNOTATION]
       // Declare, never infer: an entity with no environment contributes none,
       // and cross-environment-consumer stays silent rather than reading one off
@@ -220,6 +246,7 @@ function contextsOf(
 
   return {
     vocabulary,
+    owners,
     summary: summarised.summary,
     signature: {
       witnessed: seed.witnessed ?? new Set(declared.keys()),
@@ -390,6 +417,156 @@ export const renderQuestions = (questions: readonly Question[]): CommandResult =
 })
 
 /**
+ * How a question reaches a person, and it is a function for the reason `client`
+ * is one: the whole interactive path is then driven from a test with no
+ * terminal, no stdin and no process. `cli/index.ts` owns the only
+ * implementation that touches a keyboard.
+ *
+ * `undefined` is the user DECLINING — they will not answer this one. It is not
+ * an empty value, and the two must stay distinct: an empty string is a value
+ * every gate below would wave through (`echoes` vouches for it) and it would
+ * reach the diff as a field with nothing in it.
+ */
+export type Ask = (question: Question) => Promise<string | undefined>
+
+/**
+ * How many times a run may come back with questions before it stops asking.
+ *
+ * Three, the number §6.1 already gives the model, and for the same reason: a
+ * bound is what turns "it keeps asking" into an outcome someone can read. It
+ * counts ROUNDS, not questions — every question a pass produced is asked in one
+ * round — so a plan with nine undetermined fields is one round, and a run that
+ * answers a question only to be asked a new one is three.
+ *
+ * Exhausting it is a clean stop and never a loop: the questions that are left
+ * print exactly as they do when nobody was there to ask, and the run exits 3.
+ * What it does NOT do is claim the remaining questions are unanswerable — it
+ * says this build stopped asking, which is the most it can honestly report.
+ */
+export const ASK_LIMITS = { maxRounds: 3 } as const
+
+/** What the user said, and the field they said it about. */
+export interface Answer {
+  readonly path: string
+  readonly value: string
+}
+
+/**
+ * What putting a round of questions to someone produced. A union rather than
+ * one record with optional fields, so the three absences are compile errors.
+ */
+export type Filling =
+  | { readonly outcome: 'answered'; readonly plan: Plan; readonly answers: readonly Answer[] }
+  /** They stopped. What is left is what they were not asked, or would not say. */
+  | { readonly outcome: 'declined'; readonly unanswered: readonly Question[] }
+  /** `answer` refused the path. Surfaced, never thrown at the user as a stack. */
+  | { readonly outcome: 'refused'; readonly reason: string }
+
+/**
+ * The request, and what the user said when they were asked.
+ *
+ * **This is what stops an answer being asked about twice**, and it is not a
+ * special case bolted onto the signer. `signPlan` classifies every leaf by where
+ * it came from, and the strongest claim a value can carry is `echoed` — the
+ * request names it. A value the user typed at a prompt and the request does not
+ * carry classifies `novel` on the very next pass, `askAbout` puts an
+ * `{unknown}` back where the answer was, and the same question returns for
+ * ever. The fix is not to exempt the field: it is that the request GREW. The
+ * user is the authority the intent comes from, so what they say when asked is
+ * part of what they asked for, and `echoed` becomes true of it in the ordinary
+ * way.
+ *
+ * Only the VALUES join it, never the dotted paths. A path is engine
+ * bookkeeping — `operations`, `metadata`, `env` — and putting it in the string
+ * the signature measures against would quietly vouch for those words as values
+ * too. The Architect and the Reviewer read this same string, which is the other
+ * half of why it has to grow: the Reviewer's question is "is this what was
+ * asked for", and it rejects an owner "the request did not mention" — including
+ * one the user just mentioned.
+ *
+ * What this does NOT cover: `echoes` is a whole-request test and always was, so
+ * an answered `prod` vouches for `prod` ANYWHERE in the plan, not only at the
+ * field it was typed for. That is the existing shape of `echoed` rather than
+ * something new here, and the diff is still what a human reads.
+ *
+ * `undefined` when the answers no longer fit. The signed plan carries this
+ * string in `plan.intent` and `--json` hands that plan to a caller who may feed
+ * it back to `--from`: a request grown past the schema's own bound would be a
+ * plan this tool emits and then refuses to read.
+ */
+function withAnswers(intent: string, answers: readonly Answer[]): string | undefined {
+  if (answers.length === 0) return intent
+  const grown = `${intent}\n\nasked, and answered: ${answers.map((one) => one.value).join(', ')}`
+  return grown.length > PLAN_LIMITS.maxIntentLength ? undefined : grown
+}
+
+const OVERFULL =
+  `the answers no longer fit the request: an intent is limited to ` +
+  `${PLAN_LIMITS.maxIntentLength} characters, and the signature measures every value against it`
+
+/**
+ * An answer this run cannot use, and why. `found: false` and NOT `unsupported`:
+ * the build understood the request and acted on it, and this is a negative
+ * answer about one value — the same distinction `renderStopped` draws.
+ */
+const renderRefusedAnswer = (reason: string): CommandResult => ({
+  text: [
+    `the answer was refused — ${reason}`,
+    '',
+    'Nothing was previewed, and nothing was written.',
+  ].join('\n'),
+  found: false,
+})
+
+/**
+ * Puts one round of questions to the user and fills the plan with what comes
+ * back, one question at a time.
+ *
+ * `questionsOf` and `answer` do the work, and neither is reimplemented here:
+ * `answer` already returns a NEW plan and already refuses a path that is not a
+ * question, so each answer is applied to the plan the last one produced.
+ *
+ * Exported because it is the one part of the ask loop with a shape worth
+ * testing on its own — in particular the refusal, which the loop above cannot
+ * produce by itself and a miswiring above it could.
+ */
+export async function fillAnswers(
+  plan: Plan,
+  questions: readonly Question[],
+  ask: Ask,
+): Promise<Filling> {
+  let filled = plan
+  const answers: Answer[] = []
+
+  for (const [index, question] of questions.entries()) {
+    const said = await ask(question)
+    // An empty line is a decline, not an empty value. A terminal cannot tell
+    // "I do not know either" from a stray Return, and the safe reading of the
+    // two is the one that writes nothing.
+    if (said === undefined || said.trim() === '') {
+      // What is left, never what was already given: nothing here is kept, so
+      // the answers collected before the stop go with the run. A re-run asks
+      // them again — which is what "nothing was written" costs.
+      return { outcome: 'declined', unanswered: questions.slice(index) }
+    }
+
+    try {
+      filled = answer(filled, question.path, said.trim())
+    } catch (error) {
+      // `answer` refuses a path that is not a question, which is how a value
+      // the engine vouched for would otherwise be overwritten by one nobody
+      // did. The list and the plan can only disagree through a miswiring here,
+      // and a miswiring must reach the user as a refusal rather than a stack.
+      if (error instanceof AnswerError) return { outcome: 'refused', reason: error.message }
+      throw error
+    }
+    answers.push({ path: question.path, value: said.trim() })
+  }
+
+  return { outcome: 'answered', plan: filled, answers }
+}
+
+/**
  * A clean stop (§6.1, §7.5): the partial plan, the reason, and no file.
  *
  * `found: false` and NOT `unsupported`, and the difference is the whole of what
@@ -432,28 +609,98 @@ export function renderStopped(
 export async function runPlan(options: PlanOptions): Promise<CommandResult> {
   const root = await repositoryRoot(options.repo)
   const snapshot = await readRepository(root)
-  const plan = await loadPlan(options.from)
+  const loaded = await loadPlan(options.from)
 
   const contexts = contextsOf(root, snapshot, graphOf(snapshot))
-  const signed = signPlan(plan, contexts.signature)
-  if ('outcome' in signed) {
-    // A refusal is not a question: nothing here can be answered, because the
-    // value is not undetermined — it is unusable.
-    return {
-      text: [
-        'refused at the signature — the engine signs what it can vouch for:',
-        ...signed.refusals.map((refusal) => `  ${refusal.path}: ${refusal.reason}`),
-      ].join('\n'),
-      found: false,
-    }
-  }
+  const contents = await readContents(root, snapshot)
 
-  const questions = questionsOf(signed.plan)
+  /** What the user said when asked. The request grows by it; see `withAnswers`. */
+  const answers: Answer[] = []
+  let plan = loaded
+
+  // §7.5: the CLI asks. One pass of the whole deterministic sequence per round,
+  // because an answer changes the plan and everything downstream of the
+  // signature judged the plan as it was — the policies, the bytes, the
+  // re-check. Re-running only the signer would show a diff two gates never saw.
+  for (let round = 0; ; round += 1) {
+    const request = withAnswers(loaded.intent, answers)
+    if (request === undefined) return renderRefusedAnswer(OVERFULL)
+
+    // The same derivation the loop runs between gates [1] and [2], and it runs
+    // here for the reason this file exists: both roads have to answer "what
+    // would this do?" the same way, and a rule that applied only to a drafted
+    // plan would make the deterministic entry point a different engine. A
+    // right's owner follows from its consumer whoever wrote the plan down.
+    const derivation = deriveOwners({ ...plan, intent: request }, contexts.owners)
+    const derived = derivation.plan
+    // Stated on this road too. The engine overwrites a model's explicit "I do
+    // not know" here exactly as it does when drafting, and a rule that is
+    // audible on one entry point and silent on the other is two engines.
+    for (const one of derivation.derived) {
+      options.emit?.({ type: 'derived', path: one.path, owner: one.owner, from: [...one.from] })
+    }
+    const signed = signPlan(derived, contexts.signature)
+    if ('outcome' in signed) {
+      // A refusal is not a question: nothing here can be answered, because the
+      // value is not undetermined — it is unusable.
+      return {
+        text: [
+          'refused at the signature — the engine signs what it can vouch for:',
+          ...signed.refusals.map((refusal) => `  ${refusal.path}: ${refusal.reason}`),
+        ].join('\n'),
+        found: false,
+      }
+    }
+
+    const questions = questionsOf(signed.plan)
+    if (questions.length === 0 || options.ask === undefined || round >= ASK_LIMITS.maxRounds) {
+      return previewPlan(signed, questions, contexts, snapshot, contents, options)
+    }
+
+    const filled = await fillAnswers(signed.plan, questions, options.ask)
+    if (filled.outcome === 'refused') return renderRefusedAnswer(filled.reason)
+    // The same renderer the run would have ended on with nobody there to ask,
+    // so a decline and an unattended run say the same sentence.
+    if (filled.outcome === 'declined') {
+      return previewPlan(signed, filled.unanswered, contexts, snapshot, contents, options)
+    }
+
+    // Gate [1], over the plan the user just changed. An answer is a value
+    // entering the plan, and the schema is what decides whether a value may be
+    // there — without this, `tiger` reaches a diff as an owner reference,
+    // because the signature vouches for it (the user said it) and nothing
+    // downstream re-parses. `--from` has no Architect to hand the refusal back
+    // to, so it is a clean stop naming the field rather than a repair.
+    const reparsed = planSchema.safeParse(filled.plan)
+    if (!reparsed.success) return renderRefusedAnswer(reasonOf(reparsed.error.issues))
+
+    plan = reparsed.data
+    answers.push(...filled.answers)
+  }
+}
+
+/**
+ * The deterministic tail of `plan --from`: the policies, the bytes, the
+ * re-check, and the one of four answers this run earned.
+ *
+ * Split out of `runPlan` so the ask loop can run it more than once. It takes
+ * `questions` rather than recomputing them, because a decline reports what is
+ * still unanswered and the signed plan holds every question of the round —
+ * including the ones the user already answered and this run did not keep.
+ */
+function previewPlan(
+  signed: SignedPlan,
+  questions: readonly Question[],
+  contexts: Contexts,
+  snapshot: RepositorySnapshot,
+  contents: ReadonlyMap<string, string>,
+  options: { readonly json?: boolean; readonly colour?: boolean },
+): CommandResult {
   const policies = checkPolicies(signed, contexts.policy)
   // The edits come first, and the re-check reads them: what CI would say is
   // asked about the very bytes the reviewer is shown, not about a second model
   // of the plan that can disagree with the first.
-  const { edits, dropped } = planEdits(signed, await readContents(root, snapshot))
+  const { edits, dropped } = planEdits(signed, contents)
   const recheck = recheckPlan(signed, snapshot, edits)
   const changed = edits.filter((edit) => edit.before !== edit.after)
 
@@ -524,6 +771,11 @@ export interface IntentOptions {
   readonly json?: boolean
   /** Only a caller that knows it holds a terminal asks for colour. */
   readonly colour?: boolean
+  /**
+   * How a question reaches a person. Absent means there is nobody to ask, and
+   * the run ends on the questions the way it always has — see `PlanOptions.ask`.
+   */
+  readonly ask?: Ask
 }
 
 /**
@@ -556,52 +808,125 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
   const summary = formatSummary(contexts.summary, contexts.vocabulary)
 
   const facts = await inspect(options.client, project, options.emit)
+  const contents = await readContents(root, snapshot)
 
-  const outcome = await repair(
-    {
-      // The user's words, held here and imposed on every draft. `signPlan`
-      // measures provenance against this string, so a drafter that wrote its
-      // own intent could name the owner it wanted and have the gate vouch for
-      // it (see `RepairInput.intent`). It is passed once, from the caller that
-      // read it.
-      intent: options.intent,
-      draft: (report) =>
-        draftPlan(
-          options.client,
-          tools,
-          {
-            intent: options.intent,
-            facts,
-            summary,
-            // `draftPlan` concatenates this slot last, after the facts and the
-            // summary, which makes it the one place a caller may add to the
-            // opening message — and `repair` leaves where the report lands to
-            // the caller for exactly that reason.
-            //
-            // It must never be appended to `intent`. The signature measures
-            // every proposed value against that string, so a refusal naming
-            // `group:default/tiger` would make that owner `echoed` on the next
-            // attempt: the gate that caught the value would then vouch for it.
-            vocabulary: report === undefined ? '' : `\n${report}`,
-          },
-          options.emit,
-        ),
-      // Two arguments, never one. The Reviewer is handed the plan and the
-      // ORIGINAL request, and nothing else — not the Architect's reasoning, not
-      // which attempt this is, not what an earlier gate said. Both agents are
-      // the same weights behind the same provider, so a second opinion fed the
-      // first one's transcript is an echo holding a veto (`reviewer.ts`).
-      review: (plan) =>
-        reviewPlan(options.client, { plan, intent: options.intent }, options.emit),
-      signature: contexts.signature,
-      policy: contexts.policy,
-      snapshot,
-      contents: await readContents(root, snapshot),
-    },
-    options.emit,
-  )
+  /** What the user said when asked. The request grows by it; see `withAnswers`. */
+  const answers: Answer[] = []
+  /**
+   * The plan the user just filled, which the next run of the gates starts from.
+   * Absent on the first round, when there is nothing to start from but a draft.
+   */
+  let answered: Plan | undefined
+  /**
+   * Carried across rounds, never restarted with each one.
+   *
+   * `repair` counts these for its caller — rows its tools cut off, proposals
+   * its own schema refused, and the gates each attempt ran — and says in its
+   * own comment that a seam is where that signal died once already. An answered
+   * run is several calls to it, so this is that seam: reporting only the last
+   * round's numbers would say a run that spent nine attempts spent two. The
+   * attempt NUMBERS restart per round, because 1 | 2 | 3 is §6.1's count of
+   * what the Architect gets per run of the loop and not a count of rounds.
+   */
+  const spent = { truncated: 0, rejections: 0, attempts: [] as RepairAttempt[] }
 
-  return renderOutcome(outcome, options)
+  // §7.5: the CLI asks, and then RUNS THE GATES AGAIN. All five of them, over
+  // the filled plan — not the signature alone. A question leaves the loop
+  // before the Reviewer and before the re-check (§6.1), so those two have never
+  // seen the value the user supplied, and showing a diff they did not judge is
+  // the one thing this stage may not do. The Reviewer in particular has to see
+  // it: its question is "is this what was asked for", and the answer is now
+  // part of what was asked.
+  for (let round = 0; ; round += 1) {
+    const request = withAnswers(options.intent, answers)
+    if (request === undefined) return renderRefusedAnswer(OVERFULL)
+
+    // Spent by the first attempt of this round and never again. A filled plan
+    // is a proposal that cost no round-trip, so it enters the loop as one; if a
+    // gate refuses it, the Architect gets the remaining attempts in the
+    // ordinary way, which is exactly what `repair` is for. Cleared before the
+    // call so a re-draft cannot hand the same plan back a second time.
+    let seeded = answered
+    answered = undefined
+
+    const outcome = await repair(
+      {
+        // The user's words, held here and imposed on every draft. `signPlan`
+        // measures provenance against this string, so a drafter that wrote its
+        // own intent could name the owner it wanted and have the gate vouch for
+        // it (see `RepairInput.intent`). It is passed once, from the caller that
+        // read it — and it grows only by what the USER said when asked, never
+        // by anything a model wrote (`withAnswers`).
+        intent: request,
+        draft: (report) => {
+          if (seeded !== undefined) {
+            const filled = seeded
+            seeded = undefined
+            return Promise.resolve({ plan: filled, truncated: 0, rejections: 0 })
+          }
+          return draftPlan(
+            options.client,
+            tools,
+            {
+              intent: request,
+              facts,
+              summary,
+              // `draftPlan` concatenates this slot last, after the facts and the
+              // summary, which makes it the one place a caller may add to the
+              // opening message — and `repair` leaves where the report lands to
+              // the caller for exactly that reason.
+              //
+              // It must never be appended to `intent`. The signature measures
+              // every proposed value against that string, so a refusal naming
+              // `group:default/tiger` would make that owner `echoed` on the next
+              // attempt: the gate that caught the value would then vouch for it.
+              vocabulary: report === undefined ? '' : `\n${report}`,
+            },
+            options.emit,
+          )
+        },
+        // Two arguments, never one. The Reviewer is handed the plan and the
+        // ORIGINAL request, and nothing else — not the Architect's reasoning, not
+        // which attempt this is, not what an earlier gate said. Both agents are
+        // the same weights behind the same provider, so a second opinion fed the
+        // first one's transcript is an echo holding a veto (`reviewer.ts`).
+        review: (plan, derived) =>
+          reviewPlan(options.client, { plan, intent: request, derived }, options.emit),
+        signature: contexts.signature,
+        policy: contexts.policy,
+        // Built off the same graph as `contexts.vocabulary`, which is the whole
+        // of what makes a derived owner survive the signature (`deriveOwners`).
+        owners: contexts.owners,
+        snapshot,
+        contents,
+      },
+      options.emit,
+    )
+
+    spent.truncated += outcome.truncated
+    spent.rejections += outcome.rejections
+    spent.attempts.push(...outcome.attempts)
+
+    if (outcome.outcome !== 'questions') return renderOutcome({ ...outcome, ...spent }, options)
+    // Nobody to ask, or out of rounds. Both end on the questions, and they end
+    // on the SAME sentence: a bound that produced a different answer from an
+    // unattended run would be a third outcome nobody designed.
+    if (options.ask === undefined || round >= ASK_LIMITS.maxRounds) {
+      return renderOutcome({ ...outcome, ...spent }, options)
+    }
+
+    const filled = await fillAnswers(outcome.plan, outcome.questions, options.ask)
+    if (filled.outcome === 'refused') return renderRefusedAnswer(filled.reason)
+    // The outcome the loop already produced, with the questions narrowed to the
+    // ones still open. Reusing it is what keeps a decline rendering — in both
+    // `--json` and prose — exactly as an unattended run does.
+    if (filled.outcome === 'declined') {
+      return renderOutcome({ ...outcome, ...spent, questions: filled.unanswered }, options)
+    }
+
+    answers.push(...filled.answers)
+    answered = filled.plan
+  }
 }
 
 /**

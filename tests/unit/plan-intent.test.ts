@@ -112,7 +112,7 @@ const FACTS = {
  */
 const INTENT =
   'declare the database orders-db-prod in prod owned by group:default/tiger, then give ' +
-  'component:default/billing-api a database-access to resource:default/orders-db-prod'
+  'component:default/billing-api a database-access granting read to resource:default/orders-db-prod'
 
 const CREATE_DATABASE = {
   op: 'create-entity',
@@ -129,7 +129,7 @@ const CREATE_ACCESS = {
     kind: 'Resource',
     metadata: { name: 'billing-api-orders-db-prod', env: 'prod' },
     spec: {
-      type: 'database-access',
+      type: 'database-access', access: 'read',
       owner: 'group:default/tiger',
       dependsOn: ['resource:default/orders-db-prod'],
       dependencyOf: ['component:default/billing-api'],

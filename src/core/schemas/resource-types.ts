@@ -14,16 +14,41 @@
 
 export type Nature = 'object' | 'right'
 
+/**
+ * What a right grants.
+ *
+ * A property of the grant, not a kind of thing. Splitting `database-access`
+ * into `database-read` and `database-readwrite` would double this table and
+ * the folder layout for one boolean, and every rule that asks a type for its
+ * nature would then be asking two entries the same question.
+ *
+ * Two levels, closed, and neither of them a default. `resourceSchema` says
+ * what an absent one means and what that costs.
+ */
+export const ACCESS_LEVELS = ['read', 'readwrite'] as const
+
+export type AccessLevel = (typeof ACCESS_LEVELS)[number]
+
 interface ResourceTypeEntry {
   readonly nature: Nature
   readonly folder: string
+  /**
+   * Whether a grant of this type is read or write.
+   *
+   * Not every right has a level. A network flow is opened or it is not — asking
+   * whether it is "read" is asking the wrong question — and a gateway route is
+   * the same. Putting the fact in the registry means the schema does not carry
+   * a second list of which rights are levelled, which is the split that
+   * `ACCESS_LEVELS` being one enum already avoids.
+   */
+  readonly levelled?: true
 }
 
 export const RESOURCE_TYPES = {
   database: { nature: 'object', folder: 'catalog/databases' },
   cache: { nature: 'object', folder: 'catalog/caches' },
   api: { nature: 'object', folder: 'catalog/apis' },
-  'database-access': { nature: 'right', folder: 'dependencies/access' },
+  'database-access': { nature: 'right', folder: 'dependencies/access', levelled: true },
   'network-access': { nature: 'right', folder: 'dependencies/network' },
   'gateway-route': { nature: 'right', folder: 'dependencies/gateway' },
 } as const satisfies Record<string, ResourceTypeEntry>
@@ -42,4 +67,10 @@ export function natureOf(type: ResourceType): Nature {
 
 export function folderOf(type: ResourceType): string {
   return RESOURCE_TYPES[type].folder
+}
+
+/** Whether a grant of this type states read or write. See ResourceTypeEntry. */
+export function levelledOf(type: ResourceType): boolean {
+  const entry: ResourceTypeEntry = RESOURCE_TYPES[type]
+  return entry.levelled === true
 }

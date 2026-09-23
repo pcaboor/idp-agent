@@ -24,3 +24,17 @@ states the fact and stays free of the process — and `bin.ts` assigns it to
 **stdout.** `cli/` is the only layer that writes to it. `main(argv, deps)` takes injectable `MainDeps` —
 `root`, `out`, `err` — so `tests/unit/main.test.ts` captures output into arrays and runs against
 `tests/golden/broken-si`. Entities `FixtureProvider` rejected go to `err`, never dropped in silence.
+
+**Asking (§7.5).** A plan holding an `{unknown}` is a question, and `plan` puts it to the
+user rather than printing it and leaving. `MainDeps.ask` is the seam — `(question) =>
+Promise<string | undefined>` — injected by `tests/unit/plan-ask.test.ts` so the whole
+interactive path runs with no terminal. The default is decided by `askOf`: a prompt on
+**stderr** when stdin is a TTY and no sink was injected (stdout carries the diff), and
+nothing at all otherwise, because a script has nobody to ask and blocking on a read is the
+worst thing a CLI in a pipeline can do — the questions print and the run exits 3, as it
+always has. `undefined` is a decline, and so is an empty line.
+
+Both roads then run **all the gates again** on the filled plan, bounded by
+`ASK_LIMITS.maxRounds`. An answer is not exempted from the signature: the request GREW by
+it (`withAnswers`), because the user is the authority the intent comes from — which is
+what stops the same field being asked about twice.

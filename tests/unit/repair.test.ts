@@ -12,7 +12,7 @@ import { reviewPlan, VERDICT_TOOL, type Verdict } from '../../src/agents/reviewe
 import { buildTools } from '../../src/agents/tools/graph-tools.js'
 import type { ProjectFacts } from '../../src/agents/tools/project-tools.js'
 import { PROPOSE_TOOL } from '../../src/agents/tools/propose-tool.js'
-import { EntityGraph } from '../../src/context/graph/entity-graph.js'
+import { EntityGraph, refOf } from '../../src/context/graph/entity-graph.js'
 import { computeEntityPath } from '../../src/core/paths/entity-path.js'
 import type { PolicyContext } from '../../src/core/plan/policies.js'
 import type { SignatureContext } from '../../src/core/plan/sign.js'
@@ -72,9 +72,9 @@ const asking = (outcome: RepairOutcome): Extract<RepairOutcome, { outcome: 'ques
   return outcome
 }
 
-const INTENT = 'give billing-api access to orders-db in prod'
+const INTENT = 'give billing-api read access to orders-db in prod'
 /** The same request, aimed at dev. What the plan below is measured against. */
-const DEV_INTENT = 'give billing-api access to orders-db in dev'
+const DEV_INTENT = 'give billing-api read access to orders-db in dev'
 
 const VOCABULARY = {
   kinds: ['Component', 'Resource'],
@@ -141,6 +141,17 @@ const SNAPSHOT: RepositorySnapshot = {
 }
 
 /**
+ * ref → the owner that entity declares, as `contextsOf` builds it: off the
+ * entities the snapshot holds, and off the same set `VOCABULARY.owners` lists.
+ * That agreement is what makes a derived owner survive gate [2].
+ */
+const OWNERS: ReadonlyMap<string, string> = new Map(
+  SNAPSHOT.files.flatMap((file) =>
+    file.entities.map((entity) => [refOf(entity), entity.spec.owner] as const),
+  ),
+)
+
+/**
  * The bytes the repository holds, composed from the same entities the snapshot
  * parsed. The loop is handed both because it may not read either (`agents/`
  * touches no disk), and a test that hand-wrote the text would be asserting
@@ -159,7 +170,7 @@ const ACCESS = {
   kind: 'Resource',
   metadata: { name: 'billing-api-orders-db-prod', env: 'prod' },
   spec: {
-    type: 'database-access',
+    type: 'database-access', access: 'read',
     owner: 'group:default/tiger',
     dependsOn: ['resource:default/orders-db-prod'],
     dependencyOf: ['component:default/billing-api'],
@@ -187,7 +198,7 @@ const DEV_PLAN = planOf(
   {
     ...ACCESS,
     metadata: { name: 'billing-api-orders-db-dev', env: 'dev' },
-    spec: { type: 'database-access' as const, owner: 'group:default/tiger' },
+    spec: { type: 'database-access' as const, access: 'read', owner: 'group:default/tiger' },
   },
   DEV_INTENT,
 )
@@ -252,6 +263,7 @@ const inputs = (over: Partial<RepairInput> = {}): RepairInput => ({
   review: reviewing({ verdict: 'ok' }).review,
   signature: signature(),
   policy: policy(),
+  owners: OWNERS,
   snapshot: SNAPSHOT,
   contents: bytesOf(SNAPSHOT),
   ...over,
@@ -360,7 +372,7 @@ describe('each gate refuses on its own', () => {
         },
       },
       spec: {
-        type: 'database-access',
+        type: 'database-access', access: 'read',
         owner: 'group:default/tiger',
         dependsOn: ['resource:default/orders-db-prod'],
       },
@@ -493,6 +505,65 @@ describe('a question is not a failed gate', () => {
   })
 })
 
+/**
+ * The draft that blocked every recorded run: name, environment, type and
+ * consumer all settled, and the model declining to invent the one field
+ * nothing in the request states.
+ */
+const UNOWNED = planOf({
+  ...ACCESS,
+  spec: {
+    ...ACCESS.spec,
+    owner: { unknown: 'the request does not state an owner for the access resource' },
+  },
+})
+
+describe('a right’s owner is derived, not asked', () => {
+  it('reaches a diff on the draft four recorded scenarios in five stopped on', async () => {
+    const { events, emit } = collect()
+    const architect = drafting(UNOWNED)
+
+    const outcome = planned(await repair(inputs({ draft: architect.draft }), emit))
+
+    // The five gates still five, and the derivation is none of them: it cannot
+    // refuse, so it has nothing to appear in this list as.
+    expect(outcome.attempts[0]?.gates).toEqual(ORDER)
+    // No second attempt: the model was never asked to invent what design 4.1
+    // forbids it to invent, because the field was taken away from it instead.
+    expect(architect.reports).toEqual([undefined])
+    expect(eventsOfType(events, 'ask')).toEqual([])
+  })
+
+  it('says so out loud, naming the consumer it read the owner off', async () => {
+    // Stated, never silent: the engine overwrote the model's explicit "I do not
+    // know", and `from` is what makes that checkable against the diff.
+    const { events, emit } = collect()
+
+    await repair(inputs({ draft: drafting(UNOWNED).draft }), emit)
+
+    expect(eventsOfType(events, 'derived')).toEqual([
+      {
+        type: 'derived',
+        path: 'operations.0.entity.spec.owner',
+        owner: 'group:default/tiger',
+        from: ['component:default/billing-api'],
+      },
+    ])
+  })
+
+  it('still asks when the catalogue says nothing about the consumer', async () => {
+    const { emit } = collect()
+
+    const outcome = asking(
+      await repair(inputs({ draft: drafting(UNOWNED).draft, owners: new Map() }), emit),
+    )
+
+    expect(outcome.questions.map((question) => question.path)).toEqual([
+      'operations.0.entity.spec.owner',
+    ])
+  })
+})
+
 describe('when the Architect drafted nothing', () => {
   it('stops without calling it a repair', async () => {
     const { events, emit } = collect()
@@ -548,7 +619,8 @@ describe('wired to the agents it calls back into', () => {
               { intent: INTENT, facts: FACTS, summary: 'si:\n  entities: 2', vocabulary: '' },
               emit,
             ),
-          review: (plan) => reviewPlan(reviewer, { plan, intent: INTENT }, emit),
+          review: (plan, derived) =>
+            reviewPlan(reviewer, { plan, intent: INTENT, derived }, emit),
         }),
         emit,
       ),
@@ -607,7 +679,7 @@ describe('the request is the caller’s, not the draft’s', () => {
     // had asked for it by name.
     const forged = planOf(
       { ...ACCESS, spec: { ...ACCESS.spec, owner: 'group:default/wizards' } },
-      'give billing-api access to orders-db in prod owned by group:default/wizards',
+      'give billing-api read access to orders-db in prod owned by group:default/wizards',
     )
     const { emit } = collect()
 

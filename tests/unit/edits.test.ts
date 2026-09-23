@@ -34,13 +34,13 @@ const sign = (intent: string, operations: unknown[]) => {
   return result
 }
 
-const CREATE_INTENT = 'give billing-api access to orders-db in prod'
+const CREATE_INTENT = 'give billing-api read access to orders-db in prod'
 
 const access = {
   kind: 'Resource' as const,
   metadata: { name: 'billing-api-orders-db-prod', env: 'prod' },
   spec: {
-    type: 'database-access' as const,
+    type: 'database-access' as const, access: 'read',
     owner: 'group:default/tiger',
     dependsOn: ['resource:default/orders-db-prod'],
   },
@@ -114,6 +114,43 @@ describe('planEdits, creating an entity', () => {
     expect(entity.apiVersion).toBe('backstage.io/v1alpha1')
     expect(entity.metadata.annotations['company.fr/env']).toBe('prod')
     expect(entity.metadata).not.toHaveProperty('env')
+  })
+
+  it('carries the level a grant states through into the bytes', () => {
+    // `materialise` copies the spec wholesale, so the level reaching the file
+    // is a fact about the translation rather than a field anyone listed twice.
+    // The round trip is what proves it: `entitySchema` refuses a level it does
+    // not recognise, so the parse is the assertion.
+    const granting = {
+      op: 'create-entity' as const,
+      entity: { ...access, spec: { ...access.spec, access: 'read' as const } },
+    }
+    const edits = planEdits(
+      sign('give billing-api read access to orders-db in prod', [granting]),
+      repository([]),
+    ).edits
+    const entity = parseEntity(at(edits, 0).after.slice('---\n'.length))
+
+    expect(entity.kind === 'Resource' && entity.spec.access).toBe('read')
+    expect(at(edits, 0).after).toContain('  access: read\n')
+  })
+
+  it('writes no bytes at all for a grant whose level is still a question', () => {
+    // Absent is no longer reachable here — the proposal schema refuses a
+    // levelled right that states nothing, so the only honest way to say "I do
+    // not know" is `{unknown}`, and an operation carrying one produces no
+    // edit. A default written at this layer would be a grant nobody asked for,
+    // arriving through the one path that writes bytes.
+    const unsure = {
+      ...access,
+      spec: { ...access.spec, access: { unknown: 'read or write?' } },
+    }
+    const { edits, dropped } = planEdits(sign(CREATE_INTENT, [
+      { op: 'create-entity' as const, entity: unsure },
+    ]), repository([]))
+
+    expect(edits).toEqual([])
+    expect(dropped[0]?.reason).toContain('question')
   })
 
   it('appends to a file that already holds another document', () => {

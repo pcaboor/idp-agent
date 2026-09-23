@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { RESOURCE_TYPE_NAMES, natureOf } from './resource-types.js'
+import { ACCESS_LEVELS, RESOURCE_TYPE_NAMES, natureOf } from './resource-types.js'
 
 /** Annotation carrying an entity's own file location. Read it; never re-derive it. */
 export const SOURCE_FILE_ANNOTATION = 'idp-agent.dev/source-file'
@@ -50,6 +50,26 @@ export const resourceSchema = z
       dependsOn: z.array(entityRefSchema).optional(),
       /** An access carries its consumers; a resource does not (design 4.1). */
       dependencyOf: z.array(entityRefSchema).optional(),
+      /**
+       * What the right grants (design 4.1). Optional, and the optionality is
+       * the one decision here that costs something.
+       *
+       * `entitySchema` READS a repository that already exists, and no access
+       * in one carries this field yet: required would make `validate` — the
+       * command a user points at the repository they already have — report
+       * invalid-entity on every access declaration in it. It is also
+       * meaningless on a `network-access` or a `gateway-route`: a flow is not
+       * read or write, and requiring it on some rights and not others would be
+       * a second registry of which rights are levelled, which is the split
+       * `ACCESS_LEVELS` exists to avoid.
+       *
+       * What the optionality does NOT buy is a default. An absent level is
+       * reported as absent wherever it is read — `show` says undeclared, the
+       * serialiser writes no line, the signature classifies no leaf — and is
+       * never read as readwrite. It buys a right that parses, not a grant
+       * anyone can review; the diff and the Reviewer are what catch that.
+       */
+      access: z.enum(ACCESS_LEVELS).optional(),
     }),
   })
   .superRefine((value, ctx) => {
@@ -61,6 +81,18 @@ export const resourceSchema = z
         code: 'custom',
         path: ['spec', 'dependencyOf'],
         message: `'${value.spec.type}' is an object; only a right carries its consumers`,
+      })
+    }
+
+    // The same shape, for the same reason: a level on a database is valid YAML
+    // the catalogue ingests without complaint, so the schema is the only place
+    // that would ever report it. An object is not a grant — there is nothing
+    // for a level to be about.
+    if (value.spec.access !== undefined && natureOf(value.spec.type) !== 'right') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['spec', 'access'],
+        message: `'${value.spec.type}' is an object; only a right carries an access level`,
       })
     }
   })

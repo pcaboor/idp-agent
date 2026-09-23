@@ -5,7 +5,7 @@ import type { Plan } from '../../src/core/schemas/plan.js'
 
 const asking = (): Plan =>
   planSchema.parse({
-    intent: 'give billing-api access to orders-db',
+    intent: 'give billing-api read access to orders-db',
     operations: [
       {
         op: 'create-entity',
@@ -16,7 +16,7 @@ const asking = (): Plan =>
             env: { unknown: 'nothing vouches for this env; which one is it?' },
           },
           spec: {
-            type: 'database-access',
+            type: 'database-access', access: 'read',
             owner: { unknown: 'nothing vouches for this owner; which one is it?' },
           },
         },
@@ -37,14 +37,14 @@ describe('questionsOf', () => {
 
   it('returns nothing for a plan that carries no question', () => {
     const settled = planSchema.parse({
-      intent: 'give billing-api access to orders-db in prod',
+      intent: 'give billing-api read access to orders-db in prod',
       operations: [
         {
           op: 'create-entity',
           entity: {
             kind: 'Resource',
             metadata: { name: 'billing-api-orders-db-prod', env: 'prod' },
-            spec: { type: 'database-access', owner: 'group:default/tiger' },
+            spec: { type: 'database-access', access: 'read', owner: 'group:default/tiger' },
           },
         },
       ],

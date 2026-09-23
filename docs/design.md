@@ -61,6 +61,12 @@ follows from the documentation of the tools involved.
 
 - **A resource is an object; an access is a right over that resource.** The access —
   not the resource — carries the list of its consumers.
+- **A right states the level it grants** — `read` or `readwrite` — and only a right may.
+  The level is a property of the grant, not a second type: splitting `database-access` in
+  two would double the registry and the folder layout for one boolean. Stating it is
+  optional, because a repository written before the field still has to validate and a
+  network flow has no level at all; an unstated level is **unstated**, reported as absent
+  and never read as `readwrite`.
 - **A declaration is read from both ends.** Which side wrote the edge down — `dependsOn`
   on the consumer, `dependencyOf` on the access — decides which file a reviewer sees,
   never which question may be answered. A graph query resolves one declared hop in

@@ -11,7 +11,7 @@ idp-agent plan --from examples/add-access.json --repo /tmp/mon-iac
 
 | file | what it shows | exit |
 |---|---|---|
-| `add-access.json` | a plan every value of which is vouched for: the unified diff it would produce | 0 |
+| `add-access.json` | a plan every value of which is vouched for — the level included: the unified diff it would produce | 0 |
 | `needs-an-owner.json` | an owner nobody can vouch for, asked about rather than guessed | 3 |
 | `unvouched-name.json` | a name carrying a segment the request never mentioned | 3 |
 
