@@ -4,6 +4,7 @@ import {
   ACCESS_LEVELS,
   levelledOf,
   RESOURCE_TYPE_NAMES,
+  RESOURCE_TYPES,
   type ResourceType,
 } from './resource-types.js'
 
@@ -130,6 +131,61 @@ const levelStated = (
   }
 }
 
+/**
+ * §4.1, asked of a proposal before anything else looks at it: a right is over
+ * SOMETHING and granted to SOMEBODY, and a thing is neither.
+ *
+ * Both lists are `.optional()` in the shape above because absent is a complete
+ * answer for a list — §5.4 exempts them from `{unknown}` for that reason — and
+ * absent is exactly what makes a right meaningless. A `database-access` naming
+ * no consumer grants nothing to nobody: it passes every gate, renders a diff,
+ * and reads to whoever merges it like an authorisation. It was the shape a
+ * model reached for when the gate that used to refuse the alternative told it
+ * to fix a level instead, which is how it was found.
+ *
+ * Refused HERE, at the schema, rather than in a policy, because it is true of
+ * every repository — there is no snapshot to consult and nothing to configure.
+ * The message names the field and the type for the same reason `levelStated`
+ * does: the repair loop hands it back, and a model can only act on what it is
+ * told it got wrong.
+ */
+const relationsStated = (
+  value: { spec: { type: unknown; dependsOn?: unknown; dependencyOf?: unknown } },
+  ctx: z.RefinementCtx,
+): void => {
+  const type = value.spec.type
+  if (typeof type !== 'string' || !RESOURCE_TYPE_NAMES.includes(type as ResourceType)) return
+  const held = (list: unknown): boolean => Array.isArray(list) && list.length > 0
+
+  if (RESOURCE_TYPES[type as ResourceType].nature === 'right') {
+    if (!held(value.spec.dependsOn)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['spec', 'dependsOn'],
+        message: `a '${type}' is a right over something; name what it is over in 'dependsOn'`,
+      })
+    }
+    if (!held(value.spec.dependencyOf)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['spec', 'dependencyOf'],
+        message:
+          `a '${type}' is granted to somebody; name at least one consumer in ` +
+          `'dependencyOf'. A right nobody holds grants nothing.`,
+      })
+    }
+    return
+  }
+
+  if (held(value.spec.dependencyOf)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['spec', 'dependencyOf'],
+      message: `a '${type}' is a thing, not a right over one, so it carries no consumers`,
+    })
+  }
+}
+
 export const proposedResourceSchema = z.strictObject({
   kind: z.literal('Resource'),
   metadata: z.strictObject({
@@ -171,7 +227,10 @@ export const proposedResourceSchema = z.strictObject({
      */
     access: or(z.enum(ACCESS_LEVELS)).optional(),
   }),
-}).superRefine(levelStated)
+}).superRefine((value, ctx) => {
+  levelStated(value, ctx)
+  relationsStated(value, ctx)
+})
 
 export const proposedComponentSchema = z.strictObject({
   kind: z.literal('Component'),
@@ -309,7 +368,27 @@ function shapeViolation(value: unknown): string | undefined {
 export const planSchema = z
   .object({
     intent: z.string().min(1).max(PLAN_LIMITS.maxIntentLength),
-    operations: z.array(operationSchema).max(PLAN_LIMITS.maxOperations),
+    /**
+     * At least one, and the lower bound matters more than the upper one.
+     *
+     * A model that cannot see what to do calls `propose` with `[]` — it is the
+     * shape that costs it nothing — and an empty plan passes every gate
+     * vacuously, produces no edits, and came out of the CLI as `nothing to
+     * change.` on exit 0. The person asked for an authorisation and was told
+     * their repository already grants it. That is the one sentence this tool
+     * must never say untruthfully, and it was reachable by a model giving up.
+     *
+     * There is already a channel for having nothing to propose: ending the
+     * draft without calling `propose` at all, which `ArchitectOutcome.plan`
+     * carries as `undefined` and the CLI reports as a refusal. `nothing to
+     * change` stays reachable the only way it is ever true — operations that
+     * restate what the repository already declares, so `planEdits` produces
+     * bytes identical to the ones on disk.
+     */
+    operations: z
+      .array(operationSchema)
+      .min(1, 'a plan with no operations is not a proposal; end the draft instead')
+      .max(PLAN_LIMITS.maxOperations),
   })
   .superRefine((value, ctx) => {
     const violation = shapeViolation(value)

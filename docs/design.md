@@ -60,7 +60,12 @@ follows from the documentation of the tools involved.
 ### 4.1 Model
 
 - **A resource is an object; an access is a right over that resource.** The access —
-  not the resource — carries the list of its consumers.
+  not the resource — carries the list of its consumers. A right is over *something* and
+  granted to *somebody*, so a proposal for one states both `dependsOn` and `dependencyOf`,
+  and a proposal for an object states no consumers at all; the proposal schema refuses
+  each of those outright, because neither needs a repository to judge. A grant naming no
+  consumer grants nothing to nobody, and it used to pass every gate and render a diff that
+  read like an authorisation.
 - **A right states the level it grants** — `read` or `readwrite` — and only a right may.
   The level is a property of the grant, not a second type: splitting `database-access` in
   two would double the registry and the folder layout for one boolean. Stating it is
@@ -388,6 +393,7 @@ Four ship in v0.1:
 | `unwitnessed-folder` | a write into a folder the repository never declared |
 | `cross-environment-consumer` | an access whose environment differs from its consumer's |
 | `declared-level-mismatch` | a level the operation states that the repository does not declare |
+| `consumer-on-an-object` | an `add-dependency-of` aimed at a thing, which carries no consumers |
 
 **Every operation is gated, not only the creations.** `update-entity` joins a consumer to
 an *existing* grant, so it is the operation that hands out an authorisation nobody
@@ -411,8 +417,18 @@ plan against the repository and never against the request: what the *request* na
 signature's question (§5.4), asked in any language, and reporting *nothing to change* about
 a requested narrowing is the falsehood this refuses to tell.
 
+`consumer-on-an-object` is the same §4.1 sentence read the other way: a right carries its
+consumers and a thing does not, so an `add-dependency-of` aimed at a database has nothing
+to add a consumer to. Nothing downstream asks — `planEdits` finds the file by reference and
+appends the line to whatever is in it, so the update would write a consumer list onto the
+database and the diff would show one plausible added line in a file that legitimately
+exists. It was found by measurement rather than by reading: a model proposed exactly that,
+and `declared-level-mismatch` refused it for the wrong reason, because `levels` held every
+entity and a database's absent level looked like a right's unstated one. The two facts are
+kept apart now, and each gate says its own thing.
+
 A configurable rule engine — `governance/`, and the `get_governance_rule` tool this
-document once gave the Architect in § 6 — is deferred past v0.1: four predicates that run
+document once gave the Architect in § 6 — is deferred past v0.1: five predicates that run
 are worth more than an extension point that does not. The tool is absent from the
 Architect's registry for the same reason, because a tool naming a feature nobody built is
 a prompt for the model to ask about one.
@@ -621,8 +637,19 @@ Every run ends on the same line, so no one mistakes submission for permission:
 |---|---|
 | Resource missing | the Architect branches: resource declaration **and** access |
 | Ambiguous name | interactive picker listing each match with its environment — never a default |
-| Already declared | empty plan, points at the existing file and its merge date, exit 0 |
+| Already declared | the plan RESTATES the declaration, the edit produces bytes identical to the ones on disk, and the re-check reports `already-declared`, exit 0 |
 | No convergence | stops at 3 attempts, states what could not be determined, suggests the flag or field that would resolve it, writes nothing |
+
+An empty plan used to be how both of those rows were written, and it is not a
+channel any more: `proposeTool` and `planSchema` both require at least one
+operation. The reason is that an empty plan is indistinguishable from a model
+giving up. It passes every gate vacuously, produces no edits, and came out of
+the CLI as `nothing to change.` on exit 0 — a person asked for an authorisation
+and was told their repository already grants it. Idempotence is now demonstrated
+rather than asserted: the plan says what it would declare, the preview shows the
+bytes are the ones already on disk, and `already-declared` names the file. An
+Architect with genuinely nothing to propose ends its draft without calling
+`propose`, which the CLI reports as a refusal rather than as success.
 
 ### 7.6 Question mode
 
@@ -634,7 +661,7 @@ Direct graph query, tabular output. No plan, no writes, no confirmation.
 |---|---|
 | Information missing from the SI | `{ unknown }` in the plan → the CLI asks |
 | Ambiguity (dev or prod?) | interactive picker, never a silent default |
-| Access already declared | empty plan, message, exit 0 (idempotent) |
+| Access already declared | plan restating it, no bytes changed, message, exit 0 (idempotent) |
 | Loop does not converge | stop at 3, partial plan + reason, nothing written |
 | Write interrupted | full rollback, initial state restored |
 | Orphaned access detected | reported only, never deleted |

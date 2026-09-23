@@ -1,3 +1,5 @@
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { readRepository } from '../../src/context/iac-fs/snapshot.js'
@@ -30,6 +32,28 @@ describe('readRepository', () => {
   it('does not treat a witness as a file to parse', async () => {
     const snapshot = await readRepository(FIXTURES)
     expect(snapshot.files.map((file) => file.path).join()).not.toContain('.witness.yml')
+  })
+
+  it('does not read a hidden file as catalogue either', async () => {
+    // The rule about hidden directories was written first and read as though
+    // it covered both, which it did not. `.idp-agent.yml` is §7.0's own
+    // configuration and sits at the root of every repository that has been
+    // configured: read as an entity it fails `entitySchema`, and one
+    // `invalid-entity` makes `recheckPlan` refuse the whole plan. So `plan`
+    // could not land in a configured repository, and every fixture without a
+    // config passed.
+    const repo = await mkdtemp(path.join(tmpdir(), 'iac-hidden-'))
+    await mkdir(path.join(repo, 'catalog/databases'), { recursive: true })
+    await writeFile(path.join(repo, 'catalog/databases/.witness.yml'), '---\n')
+    await writeFile(
+      path.join(repo, '.idp-agent.yml'),
+      'iacRepo: acme/iac\nenvironments:\n  - prod\n',
+    )
+
+    const snapshot = await readRepository(repo)
+
+    expect(snapshot.files.map((file) => file.path)).not.toContain('.idp-agent.yml')
+    expect(snapshot.files.flatMap((file) => file.rejections)).toEqual([])
   })
 
   it('does not read a hidden directory as catalogue', async () => {

@@ -10,7 +10,10 @@ const plan = (entity: unknown): unknown => ({
 const sound = {
   kind: 'Resource',
   metadata: { name: 'billing-api-orders-db-prod', env: 'prod' },
-  spec: { type: 'database-access', owner: 'group:default/tiger', access: 'read' as const },
+  spec: {
+    type: 'database-access', owner: 'group:default/tiger', access: 'read' as const,
+    dependsOn: ['resource:default/orders-db-prod'], dependencyOf: ['component:default/billing-api'],
+  },
 }
 
 describe('a proposal is stricter than an entity read from disk', () => {
@@ -187,6 +190,8 @@ describe('a grant states its level, or says it does not know', () => {
               type: 'database-access',
               owner: 'group:default/tiger',
               access: { unknown: 'the request does not say read or write' },
+              dependsOn: ['resource:default/orders-db-prod'],
+              dependencyOf: ['component:default/billing-api'],
             },
           },
         },

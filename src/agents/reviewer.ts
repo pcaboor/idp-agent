@@ -115,8 +115,9 @@ before it reaches you; the folder, where a write into one the repository never d
 stopped the same way; and the file path, which the engine computes from the type and the
 name, so no model chooses one. Do not re-check them.
 
-An empty list of operations is a legitimate plan. It says the catalogue already declares
-what the request asks for; that is an answer, not a failure.
+Every plan you see carries at least one operation; an empty one is refused before it
+reaches you. A plan that restates what the catalogue already declares is not a mistake —
+the preview compares it to the bytes on disk and reports that it is already there.
 
 Finish by calling "${VERDICT_TOOL}":
   ok      the plan does what the request asked for, and goes no further

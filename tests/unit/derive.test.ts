@@ -61,6 +61,16 @@ const UNSTATED = { unknown: 'the request does not state an owner for this access
 const planOf = (entity: unknown, intent = INTENT): Plan =>
   planSchema.parse({ intent, operations: [{ op: 'create-entity', entity }] })
 
+/**
+ * The same plan, NOT parsed. One test below is about a shape the schema now
+ * refuses outright, and `deriveOwners` still has to answer for it: it reads
+ * plans that the gates have passed today, and a second reader tomorrow may
+ * hand it one they have not. The guarantee is stated in two places on purpose
+ * — the test asserts both, so neither can be removed quietly.
+ */
+const unparsed = (entity: unknown, intent = INTENT): Plan =>
+  ({ intent, operations: [{ op: 'create-entity', entity }] }) as unknown as Plan
+
 /** The access four scenarios in five stopped on: everything settled but the owner. */
 const access = (over: Record<string, unknown> = {}) => ({
   kind: 'Resource',
@@ -136,7 +146,10 @@ describe('deriveOwners', () => {
   })
 
   it('leaves the question when no consumer has a known owner', () => {
-    const result = deriveOwners(planOf(access({ dependencyOf: [] })), OWNERS)
+    // A consumer the catalogue does not hold, rather than no consumer at all:
+    // a right naming nobody is refused at the schema now, and the question
+    // this asks — what happens when the evidence leads nowhere — is the same.
+    const result = deriveOwners(planOf(access({ dependencyOf: ['component:default/nobody-owns-this'] })), OWNERS)
 
     expect(ownerOf(result.plan)).toEqual(UNSTATED)
     expect(result.derived).toEqual([])
@@ -147,22 +160,26 @@ describe('deriveOwners', () => {
   it('never derives for an object, however many consumers it lists', () => {
     // A right's owner follows from who reaches through it. Nobody knows who
     // owns a database that does not exist yet, and the consumer list on an
-    // object is not evidence — `resourceSchema` refuses one outright on disk.
-    const result = deriveOwners(
-      planOf({
-        kind: 'Resource',
-        metadata: { name: 'orders-db-staging', env: 'staging' },
-        spec: {
-          type: 'database',
-          owner: UNSTATED,
-          dependencyOf: ['component:default/billing-api'],
-        },
-      }),
-      OWNERS,
-    )
+    // object is not evidence.
+    //
+    // `unparsed`, because this shape no longer reaches here: `relationsStated`
+    // refuses an object carrying consumers at the schema. That is asserted
+    // just below, and this asserts the second lock — a proposal that got past
+    // the first one still derives nothing from it.
+    const object = {
+      kind: 'Resource',
+      metadata: { name: 'orders-db-staging', env: 'staging' },
+      spec: {
+        type: 'database',
+        owner: UNSTATED,
+        dependencyOf: ['component:default/billing-api'],
+      },
+    }
+    const result = deriveOwners(unparsed(object), OWNERS)
 
     expect(ownerOf(result.plan)).toEqual(UNSTATED)
     expect(result.derived).toEqual([])
+    expect(() => planOf(object)).toThrow(/carries no consumers/)
   })
 
   it('never derives for a Component', () => {
@@ -250,7 +267,7 @@ describe('what the signature then says about it', () => {
   it('still asks when nothing could be derived', () => {
     // The gate the measured runs stopped on, unchanged for the case the rules
     // refuse to answer: an access with no consumer is still a question.
-    const derived = deriveOwners(planOf(access({ dependencyOf: [] })), OWNERS)
+    const derived = deriveOwners(planOf(access({ dependencyOf: ['component:default/nobody-owns-this'] })), OWNERS)
     const signed = signPlan(derived.plan, context())
     if ('outcome' in signed) throw new Error(`refused: ${JSON.stringify(signed.refusals)}`)
 
@@ -342,7 +359,7 @@ describe('a derived owner dies with its evidence', () => {
     // catalogue says nothing about. There is no evidence left, so there is no
     // value left: it goes back to being the question it always was.
     const result = deriveOwners(
-      planOf(access({ owner: 'group:default/lynx', dependencyOf: [] })),
+      planOf(access({ owner: 'group:default/lynx', dependencyOf: ['component:default/nobody-owns-this'] })),
       OWNERS,
     )
 

@@ -1,5 +1,5 @@
 import type { Entity } from '../schemas/entity.js'
-import type { AccessLevel } from '../schemas/resource-types.js'
+import { RESOURCE_TYPES, type AccessLevel, type Nature } from '../schemas/resource-types.js'
 
 /**
  * What "already declared" means, in one place.
@@ -103,3 +103,20 @@ export const restates = (declared: Entity, proposal: unknown): boolean =>
  */
 export const statedAs = (level: string | undefined): string =>
   level === undefined ? 'states no level' : `grants ${level}`
+
+/**
+ * Whether an entity is a thing or a right over a thing (§4.1).
+ *
+ * Total, and the two sides are answered from different places because they are
+ * knowable in different ways. A Resource's type is a closed enum, so the table
+ * that declares the nature of each type answers it outright. A Component's is
+ * free text — `service`, `website`, whatever a team writes — and no list of
+ * those could ever be complete, so the answer comes from the KIND instead: a
+ * Component is a thing the organisation runs, never an authorisation over one.
+ *
+ * Asked by the gate that refuses to hand an authorisation to an entity that
+ * cannot carry one, and by `declared-level-mismatch` before it compares a
+ * level to a declaration that was never able to state one.
+ */
+export const natureOf = (entity: Entity): Nature =>
+  entity.kind === 'Resource' ? RESOURCE_TYPES[entity.spec.type].nature : 'object'

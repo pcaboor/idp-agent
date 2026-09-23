@@ -1,6 +1,6 @@
 import { echoes } from './echoes.js'
 import { levelClaim, proposedClaim, statedAs, type LevelClaim } from './grant.js'
-import type { AccessLevel } from '../schemas/resource-types.js'
+import type { AccessLevel, Nature } from '../schemas/resource-types.js'
 import type { Vocabulary } from '../schemas/vocabulary.js'
 import type { SignedPlan } from './sign.js'
 
@@ -37,6 +37,8 @@ export type PolicyName =
   | 'cross-environment-consumer'
   /** The level the operation states is not the level the repository declares. */
   | 'declared-level-mismatch'
+  /** The operation hands a consumer to an entity that is not a right (§4.1). */
+  | 'consumer-on-an-object'
 
 export interface PolicyViolation {
   readonly policy: PolicyName
@@ -64,6 +66,15 @@ export interface PolicyContext {
    * without a second set to carry "declared" separately.
    */
   readonly levels: ReadonlyMap<string, AccessLevel | undefined>
+  /**
+   * ref → thing or right, for every entity the snapshot holds (§4.1).
+   *
+   * Kept apart from `levels` because the two say different things about the
+   * same silence. A right that states no level and a database that CANNOT
+   * state one both answer `undefined` there, and telling a model to fix the
+   * level of a database is how this gate used to spend a repair attempt.
+   */
+  readonly natures: ReadonlyMap<string, Nature>
 }
 
 
@@ -143,6 +154,12 @@ function levelMismatch(
   // this repository has never declared, and no level of it is wrong yet. See
   // PolicyContext.levels for why the two answers are different questions.
   if (ref === undefined || !context.levels.has(ref)) return undefined
+  // A thing has no level, so no level of it can mismatch. Without this the
+  // map's `undefined` for a database reads as "declares no level", any stated
+  // level differs from it, and the violation says to change the level line —
+  // on an entity whose real problem is that it is not a grant at all. That is
+  // `consumer-on-an-object`'s to say, and it says it in the same pass.
+  if (context.natures.get(ref) !== 'right') return undefined
   // A question is not a claim. The signer already replaced what the model
   // wrote, `planEdits` drops the operation, and the CLI asks before any
   // preview is offered — refusing here would state one stop twice.
@@ -159,9 +176,30 @@ function levelMismatch(
     message:
       `${ref} ${statedAs(declared)}, and this plan ${statedAs(stated)}. A level is a scalar ` +
       `and this tool only ever appends (§4.3), so what would be granted is the level the ` +
-      `repository declares; change that line where a reviewer sees it.`,
+      `repository declares. ${repairFor(declared)}`,
   }
 }
+
+/**
+ * What to do about it, in the words of whoever has to do it.
+ *
+ * This used to end "change that line where a reviewer sees it" — advice for a
+ * person editing YAML, handed to a model that has to fill a JSON field. The
+ * scenario that found it spent all three attempts re-proposing the same
+ * operation with `access` still omitted: the model was told what was wrong and
+ * never what to write. A repair message that cannot be acted on is a refusal
+ * with extra words.
+ *
+ * Both directions name the same level, because an `add-dependency-of` hands
+ * over the level the grant already declares and cannot alter it. The way to
+ * hand over a DIFFERENT one is a different grant, which is the second
+ * sentence rather than a hint.
+ */
+const repairFor = (declared: AccessLevel | undefined): string =>
+  declared === undefined
+    ? `State no level either — omit 'access' — or declare a separate grant that states one.`
+    : `State '"access": "${declared}"' to hand over what it grants, or declare a ` +
+      `separate grant for a different level.`
 
 const referencesOf = (entity: unknown): string[] => {
   if (typeof entity !== 'object' || entity === null) return []
@@ -235,6 +273,29 @@ export function checkPolicies(
           message:
             `${patch.consumer} lives in ${consumerEnv}, but ${entityRef} is scoped to ` +
             `${grantEnv}. Being authorised in one environment grants nothing in another.`,
+        })
+      }
+
+      // §4.1, asked of the target before anything else is asked of it: a
+      // right carries its consumers and a thing does not. Nothing downstream
+      // asks either — `planEdits` finds the file by reference and appends the
+      // consumer line to whatever is in it, so an update aimed at a database
+      // writes a consumer list onto the database, and the diff a person reads
+      // shows one plausible added line in a file that legitimately exists.
+      //
+      // `has`, for the same reason `levelMismatch` uses it: a reference this
+      // repository declares nowhere has no nature to be wrong about, and
+      // `planEdits` drops that operation by name a moment later.
+      const nature = context.natures.get(entityRef)
+      if (nature !== undefined && nature !== 'right') {
+        violations.push({
+          policy: 'consumer-on-an-object',
+          opIndex,
+          path: `operations.${opIndex}.entityRef`,
+          message:
+            `${entityRef} is a thing, not a right over one, so it carries no ` +
+            `consumers to add ${patch.consumer} to. Access to it is a right of ` +
+            `its own — declare one that depends on it.`,
         })
       }
 

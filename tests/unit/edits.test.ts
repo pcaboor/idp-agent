@@ -46,6 +46,7 @@ const access = {
     type: 'database-access' as const, access: 'read',
     owner: 'group:default/tiger',
     dependsOn: ['resource:default/orders-db-prod'],
+    dependencyOf: ['component:default/billing-api'],
   },
 }
 
@@ -432,6 +433,7 @@ describe('planEdits, what it refuses to do quietly', () => {
         witnessed: new Set([
           'resource:default/orders-db-prod',
           'resource:default/billing-api-orders-db-prod',
+          'component:default/billing-api',
           'component:default/payments-api',
         ]),
       }),

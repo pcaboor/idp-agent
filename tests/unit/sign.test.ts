@@ -13,7 +13,9 @@ const vocabulary = {
 }
 
 const context = (over: Partial<SignatureContext> = {}): SignatureContext => ({
-  witnessed: new Set(['resource:default/orders-db-prod']),
+  // Both ends of the grant: a right is over something and held by somebody,
+  // and in a real repository both are declared before it is written.
+  witnessed: new Set(['resource:default/orders-db-prod', 'component:default/billing-api']),
   vocabulary,
   repoRoot: '/repo',
   declared: new Map(),
@@ -33,6 +35,7 @@ const access = {
     type: 'database-access' as const, access: 'read',
     owner: 'group:default/tiger',
     dependsOn: ['resource:default/orders-db-prod'],
+    dependencyOf: ['component:default/billing-api'],
   },
 }
 
@@ -103,7 +106,9 @@ describe('signPlan', () => {
     // Two plans differing only in fields that are neither name nor type must
     // produce the same path: nothing the model wrote can steer it.
     const a = signed(plan(access))
-    const b = signed(plan({ ...access, spec: { ...access.spec, dependsOn: [] } }))
+    const b = signed(
+      plan({ ...access, spec: { ...access.spec, dependsOn: ['resource:default/other-db-prod'] } }),
+    )
     expect(a.paths.get(0)).toBe(b.paths.get(0))
   })
 
