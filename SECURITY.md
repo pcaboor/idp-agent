@@ -46,8 +46,24 @@ stage 2 filled them. They now hold over real code:
   whoever's key is in the shell.
 - **A model cannot make the tool state an unread fact.** Every reference an answer names
   must be in the witness set of what the tools actually returned, or the answer is refused
-  and the reference named (`tests/unit/analyst.test.ts`). No model-authored text reaches
-  stdout.
+  and the reference named (`tests/unit/analyst.test.ts`). Model-authored text that does
+  reach a terminal is stripped of everything a terminal obeys first
+  (`src/cli/render/plain.ts`): a `{unknown}` reason is up to 8 192 characters the model
+  wrote, and one carrying `ESC[2J` cleared the screen and printed a fake diff under the
+  tool's own closing line.
+
+## What the architecture rules are, and are not
+
+They walk **string-literal imports** across the transitive closure. That catches the
+threat they name — a contributor who adds an import without noticing where it lands — and
+it is not a sandbox. `globalThis.fetch`, `process.binding`, `eval` and
+``import(`node:${name}`)`` need no import at all, and a specifier the regexes do not list
+(`node:dns`, `node:vm`, `ws`, an `ai/` subpath) passes. Read them as a build-time
+convention with teeth, never as a boundary that contains hostile code in this repository.
+
+The boundary that does contain something is `context/project-fs`: it decides what leaves
+a user's own repository for a third-party model, and it is enforced at runtime rather than
+at build time.
 
 ## Designed, not yet built
 
