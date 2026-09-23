@@ -427,7 +427,7 @@ describe('the content rule has no blind spot', () => {
 
     expect(JSON.stringify(snapshot.files)).not.toContain('BEGIN RSA PRIVATE KEY')
     expect(snapshot.skipped.find((one) => one.path === 'notes.md')?.reason).toContain(
-      'private key',
+      'key material',
     )
   })
 
@@ -447,7 +447,7 @@ describe('what leaves this module is bounded, all of it', () => {
     // model. A cap on what is read is not a cap on what is sent.
     const files: Record<string, string> = {}
     for (let index = 0; index < PROJECT_LIMITS.maxSkipped + 40; index += 1) {
-      files[`secrets/key-${String(index).padStart(4, '0')}.pem`] = 'x'
+      files[`material/key-${String(index).padStart(4, '0')}.pem`] = 'x'
     }
     const root = await projectWith(files)
 
@@ -473,5 +473,135 @@ describe('what leaves this module is bounded, all of it', () => {
     expect(snapshot.skipped.find((one) => one.path === 'innocent.txt')?.reason).toContain(
       'hard link',
     )
+  })
+})
+
+describe('a name list is a list of names, and secrets are not named', () => {
+  // The audit built 68 realistic secret-bearing files and 59 of them reached
+  // the snapshot. The seven attacks the module was written against all held;
+  // what walked out was every shape nobody had thought to name. These are the
+  // categories, one case each.
+
+  it('refuses a hidden file, not only a hidden directory', async () => {
+    const root = await projectWith({
+      '.terraformrc': 'credentials "app.terraform.io" { token = "tf-LEAK-000000" }',
+      '.my.cnf': '[client]\npassword=LEAK-000000',
+      'package.json': '{"name":"x"}',
+    })
+
+    const snapshot = await readProject(root)
+
+    expect(JSON.stringify(snapshot.files)).not.toContain('LEAK')
+    expect(snapshot.files.map((file) => file.path)).toEqual(['package.json'])
+  })
+
+  it('still reads the few hidden files that state facts about a project', async () => {
+    // Inverting the rule without an allowlist would refuse `.gitignore` and
+    // `.nvmrc`, which are exactly what an Inspector is for.
+    const root = await projectWith({ '.gitignore': 'node_modules\n', '.nvmrc': '24\n' })
+
+    const snapshot = await readProject(root)
+
+    expect(snapshot.files.map((file) => file.path).sort()).toEqual(['.gitignore', '.nvmrc'])
+  })
+
+  it('refuses an environment file whatever it is called', async () => {
+    // The rule was anchored to the front, so only `.env` and `.env.*` matched.
+    const root = await projectWith({
+      'prod.env': 'SECRET=LEAK-a',
+      '.flaskenv': 'SECRET=LEAK-b',
+      'env.local': 'SECRET=LEAK-c',
+      '.env~': 'SECRET=LEAK-d',
+    })
+
+    const snapshot = await readProject(root)
+
+    expect(snapshot.files).toEqual([])
+    expect(snapshot.skipped).toHaveLength(4)
+  })
+
+  it('refuses a directory named for what it holds', async () => {
+    // The word list applied to basenames only, so the folder said what these
+    // were and nobody read the folder.
+    const root = await projectWith({
+      'secrets/db.yml': 'value: LEAK-000000',
+      'credentials/aws.json': '{"v":"LEAK-000000"}',
+      'src/app.ts': 'export const x = 1',
+    })
+
+    const snapshot = await readProject(root)
+
+    expect(JSON.stringify(snapshot.files)).not.toContain('LEAK')
+    expect(snapshot.files.map((file) => file.path)).toEqual(['src/app.ts'])
+  })
+
+  it('refuses key material in the shapes it actually ships in', async () => {
+    const root = await projectWith({
+      'a.txt': '-----begin rsa private key-----\nMIIE',
+      'b.txt': 'PuTTY-User-Key-File-3: ssh-rsa',
+      'c.yml': 'tls.key: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQo=',
+      'd.txt': '-----BEGIN OpenVPN Static key V1-----',
+    })
+
+    const snapshot = await readProject(root)
+
+    expect(snapshot.files).toEqual([])
+  })
+
+  it('refuses a secret assigned a literal value, in any file', async () => {
+    // The category with no name rule at all: an ordinary configuration file
+    // with a password written into it.
+    const root = await projectWith({
+      'config/database.yml': 'production:\n  password: hunter2000\n',
+      'settings.py': "SECRET_KEY = 'django-insecure-abc123456'\n",
+      'wp-config.php': "<?php\ndefine('DB_PASSWORD', 'wordpress-000');\n",
+      'init.sql': "CREATE USER app WITH PASSWORD 'postgres-000';\n",
+      'app.log': 'GET /x Authorization: Bearer abc123456789\n',
+    })
+
+    const snapshot = await readProject(root)
+
+    expect(snapshot.files).toEqual([])
+    expect(snapshot.skipped).toHaveLength(5)
+  })
+
+  it('reads a configuration file whose secret is a substitution', async () => {
+    // The other half, and the one that decides whether this rule is usable:
+    // `${DB_PASSWORD}` is the normal content of a compose file, and refusing
+    // it would refuse half of every project.
+    const root = await projectWith({
+      'docker-compose.yml': 'services:\n  db:\n    environment:\n      POSTGRES_PASSWORD: ${DB_PASSWORD}\n',
+      'config/database.yml': 'production:\n  password: <%= ENV["DB_PASSWORD"] %>\n',
+      '.github/workflows/ci.yml': 'env:\n  TOKEN: ${{ secrets.DEPLOY_TOKEN }}\n',
+    })
+
+    const snapshot = await readProject(root)
+
+    expect(snapshot.files).toHaveLength(3)
+  })
+
+  it('refuses .git as a FILE, which a worktree checkout writes', async () => {
+    // It holds `gitdir: /Users/<name>/…` — an absolute path outside the
+    // project, which is the one thing types.ts says must never reach a model.
+    const root = await projectWith({
+      '.git': 'gitdir: /Users/someone/work/.git/worktrees/feature\n',
+      '.gitmodules': '[submodule "x"]\n  url = https://user:TOKEN00000@example.com/x.git\n',
+    })
+
+    const snapshot = await readProject(root)
+
+    expect(snapshot.files).toEqual([])
+    expect(JSON.stringify(snapshot.skipped)).not.toContain('/Users/someone')
+  })
+
+  it('names the class of what it found, never the value', async () => {
+    // `skipped` travels to a model in the same snapshot. Quoting the secret to
+    // explain why the secret was withheld would be the whole defect again.
+    const root = await projectWith({ 'config.json': '{"api_key": "sk-abcdefghij0123456789"}' })
+
+    const snapshot = await readProject(root)
+
+    expect(JSON.stringify(snapshot)).not.toContain('sk-abcdefghij')
+    expect(snapshot.skipped[0]?.reason).toMatch(/credential|secret/)
   })
 })
