@@ -28,6 +28,7 @@ const signatureContext = {
   },
   repoRoot: '/repo',
   declared: new Map<string, string>(),
+  answered: new Set<string>(),
 }
 
 /** Counts terminal values the way the signer walks them. */

@@ -17,6 +17,9 @@ const context = (over: Partial<SignatureContext> = {}): SignatureContext => ({
   vocabulary,
   repoRoot: '/repo',
   declared: new Map(),
+  // The level is asked, never read out of the request, so a fixture that
+  // wants a complete plan answers for it — which is what a run does.
+  answered: new Set(['read']),
   ...over,
 })
 
@@ -460,71 +463,104 @@ describe('a Component type is not a closed union either', () => {
  * request in any other language got no answer at all and a readwrite grant was
  * extended to a request for read, silently, at exit 0.
  */
-describe('the level an update states', () => {
-  const joining = (access: unknown, intent: string) =>
-    planSchema.parse({
-      intent,
-      operations: [
-        {
-          op: 'update-entity',
-          entityRef: 'resource:default/orders-db-prod',
-          patch: {
-            patch: 'add-dependency-of',
-            consumer: 'component:default/billing-api',
-            access,
-          },
+/** An update joining a consumer to a grant, stating the level it grants. */
+const joining = (level: string, intent: string) =>
+  planSchema.parse({
+    intent,
+    operations: [
+      {
+        op: 'update-entity',
+        entityRef: 'resource:default/orders-db-prod',
+        patch: {
+          patch: 'add-dependency-of',
+          consumer: 'component:default/billing-api',
+          access: level,
         },
-      ],
-    })
-
-  const joined = context({
-    witnessed: new Set(['resource:default/orders-db-prod', 'component:default/billing-api']),
+      },
+    ],
   })
 
-  const levelOf = (result: SignedPlan): string | undefined =>
-    result.classified.find((leaf) => leaf.path === 'operations.0.patch.access')?.class
-
-  it('is echoed when the request named it', () => {
-    const result = signed(joining('read', 'give billing-api read access to orders-db in prod'), joined)
-
-    expect(levelOf(result)).toBe('echoed')
-    expect(findUnknowns(result.plan)).toEqual([])
-  })
-
-  it('becomes a question when the request named no level', () => {
-    // Nothing vouches for it: no vocabulary enumerates a level — `summariseGraph`
-    // deliberately leaves `levels` out, because `read` is in use in every
-    // catalogue that has one grant — so the only claim available is the user's.
-    const result = signed(joining('readwrite', 'let billing-api reach orders-db in prod'), joined)
-
-    expect(levelOf(result)).toBe('novel')
-    expect(findUnknowns(result.plan)).toEqual(['operations.0.patch.access'])
-  })
-
-  it('becomes a question in a request that named the level in another language', () => {
-    // The whole point of moving the level into the operation: the classification
-    // is the same in every script, because it measures the value against the
-    // request rather than looking for English words in it. A French request
-    // names no level this can vouch for, so the run stops and asks — where it
-    // used to pass every gate.
-    const result = signed(joining('read', "donne à billing-api l'accès à orders-db en prod"), joined)
-
-    expect(levelOf(result)).toBe('novel')
-    expect(findUnknowns(result.plan)).toEqual(['operations.0.patch.access'])
+describe('the level an update states', () => {
+  it('is a question whatever the request says, and however it says it', () => {
+    // Was: `echoed` when the request named it. That is what `echoes` could
+    // not deliver — it reads a word, and a level is a common word.
+    for (const intent of [
+      'give billing-api read access to orders-db in prod',
+      "donne à billing-api l'accès en lecture à orders-db en prod",
+      'give billing-api access to the read replica of orders-db',
+      'give billing-api read access, absolutely no write access',
+    ]) {
+      const result = signed(joining('read', intent), context({ answered: new Set() }))
+      expect(findUnknowns(result.plan)).toContain('operations.0.patch.access')
+    }
   })
 
   it('is echoed once the user has answered, which is how the ask loop ends', () => {
-    // `withAnswers` grows the request by what the user said, and the next round
-    // signs against the grown request. Without this the French road would ask
-    // the same question for ever.
-    const asked = signed(joining('read', "donne à billing-api l'accès à orders-db en prod"), joined)
-    const filled = answer(asked.plan, 'operations.0.patch.access', 'read')
-    const again = signed(
-      { ...filled, intent: `${filled.intent}\n\nasked, and answered: read` },
-      joined,
+    const result = signed(
+      joining('read', 'give billing-api access to orders-db in prod'),
+      context({
+        answered: new Set(['read']),
+        // The consumer is vouched for the ordinary way; only the level needs
+        // an answer, which is the friction this rule costs.
+        witnessed: new Set(['resource:default/orders-db-prod', 'component:default/billing-api']),
+      }),
     )
 
-    expect(levelOf(again)).toBe('echoed')
-    expect(findUnknowns(again.plan)).toEqual([])
+    expect(findUnknowns(result.plan)).toEqual([])
+  })
+})
+
+describe('a level is asked, never read out of the request', () => {
+  const grant = {
+    ...access,
+    spec: { ...access.spec, access: 'readwrite' as const },
+  }
+
+  it('asks even when the request names the level', () => {
+    // `echoes` is a word test, and a level is a common word. Measured on the
+    // request it was meant to serve:
+    //
+    //     "do not grant readwrite, only read"  →  readwrite = echoed
+    //
+    // A request that FORBIDS write made write look asked for. "read replica"
+    // — a database term, in a database-access tool — named a level nobody
+    // asked for. A word test cannot tell asked-for from forbidden from
+    // merely-mentioned, and an access level is an authorisation.
+    const result = signed(plan(grant, 'give billing-api readwrite access to orders-db in prod'))
+
+    expect(result.classified.find((leaf) => leaf.path.endsWith('.access'))?.class).toBe('novel')
+    expect(findUnknowns(result.plan)).toContain('operations.0.entity.spec.access')
+  })
+
+  it('does not read a level out of a request that forbids it', () => {
+    const result = signed(
+      plan(grant, 'give billing-api read access to orders-db in prod, absolutely no readwrite'),
+    )
+
+    expect(findUnknowns(result.plan)).toContain('operations.0.entity.spec.access')
+  })
+
+  it('accepts the level the user answered, which is how the ask loop ends', () => {
+    // A value the user typed at a prompt is not the same fact as a word that
+    // appears in their sentence, and the signature now holds the two apart.
+    // Without this the loop would ask the same question for ever.
+    const result = signed(
+      plan(grant, 'give billing-api access to orders-db in prod'),
+      context({ answered: new Set(['readwrite']) }),
+    )
+
+    expect(result.classified.find((leaf) => leaf.path.endsWith('.access'))?.class).toBe('echoed')
+    expect(findUnknowns(result.plan)).toEqual([])
+  })
+
+  it('does not let an answer about one field vouch for another', () => {
+    // An answer is about the question it answered. `withAnswers` grows the
+    // intent, so an answered owner would otherwise vouch for any word in it.
+    const result = signed(
+      plan(grant, 'give billing-api access to orders-db in prod'),
+      context({ answered: new Set(['group:default/tiger']) }),
+    )
+
+    expect(findUnknowns(result.plan)).toContain('operations.0.entity.spec.access')
   })
 })

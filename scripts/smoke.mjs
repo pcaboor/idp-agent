@@ -152,8 +152,21 @@ const untouched = hashTree(PREVIEWED)
 // hashing only the directory the diff was about.
 const cwdUntouched = hashTree(ELSEWHERE)
 
+// Exit 3, and that is the shape of a non-interactive run now: the plan
+// declares a database AND a grant, and a grant's access level is asked rather
+// than read out of the request. Nobody is at this keyboard — stdin is not a
+// TTY in a smoke run, exactly as in CI — so the question is printed and the
+// preview is withheld. A wrapper that wants a diff for a grant has to answer.
 check({
   args: ['plan', '--from', EXAMPLE, '--repo', 'repo'],
+  code: 3,
+  stdout: /asked rather than guessed[\s\S]*spec\.access/,
+})
+
+// The diff itself, on the half of the same plan that carries no level: an
+// object is not read or write, so nothing about it is a question.
+check({
+  args: ['plan', '--from', path.join(ROOT, 'examples/declare-database.json'), '--repo', 'repo'],
   code: 0,
   stdout: /\+\+\+ b\/catalog\/databases\/orders-db-prod\.yml[\s\S]*nothing written/,
 })

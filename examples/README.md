@@ -23,3 +23,15 @@ strict: on a freshly scaffolded repository nothing is witnessed yet, so almost
 any invented value becomes a question before a policy ever sees it. The policies
 earn their place against a repository that already holds entities — which is
 also when an environment can be vouched for by something other than the request.
+
+**On the one question a grant always carries.** `spec.access` is `read` or
+`readwrite`, and the signature will not take it from the request: `echoes` is a
+word test, and a level is a common word — *"do not grant readwrite, only read"*
+made `readwrite` look asked for, and *"the read replica of orders-db"* named a
+level nobody asked for. So a level is answered at a prompt or it is a question,
+which costs one prompt per grant and closes the gap between a request for read
+and a grant of write.
+
+A non-interactive run — a pipeline, `--json`, this README's own commands — has
+nobody to ask, so it prints the question and exits 3. That is the same answer
+`plan` already gives for an owner nobody can vouch for.

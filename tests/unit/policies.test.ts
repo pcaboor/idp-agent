@@ -29,6 +29,9 @@ const signature = (over: Partial<SignatureContext> = {}): SignatureContext => ({
   vocabulary,
   repoRoot: '/repo',
   declared: new Map(),
+  // The level is asked, never read out of the request, so a fixture that
+  // wants a complete plan answers for it — which is what a run does.
+  answered: new Set(['read']),
   ...over,
 })
 
@@ -82,9 +85,10 @@ const signUpdate = (
   consumer: string,
   intent: string,
   access?: unknown,
+  over: Partial<SignatureContext> = {},
 ): SignedPlan => {
   const parsed = planSchema.parse({ intent, operations: [joining(entityRef, consumer, access)] })
-  const result = signPlan(parsed, signature())
+  const result = signPlan(parsed, signature(over))
   if ('outcome' in result) throw new Error(`refused: ${JSON.stringify(result.refusals)}`)
   return result
 }
@@ -298,7 +302,7 @@ describe('declared-level-mismatch, over an update', () => {
     expect(violation?.message).toContain('readwrite')
   })
 
-  it('turns a level the request never named into a question, in any language', () => {
+  it('turns a level into a question whatever the request said', () => {
     // The other half, and the one no policy can answer: a French request names
     // no English word, so nothing vouches for the level the model wrote and the
     // signature asks. Under `levelAsked` this same run passed every gate and
@@ -308,6 +312,8 @@ describe('declared-level-mismatch, over an update', () => {
       CONSUMER,
       "donne à billing-api l'accès à orders-db en prod",
       'read',
+      // Nothing answered: the level is a question whatever the sentence says.
+      { answered: new Set<string>() },
     )
 
     expect(findUnknowns(signed.plan)).toEqual(['operations.0.patch.access'])

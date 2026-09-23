@@ -1,0 +1,19 @@
+{
+  "intent": "declare the database orders-db-prod in prod, owned by group:default/tiger",
+  "operations": [
+    {
+      "op": "create-entity",
+      "entity": {
+        "kind": "Resource",
+        "metadata": {
+          "name": "orders-db-prod",
+          "env": "prod"
+        },
+        "spec": {
+          "type": "database",
+          "owner": "group:default/tiger"
+        }
+      }
+    }
+  ]
+}

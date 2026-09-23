@@ -263,7 +263,7 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
     witnessed: tools.witnessed,
     vocabulary: seeded,
     repoRoot: options.project,
-    declared: new Map(),
+    declared: new Map(), answered: new Set<string>(),
   })
   if ('outcome' in signed) {
     return {

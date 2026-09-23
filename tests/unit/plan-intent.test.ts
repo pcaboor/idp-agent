@@ -17,6 +17,7 @@ import type {
   LlmClient,
 } from '../../src/llm/client.js'
 import { hashBoth, hashTree } from '../support/tree.js'
+import type { Ask } from '../../src/cli/commands/plan.js'
 
 /**
  * Replays a scripted sequence of model turns, keyed by AGENT.
@@ -149,6 +150,16 @@ const converging = (operations: unknown[]): LlmClient & { seen: GenerateRequest[
     reviewer: [turnCalling(VERDICT_TOOL, { verdict: 'ok' })],
   })
 
+/**
+ * Answers the one question a grant now always carries, and declines the rest.
+ *
+ * A level is asked, never read out of the request, so a fixture that wants a
+ * complete plan has to answer for it — which is what a person does. Every
+ * other question is left unanswered, so a test about an unvouched owner still
+ * tests that.
+ */
+const answering = (value: string): Ask => async (question) =>
+  question.path.endsWith('.access') ? value : undefined
 describe('plan "<intent>"', () => {
   it('leaves the declarations repository byte-identical', async () => {
     // "Preview only — writes nothing" is the whole stage, and the intent form
@@ -159,6 +170,8 @@ describe('plan "<intent>"', () => {
     const before = await hashBoth(repo, project)
 
     const result = await runIntent({
+      // A grant's level is asked, never read out of the request.
+      ask: answering('read'),
       intent: INTENT,
       repo,
       project,
@@ -178,6 +191,8 @@ describe('plan "<intent>"', () => {
     const before = await hashTree(project)
 
     await runIntent({
+      // A grant's level is asked, never read out of the request.
+      ask: answering('read'),
       intent: INTENT,
       repo,
       project,
@@ -195,6 +210,8 @@ describe('plan "<intent>"', () => {
     const project = await application()
 
     const result = await runIntent({
+      // A grant's level is asked, never read out of the request.
+      ask: answering('read'),
       intent: INTENT,
       repo,
       project,
@@ -218,7 +235,14 @@ describe('plan "<intent>"', () => {
     const project = await application()
     const client = converging([CREATE_DATABASE, CREATE_ACCESS])
 
-    await runIntent({ intent: INTENT, repo, project, client, emit: collect().emit })
+    await runIntent({
+      intent: INTENT,
+      repo,
+      project,
+      client,
+      emit: collect().emit,
+      ask: answering('read'),
+    })
 
     const review = client.seen.find((request) => request.agent === 'reviewer')
     expect(review?.transcript[0]?.role).toBe('user')
@@ -238,6 +262,8 @@ describe('plan "<intent>"', () => {
     const client = converging([CREATE_DATABASE])
 
     const result = await runIntent({
+      // A grant's level is asked, never read out of the request.
+      ask: answering('read'),
       intent: 'declare the database orders-db-prod in prod',
       repo,
       project,
@@ -271,6 +297,8 @@ describe('plan "<intent>"', () => {
     })
 
     const result = await runIntent({
+      // A grant's level is asked, never read out of the request.
+      ask: answering('read'),
       intent: INTENT,
       repo,
       project,
@@ -299,6 +327,8 @@ describe('plan "<intent>"', () => {
     const { events, emit } = collect()
 
     await runIntent({
+      // A grant's level is asked, never read out of the request.
+      ask: answering('read'),
       intent: INTENT,
       repo,
       project,
@@ -319,6 +349,8 @@ describe('plan "<intent>" and .idp-agent.yml', () => {
     const client = converging([CREATE_DATABASE, CREATE_ACCESS])
 
     const result = await runIntent({
+      // A grant's level is asked, never read out of the request.
+      ask: answering('read'),
       intent: INTENT,
       repo,
       project,
@@ -339,6 +371,8 @@ describe('plan "<intent>" and .idp-agent.yml', () => {
     const client = converging([CREATE_DATABASE, CREATE_ACCESS])
 
     const result = await runIntent({
+      // A grant's level is asked, never read out of the request.
+      ask: answering('read'),
       intent: INTENT,
       repo,
       project,
@@ -383,6 +417,7 @@ describe('plan "<intent>" through main', () => {
     const project = await application()
 
     const { code, out } = await run(['plan', INTENT, '--repo', repo], {
+      ask: answering('read'),
       cwd: project,
       client: converging([CREATE_DATABASE, CREATE_ACCESS]),
       env: {},
@@ -414,6 +449,7 @@ describe('plan "<intent>" through main', () => {
     const proposed = turnCalling(PROPOSE_TOOL, { operations: [CREATE_DATABASE, CREATE_ACCESS] })
 
     const { code, out } = await run(['plan', INTENT, '--repo', repo], {
+      ask: answering('read'),
       cwd: project,
       env: {},
       client: scripted({
@@ -443,6 +479,7 @@ describe('plan "<intent>" through main', () => {
     const project = await application('iacRepo: [unclosed\n')
 
     const { code, err } = await run(['plan', INTENT, '--repo', repo], {
+      ask: answering('read'),
       cwd: project,
       env: {},
       client: converging([CREATE_DATABASE, CREATE_ACCESS]),
@@ -463,6 +500,7 @@ describe('plan "<intent>" through main', () => {
     const project = await application()
 
     const { out, err } = await run(['plan', INTENT, '--repo', repo], {
+      ask: answering('read'),
       cwd: project,
       env: {},
       client: converging([CREATE_DATABASE, CREATE_ACCESS]),
@@ -526,6 +564,8 @@ describe('what a run looks like on a terminal', () => {
     const project = await application()
 
     const result = await runIntent({
+      // A grant's level is asked, never read out of the request.
+      ask: answering('read'),
       intent: INTENT,
       repo,
       project,
@@ -552,7 +592,13 @@ describe('what a run looks like on a terminal', () => {
     // where they never ran at all.
     expect(report.policies).toEqual([])
     expect(report.questions).toEqual([])
-    expect(report.attempts[0]?.gates).toEqual([
+    // The FIRST attempt stopped on the level, which is a question and not a
+    // failed gate: it leaves after the free ones and pays for nothing. The
+    // last attempt is the one that ran all five, and `attempts` carries both
+    // because a machine reading this report has to see the round-trip the
+    // question saved.
+    expect(report.attempts[0]?.gates).toEqual(['zod', 'signature', 'policy'])
+    expect(report.attempts.at(-1)?.gates).toEqual([
       'zod',
       'signature',
       'policy',

@@ -6,18 +6,37 @@ import { main } from '../../src/cli/index.js'
 import { runInitPlatform } from '../../src/cli/commands/init.js'
 import { runPlan } from '../../src/cli/commands/plan.js'
 import { hashTree } from '../support/tree.js'
+import type { Ask } from '../../src/cli/commands/plan.js'
 
 const capture = (): { out: string[]; err: string[] } => ({ out: [], err: [] })
 
-const run = async (args: string[]) => {
+/**
+ * A run with somebody at the keyboard, answering `read` to the one question a
+ * grant now always carries: the level is asked, never read out of the request.
+ * `ask` is injected the way `client` is, so the interactive path is exercised
+ * with no terminal — and a test that wants a diff has to go through it, which
+ * is exactly what a person does.
+ */
+const run = async (args: string[], ask?: Ask) => {
   const io = capture()
   const code = await main(args, {
     out: (chunk) => void io.out.push(chunk),
     err: (chunk) => void io.err.push(chunk),
+    ...(ask === undefined ? {} : { ask }),
   })
   return { code, out: io.out.join(''), err: io.err.join('') }
 }
 
+/**
+ * Answers the one question a grant now always carries, and declines the rest.
+ *
+ * A level is asked, never read out of the request, so a fixture that wants a
+ * complete plan has to answer for it — which is what a person does. Every
+ * other question is left unanswered, so a test about an unvouched owner still
+ * tests that.
+ */
+const answering = (value: string): Ask => async (question) =>
+  question.path.endsWith('.access') ? value : undefined
 /**
  * A real repository on a real disk, because the guarantee under test is that
  * the bytes on that disk do not move. A fake file system would let the command
@@ -111,7 +130,7 @@ describe('plan --from', () => {
     const from = await planFile(root, CREATE_PLAN)
     const before = await hashTree(root)
 
-    const result = await runPlan({ from, repo: root })
+    const result = await runPlan({ from, repo: root, ask: answering('read') })
 
     expect(result.found).toBe(true)
     expect(await hashTree(root)).toBe(before)
@@ -121,7 +140,7 @@ describe('plan --from', () => {
     const root = await scaffoldedRepository()
     const from = await planFile(root, CREATE_PLAN)
 
-    const { code, out } = await run(['plan', '--from', from, '--repo', root])
+    const { code, out } = await run(['plan', '--from', from, '--repo', root], answering('read'))
 
     expect(code).toBe(0)
     expect(out).toContain('--- /dev/null')
@@ -156,7 +175,7 @@ describe('plan --from', () => {
     const from = await planFile(root, CREATE_PLAN)
     const before = await hashTree(root)
 
-    const { code, out } = await run(['plan', '--from', from, '--repo', root])
+    const { code, out } = await run(['plan', '--from', from, '--repo', root], answering('read'))
 
     expect(code).toBe(0)
     expect(out).not.toContain('@@')
@@ -187,7 +206,7 @@ describe('plan --from', () => {
     const from = await planFile(root, CREATE_PLAN)
     const before = await hashTree(root)
 
-    const { code, out } = await run(['plan', '--from', from, '--repo', root])
+    const { code, out } = await run(['plan', '--from', from, '--repo', root], answering('read'))
 
     expect(code).toBe(1)
     expect(out).toContain('declared-level-mismatch')
@@ -255,7 +274,7 @@ describe('plan --from', () => {
     })
     const before = await hashTree(root)
 
-    const { code, out } = await run(['plan', '--from', from, '--repo', root])
+    const { code, out } = await run(['plan', '--from', from, '--repo', root], answering('read'))
 
     expect(code).toBe(1)
     expect(out).toContain('environment-mismatch')
@@ -269,7 +288,7 @@ describe('plan --from', () => {
     const from = await planFile(root, CREATE_PLAN)
 
     const before = await hashTree(root)
-    const { code, out } = await run(['plan', '--from', from, '--repo', root, '--json'])
+    const { code, out } = await run(['plan', '--from', from, '--repo', root, '--json'], answering('read'))
 
     expect(await hashTree(root)).toBe(before)
     expect(code).toBe(0)
