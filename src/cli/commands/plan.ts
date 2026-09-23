@@ -27,6 +27,7 @@ import type { LlmClient } from '../../llm/client.js'
 import { readConfig, seededVocabulary, type RepositoryConfig } from '../config.js'
 import { paintDiff } from '../render/diff.js'
 import type { CommandResult } from './result.js'
+import { plain } from '../render/plain.js'
 
 /**
  * Steps 3 to 7 of §7.4, wired end to end and stopping one step short of the
@@ -417,7 +418,12 @@ export const renderQuestions = (questions: readonly Question[]): CommandResult =
   text: [
     `${plural(questions.length, 'question', 'questions')}, asked rather than guessed:`,
     '',
-    ...questions.flatMap((question) => [`  ${question.path}`, `      ${question.question}`]),
+    // `plain`, because the reason is up to 8 192 characters the MODEL wrote
+    // and this line goes to a terminal. The path beside it is the engine's.
+    ...questions.flatMap((question) => [
+      `  ${question.path}`,
+      `      ${plain(question.question)}`,
+    ]),
     '',
     'Fill them in and run this again. Nothing was previewed, and nothing was written.',
   ].join('\n'),
@@ -598,7 +604,8 @@ export function renderStopped(
   const where = gate === undefined ? 'the plan was refused' : `refused at the ${gate} gate`
   return {
     text: [
-      `${where}: ${reason}`,
+      // The Reviewer's own words, and the one place a refusal quotes a model.
+      `${where}: ${plain(reason)}`,
       '',
       ...(plan === undefined
         ? ['No draft ever parsed, so there is no partial plan to show.']
