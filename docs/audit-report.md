@@ -10,6 +10,48 @@ not touch the working tree, which carried an uncommitted fix in progress
 
 ---
 
+## What has been done since
+
+The report below is the audit as it was delivered and is **not edited to match the code**:
+a finding rewritten after the fact stops being evidence. This table is the only part that
+moves. `docs/audit-attacks/` is the oracle — a test there **passing** means the defect
+still reproduces, and **failing** means it is closed — and it currently reports 15 of 21
+failing.
+
+| | Finding | State | Where |
+|---|---|---|---|
+| F1 | `Component.spec.type` is free text nothing vouches for | closed | `c1bb7d8`+ |
+| F2 | a derived owner travels without its evidence | closed | `c1bb7d8`+ |
+| F3 | a `SignedPlan` can be re-signed over changed contents | closed | `c1bb7d8`+ |
+| F4 | the secret list is a name list, and secrets are not named | closed | `88f68ad` |
+| F5 | model-authored text reaches a terminal unstripped | closed | for the terminal; the `--json` limit is stated, not closed |
+| F6 | hidden `.yml` files are entities; the scenario config is in the wrong repository | closed | this branch |
+| F7 | a stale recording warns to a sink nobody reads | closed | `1dc8cc2` |
+| F8 | — | — | closed with F1 |
+| F9 | the Reviewer is denied the facts that decide its question | closed | this branch |
+| F10 | the free gate runs after the paid one | closed | `3cf56ab` |
+| F11 | the architecture rules catch accidents, not intent | closed | `SECURITY.md`, `09ff67a` |
+| F12 | minor: `echoed` vouches for filler words; `materialise` has no `findUnknowns` guard | open | |
+| Q6 | the level is read out of the request by a word test | closed | `84fde41` |
+
+Three defects the audit did **not** find were found by acting on F7 — re-recording the
+scenarios made the whole chain run for the first time, and each was reachable by a person
+typing the tool's own example sentence. They are in `1dc8cc2`: an `add-dependency-of`
+against a database that nothing refused; a right naming no consumer that passed every gate
+and rendered a diff; and `propose([])` reported as `nothing to change.` on exit 0, which
+both agent prompts explicitly asked for.
+
+A fourth was found the same way and was **not** new: `.idp-agent.yml` read as an entity,
+which meant `plan` could not land in any configured repository. That is F6, named here with
+its line numbers before any of this was written. It was re-derived by measurement and
+reported as a discovery, which it was not. F6's second half — the scenario fixture writing
+the configuration into the declarations repository, where §7.0 says the application
+repository and `readConfig` never looks — was closed on this branch, and closing it changed
+every one of the five tapes: the environments those scenarios declare had been arriving
+nowhere for as long as they have existed.
+
+---
+
 ## 0. Verdict
 
 **The guarantee is real for the path the design describes, and hollow beside it.**

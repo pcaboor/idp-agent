@@ -146,6 +146,14 @@ the catalogue to begin with — that is the **signature**, gate [2] of § 6.1, w
 classifies every leaf of a proposal by where it came from and turns what nobody can vouch
 for into a question rather than a value.
 
+One source of vouching is the proposal itself. A grant over a resource the catalogue does
+not hold is two operations — declare the resource, then the right over it — and the second
+names the first by a reference that is in no witness set, because a witness set is what the
+read tools returned. That reference is grounded in the plan the reviewer reads before
+merging, so it classifies as derived. It is not a way in: a *name* is classified on its
+own, so a name the model invented is a question already and the plan cannot be applied —
+the reference inherits the name's standing rather than manufacturing its own.
+
 ```
 ┌───────────────────── AI ZONE (untrusted) ─────────────────────────┐
 │  Supervisor ──► Inspector ──► Architect ──► Reviewer              │
@@ -278,8 +286,11 @@ Three fields are outside that, and none of them is a choice. `metadata.name` can
 `{unknown}`: an entity with no name is not an entity, so a proposal that cannot name what
 it proposes is refused at gate [1] rather than turned into a question — the Inspector's
 `ProjectFacts` *can* report an unknown name, which is where that question belongs.
-`dependsOn` and `dependencyOf` are lists, where absent is already a complete answer and an
-`unknown` inside one would be a reference nobody could resolve. And `repoPath` was never
+`dependsOn` and `dependencyOf` are lists, where an `unknown` inside one would be a
+reference nobody could resolve — so neither may hold one. Absent is a complete answer for a
+list in general and **not** for a right (§4.1): a `database-access` states both, and the
+proposal schema refuses one that does not, because a grant naming no consumer grants
+nothing to nobody. And `repoPath` was never
 the model's to write (§ 5.3).
 
 ### 5.5 Dependency rules, enforced in CI
@@ -433,11 +444,29 @@ are worth more than an extension point that does not. The tool is absent from th
 Architect's registry for the same reason, because a tool naming a feature nobody built is
 a prompt for the model to ask about one.
 
-Gate [5] is not a second set of rules. It applies the Plan **virtually** — builds the
+Gate [4] is not a second set of rules. It applies the Plan **virtually** — builds the
 snapshot that would exist if the plan landed — and runs the same six `validate` rules CI
 runs over the result. It exists because the catalogue lags the repository by about two
 minutes (§4.4): what was true when the plan was drafted may not be true now, so an entity
-may have appeared, or appeared somewhere else.
+may have appeared, or appeared somewhere else. (It was gate [5] until the reordering above,
+and this paragraph said so for one commit longer than the diagram did.)
+
+**Gate [5] is told what it is judging.** The Reviewer is given the request in the user's
+words, the operations, and three sets of facts the *engine* established: the owners
+`deriveOwners` computed, what the repository already declares about every entity an
+`update-entity` targets, and what each operation would do to the repository. None of it is
+the Architect's reasoning — no transcript, no attempt number, no earlier gate's reason —
+which is the independence rule and is unchanged.
+
+The second and third exist because the first list was not enough to answer the question
+this gate asks. An update names its target by *reference* and carries no entity, so the
+operations JSON for one is `{op, entityRef, patch}`: no level, no environment, no owner, no
+current holders — and an `add-dependency-of` hands over exactly those. And until the
+reordering above, the preview did not exist yet when this gate ran, so it could approve a
+plan whose only operation produces no bytes, which is the difference between a request
+satisfied and a request silently ignored. They are read off the snapshot by the caller,
+never off the plan: `agents/` reaches no disk, and a fact arriving through the model is the
+Architect's claim wearing the engine's clothes.
 
 ### 6.2 Events
 

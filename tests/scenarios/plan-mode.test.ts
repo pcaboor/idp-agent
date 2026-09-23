@@ -50,13 +50,6 @@ const declarations = async (
     })
     await writeFile(absolute, text, 'utf8')
   }
-  // Every environment the scenarios use, declared where §7.0 says: a fresh
-  // repository holds no entities, so nothing would enumerate them otherwise.
-  await writeFile(
-    path.join(root, '.idp-agent.yml'),
-    'iacRepo: acme/iac\nenvironments:\n  - dev\n  - staging\n  - prod\n',
-    'utf8',
-  )
   return root
 }
 
@@ -66,6 +59,17 @@ const application = async (files: Record<string, string>): Promise<string> => {
   for (const [relative, text] of Object.entries(files)) {
     await writeFile(path.join(root, relative), text, 'utf8')
   }
+  // §7.0: the configuration lives HERE, in the application repository, and
+  // `readConfig` is given `options.project`. It used to be written into the
+  // declarations repository with a comment claiming §7.0 said so, where it was
+  // never read at all — so every environment these scenarios declare arrived
+  // nowhere, and the vocabulary held only what the fixtures' entities happened
+  // to use.
+  await writeFile(
+    path.join(root, '.idp-agent.yml'),
+    'iacRepo: acme/iac\nenvironments:\n  - dev\n  - staging\n  - prod\n',
+    'utf8',
+  )
   return root
 }
 
@@ -307,7 +311,7 @@ spec:
 
 describe('an owner the request names, against a real model', () => {
   it(
-    'repair-malformed-owner: a group outside the catalogue is written because a person asked for it',
+    'repair-malformed-owner: a group outside the catalogue is never quietly replaced',
     async () => {
       // §9.3's fifth scenario, and it no longer tests what its id says. It was
       // built so the Architect would always have something real to repair: the
@@ -342,10 +346,17 @@ describe('an owner the request names, against a real model', () => {
       expect(await hashTree(repo)).toBe(before)
       endedWell(code, out)
       reachedTheModel(events)
-      // The owner is the one the request named, and it reaches the diff rather
-      // than being replaced by the one derivation would have read off the
-      // consumer. A run that asked or repaired says so either way.
+      // The invariant, not the outcome. Which shape this run takes moves with
+      // the model — it has ended on a diff and on a question across
+      // re-recordings — so the assertion is the one thing that must hold
+      // either way: the owner the request named is never silently swapped for
+      // the one derivation would read off the consumer. When it reaches a
+      // diff, it is there; when it does not, nothing was written at all.
+      //
+      // The rule itself is asserted deterministically in tests/unit/derive.ts,
+      // where a scripted client cannot change its mind.
       if (code === 0) expect(out).toContain('group:default/platform-wizards')
+      else expect(out).not.toContain('group:default/tiger')
       expect(events.some((event) => event.type === 'repair' || event.type === 'ask')).toBe(
         true,
       )
