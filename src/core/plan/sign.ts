@@ -61,6 +61,23 @@ export interface SignatureContext {
    * better shape the day a plan asks about two levels at once.
    */
   readonly answered: ReadonlySet<string>
+  /**
+   * Whose words `plan.intent` is, which decides whether `echoes` may vouch.
+   *
+   * `echoed` is the strongest claim a leaf can carry — not "this value exists
+   * somewhere" but "the person asked for it" — and it rests entirely on the
+   * intent being a person's own sentence. `init` composes one: "declare this
+   * repository in the catalogue, from what its own files state". Measured
+   * against that, a Component named `repository-files` signs echoed, because
+   * both segments are words the engine wrote about itself. The engine vouched
+   * for the model using the engine's own prose.
+   *
+   * So an engine-composed intent vouches for nothing by word test. What it
+   * legitimately establishes — the values an inspection actually read out of
+   * the project's files — travels in `answered`, which is the field for a value
+   * somebody other than the model stands behind.
+   */
+  readonly wordsOf: 'user' | 'engine'
   /** References the ENGINE returned — the propose tool's witness set. */
   readonly witnessed: ReadonlySet<string>
   readonly vocabulary: Vocabulary
@@ -94,9 +111,23 @@ const isUnknown = (value: unknown): boolean =>
  * hyphen-separated piece either appears in the request or is a value the
  * catalogue already uses. `billing-api-orders-db-prod` from "give billing-api
  * access to orders-db in prod" passes; `billing-api-secret-backdoor` does not.
+ *
+ * THE LIMIT, stated rather than papered over. A word test cannot tell a word
+ * that names something from a word that is merely present: on "please declare
+ * a database in prod, thanks", a Component named `please-thanks` has both its
+ * segments in the request and signs echoed. It is filed at
+ * `catalog/databases/please-thanks.yml` and a person reads that path in the
+ * diff before merging, which is where this is caught.
+ *
+ * It is left open deliberately. Every fix is a list of words that do not
+ * count, and this tool takes a request in any language its model supports —
+ * a stop list would work in the language somebody wrote it in and silently
+ * weaken the check in every other. A filler-word name is a cosmetic defect
+ * that the diff shows; a name check that works in English and not in Turkish
+ * is a guarantee that is false without saying so.
  */
 function composed(
-  intent: string,
+  vouches: (text: string) => boolean,
   vocabulary: Vocabulary,
   witnessed: ReadonlySet<string>,
   name: string,
@@ -119,9 +150,7 @@ function composed(
     ...[...witnessed].flatMap((ref) => (ref.split('/').pop() ?? '').split('-')),
   ]
 
-  return segments.every(
-    (segment) => echoes(intent, segment) || known.includes(segment),
-  )
+  return segments.every((segment) => vouches(segment) || known.includes(segment))
 }
 
 function enumerated(vocabulary: Vocabulary, path: string, value: string): boolean {
@@ -204,6 +233,9 @@ const created = (plan: Plan): ReadonlySet<string> => {
 
 export function signPlan(plan: Plan, context: SignatureContext): SignedPlan | PlanRefusal {
   const creates = created(plan)
+  // The word test, or nothing at all. See `SignatureContext.wordsOf`.
+  const vouches = (text: string): boolean =>
+    context.wordsOf === 'user' && echoes(plan.intent, text)
   const classified: LeafFinding[] = []
   const refusals: LeafRefusal[] = []
   const asked = new Map<string, string>()
@@ -314,7 +346,7 @@ export function signPlan(plan: Plan, context: SignatureContext): SignedPlan | Pl
       // it follows from another operation by a rule the engine applied, and
       // nobody wrote it in a request. See `created`.
       leafClass = 'derived'
-    } else if (echoes(plan.intent, text) || context.answered.has(text)) {
+    } else if (vouches(text) || context.answered.has(text)) {
       // Checked before the vocabulary on purpose. A value can be both, and
       // "the user asked for this" is the stronger claim: it is their request,
       // not merely something that happens to exist somewhere.
@@ -323,7 +355,7 @@ export function signPlan(plan: Plan, context: SignatureContext): SignedPlan | Pl
       leafClass = 'enumerated'
     } else if (
       path.endsWith('.name') &&
-      composed(plan.intent, context.vocabulary, context.witnessed, text)
+      composed(vouches, context.vocabulary, context.witnessed, text)
     ) {
       leafClass = 'echoed'
     }

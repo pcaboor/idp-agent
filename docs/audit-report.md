@@ -14,9 +14,16 @@ not touch the working tree, which carried an uncommitted fix in progress
 
 The report below is the audit as it was delivered and is **not edited to match the code**:
 a finding rewritten after the fact stops being evidence. This table is the only part that
-moves. `docs/audit-attacks/` is the oracle — a test there **passing** means the defect
-still reproduces, and **failing** means it is closed — and it currently reports 15 of 21
-failing.
+moves. `docs/audit-attacks/` is the oracle — a test there **passing** means the defect still
+reproduces, and **failing** means it is closed — and it currently reports **13 of 21
+failing**.
+
+That number was 15 until the fixtures in `core-attacks.test.ts` were repaired. They predate
+`84fde41` and `SignatureContext` has gained two fields since, so eight of those tests were
+THROWING rather than asserting — and a crash counts as a failure, which in this folder reads
+as a closure. The oracle was lying in the safe direction, which is the worst direction for
+an oracle to lie in. Of the eight that pass today, five are descriptive probes with nothing
+to close, one is the `--json` limit `88f68ad` documented, and two are F12's first bullet.
 
 | | Finding | State | Where |
 |---|---|---|---|
@@ -31,7 +38,7 @@ failing.
 | F9 | the Reviewer is denied the facts that decide its question | closed | this branch |
 | F10 | the free gate runs after the paid one | closed | `3cf56ab` |
 | F11 | the architecture rules catch accidents, not intent | closed | `SECURITY.md`, `09ff67a` |
-| F12 | minor: `echoed` vouches for filler words; `materialise` has no `findUnknowns` guard | open | |
+| F12 | minor: three bullets | two closed, one **stated as a limit** | this branch |
 | Q6 | the level is read out of the request by a word test | closed | `84fde41` |
 
 Three defects the audit did **not** find were found by acting on F7 — re-recording the

@@ -276,6 +276,16 @@ measure *expressible* with the same regex.
 
 No delete operation in v0.1 (see § 4.4).
 
+An `echoed` leaf means *the person asked for this*, so it rests on the request being a
+person's sentence. `init` composes one from the inspection, and a composed sentence vouches
+for no word in it — what an inspection actually read out of the project's files stands
+behind itself instead. The limit that remains is stated in `sign.ts` rather than fixed: a
+word test cannot tell a word that names something from a word that is merely present, so
+`please-thanks` on "please declare a database in prod, thanks" signs echoed. Every fix is a
+list of words that do not count, and a stop list works in one language and silently weakens
+the check in every other — which is a false guarantee, where a filler-word name is a
+cosmetic one the diff shows.
+
 ### 5.4 Unknown fields
 
 Every `Plan` field a model *chooses* is either a value or `{ unknown: string }`. A `Plan`
@@ -443,6 +453,14 @@ document once gave the Architect in § 6 — is deferred past v0.1: five predica
 are worth more than an extension point that does not. The tool is absent from the
 Architect's registry for the same reason, because a tool naming a feature nobody built is
 a prompt for the model to ask about one.
+
+An empty diff is not always success. `nothing to change.` on exit 0 says the repository
+already grants what was asked, and it is true when the re-check says `already-declared` —
+the plan restated a declaration and the bytes it would write are the ones on disk. When
+every operation was *dropped* instead, the plan did nothing and nothing says the request
+was already satisfied: that exits 3, with the reasons underneath as before. The two used to
+share one sentence and one exit code, and a reason printed under a sentence that
+contradicts it is not saying it.
 
 Gate [4] is not a second set of rules. It applies the Plan **virtually** — builds the
 snapshot that would exist if the plan landed — and runs the same six `validate` rules CI
