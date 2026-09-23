@@ -62,7 +62,75 @@ const MAX_DIRECTORIES = 5_000
  * DSA, EC, OPENSSH and PGP headers without letting the wildcard run to the end
  * of a file.
  */
-const PRIVATE_KEY_HEADER = /-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY/
+/**
+ * What key material looks like, in the shapes it actually ships in.
+ *
+ * The rule was one case-sensitive plaintext PEM header, and it let through: a
+ * lowercase header, a PuTTY key, an OpenVPN static key, and a PEM body whose
+ * header had been stripped — plus every key inside a Kubernetes Secret or a
+ * kubeconfig, where the material is base64 and `-----BEGIN` becomes the fixed
+ * prefix `LS0tLS1CRUdJTi`.
+ *
+ * Each alternative is a fixed marker rather than a guess about entropy: a
+ * false positive here costs a file that is named in `skipped` and not read,
+ * and a false negative costs a key sent to a third party.
+ */
+const KEY_MATERIAL = [
+  /-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY/i,
+  /LS0tLS1CRUdJTi/,
+  /PuTTY-User-Key-File-/i,
+  /-----BEGIN OpenVPN Static key/i,
+  /^[ \t]*(?:ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp\d+) AAAA/m,
+]
+
+/**
+ * Credentials that are not keys, by the prefix each issuer stamps on them.
+ *
+ * A prefix is a fact about the token, not a heuristic about the file: these
+ * appear in `database.yml`, a Dockerfile, a shell script or a note, and no
+ * name rule reaches any of those. What this does NOT cover is a password —
+ * `password: hunter2` in a compose file is indistinguishable from
+ * `password: ${DB_PASSWORD}` without guessing, and guessing here would refuse
+ * half the configuration in a normal project.
+ */
+const ASSIGNED_SECRET =
+  /(?:pass(?:wd|word)?|secret(?:[_-]?key)?|api[_-]?key|access[_-]?key|private[_-]?key|auth[_-]?token|token|credentials?|authorization)\s*["']?\s*(?:[:=]|\s+bearer)\s*["']?([^\s"',;}]{6,})/i
+
+/**
+ * `CREATE USER app WITH PASSWORD 'x'` — SQL separates the key from the value
+ * with a space, so the assignment rule above never reaches it, and an init
+ * script is exactly the file a Docker entrypoint leaves in a repository.
+ */
+const SQL_PASSWORD = /\bpassword\s+'([^']{6,})'/i
+
+/**
+ * `define('DB_PASSWORD', 'x')` — PHP's constant form puts the key and the
+ * value in the same call, separated by a comma. `wp-config.php` is the file
+ * this exists for, and it is in more repositories than any of the others.
+ */
+const PHP_DEFINE = /\bdefine\s*\(\s*["'][^"']*(?:pass(?:wd|word)?|secret|key|token)[^"']*["']\s*,\s*["']([^"']{6,})["']/i
+
+/**
+ * A value that names another value rather than being one.
+ *
+ * `password: ${DB_PASSWORD}`, `${{ secrets.TOKEN }}`, `<your-key-here>`,
+ * `%TOKEN%` and an empty string are the normal content of a configuration
+ * file, and refusing them would refuse half of every project. A literal is
+ * what is left.
+ */
+const SUBSTITUTED = /^[$%<{(]|^(?:null|none|changeme|xxx+|\.\.\.|todo)$/i
+
+const CREDENTIAL_MARKERS = [
+  /\bAKIA[0-9A-Z]{16}\b/,
+  /\bASIA[0-9A-Z]{16}\b/,
+  /\bgh[pousr]_[A-Za-z0-9_]{20,}/,
+  /\bglpat-[A-Za-z0-9_-]{20,}/,
+  /\bsk-[A-Za-z0-9]{20,}/,
+  /\bxox[abposr]-[A-Za-z0-9-]{10,}/,
+  /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\./,
+  /\bAIza[0-9A-Za-z_-]{35}\b/,
+  /:\/\/[^\s:@/]+:[^\s:@/]+@/,
+]
 
 /**
  * Directories holding credentials rather than code. `.git/` earns its place
@@ -107,6 +175,29 @@ const GENERATED_DIRECTORIES = new Set([
  * and its kind live.
  */
 const READABLE_HIDDEN_DIRECTORIES = new Set(['.github'])
+
+/**
+ * Words that name a file's PURPOSE, matched as the stem rather than the whole
+ * name, because every one of these shipped one token away from a listed name:
+ * `secret.yml`, `secrets.toml`, `secrets.properties`, `credentials.json`,
+ * `auth.json`, `kubeconfig.yaml`, `accessKeys.csv`.
+ */
+const CREDENTIAL_STEMS = new Set([
+  'secret',
+  'secrets',
+  'credential',
+  'credentials',
+  'auth',
+  'kubeconfig',
+  'accesskeys',
+  'access-keys',
+  'service-account',
+  'serviceaccount',
+  'vault',
+  'passwd',
+  'password',
+  'passwords',
+])
 
 /** Private keys, by the names ssh-keygen actually writes. */
 const PRIVATE_KEY_NAMES = new Set([
@@ -174,27 +265,99 @@ function directoryReason(name: string): string | undefined {
   if (lower.startsWith('.') && !READABLE_HIDDEN_DIRECTORIES.has(lower)) {
     return 'not descended: a hidden directory is tooling, and tooling is where credentials sit'
   }
+  // A directory named for what it holds. The word list applied to basenames
+  // only, so `secrets/db.yml` and `credentials/aws.json` walked out under
+  // names nothing objected to — the folder said what they were and nobody
+  // read the folder.
+  if (CREDENTIAL_STEMS.has(lower)) {
+    return 'not descended: the directory is named for what it holds'
+  }
   return undefined
 }
+
+/** Why this file is never read, or undefined to read it. */
+/**
+ * Hidden files a model may read, and the list is short on purpose.
+ *
+ * A hidden DIRECTORY was refused and a hidden FILE was not, which is where
+ * `.terraformrc`, `.my.cnf`, `.bash_history`, `.gitconfig` and `.vault_pass`
+ * walked out. The rule is inverted now: a dotted file is refused unless it is
+ * named here, because the ones that carry facts about a project are few and
+ * the ones that carry credentials are not enumerable.
+ */
+const READABLE_HIDDEN_FILES = new Set([
+  '.gitignore',
+  '.dockerignore',
+  '.editorconfig',
+  '.nvmrc',
+  '.node-version',
+  '.python-version',
+  '.ruby-version',
+  '.tool-versions',
+  '.prettierrc',
+  '.eslintrc',
+  '.eslintrc.js',
+  '.eslintrc.json',
+  '.eslintrc.yml',
+  '.babelrc',
+  '.browserslistrc',
+])
 
 /** Why this file is never read, or undefined to read it. */
 function fileReason(name: string): string | undefined {
   // Lowercased before every comparison: APFS and NTFS would serve `ID_RSA` for
   // `id_rsa`, so a case-sensitive list is a list with a hole in it.
   const lower = name.toLowerCase()
-  if (lower === '.env' || lower.startsWith('.env.') || lower === '.envrc') {
+
+  // `.env` anywhere in the name, not anchored to the front. The rule was
+  // `=== '.env' || startsWith('.env.')`, which read `.env` and let
+  // `prod.env`, `secrets.env`, `docker.env`, `.flaskenv`, `env.local`, `.env~`
+  // and `.env-local` through — every shape a real project actually uses.
+  if (/(^|[.\-_])env([.\-_~]|$)/.test(lower) || lower.includes('.env')) {
     // `.env.example` included: it is a template until someone pastes a real
-    // value into it, and that is a weekly occurrence. `.envrc` is direnv's,
-    // and its entire content is exported shell variables.
+    // value into it, and that is a weekly occurrence.
     return 'excluded: an environment file is where credentials live'
   }
+
+  // `.git` and `.gitmodules` as FILES. A worktree or submodule checkout writes
+  // `.git` as a file holding `gitdir: /Users/<name>/…` — an absolute path
+  // outside the project, which `types.ts` says must never reach a model — and
+  // `.gitmodules` carries submodule URLs, which carry `user:TOKEN@` often
+  // enough. Only the DIRECTORY was refused.
+  if (lower === '.git' || lower === '.gitmodules') {
+    return 'excluded: it names a path or a remote outside this project'
+  }
+
   if (PRIVATE_KEY_NAMES.has(lower)) return 'excluded: this is the name of a private key'
   if (CREDENTIAL_NAMES.has(lower)) return 'excluded: this file exists to hold a credential'
-  if (lower.endsWith('.tfstate.backup')) return 'excluded: Terraform state holds secrets in clear'
+
+  // The same words, as a stem rather than an exact name: `secret.yml`,
+  // `secrets.toml`, `credentials.json`, `auth.json`, `kubeconfig.yaml`,
+  // `accessKeys.csv` were each one token off a listed name and each shipped.
+  // Up to the FIRST dot, not the last: `path.extname` sees `.example` on
+  // `secrets.yml.example`, so the stem came out `secrets.yml` and matched
+  // nothing. A file named for what it holds keeps that name through every
+  // suffix someone appends to it.
+  const stem = lower.split('.')[0] ?? lower
+  if (CREDENTIAL_STEMS.has(stem)) return 'excluded: this file exists to hold a credential'
+
+  if (lower.endsWith('.tfstate.backup') || lower.endsWith('.tfvars.json')) {
+    // `path.extname` sees `.json` on `terraform.tfvars.json`, so the extension
+    // list could never reach Terraform's JSON variable files.
+    return 'excluded: Terraform state holds secrets in clear'
+  }
   const extension = path.extname(lower)
   if (SECRET_EXTENSIONS.has(extension)) {
     return `excluded: ${extension} carries key material or secret state`
   }
+
+  // Hidden, and not one of the few worth reading. Last, so a dotted file that
+  // one of the rules above already named keeps that reason — `.env` says what
+  // it is more usefully than "hidden".
+  if (lower.startsWith('.') && !READABLE_HIDDEN_FILES.has(lower)) {
+    return 'excluded: a hidden file is tooling, and tooling is where credentials sit'
+  }
+
   return undefined
 }
 
@@ -530,10 +693,30 @@ export async function readProject(root: string): Promise<ProjectSnapshot> {
     //
     // latin1: every byte maps to a character, so the header test cannot be
     // defeated by an invalid UTF-8 sequence before it.
-    if (PRIVATE_KEY_HEADER.test(bytes.toString('latin1'))) {
+    const text = bytes.toString('latin1')
+    if (KEY_MATERIAL.some((marker) => marker.test(text))) {
       state.skipped.push({
         path: candidate.path,
-        reason: 'excluded: the content is a private key, whatever the file is called',
+        reason: 'excluded: the content is key material, whatever the file is called',
+      })
+      continue
+    }
+    const assigned =
+      ASSIGNED_SECRET.exec(text) ?? SQL_PASSWORD.exec(text) ?? PHP_DEFINE.exec(text)
+    if (assigned?.[1] !== undefined && !SUBSTITUTED.test(assigned[1])) {
+      state.skipped.push({
+        path: candidate.path,
+        reason: 'excluded: a secret is assigned a literal value in it',
+      })
+      continue
+    }
+    if (CREDENTIAL_MARKERS.some((marker) => marker.test(text))) {
+      // The reason names the class, never the token: this string travels to a
+      // model in the snapshot's own `skipped` list, and quoting the secret to
+      // explain why the secret was withheld would be the whole defect again.
+      state.skipped.push({
+        path: candidate.path,
+        reason: 'excluded: the content carries something shaped like a credential',
       })
       continue
     }
