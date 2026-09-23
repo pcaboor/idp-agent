@@ -267,6 +267,7 @@ describe('plan --from', () => {
               type: 'database-access', access: 'read',
               owner: 'group:default/tiger',
               dependsOn: ['resource:default/orders-db-prod'],
+              dependencyOf: ['component:default/billing-api'],
             },
           },
         },

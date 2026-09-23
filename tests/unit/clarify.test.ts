@@ -18,6 +18,8 @@ const asking = (): Plan =>
           spec: {
             type: 'database-access', access: 'read',
             owner: { unknown: 'nothing vouches for this owner; which one is it?' },
+            dependsOn: ['resource:default/orders-db-prod'],
+            dependencyOf: ['component:default/billing-api'],
           },
         },
       },
@@ -44,7 +46,10 @@ describe('questionsOf', () => {
           entity: {
             kind: 'Resource',
             metadata: { name: 'billing-api-orders-db-prod', env: 'prod' },
-            spec: { type: 'database-access', access: 'read', owner: 'group:default/tiger' },
+            spec: {
+              type: 'database-access', access: 'read', owner: 'group:default/tiger',
+              dependsOn: ['resource:default/orders-db-prod'], dependencyOf: ['component:default/billing-api'],
+            },
           },
         },
       ],

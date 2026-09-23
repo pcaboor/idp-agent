@@ -4,7 +4,7 @@ import type { PolicyContext, PolicyViolation } from '../../src/core/plan/policie
 import { signPlan } from '../../src/core/plan/sign.js'
 import type { SignatureContext, SignedPlan } from '../../src/core/plan/sign.js'
 import { findUnknowns, planSchema } from '../../src/core/schemas/plan.js'
-import type { AccessLevel } from '../../src/core/schemas/resource-types.js'
+import type { AccessLevel, Nature } from '../../src/core/schemas/resource-types.js'
 
 const vocabulary = {
   kinds: ['Component', 'Resource'],
@@ -42,6 +42,7 @@ const policies = (over: Partial<PolicyContext> = {}): PolicyContext => ({
     ['resource:default/orders-db-prod', 'prod'],
     ['resource:default/orders-db-dev', 'dev'],
     ['component:default/billing-api', 'prod'],
+    ['component:default/billing-api-dev', 'dev'],
     ['resource:default/checkout-orders-db-prod', 'prod'],
     ['resource:default/checkout-orders-db-dev', 'dev'],
     ['resource:default/payments-orders-db-prod', 'prod'],
@@ -54,6 +55,19 @@ const policies = (over: Partial<PolicyContext> = {}): PolicyContext => ({
     // Declared, and stating no level: `has` is true and `get` is undefined,
     // which is §4.1's unstated level and not a grant of `read`.
     ['resource:default/legacy-orders-db-prod', undefined],
+  ]),
+  // Thing or right, for the same references. A database is in `levels` too —
+  // every declared entity is — and this is what stops a level being compared
+  // against one.
+  natures: new Map<string, Nature>([
+    ['resource:default/orders-db-prod', 'object'],
+    ['resource:default/orders-db-dev', 'object'],
+    ['component:default/billing-api', 'object'],
+    ['component:default/billing-api-dev', 'object'],
+    ['resource:default/checkout-orders-db-prod', 'right'],
+    ['resource:default/checkout-orders-db-dev', 'right'],
+    ['resource:default/payments-orders-db-prod', 'right'],
+    ['resource:default/legacy-orders-db-prod', 'right'],
   ]),
   ...over,
 })
@@ -96,13 +110,21 @@ const signUpdate = (
 const of = (violations: readonly PolicyViolation[], policy: string): PolicyViolation | undefined =>
   violations.find((violation) => violation.policy === policy)
 
-const accessIn = (env: string, dependsOn: string[] = []) => ({
+// A right is over something and held by somebody, and the schema refuses one
+// that is neither, so both lists are here. `dependsOn` still takes an override
+// because the environment policies are about which database is reached.
+const accessIn = (
+  env: string,
+  dependsOn: string[] = [`resource:default/orders-db-${env}`],
+  consumer = 'component:default/billing-api',
+) => ({
   kind: 'Resource' as const,
   metadata: { name: `billing-api-orders-db-${env}`, env },
   spec: {
     type: 'database-access' as const, access: 'read',
     owner: 'group:default/tiger',
-    ...(dependsOn.length > 0 ? { dependsOn } : {}),
+    dependsOn,
+    dependencyOf: [consumer],
   },
 })
 
@@ -168,7 +190,7 @@ describe('cross-environment-consumer', () => {
 
   it('says nothing when the reference lives in the same environment', () => {
     const signed = sign(
-      accessIn('dev', ['resource:default/orders-db-dev']),
+      accessIn('dev', ['resource:default/orders-db-dev'], 'component:default/billing-api-dev'),
       'give billing-api read access to orders-db in dev',
     )
 
@@ -180,7 +202,7 @@ describe('cross-environment-consumer', () => {
     // runs that rule. A policy guessing here would report a second, worse
     // version of a violation the repository states precisely.
     const signed = sign(
-      accessIn('dev', ['resource:default/ghost']),
+      accessIn('dev', ['resource:default/ghost'], 'component:default/billing-api-dev'),
       'give billing-api read access to orders-db in dev',
       { witnessed: new Set(['resource:default/ghost']) },
     )
@@ -397,7 +419,10 @@ describe('declared-level-mismatch, over a creation', () => {
 
     const violations = checkPolicies(
       signed,
-      policies({ levels: new Map<string, AccessLevel | undefined>([[REF, 'readwrite']]) }),
+      policies({
+        levels: new Map<string, AccessLevel | undefined>([[REF, 'readwrite']]),
+        natures: new Map<string, Nature>([[REF, 'right']]),
+      }),
     )
 
     const violation = of(violations, 'declared-level-mismatch')
@@ -412,7 +437,10 @@ describe('declared-level-mismatch, over a creation', () => {
 
     const violations = checkPolicies(
       signed,
-      policies({ levels: new Map<string, AccessLevel | undefined>([[REF, undefined]]) }),
+      policies({
+        levels: new Map<string, AccessLevel | undefined>([[REF, undefined]]),
+        natures: new Map<string, Nature>([[REF, 'right']]),
+      }),
     )
 
     expect(violations.map((violation) => violation.policy)).toContain(

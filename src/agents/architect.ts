@@ -43,9 +43,18 @@ plausible one. A guessed owner is authorisation handed to the wrong team, a
 guessed environment is access somewhere nobody asked for, and a guessed access
 level is write where read was asked for.
 
-Finish by calling "${PROPOSE_TOOL}". Propose an empty list of operations when the
-catalogue already declares everything the request asks for; that is an answer, not
-a failure.`
+A right is over SOMETHING and granted to SOMEBODY. An access states both: the
+resource it reaches in "dependsOn", and every consumer holding it in
+"dependencyOf". A resource, a cache and an api are things: they state no
+consumers and no level. When the resource the request names does not exist yet,
+that is two operations — declare the resource, then declare the access over it —
+and never one entity carrying both.
+
+Finish by calling "${PROPOSE_TOOL}", with at least one operation. When the
+catalogue already declares what the request asks for, propose it ANYWAY: the
+preview compares your declaration to the bytes on disk and reports that it is
+already there, naming the file. An empty list is not an answer, and it is
+refused.`
 
 const stated = (value: string | UnknownValue): string =>
   typeof value === 'string' ? value : `unknown (${value.unknown})`

@@ -1,24 +1,38 @@
 {
-  "intent": "declare the database orders-db-prod in prod owned by group:default/tiger, then a database-access billing-api-orders-db-prod granting read, that dependsOn resource:default/orders-db-prod",
+  "intent": "declare the database orders-db-prod in prod owned by group:default/tiger, then a database-access billing-api-orders-db-prod granting read, that dependsOn resource:default/orders-db-prod and is a dependencyOf component:default/billing-api",
   "operations": [
     {
       "op": "create-entity",
       "entity": {
         "kind": "Resource",
-        "metadata": { "name": "orders-db-prod", "env": "prod" },
-        "spec": { "type": "database", "owner": "group:default/tiger" }
+        "metadata": {
+          "name": "orders-db-prod",
+          "env": "prod"
+        },
+        "spec": {
+          "type": "database",
+          "owner": "group:default/tiger"
+        }
       }
     },
     {
       "op": "create-entity",
       "entity": {
         "kind": "Resource",
-        "metadata": { "name": "billing-api-orders-db-prod", "env": "prod" },
+        "metadata": {
+          "name": "billing-api-orders-db-prod",
+          "env": "prod"
+        },
         "spec": {
           "type": "database-access",
           "access": "read",
           "owner": "group:default/tiger",
-          "dependsOn": ["resource:default/orders-db-prod"]
+          "dependsOn": [
+            "resource:default/orders-db-prod"
+          ],
+          "dependencyOf": [
+            "component:default/billing-api"
+          ]
         }
       }
     }

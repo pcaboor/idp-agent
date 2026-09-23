@@ -14,7 +14,10 @@ import {
 const resource = {
   kind: 'Resource' as const,
   metadata: { name: 'billing-api-billing-db-dev', env: 'dev' },
-  spec: { type: 'database-access' as const, access: 'read', owner: 'group:default/tiger' },
+  spec: {
+    type: 'database-access' as const, access: 'read', owner: 'group:default/tiger',
+    dependsOn: ['resource:default/orders-db-prod'], dependencyOf: ['component:default/billing-api'],
+  },
 }
 
 describe('plan schemas', () => {
@@ -76,9 +79,18 @@ describe('plan schemas', () => {
     ])
   })
 
-  it('treats an empty plan as applicable — absent means already done', () => {
-    const plan = planSchema.parse({ intent: 'already declared', operations: [] })
-    expect(isApplicable(plan)).toBe(true)
+  it('refuses a plan with no operations at all', () => {
+    // `absent means already done` was the old reading, and it made the most
+    // dangerous sentence this tool can print reachable by a model giving up:
+    // no operations, no gate to fail, no edits, `nothing to change.` on exit
+    // 0. Having nothing to propose is said by ending the draft, which the CLI
+    // reports as a refusal.
+    const result = planSchema.safeParse({ intent: 'already declared', operations: [] })
+
+    expect(result.success).toBe(false)
+    expect(result.error?.issues.some((issue) => issue.path.join('.') === 'operations')).toBe(
+      true,
+    )
   })
 
   it('refuses an unknown carrying no reason', () => {

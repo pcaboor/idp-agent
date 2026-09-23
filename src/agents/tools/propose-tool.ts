@@ -37,7 +37,15 @@ const proposableOperationSchema = z.discriminatedUnion('op', [createEntity, upda
  * outcome is an invented one.
  */
 const proposeInputSchema = z.strictObject({
-  operations: z.array(proposableOperationSchema).max(PLAN_LIMITS.maxOperations),
+  // At least one. `planSchema` says the same thing and says why; this says it
+  // at the boundary the model actually writes through, so the refusal arrives
+  // as a tool error naming `operations` rather than as a plan-level rejection
+  // one layer later. Both are needed: this tool never sees the assembled plan,
+  // and the plan boundary is reached by callers that never touch this tool.
+  operations: z
+    .array(proposableOperationSchema)
+    .min(1, 'a plan with no operations is not a proposal; end the draft instead')
+    .max(PLAN_LIMITS.maxOperations),
 })
 
 /**

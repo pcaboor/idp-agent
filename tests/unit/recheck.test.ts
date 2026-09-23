@@ -16,7 +16,7 @@ const vocabulary = {
 }
 
 const signature = (over: Partial<SignatureContext> = {}): SignatureContext => ({
-  witnessed: new Set(['resource:default/orders-db-prod']),
+  witnessed: new Set(['resource:default/orders-db-prod', 'component:default/billing-api']),
   vocabulary,
   repoRoot: '/repo',
   declared: new Map(),
@@ -33,6 +33,7 @@ const access = {
     type: 'database-access' as const, access: 'read',
     owner: 'group:default/tiger',
     dependsOn: ['resource:default/orders-db-prod'],
+    dependencyOf: ['component:default/billing-api'],
   },
 }
 
@@ -65,6 +66,7 @@ const fileHolding = (
         ...(level === 'none' ? {} : { access: level }),
         owner: 'group:default/tiger',
         dependsOn: ['resource:default/orders-db-prod'],
+        dependencyOf: ['component:default/billing-api'],
       },
     },
   ],
@@ -73,8 +75,8 @@ const fileHolding = (
 })
 
 const snapshot = (files: RepositoryFile[] = []): RepositorySnapshot => ({
-  folders: ['dependencies/access', 'catalog/databases'],
-  witnesses: ['dependencies/access', 'catalog/databases'],
+  folders: ['dependencies/access', 'catalog/databases', 'systems'],
+  witnesses: ['dependencies/access', 'catalog/databases', 'systems'],
   files: [
     {
       path: 'catalog/databases/orders-db-prod.yml',
@@ -84,6 +86,22 @@ const snapshot = (files: RepositoryFile[] = []): RepositorySnapshot => ({
           kind: 'Resource',
           metadata: { name: 'orders-db-prod', annotations: { [ENV_ANNOTATION]: 'prod' } },
           spec: { type: 'database', owner: 'group:default/tiger' },
+        },
+      ],
+      rejections: [],
+      documents: 1,
+    },
+    {
+      // The consumer, declared. A right names one — the schema refuses one
+      // that does not — so a snapshot holding only the database makes every
+      // grant below a dangling reference.
+      path: 'systems/billing-api.yml',
+      entities: [
+        {
+          apiVersion: 'backstage.io/v1alpha1',
+          kind: 'Component',
+          metadata: { name: 'billing-api', annotations: { [ENV_ANNOTATION]: 'prod' } },
+          spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
         },
       ],
       rejections: [],
@@ -185,7 +203,9 @@ describe('recheckPlan', () => {
       spec: { ...access.spec, dependsOn: ['resource:default/ghost'] },
     }
     const { violations } = recheck(
-      sign(dangling, { witnessed: new Set(['resource:default/ghost']) }),
+      sign(dangling, {
+        witnessed: new Set(['resource:default/ghost', 'component:default/billing-api']),
+      }),
       snapshot(),
     )
 

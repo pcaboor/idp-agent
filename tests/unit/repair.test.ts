@@ -16,6 +16,7 @@ import { EntityGraph, refOf } from '../../src/context/graph/entity-graph.js'
 import { computeEntityPath } from '../../src/core/paths/entity-path.js'
 import type { PolicyContext } from '../../src/core/plan/policies.js'
 import type { SignatureContext } from '../../src/core/plan/sign.js'
+import type { Nature } from '../../src/core/schemas/resource-types.js'
 import { SOURCE_FILE_ANNOTATION, type Entity } from '../../src/core/schemas/entity.js'
 import { planSchema, type Plan } from '../../src/core/schemas/plan.js'
 import { ENV_ANNOTATION } from '../../src/core/schemas/vocabulary.js'
@@ -96,7 +97,12 @@ const VOCABULARY = {
 }
 
 /** References the ENGINE returned — what a run's read tools would have filled. */
-const WITNESSED = new Set(['resource:default/orders-db-prod', 'component:default/billing-api'])
+const WITNESSED = new Set([
+  'resource:default/orders-db-prod',
+  'component:default/billing-api',
+  'resource:default/orders-db-dev',
+  'component:default/billing-api-dev',
+])
 
 const signature = (over: Partial<SignatureContext> = {}): SignatureContext => ({
   witnessed: WITNESSED,
@@ -115,12 +121,22 @@ const policy = (over: Partial<PolicyContext> = {}): PolicyContext => ({
   environments: new Map([
     ['resource:default/orders-db-prod', 'prod'],
     ['component:default/billing-api', 'prod'],
+    ['resource:default/orders-db-dev', 'dev'],
+    ['component:default/billing-api-dev', 'dev'],
   ]),
   // Neither entity in this snapshot is a grant, so the repository states no
   // level for anything the plans below propose.
   levels: new Map([
     ['resource:default/orders-db-prod', undefined],
     ['component:default/billing-api', undefined],
+  ]),
+  // Both are things, which is the whole snapshot here: a plan that grants
+  // access declares the right, it does not amend the database.
+  natures: new Map<string, Nature>([
+    ['resource:default/orders-db-prod', 'object'],
+    ['component:default/billing-api', 'object'],
+    ['resource:default/orders-db-dev', 'object'],
+    ['component:default/billing-api-dev', 'object'],
   ]),
   ...over,
 })
@@ -219,7 +235,14 @@ const DEV_PLAN = planOf(
   {
     ...ACCESS,
     metadata: { name: 'billing-api-orders-db-dev', env: 'dev' },
-    spec: { type: 'database-access' as const, access: 'read', owner: 'group:default/tiger' },
+    spec: {
+      type: 'database-access' as const, access: 'read', owner: 'group:default/tiger',
+      dependsOn: ['resource:default/orders-db-dev'],
+      // The dev consumer: a right in dev held by a component in prod is what
+      // `cross-environment-consumer` exists to refuse, and this plan is the
+      // one the second attempt gets RIGHT.
+      dependencyOf: ['component:default/billing-api-dev'],
+    },
   },
   DEV_INTENT,
 )
@@ -423,6 +446,7 @@ describe('each gate refuses on its own', () => {
         type: 'database-access', access: 'read',
         owner: 'group:default/tiger',
         dependsOn: ['resource:default/orders-db-prod'],
+        dependencyOf: ['component:default/billing-api'],
       },
     }
     const overtaken: RepositorySnapshot = {
@@ -889,6 +913,7 @@ describe('the free gate runs before the paid one', () => {
         access: 'read',
         owner: 'group:default/tiger',
         dependsOn: ['resource:default/orders-db-prod'],
+        dependencyOf: ['component:default/billing-api'],
       },
     }
     const overtaken: RepositorySnapshot = {

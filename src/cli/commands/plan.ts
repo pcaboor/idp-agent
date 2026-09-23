@@ -15,12 +15,12 @@ import { renderUnifiedDiff, type FileEdit } from '../../core/diff/unified.js'
 import { answer, AnswerError, questionsOf, type Question } from '../../core/plan/clarify.js'
 import { deriveOwners } from '../../core/plan/derive.js'
 import { planEdits, type DroppedOperation } from '../../core/plan/edits.js'
-import { declaredLevel } from '../../core/plan/grant.js'
+import { declaredLevel, natureOf } from '../../core/plan/grant.js'
 import { checkPolicies, type PolicyContext, type PolicyViolation } from '../../core/plan/policies.js'
 import { recheckPlan, type Recheck } from '../../core/plan/recheck.js'
 import { signPlan, type SignatureContext, type SignedPlan } from '../../core/plan/sign.js'
 import { planSchema, type Plan } from '../../core/schemas/plan.js'
-import type { AccessLevel } from '../../core/schemas/resource-types.js'
+import type { AccessLevel, Nature } from '../../core/schemas/resource-types.js'
 import { ENV_ANNOTATION, type Vocabulary } from '../../core/schemas/vocabulary.js'
 import type { RepositorySnapshot, Violation } from '../../core/validate/rules.js'
 import type { LlmClient } from '../../llm/client.js'
@@ -234,6 +234,7 @@ function contextsOf(
   const environments = new Map<string, string>()
   const owners = new Map<string, string>()
   const levels = new Map<string, AccessLevel | undefined>()
+  const natures = new Map<string, Nature>()
   for (const file of snapshot.files) {
     for (const entity of file.entities) {
       declared.set(refOf(entity), file.path)
@@ -243,6 +244,10 @@ function contextsOf(
       // one it holds with no level is §4.1's unstated level, which is never
       // read as `readwrite` and never already says `read`.
       levels.set(refOf(entity), declaredLevel(entity))
+      // Thing or right (§4.1). Read from the kind and the type, never from the
+      // folder: where a file sits is a convention this tool computes for what
+      // it writes, and says nothing about what somebody else filed.
+      natures.set(refOf(entity), natureOf(entity))
       // Read from the entity, never inferred: `spec.owner` is required on both
       // kinds, so every entity the reader accepted contributes exactly one.
       owners.set(refOf(entity), entity.spec.owner)
@@ -267,7 +272,7 @@ function contextsOf(
       // nothing has been asked yet, and `contextsOf` runs once.
       answered: new Set<string>(),
     },
-    policy: { vocabulary, witnesses: new Set(snapshot.witnesses), environments, levels },
+    policy: { vocabulary, witnesses: new Set(snapshot.witnesses), environments, levels, natures },
   }
 }
 

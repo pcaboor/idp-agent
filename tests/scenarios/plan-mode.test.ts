@@ -21,7 +21,12 @@ import { hashTree } from '../support/tree.js'
  * Replay is instant; recording talks to a provider and takes seconds per turn,
  * so the timeout is sized for the recording run.
  */
-const TIMEOUT = 240_000
+// Ten minutes, and the number is about RECORDING rather than replay — a replay
+// is milliseconds. A recording makes a dozen real calls, and a provider that
+// starts throttling turns a 50-second pass into a 900-second one. The old 240
+// seconds killed four recordings mid-run and lost every turn they had already
+// paid for, because a tape is written when the run ends.
+const TIMEOUT = 600_000
 
 const RECORDINGS = path.resolve(import.meta.dirname, '../recordings')
 
@@ -112,8 +117,24 @@ const run = async (
     out: (chunk) => void out.push(chunk),
     err: (chunk) => void err.push(chunk),
     events: (event) => void events.push(event),
+    // Somebody at the keyboard, answering the one question a grant always
+    // carries. Without it these scenarios stop at the level and never exercise
+    // the two gates past it — which is the half of the chain a recording is
+    // for. Every other question is declined, so a scenario about an unvouched
+    // owner still ends on that owner.
+    ask: async (question) => (question.path.endsWith('.access') ? 'read' : undefined),
   })
-  return { code, out: out.join(''), err: err.join(''), events }
+  const stderr = err.join('')
+  // A recording whose prompt has drifted replays anyway and warns, and the
+  // warning went to a sink nobody read: every scenario captured `err` and
+  // asserted nothing about it, so twelve green tests could be replaying
+  // behaviour produced under a system prompt that no longer exists. The
+  // warning is the harness's only signal that a tape has gone stale, and a
+  // signal nothing asserts on is not a signal.
+  expect(stderr, `${scenario}: the recording is stale — re-record it`).not.toMatch(
+    /prompt changed since recording/,
+  )
+  return { code, out: out.join(''), err: stderr, events }
 }
 
 /**
@@ -269,15 +290,26 @@ spec:
   )
 })
 
-describe('the repair loop, against a real model', () => {
+describe('an owner the request names, against a real model', () => {
   it(
-    'repair-malformed-owner: an owner outside the catalogue is refused and handed back',
+    'repair-malformed-owner: a group outside the catalogue is written because a person asked for it',
     async () => {
-      // §9.3's fifth scenario, and the reason it is built this way: the error
-      // comes from the RULE, not from hoping the model slips. The repository
-      // declares one group, the request names another, and the signature
-      // refuses the second deterministically — so the Architect has something
-      // real to repair, every time, on every model.
+      // §9.3's fifth scenario, and it no longer tests what its id says. It was
+      // built so the Architect would always have something real to repair: the
+      // repository declares one group, the request names another, and the
+      // signature was expected to refuse the second every time.
+      //
+      // It does not, and should not. A value the request itself carries is
+      // ECHOED — vouched for by the person who wrote it (§5.4) — and refusing
+      // an owner the catalogue has not used yet is the trap the type check
+      // already fell into: the first grant of a new team could never be
+      // proposed. So the owner is written, and the merge is where it is
+      // authorised. What this asserts is that provenance rule end to end.
+      //
+      // The repair loop itself is covered by scripted clients in
+      // tests/unit/repair.test.ts, where a refusal can be guaranteed. No
+      // scenario can force a real model to be wrong, and the current five
+      // record zero refusals between them.
       const repo = await declarations({
         'catalog/databases/orders-db-prod.yml': ORDERS_DB,
         'systems/billing-api.yml': BILLING_API,
@@ -293,13 +325,12 @@ describe('the repair loop, against a real model', () => {
       )
 
       expect(await hashTree(repo)).toBe(before)
-      // Whatever the run concluded, it concluded without writing and it said
-      // which gate ended it. The owner the request named is in no vocabulary
-      // this repository holds, so nothing can vouch for it.
       endedWell(code, out)
       reachedTheModel(events)
-      // The loop is audible: a run that repaired says so, a run that asked
-      // says so, and neither is silent.
+      // The owner is the one the request named, and it reaches the diff rather
+      // than being replaced by the one derivation would have read off the
+      // consumer. A run that asked or repaired says so either way.
+      if (code === 0) expect(out).toContain('group:default/platform-wizards')
       expect(events.some((event) => event.type === 'repair' || event.type === 'ask')).toBe(
         true,
       )

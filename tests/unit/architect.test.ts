@@ -280,13 +280,21 @@ describe('buildProposeTool', () => {
     expect(propose.witnessed.size).toBe(0)
   })
 
-  it('accepts an empty list, which is how "already declared" is said', () => {
-    // Design 7.5: an entity that already exists yields an empty plan, exit 0.
-    // A floor of one operation would make that outcome inexpressible, and an
-    // inexpressible outcome is an invented one.
+  it('refuses an empty list, which is not how "already declared" is said', () => {
+    // It used to be, on §7.5's reading that an entity which already exists
+    // yields an empty plan and exit 0. Two outcomes shared that shape and only
+    // one of them was true: a model that cannot see what to do calls
+    // `propose([])`, and the CLI printed `nothing to change.` on exit 0 for it.
+    //
+    // Already-declared is demonstrated instead — the plan restates the
+    // declaration, `planEdits` produces the bytes already on disk, and
+    // `recheckPlan` reports `already-declared`. §7.5 says so now.
     const propose = buildProposeTool()
-    expect(propose.run(toolCall(PROPOSE_TOOL, { operations: [] })).result).toEqual({})
-    expect(propose.taken()?.operations).toEqual([])
+
+    const refusal = propose.run(toolCall(PROPOSE_TOOL, { operations: [] })).result
+
+    expect(JSON.stringify(refusal)).toContain('operations')
+    expect(propose.taken()).toBeUndefined()
   })
 
   it('keeps the first proposal and refuses a second rather than letting order decide', () => {
@@ -377,10 +385,20 @@ describe('draftPlan', () => {
     expect(((await draftPlan(client, readTools(), INPUT, emit)).plan)?.intent).toBe(INPUT.intent)
   })
 
-  it('keeps a proposal of no operations, rather than reading it as a failure', async () => {
-    const client = scripted([proposing([])])
+  it('hands back a proposal of no operations rather than taking it', async () => {
+    // This used to be kept, on the grounds that an empty plan meant "already
+    // done". It does not: a model with nothing to say calls `propose([])`
+    // because that costs it nothing, and the CLI reported the result as
+    // `nothing to change.` on exit 0 — the repository was said to grant an
+    // authorisation nobody had written. Refused at the schema now, handed
+    // back once, and the second call is the one that is taken.
+    const client = capturing([proposing([]), proposing([ACCESS])])
     const { emit } = collect()
-    expect(((await draftPlan(client, readTools(), INPUT, emit)).plan)?.operations).toEqual([])
+
+    const plan = (await draftPlan(client, readTools(), INPUT, emit)).plan
+
+    expect(plan?.operations).toEqual([ACCESS])
+    expect(JSON.stringify(client.seen.at(-1)?.transcript)).toContain('is not a proposal')
   })
 
   it('puts a malformed proposal back for correction and takes the second', async () => {
