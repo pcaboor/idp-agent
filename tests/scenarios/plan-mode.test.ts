@@ -153,7 +153,15 @@ const run = async (
 const endedWell = (code: number, out: string): void => {
   expect([0, 1, 3]).toContain(code)
   if (code === 0) {
-    expect(out).toMatch(/^\+\+\+ /m)
+    // Two shapes end well on exit 0, and the second is §7.5's already-declared
+    // row: a plan that RESTATES what the repository holds produces bytes
+    // identical to the ones on disk, so there is no diff to show and the run
+    // says so instead. It used to be reachable a third way — a model calling
+    // propose with no operations at all — and that is what made asserting a
+    // diff here the only safe rule. Both boundaries require an operation now,
+    // so "nothing to change" can only mean the repository already says it.
+    if (/^\+\+\+ /m.test(out)) expect(out).toContain('nothing written')
+    else expect(out).toContain('nothing to change')
     expect(out).toContain('nothing written')
     return
   }
@@ -253,6 +261,11 @@ describe('plan "<intent>"', () => {
   it(
     'link-already-declared: the access is in the repository already',
     async () => {
+      // The declaration states its level. Without it this fixture predated
+      // §5.3's field and the scenario could not test its own name: a request
+      // for read against a declaration stating no level is a
+      // declared-level-mismatch, correctly — so the idempotent path §7.5
+      // describes was never reached by the scenario built to reach it.
       const repo = await declarations({
         'catalog/databases/orders-db-prod.yml': ORDERS_DB,
         'systems/billing-api.yml': BILLING_API,
@@ -265,6 +278,8 @@ metadata:
     company.fr/env: prod
 spec:
   type: database-access
+  # The level this grant states, and the one the request asks for.
+  access: read
   owner: group:default/tiger
   dependsOn:
     - resource:default/orders-db-prod

@@ -185,6 +185,47 @@ export interface ReviewInput {
   readonly intent: string
   /** Deterministic facts, never reasoning. See `opening`. */
   readonly derived: readonly { path: string; owner: string; from: readonly string[] }[]
+  /**
+   * What the repository says about each entity an `update-entity` targets.
+   *
+   * An update names its target by REFERENCE and carries no entity, so the
+   * operations JSON for one is `{op, entityRef, patch}` and nothing more. A
+   * reviewer asked "is this what was requested" about a grant whose level,
+   * environment, owner and current consumers it cannot see is being asked to
+   * judge an authorisation with the authorisation withheld — and an
+   * `add-dependency-of` hands over exactly those facts.
+   *
+   * Read off the snapshot by the caller, never from the Architect: `agents/`
+   * reaches no disk, and a fact arriving through the model is not a fact.
+   */
+  readonly targets: readonly UpdateTarget[]
+  /**
+   * What each operation would DO to the repository, from the preview.
+   *
+   * The Reviewer used to run before the preview existed, so it could approve a
+   * plan whose only operation produces no bytes — which is what an "empty diff,
+   * exit 0" run is. F10 moved the free gate first precisely so these exist by
+   * the time this one runs; this is what that bought.
+   */
+  readonly effects: readonly OperationEffect[]
+}
+
+/** The repository's own words about the grant an update would extend. */
+export interface UpdateTarget {
+  readonly opIndex: number
+  readonly entityRef: string
+  /** What it grants, or undefined when it states no level (§4.1). */
+  readonly level: string | undefined
+  readonly environment: string | undefined
+  readonly owner: string | undefined
+  /** Who already holds it. An update ADDS to this list. */
+  readonly consumers: readonly string[]
+}
+
+/** One operation, and what the preview says it would do. */
+export interface OperationEffect {
+  readonly opIndex: number
+  readonly effect: string
 }
 
 const opening = (input: ReviewInput): string => {
@@ -216,12 +257,56 @@ const opening = (input: ReviewInput): string => {
           )
           .join('\n')}`
 
+  /**
+   * The target of each update, in the repository's own words.
+   *
+   * Rendered as lines rather than folded into the operations JSON, because the
+   * JSON is what the model PROPOSED and this is what the repository SAYS. A
+   * reviewer that cannot tell those apart is reading one document.
+   */
+  const targets =
+    input.targets.length === 0
+      ? ''
+      : `\n\nwhat is already declared about each entity an update targets:\n${input.targets
+          .map(
+            (one) =>
+              `  operations.${one.opIndex} targets ${one.entityRef}: ` +
+              `${statedAs(one.level)}, ${where(one.environment)}, ${held(one.owner)}, ` +
+              `${consumers(one.consumers)}`,
+          )
+          .join('\n')}`
+
+  /**
+   * What the plan would actually do. Every operation appears, including the
+   * ones that change nothing: an operation producing no bytes is the difference
+   * between a request satisfied and a request silently ignored, and it is
+   * exactly what a reviewer approving "the plan" would otherwise never see.
+   */
+  const effects =
+    input.effects.length === 0
+      ? ''
+      : `\n\nwhat each operation would do:\n${input.effects
+          .map((one) => `  operations.${one.opIndex} ${one.effect}`)
+          .join('\n')}`
+
   return `request: ${input.intent}\n\noperations the plan would apply:\n${JSON.stringify(
     input.plan.operations,
     null,
     2,
-  )}${facts}`
+  )}${facts}${targets}${effects}`
 }
+
+const statedAs = (level: string | undefined): string =>
+  level === undefined ? 'it states no level' : `it grants ${level}`
+
+const where = (environment: string | undefined): string =>
+  environment === undefined ? 'it declares no environment' : `it is scoped to ${environment}`
+
+const held = (owner: string | undefined): string =>
+  owner === undefined ? 'the catalogue names no owner for it' : `${owner} owns it`
+
+const consumers = (list: readonly string[]): string =>
+  list.length === 0 ? 'nobody holds it yet' : `it is already held by ${list.join(', ')}`
 
 /**
  * The substance gate (design § 6.1, gate [4]). Zod refuses what cannot be
