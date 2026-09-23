@@ -164,7 +164,46 @@ interface Frame {
  * recursive walk would make a deeply nested proposal a denial of service, and
  * the guarantee has to be total over leaves or a field escapes by being nested.
  */
+/**
+ * Every reference this plan would bring into existence.
+ *
+ * A grant over a database the catalogue does not hold yet is TWO operations —
+ * declare the database, then the right over it — and the second names the
+ * first. That reference is in no witness set, because the witness set is what
+ * the read tools returned and the catalogue does not hold it; it is not echoed,
+ * because a request says "orders-db" and not `resource:default/orders-db-prod`.
+ * So it signed `novel`, and §7.5's missing-resource branch could not finish
+ * without a person answering a question the plan carries the answer to two
+ * lines above.
+ *
+ * It is grounded, and in the one place that matters: the plan the reviewer
+ * reads before merging. `planEdits` has known this for as long as it has had a
+ * test called "lets a second creation see what the first one wrote".
+ *
+ * WHAT STOPS IT BEING A HOLE is that a name is classified on its own. If the
+ * model invented `orders-db-prod`, `operations.0.entity.metadata.name` is
+ * novel and already a question; if the name is vouched for, a reference to it
+ * is vouched for by the same evidence. The reference inherits the name's
+ * standing rather than manufacturing its own — which is why this reads the
+ * name and never the `{unknown}` that may stand in its place.
+ *
+ * Order is deliberately not required. Operation 0 may name what operation 1
+ * declares: both are in one diff, and a reviewer reads the diff whole.
+ */
+const created = (plan: Plan): ReadonlySet<string> => {
+  const refs = new Set<string>()
+  for (const operation of plan.operations) {
+    if (operation.op !== 'create-entity') continue
+    const { kind, metadata } = operation.entity
+    const name = metadata.name
+    if (typeof name !== 'string') continue
+    refs.add(`${kind.toLowerCase()}:default/${name}`)
+  }
+  return refs
+}
+
 export function signPlan(plan: Plan, context: SignatureContext): SignedPlan | PlanRefusal {
+  const creates = created(plan)
   const classified: LeafFinding[] = []
   const refusals: LeafRefusal[] = []
   const asked = new Map<string, string>()
@@ -270,6 +309,11 @@ export function signPlan(plan: Plan, context: SignatureContext): SignedPlan | Pl
       // prompt, and an access level is worth a question: granting write where
       // read was asked for is the accident this whole design exists around.
       leafClass = context.answered.has(text) ? 'echoed' : 'novel'
+    } else if (creates.has(text)) {
+      // A reference to an entity this same plan declares. Derived, not echoed:
+      // it follows from another operation by a rule the engine applied, and
+      // nobody wrote it in a request. See `created`.
+      leafClass = 'derived'
     } else if (echoes(plan.intent, text) || context.answered.has(text)) {
       // Checked before the vocabulary on purpose. A value can be both, and
       // "the user asked for this" is the stronger claim: it is their request,
