@@ -45,6 +45,22 @@ export interface PlanRefusal {
 }
 
 export interface SignatureContext {
+  /**
+   * Values the user typed at a prompt, as themselves.
+   *
+   * A different fact from "the word appears in the request", and the reason
+   * the two are held apart. The ask loop used to GROW the intent with each
+   * answer so `echoes` would find it again, which worked for an identifier and
+   * failed for a common word — once `read` was in the intent it vouched for
+   * every `read` in the plan — and left the request in a `--json` report
+   * carrying sentences the user never wrote.
+   *
+   * What it does NOT carry is which question each answer belonged to. An
+   * answer here vouches for the VALUE, so answering one field with `read`
+   * would vouch for another field also holding `read` — a narrower map is the
+   * better shape the day a plan asks about two levels at once.
+   */
+  readonly answered: ReadonlySet<string>
   /** References the ENGINE returned — the propose tool's witness set. */
   readonly witnessed: ReadonlySet<string>
   readonly vocabulary: Vocabulary
@@ -239,7 +255,22 @@ export function signPlan(plan: Plan, context: SignatureContext): SignedPlan | Pl
       // diff is where a human sees it — the same limit the module states at the
       // top and the reason the merge is the act of authorisation.
       leafClass = 'derived'
-    } else if (echoes(plan.intent, text)) {
+    } else if (path.endsWith('.access')) {
+      // A level is asked, never read out of the request.
+      //
+      // `echoes` is a word test and a level is a common word, so it could not
+      // tell asked-for from forbidden from merely mentioned. Measured on the
+      // request it was meant to serve: "do not grant readwrite, only read"
+      // classified `readwrite` as echoed — a request that FORBIDS write made
+      // write look asked for — and "read replica", a database term in a
+      // database-access tool, named a level nobody asked for.
+      //
+      // So the only provenance a level has is the user answering for it. That
+      // is one question per grant whose level the request did not settle at a
+      // prompt, and an access level is worth a question: granting write where
+      // read was asked for is the accident this whole design exists around.
+      leafClass = context.answered.has(text) ? 'echoed' : 'novel'
+    } else if (echoes(plan.intent, text) || context.answered.has(text)) {
       // Checked before the vocabulary on purpose. A value can be both, and
       // "the user asked for this" is the stronger claim: it is their request,
       // not merely something that happens to exist somewhere.

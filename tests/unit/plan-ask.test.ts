@@ -75,6 +75,29 @@ const collect = (): { events: AgentEvent[]; emit: (event: AgentEvent) => void } 
  * shown the dotted path AND the model's own reason, and a test that only
  * checked the answers would let either of those disappear.
  */
+/**
+ * Answers by PATH rather than by turn.
+ *
+ * A grant now always carries one question of its own — the level, which is
+ * asked and never read out of the request — so a fixture about something else
+ * would otherwise have to know where that question lands in the order. It
+ * answers `read` for the level and the given value for the field under test.
+ */
+const answeringPath = (
+  byPath: Record<string, string | undefined>,
+): { ask: Ask; asked: Question[] } => {
+  const asked: Question[] = []
+  const ask: Ask = async (question) => {
+    asked.push(question)
+    if (question.path.endsWith('.access')) return 'read'
+    for (const [suffix, value] of Object.entries(byPath)) {
+      if (question.path.endsWith(suffix)) return value
+    }
+    return undefined
+  }
+  return { ask, asked }
+}
+
 const answering = (
   values: readonly (string | undefined)[],
 ): { ask: Ask; asked: Question[] } => {
@@ -251,10 +274,12 @@ describe('plan "<intent>" asks, and carries on with the answer', () => {
     expect(report.signature.classified.find((leaf) => leaf.path === OWNER_PATH)?.class).toBe(
       'echoed',
     )
-    // The request the gate measured against, and it says where the value came
-    // from rather than pretending the original sentence carried it.
-    expect(report.plan.intent).toContain(ONE_QUESTION)
-    expect(report.plan.intent).toContain('group:default/tiger')
+    // The request is what the USER wrote, unchanged. The loop used to grow it
+    // with each answer so `echoes` would find the value again — which put
+    // sentences nobody typed into a `--json` report, and made a common word
+    // answered once vouch for every occurrence of it afterwards. An answer is
+    // its own provenance now, and it does not pass through the request.
+    expect(report.plan.intent).toBe(ONE_QUESTION)
   })
 
   it('asks every question, one at a time, in the order the plan states them', async () => {
@@ -663,7 +688,7 @@ describe('a derived owner does not outlive the consumer it was read off', () => 
     const repo = await catalogued()
     const project = await application()
     const before = await hashBoth(repo, project)
-    const { ask, asked } = answering(['component:default/billing-api'])
+    const { ask, asked } = answeringPath({ '.dependencyOf.0': 'component:default/billing-api' })
 
     const result = await runIntent({
       intent: CONSUMER_QUESTION,
@@ -674,7 +699,10 @@ describe('a derived owner does not outlive the consumer it was read off', () => 
       ask,
     })
 
-    expect(asked.map((question) => question.path)).toEqual([CONSUMER_PATH])
+    // Two questions, not one: a grant carries its level as a question of its
+    // own now, and that is the friction the rule costs — one prompt per grant
+    // whose level the request did not settle.
+    expect(asked.map((question) => question.path)).toContain(CONSUMER_PATH)
     expect(result.found).toBe(true)
     expect(result.text).toContain('+  owner: group:default/tiger')
     expect(result.text).toContain('+    - component:default/billing-api')
@@ -689,7 +717,7 @@ describe('a derived owner does not outlive the consumer it was read off', () => 
     const repo = await catalogued()
     const project = await application()
     const { events, emit } = collect()
-    const { ask } = answering(['component:default/billing-api'])
+    const { ask } = answeringPath({ '.dependencyOf.0': 'component:default/billing-api' })
 
     await runIntent({
       intent: CONSUMER_QUESTION,
@@ -714,7 +742,7 @@ describe('a derived owner does not outlive the consumer it was read off', () => 
     const repo = await catalogued()
     const project = await application()
     const client = converging([PROPOSES_PAYMENTS])
-    const { ask } = answering(['component:default/billing-api'])
+    const { ask } = answeringPath({ '.dependencyOf.0': 'component:default/billing-api' })
 
     await runIntent({
       intent: CONSUMER_QUESTION,
@@ -737,7 +765,7 @@ describe('a derived owner does not outlive the consumer it was read off', () => 
     const repo = await catalogued()
     const project = await application()
     const { events, emit } = collect()
-    const { ask, asked } = answering(['component:default/billing-api'])
+    const { ask, asked } = answeringPath({ '.dependencyOf.0': 'component:default/billing-api' })
     const proposal = accessFor('component:default/billing-api', {
       unknown: 'the request does not state an owner for this access',
     })
@@ -751,7 +779,10 @@ describe('a derived owner does not outlive the consumer it was read off', () => 
       ask,
     })
 
-    expect(asked.map((question) => question.path)).toEqual([CONSUMER_PATH])
+    // Two questions, not one: a grant carries its level as a question of its
+    // own now, and that is the friction the rule costs — one prompt per grant
+    // whose level the request did not settle.
+    expect(asked.map((question) => question.path)).toContain(CONSUMER_PATH)
     expect(result.found).toBe(true)
     expect(result.text).toContain('+  owner: group:default/tiger')
     expect(derivedEvents(events)).toEqual([
@@ -768,7 +799,7 @@ describe('a derived owner does not outlive the consumer it was read off', () => 
     const repo = await catalogued()
     const project = await application()
     const { events, emit } = collect()
-    const { ask } = answering(['component:default/billing-api'])
+    const { ask } = answeringPath({ '.dependencyOf.0': 'component:default/billing-api' })
     const proposal = accessFor('component:default/payments-api', 'group:default/lynx')
 
     const result = await runIntent({
@@ -795,7 +826,9 @@ describe('a derived owner does not outlive the consumer it was read off', () => 
     const repo = await catalogued()
     const project = await application()
     const before = await hashBoth(repo, project)
-    const { ask, asked } = answering(['component:default/nobody-declares-this'])
+    const { ask, asked } = answeringPath({
+      '.dependencyOf.0': 'component:default/nobody-declares-this',
+    })
 
     const result = await runIntent({
       intent: CONSUMER_QUESTION,
@@ -806,7 +839,11 @@ describe('a derived owner does not outlive the consumer it was read off', () => 
       ask,
     })
 
-    expect(asked.map((question) => question.path)).toEqual([CONSUMER_PATH, OWNER_PATH])
+    // The owner is asked because the consumer it was derived from is gone —
+    // that is the guarantee. The level is asked because every grant's is.
+    const paths = asked.map((question) => question.path)
+    expect(paths).toContain(CONSUMER_PATH)
+    expect(paths).toContain(OWNER_PATH)
     expect(result.found).toBe(false)
     expect(result.text).not.toContain('group:default/lion')
     expect(await hashBoth(repo, project)).toBe(before)

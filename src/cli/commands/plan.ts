@@ -19,7 +19,7 @@ import { declaredLevel } from '../../core/plan/grant.js'
 import { checkPolicies, type PolicyContext, type PolicyViolation } from '../../core/plan/policies.js'
 import { recheckPlan, type Recheck } from '../../core/plan/recheck.js'
 import { signPlan, type SignatureContext, type SignedPlan } from '../../core/plan/sign.js'
-import { planSchema, PLAN_LIMITS, type Plan } from '../../core/schemas/plan.js'
+import { planSchema, type Plan } from '../../core/schemas/plan.js'
 import type { AccessLevel } from '../../core/schemas/resource-types.js'
 import { ENV_ANNOTATION, type Vocabulary } from '../../core/schemas/vocabulary.js'
 import type { RepositorySnapshot, Violation } from '../../core/validate/rules.js'
@@ -263,6 +263,9 @@ function contextsOf(
       vocabulary,
       repoRoot: root,
       declared,
+      // Filled per round by whichever loop is asking. Empty here because
+      // nothing has been asked yet, and `contextsOf` runs once.
+      answered: new Set<string>(),
     },
     policy: { vocabulary, witnesses: new Set(snapshot.witnesses), environments, levels },
   }
@@ -509,15 +512,28 @@ export type Filling =
  * it back to `--from`: a request grown past the schema's own bound would be a
  * plan this tool emits and then refuses to read.
  */
-function withAnswers(intent: string, answers: readonly Answer[]): string | undefined {
-  if (answers.length === 0) return intent
-  const grown = `${intent}\n\nasked, and answered: ${answers.map((one) => one.value).join(', ')}`
-  return grown.length > PLAN_LIMITS.maxIntentLength ? undefined : grown
-}
 
-const OVERFULL =
-  `the answers no longer fit the request: an intent is limited to ` +
-  `${PLAN_LIMITS.maxIntentLength} characters, and the signature measures every value against it`
+/**
+ * The signature context for this round, carrying what the user has answered.
+ *
+ * An answer is its own provenance. The loop used to put every answer back into
+ * the request so `echoes` would find it, which worked for an identifier and
+ * failed for a common word — and left a `--json` report quoting a request the
+ * user never wrote. A value typed at a prompt is a fact about that value, and
+ * `sign.ts` reads it as one.
+ *
+ * What it does NOT carry is which question each answer belonged to: an answer
+ * vouches for the VALUE, so answering one field `read` would vouch for another
+ * field also holding `read`. A narrower map is the better shape the day a plan
+ * asks about two levels at once.
+ */
+const answering = (
+  signature: SignatureContext,
+  answers: readonly Answer[],
+): SignatureContext => ({
+  ...signature,
+  answered: new Set(answers.map((one) => one.value)),
+})
 
 /**
  * An answer this run cannot use, and why. `found: false` and NOT `unsupported`:
@@ -639,8 +655,7 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
   // signature judged the plan as it was — the policies, the bytes, the
   // re-check. Re-running only the signer would show a diff two gates never saw.
   for (let round = 0; ; round += 1) {
-    const request = withAnswers(loaded.intent, answers)
-    if (request === undefined) return renderRefusedAnswer(OVERFULL)
+    const request = loaded.intent
 
     // The same derivation the loop runs between gates [1] and [2], and it runs
     // here for the reason this file exists: both roads have to answer "what
@@ -655,7 +670,7 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
     for (const one of derivation.derived) {
       options.emit?.({ type: 'derived', path: one.path, owner: one.owner, from: [...one.from] })
     }
-    const signed = signPlan(derived, contexts.signature)
+    const signed = signPlan(derived, answering(contexts.signature, answers))
     if ('outcome' in signed) {
       // A refusal is not a question: nothing here can be answered, because the
       // value is not undetermined — it is unusable.
@@ -854,8 +869,7 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
   // it: its question is "is this what was asked for", and the answer is now
   // part of what was asked.
   for (let round = 0; ; round += 1) {
-    const request = withAnswers(options.intent, answers)
-    if (request === undefined) return renderRefusedAnswer(OVERFULL)
+    const request = options.intent
 
     // Spent by the first attempt of this round and never again. A filled plan
     // is a proposal that cost no round-trip, so it enters the loop as one; if a
@@ -908,7 +922,7 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
         // first one's transcript is an echo holding a veto (`reviewer.ts`).
         review: (plan, derived) =>
           reviewPlan(options.client, { plan, intent: request, derived }, options.emit),
-        signature: contexts.signature,
+        signature: answering(contexts.signature, answers),
         policy: contexts.policy,
         // Built off the same graph as `contexts.vocabulary`, which is the whole
         // of what makes a derived owner survive the signature (`deriveOwners`).

@@ -50,6 +50,9 @@ const context = (over: Partial<SignatureContext> = {}): SignatureContext => ({
   vocabulary: VOCABULARY,
   repoRoot: '/repo',
   declared: new Map(),
+  // The level is asked, never read out of the request, so a fixture that
+  // wants a complete plan answers for it — which is what a run does.
+  answered: new Set(['read']),
   ...over,
 })
 
