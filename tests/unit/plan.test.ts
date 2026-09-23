@@ -14,7 +14,7 @@ import {
 const resource = {
   kind: 'Resource' as const,
   metadata: { name: 'billing-api-billing-db-dev', env: 'dev' },
-  spec: { type: 'database-access' as const, owner: 'group:default/tiger' },
+  spec: { type: 'database-access' as const, access: 'read', owner: 'group:default/tiger' },
 }
 
 describe('plan schemas', () => {

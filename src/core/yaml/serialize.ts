@@ -46,6 +46,13 @@ function ordered(entity: Entity): Record<string, unknown> {
 
   const spec: Record<string, unknown> = { type: entity.spec.type }
   if (entity.kind === 'Component') spec.lifecycle = entity.spec.lifecycle
+  // Directly after the type, because "a database-access, granting read" is one
+  // statement: a reviewer reading the diff should not have to look past the
+  // owner to find out what is being granted. Absent when none was declared —
+  // writing a level nobody stated is the one guess design 4.1 forbids.
+  if (entity.kind === 'Resource' && entity.spec.access !== undefined) {
+    spec.access = entity.spec.access
+  }
   spec.owner = entity.spec.owner
   if (entity.spec.dependsOn !== undefined) spec.dependsOn = entity.spec.dependsOn
   if (entity.kind === 'Resource' && entity.spec.dependencyOf !== undefined) {

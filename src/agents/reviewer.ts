@@ -62,15 +62,58 @@ export type Verdict =
   | z.infer<typeof verdictSchema>
   | { readonly verdict: 'no-opinion'; readonly reason: string }
 
+/**
+ * One question, and the deterministic gates' questions written out as
+ * everything this one is not.
+ *
+ * The earlier prompt named "an environment nobody named" and "an owner nobody
+ * mentioned" as rejections, and that is what three refused attempts a run were
+ * made of: the Reviewer re-judging PROVENANCE, which gate [2] settles value by
+ * value, and refusing owners the engine had DERIVED outright from the consumer
+ * (`core/plan/derive.ts`). Two gates applying two different rules to one field
+ * is why a sound plan never reached a diff — and the one this gate loses is the
+ * arithmetic one, because a signed plan's provenance is a fact and a model's
+ * opinion of it is not.
+ *
+ * So the prompt states the four answers gate [2] can give, rather than asking
+ * the model to take "already accounted for" on faith, and names the three
+ * fields settled by the checks that run without a model — the environment and
+ * the folder by `policies.ts`, the path by the engine computing it (§5.2). What
+ * is left is design §6's sentence: "Perfectly valid YAML can answer the wrong
+ * question." Whether the plan does what was asked — all of it, and nothing
+ * more.
+ *
+ * What this does NOT buy: a level, an entity or half a request is still a
+ * judgement a model makes about prose, and this prompt cannot make it a good
+ * one. It removes the objection the model was RIGHT to raise on what it knew;
+ * it does not make the remaining question easy.
+ */
 const SYSTEM = `You review one plan of infrastructure declarations against the request that asked for it.
 
-You are given the request in the user's own words, and the operations the plan would
-apply. That is everything: there is no conversation to consult and nothing to read. Judge
+You are given the request in the user's own words, the operations the plan would apply,
+and — for any value the engine computed rather than a model choosing it — a line saying
+so. That is everything: there is no conversation to consult and nothing to read. Judge
 what the plan does, not how it came to be written.
 
-The shape has already been checked. Yours is the question a schema cannot ask: does this
-plan do what the request asked for, and nothing beyond it? An environment nobody named,
-an owner nobody mentioned, access wider than what was asked for — those are rejections.
+Yours is the question no deterministic check can ask: does this plan do what the request
+asked for — all of it, and nothing more? Perfectly valid declarations can answer the wrong
+question. A plan that grants write where read was asked for, that touches an entity the
+request never mentioned, or that does half of what was asked and stops: those are
+rejections, and they are what this gate is for.
+
+Do not judge where a value came from. Every value here is already accounted for: it
+appears in the request, or it is one the catalogue already uses, or it follows from a rule
+the engine applied, or it has already been turned into a question the user will be asked.
+A gate before yours established that, value by value, and it is not re-opened here.
+Refusing an owner because the request did not name it refuses the engine's own arithmetic:
+an access belongs to whoever owns the service reaching through it, and the catalogue — not
+the request — is where that is written.
+
+Three more things are settled before you see the plan, each by a check that runs without a
+model: the environment, where a plan touching one the request never named is stopped
+before it reaches you; the folder, where a write into one the repository never declared is
+stopped the same way; and the file path, which the engine computes from the type and the
+name, so no model chooses one. Do not re-check them.
 
 An empty list of operations is a legitimate plan. It says the catalogue already declares
 what the request asks for; that is an answer, not a failure.
@@ -128,12 +171,56 @@ const bounded = (reason: string): string => reason.slice(0, QUERY_LIMITS.maxReas
  * deterministic for a plan that came through `planSchema` — the only way one is
  * minted (see `architect.ts`) — which is what a recording digest depends on.
  */
-const opening = (input: { plan: Plan; intent: string }): string =>
-  `request: ${input.intent}\n\noperations the plan would apply:\n${JSON.stringify(
+/**
+ * Everything the Reviewer is given, and the list is short on purpose. The plan,
+ * the request in the user's own words, and the values the ENGINE computed. No
+ * transcript, no attempt number, no earlier gate's reason: this and the
+ * Architect are the same weights behind the same provider, so their errors are
+ * correlated by construction and a second opinion fed the first one's reasoning
+ * is an echo holding a veto.
+ */
+export interface ReviewInput {
+  readonly plan: Plan
+  readonly intent: string
+  /** Deterministic facts, never reasoning. See `opening`. */
+  readonly derived: readonly { path: string; owner: string; from: readonly string[] }[]
+}
+
+const opening = (input: ReviewInput): string => {
+  /**
+   * What the ENGINE established, stated as fact — never what the Architect
+   * reasoned.
+   *
+   * The distinction is the whole of this gate's independence, and leaving it
+   * out cost three attempts every run: the Reviewer saw an owner the request
+   * never named and refused it as an invention, three times, correctly by what
+   * it knew. A derived owner is not a choice a model made — it follows from
+   * the catalogue by a deterministic rule the engine applied — and a reviewer
+   * that cannot tell the two apart refuses arithmetic.
+   *
+   * This is not the Architect's transcript arriving by another door. It
+   * carries no reasoning, no attempt number and no earlier gate: one line per
+   * derived value, saying which entity it follows from and what the catalogue
+   * says that entity's owner is. A reviewer may still object to it — the rule
+   * could be the wrong rule here — but it objects knowing what it is looking
+   * at.
+   */
+  const facts =
+    input.derived.length === 0
+      ? ''
+      : `\n\nvalues the engine computed rather than the model choosing them:\n${input.derived
+          .map(
+            (one) =>
+              `  ${one.path} follows from ${one.from.join(', ')}, which the catalogue says ${one.owner} owns`,
+          )
+          .join('\n')}`
+
+  return `request: ${input.intent}\n\noperations the plan would apply:\n${JSON.stringify(
     input.plan.operations,
     null,
     2,
-  )}`
+  )}${facts}`
+}
 
 /**
  * The substance gate (design § 6.1, gate [4]). Zod refuses what cannot be
@@ -155,7 +242,7 @@ const opening = (input: { plan: Plan; intent: string }): string =>
  */
 export async function reviewPlan(
   client: LlmClient,
-  input: { plan: Plan; intent: string },
+  input: ReviewInput,
   emit: EventSink,
 ): Promise<Verdict> {
   emit({ type: 'agent:start', agent: 'reviewer' })

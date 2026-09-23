@@ -53,6 +53,14 @@ describe('entityJsonSchema', () => {
     expect(JSON.stringify(entityJsonSchema())).toContain('$comment')
   })
 
+  it('names the access level among what it cannot enforce either', () => {
+    // Same hole, second field: the export accepts a database carrying an
+    // access level because the nature rule lives in a superRefine. Stated on
+    // the schema rather than left for a reader to discover.
+    expect(UNENFORCED_BY_JSON_SCHEMA.join(' ')).toMatch(/spec\.access/)
+    expect(JSON.stringify(entityJsonSchema())).toContain('readwrite')
+  })
+
   it('is a real JSON Schema document', () => {
     expect(entityJsonSchema()).toHaveProperty('$schema')
   })

@@ -13,6 +13,7 @@ are the same computation rather than two that agree until they do not.
 | Module | Question it answers |
 |---|---|
 | `../schemas/plan.ts` | can this even be expressed? — the closed `Operation` union |
+| `derive.ts` | which values follow from the catalogue rather than being chosen? |
 | `sign.ts` | where did each value come from? |
 | `clarify.ts` | what has to be asked before anything happens? |
 | `policies.ts` | is it expressible, vouched for, and still wrong? |
@@ -26,6 +27,17 @@ and not giving up. A policy refuses what is expressible, vouched for, and still 
 design named that gate four times and defined it nowhere, so `policies.ts` opens with the
 definition. The re-check exists because the catalogue lags the repository by about two
 minutes (§4.4): what was true when the plan was drafted may not be true now.
+
+`derive.ts` is in that list but it is **not a gate**: it has no refusal to make and hands
+nothing back. It runs between the schema and the signature because a right's owner is not a
+choice, it is a consequence — an access `billing-api → orders-db` belongs to whoever owns
+`billing-api`, and the catalogue already says who that is. §5.2 gives the model the owner
+"entirely" and the signature says an owner nobody vouches for is a question; both were true
+at once and the run stopped between them. So the field is taken away from the model rather
+than asked of it, exactly as the path already is. Only for a right (`natureOf`), only when
+nothing stated one, and only when its consumers agree: two teams sharing one access is the
+case a human must decide, and picking the first would be the guess this folder exists to
+prevent.
 
 ## Why there is one producer of a `SignedPlan`
 

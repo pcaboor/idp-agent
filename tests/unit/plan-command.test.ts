@@ -71,7 +71,7 @@ const planFile = async (repo: string, plan: unknown): Promise<string> => {
  */
 const CREATE_INTENT =
   'declare the database orders-db-prod in prod owned by group:default/tiger, then give ' +
-  'component:default/billing-api a database-access to resource:default/orders-db-prod'
+  'component:default/billing-api a database-access granting read to resource:default/orders-db-prod'
 
 const createDatabase = {
   op: 'create-entity',
@@ -88,7 +88,7 @@ const createAccess = {
     kind: 'Resource',
     metadata: { name: 'billing-api-orders-db-prod', env: 'prod' },
     spec: {
-      type: 'database-access',
+      type: 'database-access', access: 'read',
       owner: 'group:default/tiger',
       dependsOn: ['resource:default/orders-db-prod'],
       dependencyOf: ['component:default/billing-api'],
@@ -192,7 +192,7 @@ describe('plan --from', () => {
     await declare(root, 'catalog/databases/orders-db-dev.yml', entityDocument('orders-db-dev', 'database', 'dev'))
     await declare(root, DATABASE_PATH, entityDocument('orders-db-prod', 'database', 'prod'))
     const from = await planFile(root, {
-      intent: 'give component:default/billing-api a database-access to orders-db in dev',
+      intent: 'give component:default/billing-api a database-access granting read to orders-db in dev',
       operations: [
         {
           op: 'create-entity',
@@ -200,7 +200,7 @@ describe('plan --from', () => {
             kind: 'Resource',
             metadata: { name: 'billing-api-orders-db-prod', env: 'dev' },
             spec: {
-              type: 'database-access',
+              type: 'database-access', access: 'read',
               owner: 'group:default/tiger',
               dependsOn: ['resource:default/orders-db-prod'],
             },
@@ -303,7 +303,7 @@ describe('plan --from', () => {
     // preferring the file would draft nothing and say nothing about it.
     const { code, err } = await run([
       'plan',
-      'give billing-api access to orders-db',
+      'give billing-api read access to orders-db',
       '--from',
       '/tmp/plan.json',
       '--repo',

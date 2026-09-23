@@ -142,7 +142,7 @@ describe('runAsk on a change request', () => {
   it('refuses it as unsupported rather than as a failed query', async () => {
     const { result, errors } = await ask(
       [saying('MUTATION')],
-      'give billing-api access to orders-db',
+      'give billing-api read access to orders-db',
     )
     expect(result.unsupported).toBe(true)
     expect(errors).toContain('this build only reads')

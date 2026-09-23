@@ -11,9 +11,21 @@ const entity: Entity = {
     annotations: { 'company.fr/env': 'dev' },
   },
   spec: {
-    type: 'database-access',
+    type: 'database-access', access: 'read',
     owner: 'group:default/tiger',
     dependsOn: ['resource:default/billing-db-dev'],
+  },
+}
+
+/** The same right, stating the level it grants. */
+const grant: Entity = {
+  ...entity,
+  spec: {
+    type: 'database-access',
+    access: 'read',
+    owner: 'group:default/tiger',
+    dependsOn: ['resource:default/billing-db-dev'],
+    dependencyOf: ['component:default/billing-api'],
   },
 }
 
@@ -43,6 +55,28 @@ describe('serializeEntity', () => {
 
   it('omits an empty annotations map rather than writing an empty mapping', () => {
     expect(serializeEntity(withAnnotations({}))).not.toContain('annotations')
+  })
+
+  it('writes the level of a grant immediately after its type', () => {
+    // Order is fixed by insertion, not sorted, so a reviewer reads "this is a
+    // database-access, and it grants read" as one statement rather than
+    // hunting for the level below the owner.
+    const lines = serializeEntity(grant).split('\n')
+    const spec = lines.indexOf('spec:')
+    expect(lines[spec + 1]).toBe('  type: database-access')
+    expect(lines[spec + 2]).toBe('  access: read')
+    expect(lines[spec + 3]).toBe('  owner: group:default/tiger')
+  })
+
+  it('writes no level when none was declared, rather than a default', () => {
+    // Absent is absent. Emitting `access: readwrite` for a right that states
+    // nothing would be this design's one forbidden guess, written into the
+    // repository (design 4.1).
+    const unlevelled = {
+      ...entity,
+      spec: { ...entity.spec, access: undefined },
+    } as typeof entity
+    expect(serializeEntity(unlevelled)).not.toContain('  access:')
   })
 
   it('never folds a long value across lines, which would ruin the diff', () => {
@@ -86,6 +120,13 @@ describe('values YAML would read back as something else', () => {
 
   it('round-trips a plain entity', () => {
     expect(parseEntity(serializeEntity(entity))).toEqual(entity)
+  })
+
+  it('round-trips a right that states the level it grants', () => {
+    // `read` is a bare word an emitter is free to leave unquoted and a reader
+    // free to hand back as something else; the round trip is what says it
+    // comes home as the same string.
+    expect(parseEntity(serializeEntity(grant))).toEqual(grant)
   })
 
   it('quotes anything a YAML 1.1 reader would take for a boolean', () => {

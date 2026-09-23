@@ -33,6 +33,27 @@ describe('FixtureProvider', () => {
     expect(entities.map((entity) => entity.metadata.name)).toEqual(['first', 'second'])
   })
 
+  it('reads a right that states the level it grants and one that states none', async () => {
+    // Both shapes are on disk, so this is a fact about files rather than about
+    // a hand-built object. A database-access says read or readwrite; a network
+    // route states no level at all, which is why the field is optional — a
+    // required one would make every access ever written invalid, this
+    // repository's included.
+    const { entities, rejected } = await new FixtureProvider(ROOT).load()
+    expect(rejected).toEqual([])
+
+    const specOf = (name: string) => {
+      const found = entities.find((entity) => entity.metadata.name === name)
+      return found?.kind === 'Resource' ? found.spec : undefined
+    }
+    // The same database, granted twice at two levels: billing-api writes it,
+    // the reporting worker only reads it. That distinction was unwritable
+    // before this field and is the whole of what it buys.
+    expect(specOf('billing-api-billing-db-prod')?.access).toBe('readwrite')
+    expect(specOf('reporting-billing-db-prod')?.access).toBe('read')
+    expect(specOf('billing-api-to-payments')).not.toHaveProperty('access')
+  })
+
   it('ignores a witness file, which declares nothing', async () => {
     const { rejected } = await new FixtureProvider(ROOT).load()
     expect(rejected.filter((r) => r.source.includes('witness'))).toEqual([])

@@ -1,5 +1,10 @@
 import fc from 'fast-check'
-import { RESOURCE_TYPE_NAMES } from '../../src/core/schemas/resource-types.js'
+import {
+  ACCESS_LEVELS,
+  RESOURCE_TYPE_NAMES,
+  natureOf,
+  type AccessLevel,
+} from '../../src/core/schemas/resource-types.js'
 import type { Entity } from '../../src/core/schemas/entity.js'
 import { serializeEntity } from '../../src/core/yaml/serialize.js'
 import { insertDocument } from '../../src/core/yaml/surgery.js'
@@ -49,6 +54,32 @@ const annotationValue = fc.oneof(
   fc.string({ maxLength: 24 }),
 )
 
+/**
+ * A spec, carrying a level only where the registry lets one go (design 4.1).
+ *
+ * Built valid by construction rather than filtered, for `entityName`'s reason:
+ * half the types are objects, and a filter would throw those runs away. The
+ * nature decides, so adding a type adds its shape here with no edit.
+ *
+ * `undefined` is one of the three outcomes and not an oversight — an access
+ * written before the field exists states no level, and that is what most of a
+ * real repository looks like. A generator that always states one would cover
+ * the field and miss the common case.
+ */
+const arbitrarySpec = fc
+  .record({
+    type: fc.constantFrom(...RESOURCE_TYPE_NAMES),
+    level: fc.constantFrom<(AccessLevel | undefined)[]>(...ACCESS_LEVELS, undefined),
+    owner: entityName.map((group) => `group:default/${group}`),
+  })
+  .map(({ type, level, owner }) =>
+    // Spread rather than `access: level`: under exactOptionalPropertyTypes an
+    // explicit undefined is not an absent field, and the schema refuses it.
+    natureOf(type) === 'right' && level !== undefined
+      ? { type, access: level, owner }
+      : { type, owner },
+  )
+
 export const arbitraryEntity: fc.Arbitrary<Entity> = fc.record({
   apiVersion: fc.constant('backstage.io/v1alpha1' as const),
   kind: fc.constant('Resource' as const),
@@ -60,10 +91,7 @@ export const arbitraryEntity: fc.Arbitrary<Entity> = fc.record({
       { maxKeys: 3 },
     ),
   }),
-  spec: fc.record({
-    type: fc.constantFrom(...RESOURCE_TYPE_NAMES),
-    owner: entityName.map((group) => `group:default/${group}`),
-  }),
+  spec: arbitrarySpec,
 })
 
 /** Files built the way the tool builds them: one document per entity. */
@@ -135,10 +163,39 @@ export const arbitraryProposal = fc.record({
     name: entityName,
     env: fc.constantFrom('dev', 'staging', 'prod'),
   }),
-  spec: fc.record({
-    type: fc.constantFrom('database', 'cache', 'api', 'database-access', 'network-access'),
-    owner: fc.constantFrom('group:default/tiger', 'group:default/common', 'group:default/ghost'),
-  }),
+  /**
+   * Stated, undetermined, or absent — the three a proposal may carry, and the
+   * signer sees a different leaf for each. `{unknown}` is generated rather
+   * than assumed away because §5.4 makes it a legal answer for every field the
+   * model chooses, and it is the answer this field exists to make possible: a
+   * guessed level is write where read was asked for.
+   *
+   * Absent is the key left OUT, not one holding undefined: an explicit
+   * undefined is a leaf the signer walks and asks about, which is a question
+   * nobody raised.
+   *
+   * Deliberately not restricted to a right. This boundary knows no natures —
+   * `entitySchema` is what refuses a level on an object — and generating only
+   * the well-natured half would have a property agree with the proposal schema
+   * about a rule the proposal schema does not have.
+   */
+  spec: fc
+    .record({
+      type: fc.constantFrom('database', 'cache', 'api', 'database-access', 'network-access'),
+      level: fc.constantFrom<(AccessLevel | { unknown: string } | undefined)[]>(
+        ...ACCESS_LEVELS,
+        { unknown: 'read or readwrite?' },
+        undefined,
+      ),
+      owner: fc.constantFrom(
+        'group:default/tiger',
+        'group:default/common',
+        'group:default/ghost',
+      ),
+    })
+    .map(({ type, level, owner }) =>
+      level === undefined ? { type, owner } : { type, access: level, owner },
+    ),
 })
 
 export const arbitraryPlan = fc.record({

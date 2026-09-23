@@ -27,7 +27,7 @@ const access = {
   kind: 'Resource' as const,
   metadata: { name: 'billing-api-orders-db-prod', env: 'prod' },
   spec: {
-    type: 'database-access' as const,
+    type: 'database-access' as const, access: 'read',
     owner: 'group:default/tiger',
     dependsOn: ['resource:default/orders-db-prod'],
   },
@@ -35,7 +35,7 @@ const access = {
 
 const sign = (entity: unknown = access, over: Partial<SignatureContext> = {}): SignedPlan => {
   const parsed = planSchema.parse({
-    intent: 'give billing-api access to orders-db in prod',
+    intent: 'give billing-api read access to orders-db in prod',
     operations: [{ op: 'create-entity', entity }],
   })
   const result = signPlan(parsed, signature(over))
@@ -52,7 +52,7 @@ const fileHolding = (path: string, name: string, env = 'prod'): RepositoryFile =
       kind: 'Resource',
       metadata: { name, annotations: { [ENV_ANNOTATION]: env } },
       spec: {
-        type: 'database-access',
+        type: 'database-access', access: 'read',
         owner: 'group:default/tiger',
         dependsOn: ['resource:default/orders-db-prod'],
       },

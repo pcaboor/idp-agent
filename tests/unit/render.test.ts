@@ -48,6 +48,34 @@ describe('renderEntityDetail', () => {
     expect(renderEntityDetail(EntityGraph.from([bare]), bare)).toContain('undeclared')
   })
 
+  it('states the level a right grants, and says undeclared rather than guessing one', () => {
+    // A grant whose level nobody can read is a grant nobody can review, and
+    // `show` is where a human reads one. Printing nothing would read as "no
+    // level was asked for"; the two are not the same fact (design 4.1).
+    const granting: Entity = {
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Resource',
+      metadata: { name: 'billing-api-billing-db-dev', annotations: { 'company.fr/env': 'dev' } },
+      spec: { type: 'database-access', access: 'read', owner: 'group:default/tiger' },
+    }
+    const unstated: Entity = {
+      ...granting,
+      metadata: { name: 'billing-api-to-payments', annotations: {} },
+      spec: { type: 'network-access', owner: 'group:default/tiger' },
+    }
+
+    expect(renderEntityDetail(EntityGraph.from([granting]), granting)).toContain('access       read')
+    expect(renderEntityDetail(EntityGraph.from([unstated]), unstated)).toContain(
+      'access       (undeclared)',
+    )
+  })
+
+  it('says nothing about an access level on an object, which has none to have', () => {
+    // The line exists for a right. A database is not a grant, and a row saying
+    // its access is undeclared would invent a question about it.
+    expect(renderEntityDetail(EntityGraph.from([db]), db)).not.toContain('access ')
+  })
+
   it('states the environment of every resource it lists, since dev and prod are two rights', () => {
     // A service lists accesses from several environments at once, and being
     // authorised in dev grants nothing in prod (design 4.1). Reading it off the
@@ -63,7 +91,7 @@ describe('renderEntityDetail', () => {
       kind: 'Resource',
       metadata: { name: `billing-api-db-${env}`, annotations: { 'company.fr/env': env } },
       spec: {
-        type: 'database-access',
+        type: 'database-access', access: 'read',
         owner: 'group:default/tiger',
         dependencyOf: ['component:default/billing-api'],
       },

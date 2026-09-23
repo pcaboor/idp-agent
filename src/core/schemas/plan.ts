@@ -1,6 +1,11 @@
 import { z } from 'zod'
 import { entityRefSchema, ownerRefSchema } from './entity.js'
-import { RESOURCE_TYPE_NAMES } from './resource-types.js'
+import {
+  ACCESS_LEVELS,
+  levelledOf,
+  RESOURCE_TYPE_NAMES,
+  type ResourceType,
+} from './resource-types.js'
 
 /**
  * An explicitly undetermined value. Declare, never infer (design 4.1): what the
@@ -90,6 +95,41 @@ export const proposedName = z
  *
  * A human adds one in the merge request, where prose belongs.
  */
+/**
+ * A grant of a levelled type states its level, or says it does not know.
+ *
+ * `.optional()` alone made "say nothing" a legal proposal — no leaf, so no
+ * question, so a database-access drafted from a request that said "read
+ * access" landed with no level at all and exit 0. `metadata.env` set the
+ * opposite precedent for exactly this reason, and this is the write side of
+ * the same rule: a proposal is stricter than an entity read from disk, because
+ * a repository that already exists is not this tool's to invalidate.
+ */
+const levelStated = (
+  value: { spec: { type: unknown; access?: unknown } },
+  ctx: z.RefinementCtx,
+): void => {
+  const type = value.spec.type
+  if (typeof type !== 'string' || !RESOURCE_TYPE_NAMES.includes(type as ResourceType)) return
+  const wanted = levelledOf(type as ResourceType)
+  const stated = value.spec.access !== undefined
+
+  if (wanted && !stated) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['spec', 'access'],
+      message: `a '${type}' grant must state 'read' or 'readwrite', or {"unknown": "<why>"}`,
+    })
+  }
+  if (!wanted && stated) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['spec', 'access'],
+      message: `a '${type}' is not read or write; it is opened or it is not`,
+    })
+  }
+}
+
 export const proposedResourceSchema = z.strictObject({
   kind: z.literal('Resource'),
   metadata: z.strictObject({
@@ -102,8 +142,36 @@ export const proposedResourceSchema = z.strictObject({
     owner: or(ownerRefSchema),
     dependsOn: z.array(entityRefSchema).optional(),
     dependencyOf: z.array(entityRefSchema).optional(),
+    /**
+     * What the grant is for, and `or(...)` for the reason `owner` and `type`
+     * are: §5.4 says every field the model CHOOSES is a value or `{unknown}`.
+     * `dependsOn` and `dependencyOf` are exempt because they are lists, where
+     * absent is already a complete answer; a level is not a list, and a level
+     * nobody stated is the one gap where filling in a plausible value hands
+     * out write.
+     *
+     * Optional as well, and the two absences say different things: omitted
+     * means the right has no level to state — a network route is not read or
+     * write — while `{unknown}` means the model could not determine one, so
+     * the plan cannot be applied and the CLI asks.
+     *
+     * Whether a level belongs on this type at all is left to `entitySchema`,
+     * exactly as `dependencyOf` is: this boundary knows no natures, and the
+     * bytes the plan would produce are read back by `recheckPlan`.
+     */
+    /**
+     * Optional in the shape, required by the refinement below for a type that
+     * has a level. Two reasons it is not simply required:
+     *
+     *   - a `network-access` has no level, and requiring one everywhere would
+     *     make the honest proposal for a flow an `{unknown}` about a question
+     *     nobody asked;
+     *   - the refinement can name the field AND the type in its message, which
+     *     `z.enum` alone cannot, and the repair loop hands that message back.
+     */
+    access: or(z.enum(ACCESS_LEVELS)).optional(),
   }),
-})
+}).superRefine(levelStated)
 
 export const proposedComponentSchema = z.strictObject({
   kind: z.literal('Component'),

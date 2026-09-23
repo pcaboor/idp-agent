@@ -10,6 +10,7 @@ import { planSchema } from './plan.js'
  */
 export const UNENFORCED_BY_JSON_SCHEMA: readonly string[] = [
   'only a right-nature type may carry spec.dependencyOf — an object has no consumers',
+  'only a right-nature type may carry spec.access — an object grants no level',
   'an entity must be filed at the path its type and name produce',
 ]
 

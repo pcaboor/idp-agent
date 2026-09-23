@@ -87,7 +87,7 @@ describe('question mode, end to end', () => {
     async () => {
       const { code, err, events } = await run(
         'mutation-classified-link',
-        'give billing-api access to orders-db in prod',
+        'give billing-api read access to orders-db in prod',
       )
       expect(code).toBe(3)
       expect(err).toContain('this build only reads')

@@ -1,4 +1,5 @@
 import { questionsOf, type Question } from '../core/plan/clarify.js'
+import { deriveOwners, type DerivedOwner } from '../core/plan/derive.js'
 import { planEdits, type DroppedOperation } from '../core/plan/edits.js'
 import { checkPolicies, type PolicyContext } from '../core/plan/policies.js'
 import { recheckPlan, type Recheck } from '../core/plan/recheck.js'
@@ -131,9 +132,32 @@ export interface RepairInput {
    * said. Keeping the two as two arguments is what makes that a wiring decision
    * the caller cannot make by accident.
    */
-  readonly review: (plan: Plan) => Promise<Verdict>
+  /**
+   * Gate [4]. Takes the derivations as well as the plan: a derived owner is a
+   * fact the engine computed, and a Reviewer that cannot tell it from a value
+   * the model chose refuses arithmetic — which it did, three attempts a run.
+   * Facts, never reasoning; the independence rule is unchanged.
+   */
+  readonly review: (
+    plan: Plan,
+    derived: readonly DerivedOwner[],
+  ) => Promise<Verdict>
   readonly signature: SignatureContext
   readonly policy: PolicyContext
+  /**
+   * ref → the owner that entity declares, read off the catalogue by the caller
+   * (`agents/` reaches no disk). What `deriveOwners` computes a right's owner
+   * from, between gates [1] and [2].
+   *
+   * Required, and not optional with an empty default. An absent map derives
+   * nothing, which is exactly the block this exists to clear: a caller that
+   * forgot it would get the old behaviour — every access stopping on
+   * `spec.owner` — with nothing anywhere saying why. It must be built from the
+   * same graph as `signature.vocabulary`, or a derived owner is a value the
+   * signature has never heard of; `deriveOwners` says so where it states what
+   * it does not cover.
+   */
+  readonly owners: ReadonlyMap<string, string>
   /**
    * The repository as it is NOW — gate [5] is handed one, it does not fetch
    * one. §4.4: the catalogue lags the repository by about two minutes, so the
@@ -177,6 +201,8 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
   /** The last plan that got past gate [1]. What a clean stop shows (§6.1). */
   let partial: Plan | undefined
   /** Rows the Architect's tools cut off, summed across every attempt. */
+  /** Derivations already stated, so a repeated attempt does not restate them. */
+  const announced = new Set<string>()
   let truncated = 0
   /** Proposals the Architect's own schema refused, summed across attempts. */
   let rejections = 0
@@ -251,14 +277,55 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       fail('zod', [reasonOf(parsed.error)])
       continue
     }
-    partial = parsed.data
+    // Between [1] and [2], and **not a gate**.
+    //
+    // After the parse because it needs a Plan — it reads `spec.type` and
+    // `spec.dependencyOf`, and gate [1] is what makes those mean anything.
+    // Before the signature because the signature is what the derived value has
+    // to satisfy: run afterwards, it would be writing a value into a plan that
+    // had already been classified, and the classification would describe a
+    // field that no longer exists. Every later gate — the policies, the
+    // Reviewer, the re-check — then judges the plan with the owner in it,
+    // which is the plan the user would be shown.
+    //
+    // It is not in `Gate`, and that is a decision rather than an omission.
+    // `Gate` is read by two things: the list of gates an attempt RAN, and the
+    // `repair` event that names the one that refused. Derivation can only ever
+    // add information — it has no refusal and no report to hand back — so a
+    // member there could never appear in `failed`, and the event would name a
+    // gate that never fails. The five gates of §6.1 stay five.
+    const derivation = deriveOwners(parsed.data, input.owners)
+    // Stated, never silent. The engine is overwriting a model's explicit "I do
+    // not know" with a value the model never wrote; the same rule that makes a
+    // truncated tool result audible makes this one.
+    for (const one of derivation.derived) {
+      // Once per path, not once per attempt. The same owner follows from the
+      // same consumer every time the loop comes round, and emitting it again
+      // rendered as three identical lines with nothing to tell them apart —
+      // the defect `events.ts` documents for `retry` and fixes there.
+      if (announced.has(one.path)) continue
+      announced.add(one.path)
+      emit({ type: 'derived', path: one.path, owner: one.owner, from: [...one.from] })
+    }
+    // `derivation.contested` is deliberately not emitted. A contested owner is
+    // still a question, and it already leaves as an `ask`; a stderr line beside
+    // it would state one stop twice and read as two things having happened —
+    // the reason `events.ts` gives for `ask` rendering nothing itself. It is
+    // returned rather than dropped so whoever renders the questions can name
+    // the two teams that disagreed, which is a job for the form stage 7 draws
+    // and not for a progress line.
+
+    // The plan the gates judge, and the one a clean stop shows. Not
+    // `parsed.data`: showing the pre-derivation draft would show the user a
+    // plan no gate ever saw.
+    partial = derivation.plan
 
     // [2] The signature. Free. It vouches for where every value came from, and
     // turns the ones nobody can vouch for into questions rather than refusing
     // them — "declare, never infer" means asking (see `signPlan`).
     gates.push('signature')
     // The caller's intent, never the draft's. See RepairInput.intent.
-    const signed = signPlan({ ...parsed.data, intent: input.intent }, input.signature)
+    const signed = signPlan({ ...derivation.plan, intent: input.intent }, input.signature)
     if ('outcome' in signed) {
       fail(
         'signature',
@@ -321,7 +388,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
     // vouched for, determined and policy-clean. The question it answers is the
     // one none of them can ask — is this what was asked for.
     gates.push('reviewer')
-    const verdict = await input.review(signed.plan)
+    const verdict = await input.review(signed.plan, derivation.derived)
     if (verdict.verdict === 'no-opinion') {
       // No opinion is not a rejection, and repairing is not the answer to it.
       // Nobody found fault with this plan — nobody read it — so handing the

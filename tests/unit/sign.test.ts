@@ -19,14 +19,14 @@ const context = (over: Partial<SignatureContext> = {}): SignatureContext => ({
   ...over,
 })
 
-const plan = (entity: unknown, intent = 'give billing-api access to orders-db in prod') =>
+const plan = (entity: unknown, intent = 'give billing-api read access to orders-db in prod') =>
   planSchema.parse({ intent, operations: [{ op: 'create-entity', entity }] })
 
 const access = {
   kind: 'Resource' as const,
   metadata: { name: 'billing-api-orders-db-prod', env: 'prod' },
   spec: {
-    type: 'database-access' as const,
+    type: 'database-access' as const, access: 'read',
     owner: 'group:default/tiger',
     dependsOn: ['resource:default/orders-db-prod'],
   },
@@ -66,7 +66,7 @@ describe('signPlan', () => {
 
   it('accepts a value lifted verbatim from the request', () => {
     // echoed: the user said "prod", so prod is theirs, not the model's.
-    const result = signed(plan(access, 'give billing-api access to orders-db in prod'))
+    const result = signed(plan(access, 'give billing-api read access to orders-db in prod'))
     const env = result.classified.find((l) => l.path.endsWith('metadata.env'))
     expect(env?.class).toBe('echoed')
   })
@@ -118,7 +118,7 @@ describe('the environment', () => {
     // choose production for a request that named no environment at all — and
     // the plan would sign cleanly. §4.1 says being authorised in dev grants
     // nothing elsewhere; nobody asked for anything here.
-    const result = signed(plan(access, 'give billing-api access to orders-db'))
+    const result = signed(plan(access, 'give billing-api read access to orders-db'))
 
     const env = result.classified.find((leaf) => leaf.path.endsWith('.env'))
     expect(env?.class).toBe('novel')
@@ -126,11 +126,55 @@ describe('the environment', () => {
   })
 
   it('accepts the one the request named', () => {
-    const result = signed(plan(access, 'give billing-api access to orders-db in prod'))
+    const result = signed(plan(access, 'give billing-api read access to orders-db in prod'))
 
     const env = result.classified.find((leaf) => leaf.path.endsWith('.env'))
     expect(env?.class).toBe('echoed')
     expect(findUnknowns(result.plan)).toEqual([])
+  })
+})
+
+describe('the level a grant is for', () => {
+  const at = (level: unknown) => ({ ...access, spec: { ...access.spec, access: level } })
+
+  it('is echoed when the request said read access', () => {
+    // The word boundary is by SCRIPT (see echoes.ts), so `read` in "give
+    // billing-api read access to orders-db in prod" is a word with a space
+    // either side and not a fragment of one. The user asked for it, which is
+    // the strongest claim a value can carry.
+    const result = signed(plan(at('read'), 'give billing-api read access to orders-db in prod'))
+
+    const level = result.classified.find((leaf) => leaf.path.endsWith('spec.access'))
+    expect(level?.class).toBe('echoed')
+    expect(findUnknowns(result.plan)).toEqual([])
+  })
+
+  it('asks about readwrite when the request only said read', () => {
+    // The accident the field exists to prevent, from the other side. A level
+    // is not enumerable, for the reason an environment is not: `readwrite`
+    // exists in any repository that has granted it once, so letting the
+    // catalogue vouch for it would hand out write on a request that said read.
+    const result = signPlan(
+      plan(at('readwrite'), 'give billing-api read access to orders-db in prod'),
+      context(),
+    )
+
+    if ('outcome' in result) throw new Error('should have signed with an unknown')
+    expect(findUnknowns(result.plan)).toContain('operations.0.entity.spec.access')
+  })
+
+  it('never turns a level it was not told into readwrite', () => {
+    // The one forbidden guess. The proposal schema now refuses a levelled
+    // right that states nothing, so the honest "I do not know" is `{unknown}`
+    // — and it stays a question rather than becoming the wider of the two.
+    const unsure = {
+      ...access,
+      spec: { ...access.spec, access: { unknown: 'read or write?' } },
+    }
+    const result = signed(plan(unsure, 'give billing-api access to orders-db in prod'))
+
+    expect(JSON.stringify(result.plan)).not.toContain('readwrite')
+    expect(findUnknowns(result.plan)).toContain('operations.0.entity.spec.access')
   })
 })
 
@@ -207,7 +251,7 @@ describe('a vocabulary is not a request', () => {
       metadata: { name: 'billing-api-orders-db-prod', env: 'dev' },
     }
     const result = signed(
-      plan(wrongEnv, 'give billing-api access to orders-db in dev'),
+      plan(wrongEnv, 'give billing-api read access to orders-db in dev'),
       context({
         witnessed: new Set(['component:default/billing-api', 'resource:default/orders-db']),
       }),
@@ -220,7 +264,7 @@ describe('a vocabulary is not a request', () => {
   it('still vouches for a segment a witnessed reference carries', () => {
     // The catalogue actually returned this entity, so its segments are facts.
     const result = signed(
-      plan(access, 'give billing-api access to orders-db in prod'),
+      plan(access, 'give billing-api read access to orders-db in prod'),
       context({
         witnessed: new Set([
           'component:default/billing-api',
@@ -243,7 +287,7 @@ describe('a closed union is not a vocabulary', () => {
     // no access exists, so `database-access` is in no vocabulary, so it is a
     // question, so no access is ever written. Structural, like `kind`.
     const firstEver = signed(
-      plan(access, 'give billing-api access to orders-db in prod'),
+      plan(access, 'give billing-api read access to orders-db in prod'),
       context({
         // A repository holding one database and nothing else.
         vocabulary: { ...vocabulary, types: ['database'] },

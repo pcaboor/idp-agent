@@ -50,6 +50,17 @@ export type AgentEvent =
    */
   | { type: 'retry'; agent: AgentName; reason: string }
   | { type: 'plan:ready'; operations: number }
+  /**
+   * The engine took a field away from the model rather than asking for it.
+   *
+   * A right's owner follows from its consumer, so `deriveOwners` computes it
+   * the way the engine already computes the path — and in doing so it
+   * overwrites a model's explicit `{unknown}` with a value the model never
+   * wrote. That is a decision, and a decision nobody can see is the shape this
+   * repository argues against everywhere else. It carries `from` because "who
+   * says so" is the whole of why the value is allowed to be there.
+   */
+  | { type: 'derived'; path: string; owner: string; from: readonly string[] }
   | { type: 'ask'; question: Question }
 
 export type EventSink = (event: AgentEvent) => void

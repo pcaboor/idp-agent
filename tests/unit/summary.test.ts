@@ -39,7 +39,7 @@ describe('summariseGraph', () => {
       kind: 'Resource',
       metadata: { name: 'ghost', annotations: {} },
       spec: {
-        type: 'database-access',
+        type: 'database-access', access: 'read',
         owner: 'group:default/tiger',
         dependsOn: ['resource:default/gone'],
       },
@@ -94,7 +94,7 @@ describe('formatSummary', () => {
       kind: 'Resource',
       metadata: { name: 'ghost', annotations: { 'company.fr/env': 'prod' } },
       spec: {
-        type: 'database-access',
+        type: 'database-access', access: 'read',
         owner: 'group:default/tiger',
         dependsOn: ['resource:default/gone'],
       },

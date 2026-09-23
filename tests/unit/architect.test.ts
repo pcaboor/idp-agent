@@ -115,7 +115,7 @@ const FACTS: ProjectFacts = {
 }
 
 const INPUT = {
-  intent: 'give billing-api access to orders-db in prod',
+  intent: 'give billing-api read access to orders-db in prod',
   facts: FACTS,
   summary: 'si:\n  entities: 2',
   vocabulary: 'vocabulary:\n  owners: group:default/platform',
@@ -128,7 +128,7 @@ const ACCESS = {
     kind: 'Resource',
     metadata: { name: 'billing-api-orders-db-prod', env: 'prod' },
     spec: {
-      type: 'database-access',
+      type: 'database-access', access: 'read',
       owner: 'group:default/platform',
       dependsOn: ['resource:default/orders-db-prod'],
       dependencyOf: ['component:default/billing-api'],
@@ -653,7 +653,7 @@ describe('the escape hatch is not a channel', () => {
             entity: {
               kind: 'Resource',
               metadata: { name: 'billing-api-orders-db-prod', env: 'prod' },
-              spec: { type: 'database-access', owner: { unknown: huge } },
+              spec: { type: 'database-access', access: 'read', owner: { unknown: huge } },
             },
           },
         ],

@@ -36,8 +36,9 @@ is filed, from its type and its name — there is no field to put one in and no 
 that will tell you one.
 
 A value no tool returned and no fact states is {"unknown": "<why>"}, never a
-plausible one. A guessed owner is authorisation handed to the wrong team, and a
-guessed environment is access somewhere nobody asked for.
+plausible one. A guessed owner is authorisation handed to the wrong team, a
+guessed environment is access somewhere nobody asked for, and a guessed access
+level is write where read was asked for.
 
 Finish by calling "${PROPOSE_TOOL}". Propose an empty list of operations when the
 catalogue already declares everything the request asks for; that is an answer, not

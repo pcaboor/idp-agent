@@ -7,6 +7,7 @@ import {
   arbitraryPlan,
 } from './arbitraries.js'
 import { parseEntity, serializeEntity } from '../../src/core/yaml/serialize.js'
+import { entitySchema } from '../../src/core/schemas/entity.js'
 import { planSchema } from '../../src/core/schemas/plan.js'
 import { signPlan } from '../../src/core/plan/sign.js'
 import {
@@ -147,5 +148,57 @@ describe('invariants', () => {
         expect(resolved.startsWith('/repo/')).toBe(true)
       }),
     )
+  })
+})
+
+/**
+ * The generators, asserted on rather than assumed.
+ *
+ * A generator that never produces a field makes every property over it vacuous:
+ * "serialise then reload yields the same entity" holds just as well for a
+ * serialiser that drops `spec.access` on the floor, and "every leaf of a signed
+ * plan is classified" for a signer that never saw one. §4.1 added the field, so
+ * the generators have to carry it, and this is what says they do.
+ *
+ * Sampled at a fixed seed because the coverage IS the assertion — a property
+ * would be asserting the same silence. What this does NOT assert is a
+ * distribution: how often fast-check reaches a level is its business, and one
+ * in a sample is all it takes to stop a property being vacuous.
+ */
+describe('the generators cover the level a grant states', () => {
+  it('puts one on a right and never on an object', () => {
+    const sample = fc.sample(arbitraryEntity, { numRuns: 200, seed: 1 })
+
+    // The nature rule lives in `resourceSchema.superRefine`, so an entity
+    // generated with a level on a database is one the tool cannot hold — and
+    // every property above it would be asserting something about a shape that
+    // never reaches disk.
+    for (const entity of sample) expect(entitySchema.safeParse(entity).success).toBe(true)
+
+    expect(
+      sample.some((entity) => entity.kind === 'Resource' && entity.spec.access !== undefined),
+    ).toBe(true)
+    // Both halves of the optionality, or the generator covers one shape and
+    // calls it the field: an access written before this field exists states no
+    // level, and that is the common case in a real repository.
+    expect(
+      sample.some((entity) => entity.kind === 'Resource' && entity.spec.access === undefined),
+    ).toBe(true)
+  })
+
+  it('lets a proposal state one, or say it cannot determine it', () => {
+    const levels = fc
+      .sample(arbitraryPlan, { numRuns: 200, seed: 1 })
+      .flatMap((plan) => plan.operations.map((operation) => operation.entity.spec.access))
+
+    expect(levels.some((level) => level === 'read' || level === 'readwrite')).toBe(true)
+    // §5.4: a field the model CHOOSES is a value or `{unknown}`, and this is
+    // the one where filling in a plausible value hands out write. A generator
+    // that only ever states a level never signs the question.
+    expect(
+      levels.some(
+        (level) => typeof level === 'object' && level !== null && 'unknown' in level,
+      ),
+    ).toBe(true)
   })
 })

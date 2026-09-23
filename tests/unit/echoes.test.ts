@@ -10,7 +10,7 @@ import { echoes } from '../../src/core/plan/echoes.js'
  */
 describe('echoes, across scripts', () => {
   const asked: Array<[string, string, string]> = [
-    ['English', 'give billing-api access to orders-db in prod', 'prod'],
+    ['English', 'give billing-api read access to orders-db in prod', 'prod'],
     ['French', "donne à billing-api l'accès à orders-db en prod", 'prod'],
     ['Spanish', 'da a billing-api acceso a orders-db en prod', 'prod'],
     ['German', 'gib billing-api Zugriff auf orders-db in prod', 'prod'],

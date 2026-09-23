@@ -8,7 +8,7 @@ reviewed, then merged.
 
 ```bash
 git clone https://github.com/pcaboor/idp-agent && cd idp-agent
-pnpm install && pnpm test     # 617 tests, no API key, no network, no cost
+pnpm install && pnpm test     # 685 tests, no API key, no network, no cost
 ```
 
 That is the whole setup. The suite never reaches a model, and it never will: that is a
