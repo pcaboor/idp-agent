@@ -303,7 +303,17 @@ const inputs = (over: Partial<RepairInput> = {}): RepairInput => ({
   ...over,
 })
 
-const ORDER: Gate[] = ['zod', 'signature', 'policy', 'reviewer', 'recheck']
+/**
+ * The order §6.1 fixes, with the re-check moved ahead of the Reviewer.
+ *
+ * The re-check was last on the grounds that it is "the only gate whose answer
+ * can go stale". Inside one `repair` call nothing goes stale: the snapshot and
+ * the bytes are read once, before the Inspector runs, and never re-read. So
+ * the free gate was running after the paid one, and the bill was visible in a
+ * recorded tape — `link-already-declared` paid three Reviewer round-trips for
+ * three approvals and three re-check refusals.
+ */
+const ORDER: Gate[] = ['zod', 'signature', 'policy', 'recheck', 'reviewer']
 
 describe('the five gates of §6.1', () => {
   it('runs all five, in the order the design fixes, on a plan that passes', async () => {
@@ -378,13 +388,14 @@ describe('each gate refuses on its own', () => {
     expect(eventsOfType(events, 'repair')[0]?.reason).toContain('environment-mismatch')
   })
 
-  it('[4] the Reviewer refuses what every deterministic gate accepted', async () => {
+  it('[5] the Reviewer refuses what every deterministic gate accepted', async () => {
     const { events, emit } = collect()
     const reviewer = reviewing({ verdict: 'reject', reason: 'this grants more than was asked' })
 
     const outcome = stopped(await repair(inputs({ review: reviewer.review }), emit))
 
-    expect(outcome.attempts[0]?.gates).toEqual(['zod', 'signature', 'policy', 'reviewer'])
+    // All four free gates ran first; the Reviewer is the last thing paid for.
+    expect(outcome.attempts[0]?.gates).toEqual(ORDER)
     expect(outcome.gate).toBe('reviewer')
     expect(eventsOfType(events, 'repair')[0]?.reason).toContain('this grants more than was asked')
     // It is handed the plan the free gates signed, never the draft as it arrived.
@@ -392,7 +403,7 @@ describe('each gate refuses on its own', () => {
     expect(reviewer.seen).toHaveLength(REPAIR_LIMITS.maxAttempts)
   })
 
-  it('[5] the re-check refuses a plan the repository has overtaken', async () => {
+  it('[4] the re-check refuses a plan the repository has overtaken', async () => {
     // §4.4: the catalogue lags the repository by about two minutes, so the
     // entity may have appeared meanwhile — and somewhere else.
     const elsewhere: Entity = {
@@ -421,7 +432,9 @@ describe('each gate refuses on its own', () => {
       await repair(inputs({ snapshot: overtaken, contents: bytesOf(overtaken) }), emit),
     )
 
-    expect(outcome.attempts[0]?.gates).toEqual(ORDER)
+    // Four gates, not five: the Reviewer is never reached, which is the whole
+    // point of running the free one first.
+    expect(outcome.attempts[0]?.gates).toEqual(['zod', 'signature', 'policy', 'recheck'])
     expect(outcome.gate).toBe('recheck')
     expect(eventsOfType(events, 'repair')[0]?.reason).toContain('duplicate-name')
   })
@@ -850,5 +863,57 @@ describe('the one free-text field a model controls', () => {
     expect(outcome.attempts[0]?.gates).toEqual(['zod', 'signature', 'policy'])
     expect(reviewer.seen).toEqual([])
     expect(JSON.stringify(outcome.plan)).not.toContain('pre-approved')
+  })
+})
+
+describe('the free gate runs before the paid one', () => {
+  it('pays for no review of a plan the re-check refuses', async () => {
+    // The bill this reordering settles. A plan the repository has overtaken is
+    // refused by a gate that costs nothing, so the Reviewer is never called —
+    // three attempts, three round-trips saved, and the same refusal.
+    const elsewhere: Entity = {
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Resource',
+      metadata: {
+        name: 'billing-api-orders-db-prod',
+        annotations: {
+          [ENV_ANNOTATION]: 'prod',
+          [SOURCE_FILE_ANNOTATION]: 'dependencies/access/legacy-grant.yml',
+        },
+      },
+      spec: {
+        type: 'database-access',
+        access: 'read',
+        owner: 'group:default/tiger',
+        dependsOn: ['resource:default/orders-db-prod'],
+      },
+    }
+    const overtaken: RepositorySnapshot = {
+      ...SNAPSHOT,
+      files: [...SNAPSHOT.files, fileHolding('dependencies/access/legacy-grant.yml', elsewhere)],
+    }
+    const reviewer = reviewing({ verdict: 'ok' })
+    const { emit } = collect()
+
+    const outcome = stopped(
+      await repair(
+        inputs({ snapshot: overtaken, contents: bytesOf(overtaken), review: reviewer.review }),
+        emit,
+      ),
+    )
+
+    expect(outcome.gate).toBe('recheck')
+    expect(reviewer.seen).toEqual([])
+    expect(outcome.attempts[0]?.gates).toEqual(['zod', 'signature', 'policy', 'recheck'])
+  })
+
+  it('still shows the Reviewer a plan every deterministic gate accepted', async () => {
+    const reviewer = reviewing({ verdict: 'ok' })
+    const { emit } = collect()
+
+    const outcome = planned(await repair(inputs({ review: reviewer.review }), emit))
+
+    expect(reviewer.seen).toHaveLength(1)
+    expect(outcome.attempts[0]?.gates).toEqual(ORDER)
   })
 })

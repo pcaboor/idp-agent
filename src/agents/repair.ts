@@ -390,11 +390,40 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       return { outcome: 'questions', plan: signed.plan, questions, attempts, truncated, rejections }
     }
 
-    // [4] The Reviewer. The first gate that costs anything, and the order is
-    // what buys that: three free gates have already refused everything they
-    // can, so a round-trip is only ever paid for a plan that is expressible,
-    // vouched for, determined and policy-clean. The question it answers is the
-    // one none of them can ask — is this what was asked for.
+    // [4] The re-check. Free, and it runs BEFORE the one that is not.
+    //
+    // It used to be last, on the grounds that it is the only gate whose answer
+    // can go stale. Inside one `repair` call nothing goes stale: the snapshot
+    // and the bytes are read once, before the Inspector runs, and never
+    // re-read — so the reason held for a loop this one is not. What it cost
+    // was visible in a recorded tape: `link-already-declared` paid three
+    // Reviewer round-trips for three approvals and three re-check refusals.
+    //
+    // Computing the preview for a plan the Reviewer might reject is the price,
+    // and it is bytes in memory against a paid round-trip. It also buys
+    // something: the Reviewer now judges a plan that WOULD land, and the edits
+    // are there to hand it when it should see them.
+    gates.push('recheck')
+    const { edits, dropped } = planEdits(signed, input.contents)
+    const recheck = recheckPlan(signed, input.snapshot, edits)
+    // Errors only. A dangling reference is a warning: it is surfaced, never
+    // pruned (§4.4), and refusing a plan over one would push people to delete
+    // the declaration instead — the one thing that rule forbids.
+    const errors = recheck.violations.filter((violation) => violation.severity === 'error')
+    if (errors.length > 0) {
+      fail(
+        'recheck',
+        errors.map((one) => `${one.rule} at ${one.file}: ${one.message}`),
+      )
+      continue
+    }
+
+    // [5] The Reviewer. The only gate that costs anything, and it is last for
+    // that reason: FOUR free gates have refused everything they can, so a
+    // round-trip is only ever paid for a plan that is expressible, vouched
+    // for, determined, policy-clean and would land in the repository as it
+    // stands. The question it answers is the one none of them can ask — is
+    // this what was asked for.
     gates.push('reviewer')
     const verdict = await input.review(signed.plan, derivation.derived)
     if (verdict.verdict === 'no-opinion') {
@@ -415,26 +444,6 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
     }
     if (verdict.verdict === 'reject') {
       fail('reviewer', [verdict.reason])
-      continue
-    }
-
-    // [5] The re-check, last because it is the only gate whose answer can go
-    // stale: it asks what CI would say about the repository this plan would
-    // leave behind, and it asks it of the very bytes the caller is about to
-    // show. Running it before the Reviewer would compute a preview for plans
-    // the Reviewer then rejects.
-    gates.push('recheck')
-    const { edits, dropped } = planEdits(signed, input.contents)
-    const recheck = recheckPlan(signed, input.snapshot, edits)
-    // Errors only. A dangling reference is a warning: it is surfaced, never
-    // pruned (§4.4), and refusing a plan over one would push people to delete
-    // the declaration instead — the one thing that rule forbids.
-    const errors = recheck.violations.filter((violation) => violation.severity === 'error')
-    if (errors.length > 0) {
-      fail(
-        'recheck',
-        errors.map((one) => `${one.rule} at ${one.file}: ${one.message}`),
-      )
       continue
     }
 

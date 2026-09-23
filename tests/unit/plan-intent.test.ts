@@ -556,8 +556,8 @@ describe('what a run looks like on a terminal', () => {
       'zod',
       'signature',
       'policy',
-      'reviewer',
       'recheck',
+      'reviewer',
     ])
     expect(result.text).not.toContain(CLOSING)
   })
