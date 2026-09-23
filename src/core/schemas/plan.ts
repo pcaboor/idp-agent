@@ -195,6 +195,49 @@ export const patchSchema = z.discriminatedUnion('patch', [
   z.strictObject({
     patch: z.literal('add-dependency-of'),
     consumer: entityRefSchema,
+    /**
+     * The level the grant being extended grants, and therefore the level the
+     * consumer receives.
+     *
+     * It is here because it was nowhere. An update joins a consumer to an
+     * EXISTING grant, so the plan stated no level at all, so the signature had
+     * nothing to classify and the only gate left read the requested level out
+     * of the English in the request — `echoes(intent, 'read')`. A request
+     * arrives in whatever language the person wrote it in (see `echoes`), so
+     * "accès en lecture" named no level, the gate stayed silent, and a
+     * `readwrite` grant was extended to a request for `read` at exit 0. With
+     * the level in the operation the signature classifies it like any other
+     * leaf — echoed when the request named it, novel and therefore a question
+     * when it did not, in every script — and a policy compares it to what the
+     * repository declares without reading a word of the request.
+     *
+     * `or(...)` for the reason `metadata.env` and `spec.access` carry it: §5.4
+     * says every field the model CHOOSES is a value or `{unknown}`, and a level
+     * nobody stated is the one gap where filling in a plausible value hands out
+     * write.
+     *
+     * **Optional, unlike `metadata.env`, and for a reason `spec.access` only
+     * half shares.** `metadata.env` is required because every declaration is in
+     * exactly one environment — there is no such thing as an environment-less
+     * one — so an absent field could only ever be a silent gap. A level is not
+     * like that: a `network-access` is opened or it is not, and a right with no
+     * level has none to state. `spec.access` expresses that with a refinement,
+     * because the TYPE that decides it sits in the same object; here it does
+     * not. An update names its target by reference, and this boundary knows no
+     * natures — so requiring a level would force an `{unknown}` about a
+     * question nobody asked for every flow, and a refinement has nothing to
+     * read.
+     *
+     * So the two absences say different things here exactly as they do on
+     * `spec.access` — omitted means the grant states no level, `{unknown}`
+     * means the model could not determine one — and the difference is that
+     * this claim is CHECKED. The grant already exists, so `declared-level-
+     * mismatch` compares the claim to the declaration: an omission against a
+     * grant that declares `readwrite` is refused, and the pre-`access`
+     * repository, whose declarations carry no level at all, is the case the
+     * omission exists to express.
+     */
+    access: or(z.enum(ACCESS_LEVELS)).optional(),
   }),
 ])
 

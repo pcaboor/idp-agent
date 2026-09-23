@@ -106,6 +106,15 @@ export const CATALOG_INFO = 'catalog-info.yaml'
  * the CLI puts to the user (design §4.1). The Architect cannot introduce a fact
  * the repository does not state.
  *
+ * The type was the one of the four that did not hold, and the sentence above is
+ * only true because `sign.ts` stopped classifying a Component's `spec.type`
+ * structurally. It is `z.string().min(1).max(63)`, not the closed union a
+ * Resource's is, so an invented one signed `derived` and reached the
+ * `catalog-info.yaml` below without anyone being asked. On this road the
+ * vocabulary is empty — the graph is `EntityGraph.from([])`, see `runInitRepo`
+ * — so a Component type is echoed by this request or it is a question, and
+ * there is no third answer.
+ *
  * `forgeHandle` is deliberately absent, and its absence is the point of the
  * field: `@acme/platform` is a forge handle and `group:default/platform` is an
  * entity reference, two namespaces that do not survive translation. It is

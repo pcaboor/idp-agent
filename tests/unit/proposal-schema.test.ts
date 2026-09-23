@@ -196,3 +196,59 @@ describe('a grant states its level, or says it does not know', () => {
     expect(parsed.success).toBe(true)
   })
 })
+
+describe('an update states the level it is extending', () => {
+  const joining = (patch: unknown): unknown => ({
+    intent: 'give billing-api read access to orders-db in prod',
+    operations: [
+      { op: 'update-entity', entityRef: 'resource:default/checkout-orders-db-prod', patch },
+    ],
+  })
+
+  const CONSUMER = 'component:default/billing-api'
+
+  it('accepts the level as a value', () => {
+    // The level of the grant being extended IS the authorisation being
+    // extended, and it used to be nowhere in the operation: the only gate
+    // between a read request and a readwrite grant read the level out of
+    // English prose in the request. A field is what makes it a fact.
+    expect(
+      planSchema.safeParse(
+        joining({ patch: 'add-dependency-of', consumer: CONSUMER, access: 'read' }),
+      ).success,
+    ).toBe(true)
+  })
+
+  it('accepts a level the model admits it does not know', () => {
+    expect(
+      planSchema.safeParse(
+        joining({
+          patch: 'add-dependency-of',
+          consumer: CONSUMER,
+          access: { unknown: 'the grant states no level I could read' },
+        }),
+      ).success,
+    ).toBe(true)
+  })
+
+  it('accepts the field omitted, which is how a grant with no level is joined', () => {
+    // Optional, unlike `metadata.env` and like `spec.access`: whether a level
+    // exists at all depends on the TYPE of the entity the reference names, and
+    // that entity is not in the operation. A `network-access` is opened or it
+    // is not, so requiring one here would make the honest proposal for a flow
+    // an `{unknown}` about a question nobody asked. Whether the omission was
+    // allowed is the policy's to decide, against the declaration.
+    expect(
+      planSchema.safeParse(joining({ patch: 'add-dependency-of', consumer: CONSUMER })).success,
+    ).toBe(true)
+  })
+
+  it('refuses a level outside the two the registry declares', () => {
+    const parsed = planSchema.safeParse(
+      joining({ patch: 'add-dependency-of', consumer: CONSUMER, access: 'admin' }),
+    )
+
+    expect(parsed.success).toBe(false)
+    expect(JSON.stringify(parsed.error?.issues)).toContain('access')
+  })
+})

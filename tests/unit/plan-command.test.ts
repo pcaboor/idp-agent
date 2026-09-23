@@ -136,12 +136,17 @@ describe('plan --from', () => {
   it('renders an empty diff and exits 0 when the target was declared meanwhile', async () => {
     // The catalogue lags the repository by about two minutes (§4.4). Absent
     // means already done (§4.3): nothing to review, and that is not a failure.
+    //
+    // The declaration states the SAME level the plan states, which is what
+    // makes this already-declared rather than a change: a grant is its level
+    // (§4.1), and the file has to say what the plan says.
     const root = await scaffoldedRepository()
     await declare(root, DATABASE_PATH, entityDocument('orders-db-prod', 'database', 'prod'))
     await declare(
       root,
       ACCESS_PATH,
       entityDocument('billing-api-orders-db-prod', 'database-access', 'prod', [
+        '  access: read',
         '  dependsOn:',
         '    - resource:default/orders-db-prod',
         '  dependencyOf:',
@@ -158,6 +163,38 @@ describe('plan --from', () => {
     expect(out).not.toContain('+++ b/')
     expect(out).toContain(ACCESS_PATH)
     expect(out).toContain('already declares')
+    expect(await hashTree(root)).toBe(before)
+  })
+
+  it('refuses rather than report "nothing to change" when the level differs', async () => {
+    // The falsehood this closes, end to end. The repository grants readwrite,
+    // the plan states read, and the only edit this tool can make is an append
+    // — so the run used to print "nothing to change — the repository already
+    // says it" and exit 0, about a narrowing that silently did not happen.
+    const root = await scaffoldedRepository()
+    await declare(root, DATABASE_PATH, entityDocument('orders-db-prod', 'database', 'prod'))
+    await declare(
+      root,
+      ACCESS_PATH,
+      entityDocument('billing-api-orders-db-prod', 'database-access', 'prod', [
+        '  access: readwrite',
+        '  dependsOn:',
+        '    - resource:default/orders-db-prod',
+        '  dependencyOf:',
+        '    - component:default/billing-api',
+      ]),
+    )
+    const from = await planFile(root, CREATE_PLAN)
+    const before = await hashTree(root)
+
+    const { code, out } = await run(['plan', '--from', from, '--repo', root])
+
+    expect(code).toBe(1)
+    expect(out).toContain('declared-level-mismatch')
+    expect(out).toContain('operations.1.entity.spec.access')
+    expect(out).toContain('readwrite')
+    expect(out).not.toContain('nothing to change')
+    expect(out).not.toContain('@@')
     expect(await hashTree(root)).toBe(before)
   })
 
@@ -188,11 +225,19 @@ describe('plan --from', () => {
     // The design's own example: a name carrying `prod` on a request that named
     // dev. The signature vouches for it — `orders-db-prod` exists — and it is
     // still wrong, which is the gap a policy is for.
+    //
+    // The request states the owner, and it has to: this grant lists no
+    // consumer, so nothing in the plan determines who owns it, and a right's
+    // owner nothing determines is withdrawn to a question (`derive.ts`, F2).
+    // The question would end the run before the violation was printed —
+    // `previewPlan` renders questions ahead of policies — and this test is
+    // about the policy gate, not about who owns the access.
     const root = await scaffoldedRepository()
     await declare(root, 'catalog/databases/orders-db-dev.yml', entityDocument('orders-db-dev', 'database', 'dev'))
     await declare(root, DATABASE_PATH, entityDocument('orders-db-prod', 'database', 'prod'))
     const from = await planFile(root, {
-      intent: 'give component:default/billing-api a database-access granting read to orders-db in dev',
+      intent:
+        'give component:default/billing-api a database-access granting read to orders-db in dev, owned by group:default/tiger',
       operations: [
         {
           op: 'create-entity',

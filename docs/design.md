@@ -210,8 +210,24 @@ a bare one for the sake of the message — a bare union reports `invalid_union` 
 (§ 6.1) cannot correct a field nobody named.
 
 `Patch` is closed for the same reason and holds exactly one member today:
-`add-dependency-of`, carrying the consumer. A free-form patch is a write tool with no
-shape.
+`add-dependency-of`, carrying the consumer **and the level that grant grants**. A
+free-form patch is a write tool with no shape.
+
+The level is in the operation because it was nowhere else. An update joins a consumer to an
+*existing* grant, so the plan stated no level, so the signature had nothing to classify and
+the only remaining gate read the requested level out of the English in the request. A
+request arrives in whatever language the person wrote it in — `core/plan/echoes.ts` states
+that rule and the script-based word boundary it turns on — so *accès en lecture*
+named no level, that gate stayed silent, and a `readwrite` grant was handed to a request for
+`read` at exit 0. Stated as a field, the level is classified like every other leaf — echoed
+when the request named it, novel and therefore a question when it did not, in every script —
+and `declared-level-mismatch` compares it to what the repository declares without reading a
+word of the request. The field is `'read' | 'readwrite' | { unknown }`, and **optional**,
+which `metadata.env` is not: every declaration is in exactly one environment, while a
+`network-access` is opened or it is not and a right with no level has none to state. So an
+omission is a claim — *this grant states no level* — and it is checked like any other: it
+agrees with a pre-`access` declaration, which is the case it exists to express, and is
+refused against a grant that declares one.
 
 **The proposal schemas are strict, and deliberately stricter than `entitySchema`.** That
 asymmetry is the point. `entitySchema` READS a real Backstage catalogue, whose files
@@ -355,16 +371,39 @@ can *vouch for* — and asks rather than refuses, because *declare, never infer*
 putting the question to the user, not guessing and not giving up — and a policy refuses
 what is expressible, vouched for, and still wrong.
 
-Three ship in v0.1:
+Four ship in v0.1:
 
 | policy | refuses |
 |---|---|
 | `environment-mismatch` | an environment the intent did not name |
 | `unwitnessed-folder` | a write into a folder the repository never declared |
 | `cross-environment-consumer` | an access whose environment differs from its consumer's |
+| `declared-level-mismatch` | a level the operation states that the repository does not declare |
+
+**Every operation is gated, not only the creations.** `update-entity` joins a consumer to
+an *existing* grant, so it is the operation that hands out an authorisation nobody
+re-declares — and it is the one §4.1 is most about. It names its target by reference
+rather than carrying an entity, so the first three policies read the environments off the
+snapshot: the grant being extended has one, and so does the consumer being joined to it.
+`unwitnessed-folder` alone does not apply, and the absence is a rule rather than a gap —
+it is about a folder the *engine* computed a path into, and an update computes none.
+
+`declared-level-mismatch` exists because the level of the grant being extended **is** the
+authorisation being extended, and it cannot be seen: a level is a scalar, this tool only
+ever appends (§4.3), and the unified diff of an update shows one added consumer line in an
+otherwise unchanged file — `access:` sits further from the insertion than the three lines of
+context a hunk carries, so it is an unchanged line, invisible to whoever merges. **Putting
+the level in the operation does not put it in the hunk**; what it buys is that the level is
+now a fact the engine holds, so the comparison is deterministic and the Reviewer is shown
+it. It is one predicate over both shapes — `patch.access` on an update, `spec.access` on a
+creation — where there were two, calibrated in opposite directions on a level-less
+declaration: one hard-refused it, the other was deliberately silent. The comparison is the
+plan against the repository and never against the request: what the *request* named is the
+signature's question (§5.4), asked in any language, and reporting *nothing to change* about
+a requested narrowing is the falsehood this refuses to tell.
 
 A configurable rule engine — `governance/`, and the `get_governance_rule` tool this
-document once gave the Architect in § 6 — is deferred past v0.1: three predicates that run
+document once gave the Architect in § 6 — is deferred past v0.1: four predicates that run
 are worth more than an extension point that does not. The tool is absent from the
 Architect's registry for the same reason, because a tool naming a feature nobody built is
 a prompt for the model to ask about one.

@@ -1,5 +1,6 @@
 import type { Plan } from '../schemas/plan.js'
 import { RESOURCE_TYPES, natureOf, type ResourceType } from '../schemas/resource-types.js'
+import { echoes } from './echoes.js'
 
 /**
  * A right's owner is not a choice. It is a consequence.
@@ -48,6 +49,34 @@ import { RESOURCE_TYPES, natureOf, type ResourceType } from '../schemas/resource
  * condition, and it is a fact about the CALLER, not about this file — which is
  * why it is also written down as an absence below.
  *
+ * **Every pass re-derives, and a conclusion that cannot be re-derived is
+ * withdrawn.** The value written here used to be indistinguishable from one a
+ * person stated — absent and `{unknown}` were the only unstated things, so the
+ * rule protecting the REQUEST's owner protected the engine's own. §7.5 runs the
+ * gates again over an answered plan, and a run that read `group:default/lion`
+ * off a consumer the user then replaced with a different component ended on a
+ * diff carrying lion's authorisation and somebody else's consumer: the evidence
+ * rejected, the conclusion standing, and the Reviewer — which runs once, in the
+ * last round — told nothing, because the derivation happened in a round it
+ * never saw.
+ *
+ * So the question asked about a value already in the field is not "is something
+ * there" but "did the REQUEST put it there", and `echoes` answers it — the same
+ * function the signature classifies `echoed` with, so the two cannot drift
+ * about what the request says. That distinction lives IN the plan, in
+ * `plan.intent`, and it has to: a caller that grows the request by what the
+ * user answered (`withAnswers`) grows what is protected here in the same
+ * breath, while a record kept alongside the plan — "these paths were derived
+ * last round" — would not survive the one thing the loop does between rounds,
+ * which is give the Architect another turn and get back a different plan under
+ * the same indices.
+ *
+ * Three outcomes for a right's owner, every pass, whoever wrote what is there:
+ *
+ *   the request states it      left alone — rule 1, now saying what it claimed
+ *   one consumer answers it    written, and reported, even when it does not move
+ *   nothing answers it         a stated value is WITHDRAWN back to a question
+ *
  * What this does NOT cover, stated as plainly as `sign.ts` states its own:
  *
  *   - It says who the owner FOLLOWS FROM. It says nothing about whether that
@@ -71,6 +100,17 @@ import { RESOURCE_TYPES, natureOf, type ResourceType } from '../schemas/resource
  *   - The guarantee in rule 3 below holds only while the caller builds this map
  *     and the signature's vocabulary from ONE graph. Two graphs, and a derived
  *     owner is a value the signer has never heard of.
+ *   - It reads the intent of the plan it is HANDED. A caller that lets a
+ *     drafter's own `intent` through would let that drafter write the sentence
+ *     that protects the owner it wanted; `repair` imposes the caller's, the
+ *     way it already does for the signature.
+ *   - `derived` says the engine computed this owner. It does not say the
+ *     proposal had nothing in the field: a right's owner is not the model's to
+ *     state (§5.2), so a model that guessed the same value is reported the
+ *     same as one that wrote `{unknown}`.
+ *   - Withdrawing is not an event. It produces a question, and a question is
+ *     already audible on the stream — the reason `repair` gives for not
+ *     announcing a contested owner a second time beside its own `ask`.
  */
 
 export interface DerivedOwner {
@@ -120,25 +160,60 @@ const isResourceType = (value: unknown): value is ResourceType =>
   typeof value === 'string' && Object.hasOwn(RESOURCE_TYPES, value)
 
 /**
- * Absent and `{unknown}` are the same fact: nobody stated an owner. Anything
- * else is a stated one, and rule 1 never overwrites it — the request said it,
- * and that is the stronger claim than anything the catalogue implies.
+ * Absent and `{unknown}` are the same fact: nobody stated an owner. It is what
+ * says whether there is a value to withdraw, and no longer what says whether a
+ * value may be overwritten — see `requested`.
  */
 const unstated = (owner: unknown): boolean =>
   owner === undefined || (typeof owner === 'object' && owner !== null && 'unknown' in owner)
 
+/**
+ * Did the REQUEST put this value here?
+ *
+ * Rule 1 never overwrites the request's owner, and this is the whole of what
+ * "the request's" means — the stronger claim than anything the catalogue
+ * implies, because it is what the user asked for rather than something that
+ * merely exists. `echoes` is the signature's own test, so an owner left alone
+ * here is one gate [2] then classifies `echoed`: one function, one answer about
+ * what the request says.
+ *
+ * Everything else in the field is not the request's and is not protected by a
+ * rule about it — the engine's own conclusion from an earlier pass included.
+ * That is audit F2, in one predicate.
+ */
+const requested = (intent: string, owner: unknown): boolean =>
+  typeof owner === 'string' && echoes(intent, owner)
+
+/**
+ * The question a withdrawn owner goes back to being.
+ *
+ * One sentence for two cases — an owner whose consumers changed under it, and
+ * one a model wrote for a field §5.2 gives it no say in — because both are the
+ * same fact about the plan as it now stands: nothing here determines who owns
+ * this. A sentence about what an earlier round had done would be true of only
+ * one of them, and this string is put to a person.
+ */
+const WITHDRAWN =
+  'the request does not state an owner for this access, and its consumers do not determine one'
+
 export function deriveOwners(plan: Plan, owners: ReadonlyMap<string, string>): Derivation {
   const derived: DerivedOwner[] = []
   const contested: ContestedOwner[] = []
-  /** opIndex → the owner to write. Collected first; the plan is cloned once. */
-  const settled = new Map<number, string>()
+  /**
+   * opIndex → the owner to write, or the question to put back in its place.
+   * Collected first; the plan is cloned once.
+   */
+  const settled = new Map<number, string | { unknown: string }>()
 
   for (const [index, operation] of plan.operations.entries()) {
     if (operation.op !== 'create-entity') continue
     const entity = operation.entity
     if (entity.kind !== 'Resource') continue
     if (!isResourceType(entity.spec.type) || natureOf(entity.spec.type) !== 'right') continue
-    if (!unstated(entity.spec.owner)) continue
+    const current = entity.spec.owner
+    // Rule 1, and the only thing that outranks the consumers. Not "something is
+    // already there": that was what let the engine's own value protect itself.
+    if (requested(plan.intent, current)) continue
 
     const path = `operations.${index}.entity.spec.owner`
     const from: string[] = []
@@ -167,14 +242,26 @@ export function deriveOwners(plan: Plan, owners: ReadonlyMap<string, string>): D
     const [only] = found
     if (found.size === 1 && only !== undefined) {
       settled.set(index, only)
+      // Reported on every pass, including the one where the value does not
+      // move. The Reviewer runs ONCE, in whichever round reaches it, and this
+      // list is the whole of what it is told about which values were not a
+      // model's choice; a derivation that went quiet because it agreed with
+      // itself would be one that round's Reviewer never heard of (F2).
       derived.push({ path, owner: only, from })
       continue
     }
     // More than one owner is where this stops. Picking the first would be the
     // guess the whole design exists to prevent, and two teams sharing one
     // access is precisely the case a human must decide. Zero falls here too and
-    // is simply left alone: see `Derivation` for why it is not reported.
+    // is not reported: see `Derivation` for why.
     if (found.size > 1) contested.push({ path, owners: [...found].sort() })
+    // Nothing answers it, and something is in the field. That value is either a
+    // conclusion this drew from evidence the plan no longer carries or a choice
+    // §5.2 does not give the model; in both cases nothing now vouches for it,
+    // and the honest state of a field nothing vouches for is the question it
+    // was before anything did. Leaving it would be the engine signing its own
+    // earlier guess (F2).
+    if (!unstated(current)) settled.set(index, { unknown: WITHDRAWN })
   }
 
   if (settled.size === 0) return { plan, derived, contested }
@@ -183,13 +270,13 @@ export function deriveOwners(plan: Plan, owners: ReadonlyMap<string, string>): D
   // handed — `repair` keeps one as the partial plan a clean stop shows — and a
   // function that rewrote it underneath them would make that record a lie.
   const clone = structuredClone(plan)
-  for (const [index, owner] of settled) {
+  for (const [index, value] of settled) {
     const operation = clone.operations[index]
     // The clone is the plan the loop above walked, so this holds by
     // construction; re-stating it is what the type system asks for, and it is
     // cheaper than a cast that would survive the shape changing.
     if (operation?.op !== 'create-entity') continue
-    operation.entity.spec.owner = owner
+    operation.entity.spec.owner = value
   }
 
   return { plan: clone, derived, contested }

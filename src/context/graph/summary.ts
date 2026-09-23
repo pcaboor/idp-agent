@@ -43,6 +43,16 @@ export function summariseGraph(graph: EntityGraph): {
       resources: bucket(entities.filter((entity) => entity.kind === 'Resource').length),
       danglingReferences: graph.danglingReferences().length,
     },
+    // Deliberately no `levels`. A level is not vocabulary: `sign.ts` reads this
+    // list to decide that a proposed value was already in use rather than
+    // invented, and `read` is in use in every catalogue that has one grant — so
+    // enumerating it would flip `spec.access` — and `patch.access`, which §5.3
+    // put on an update for the same reason — from `novel` to `enumerated`, and
+    // stop the signature asking about a level nobody vouched for. That question
+    // is the only thing that reads the REQUEST: `declared-level-mismatch`
+    // compares the plan to the repository and never to a word of it. The level
+    // of a PARTICULAR grant is a fact about that grant; the tools carry it on
+    // the row.
     vocabulary: {
       kinds: sorted(entities.map((entity) => entity.kind)),
       types: sorted(entities.map((entity) => entity.spec.type)),

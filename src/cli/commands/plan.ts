@@ -15,10 +15,12 @@ import { renderUnifiedDiff, type FileEdit } from '../../core/diff/unified.js'
 import { answer, AnswerError, questionsOf, type Question } from '../../core/plan/clarify.js'
 import { deriveOwners } from '../../core/plan/derive.js'
 import { planEdits, type DroppedOperation } from '../../core/plan/edits.js'
+import { declaredLevel } from '../../core/plan/grant.js'
 import { checkPolicies, type PolicyContext, type PolicyViolation } from '../../core/plan/policies.js'
 import { recheckPlan, type Recheck } from '../../core/plan/recheck.js'
 import { signPlan, type SignatureContext, type SignedPlan } from '../../core/plan/sign.js'
 import { planSchema, PLAN_LIMITS, type Plan } from '../../core/schemas/plan.js'
+import type { AccessLevel } from '../../core/schemas/resource-types.js'
 import { ENV_ANNOTATION, type Vocabulary } from '../../core/schemas/vocabulary.js'
 import type { RepositorySnapshot, Violation } from '../../core/validate/rules.js'
 import type { LlmClient } from '../../llm/client.js'
@@ -230,9 +232,16 @@ function contextsOf(
   const declared = new Map<string, string>()
   const environments = new Map<string, string>()
   const owners = new Map<string, string>()
+  const levels = new Map<string, AccessLevel | undefined>()
   for (const file of snapshot.files) {
     for (const entity of file.entities) {
       declared.set(refOf(entity), file.path)
+      // Every entity, and the value is what it STATES — undefined when it
+      // states none. The policies need both facts: a reference the map does
+      // not hold at all is a grant this repository has never declared, while
+      // one it holds with no level is §4.1's unstated level, which is never
+      // read as `readwrite` and never already says `read`.
+      levels.set(refOf(entity), declaredLevel(entity))
       // Read from the entity, never inferred: `spec.owner` is required on both
       // kinds, so every entity the reader accepted contributes exactly one.
       owners.set(refOf(entity), entity.spec.owner)
@@ -254,7 +263,7 @@ function contextsOf(
       repoRoot: root,
       declared,
     },
-    policy: { vocabulary, witnesses: new Set(snapshot.witnesses), environments },
+    policy: { vocabulary, witnesses: new Set(snapshot.witnesses), environments, levels },
   }
 }
 

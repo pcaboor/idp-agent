@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 685 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 748 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -216,6 +216,44 @@ slogan. The signature says **where a value came from**, never whether it is righ
 owner that exists and is the wrong team signs cleanly. That gap is what a policy is for,
 and a diff after that, and the merge after that.
 
+The brand proves the object was signed once; the **freeze** proves it still holds what was
+signed. `signPlan` deep-freezes the plan it returns and seals the `paths` and `refs` maps,
+so a field changed after signing is a `TypeError` at the line that wrote it rather than a
+value `planEdits` writes while `classified` still vouches for the old one. A copy is
+deliberately not covered: `clarify.answer` and the ask loop produce a new plan from an
+answered one, and that plan goes back through all five gates and is signed again.
+
+**`spec.type` is structural on a Resource and classified on a Component.** A Resource's is
+`z.enum(RESOURCE_TYPE_NAMES)`, closed, and the folder layout is derived from it. A
+Component's is `z.string().min(1).max(63)` — Backstage's own convention, and the one
+free-text field a proposal carries — so it is echoed, enumerated against `vocabulary.types`
+(which `summariseGraph` builds from every entity, Components included), or novel, and novel
+means asked.
+
+**The level a grant hands over is a field of the operation, not a reading of the
+request.** `add-dependency-of` carries `access` beside the consumer — the level the
+*existing* grant declares — so the signature classifies it like any other leaf, and
+`declared-level-mismatch` compares it to what the repository declares without reading a
+word of the request. That is what makes it work in every language: the gate it replaced
+matched English words, so *accès en lecture* named no level and a `readwrite` grant was
+handed to a request for `read` at exit 0. Optional, and an omission is a claim — *this
+grant states no level* — which agrees with a pre-`access` declaration and is refused
+against a grant that declares one. It does **not** reach the diff: a level is a scalar,
+this tool only appends, and `access:` sits further from an added consumer line than the
+three lines of context a hunk carries.
+
+**A right's owner is derived every pass, and a conclusion that cannot be re-derived is
+withdrawn.** `deriveOwners` runs between gates [1] and [2] on both roads, and the only
+owner it leaves alone on a grant is one the **request** states — `echoes`, the signature's
+own test, answers that, so the two cannot drift about what the request says. An owner one
+consumer determines is written and reported; an owner nothing determines goes back to being
+a question, whoever put the value there. That last line is the fix for a run that read
+`group:default/lion` off a consumer the user then replaced, and ended on a diff carrying
+lion's authorisation and somebody else's consumer. The distinction "the user stated this"
+lives **in the plan**, in `plan.intent`, and has to: the ask loop grows that string with
+every answer (`withAnswers`), while a note kept alongside the plan would not survive the
+Architect handing back a different plan under the same indices.
+
 An environment is deliberately **not** enumerable. `prod` always exists, so accepting one
 because the catalogue uses it would let a model pick production for a request that named
 no environment at all (§4.1). An environment is echoed — the user named it — or novel, and
@@ -271,8 +309,10 @@ them never reaches the one that spends a model call. Three attempts, then a clea
   there because it is the only seam a caller has. The report must *not* be appended to
   `intent` instead: `signPlan` measures provenance against that string, so a refusal
   naming `group:default/tiger` would make that owner `echoed` on the next attempt and the
-  gate that caught the value would end up vouching for it. Worth renaming the parameter
-  when someone next touches `architect.ts`.
+  gate that caught the value would end up vouching for it. `deriveOwners` reads the same
+  string for the same reason, so that mistake would now also stop the engine re-deriving
+  the owner it had just refused. Worth renaming the parameter when someone next touches
+  `architect.ts`.
 - **`docs/plans/stage-3-init-platform.md` still documents `init` as a tested refusal.**
   Stage 4 answered that refusal. The historical plan was left alone on purpose — a plan is
   a record of what was decided then — but it is not a description of the code now.

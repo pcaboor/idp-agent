@@ -294,7 +294,15 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
     // add information — it has no refusal and no report to hand back — so a
     // member there could never appear in `failed`, and the event would name a
     // gate that never fails. The five gates of §6.1 stay five.
-    const derivation = deriveOwners(parsed.data, input.owners)
+    //
+    // The caller's intent, never the draft's — the same substitution the
+    // signature makes four lines below, and now for a second reason. The
+    // derivation keeps an owner the REQUEST states (F2), so a drafter left free
+    // to supply its own `intent` could write the sentence that protects the
+    // owner it wanted. The plan a seeded round hands back carries the PREVIOUS
+    // round's request as well, which is the request without the answer that
+    // round was seeded with.
+    const derivation = deriveOwners({ ...parsed.data, intent: input.intent }, input.owners)
     // Stated, never silent. The engine is overwriting a model's explicit "I do
     // not know" with a value the model never wrote; the same rule that makes a
     // truncated tool result audible makes this one.

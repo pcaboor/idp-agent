@@ -1,5 +1,6 @@
 import type { FileEdit } from '../diff/unified.js'
 import type { Entity } from '../schemas/entity.js'
+import { restates } from './grant.js'
 import { parseDocuments } from '../yaml/serialize.js'
 import type { RepositoryFile, RepositorySnapshot, Violation } from '../validate/rules.js'
 import { checkRepository } from '../validate/rules.js'
@@ -20,8 +21,18 @@ import type { SignedPlan } from './sign.js'
 
 export type RecheckOutcome =
   | 'fresh'
-  /** The entity is already in the repository, at the path the plan computed. */
+  /**
+   * The entity is already in the repository, at the path the plan computed,
+   * stating the grant the plan states. What the CLI reports as "nothing to
+   * change — the repository already says it".
+   */
   | 'already-declared'
+  /**
+   * Same reference, same file, a different grant. Decided by name alone this
+   * came out `already-declared`, so a requested narrowing was reported as work
+   * already done. See `grant.ts` for what "the same grant" compares.
+   */
+  | 'differs'
   /** Same name, different file. Writing would make a duplicate. */
   | 'moved'
   /** Still carries a question, so there is no path to check. */
@@ -43,14 +54,19 @@ export function recheckPlan(
 ): Recheck {
   const outcomes = new Map<number, RecheckOutcome>()
 
-  // Where the repository already declares each reference. Built once: a plan
-  // with n operations over a repository with m files must not be n×m.
+  // Where the repository already declares each reference, and what it
+  // declares there. Built once: a plan with n operations over a repository
+  // with m files must not be n×m.
   const declaredAt = new Map<string, string>()
+  const declares = new Map<string, Entity>()
   for (const file of snapshot.files) {
-    for (const entity of file.entities) declaredAt.set(refOf(entity), file.path)
+    for (const entity of file.entities) {
+      declaredAt.set(refOf(entity), file.path)
+      declares.set(refOf(entity), entity)
+    }
   }
 
-  for (const [opIndex] of signed.plan.operations.entries()) {
+  for (const [opIndex, operation] of signed.plan.operations.entries()) {
     const path = signed.paths.get(opIndex)
     const ref = signed.refs.get(opIndex)
     if (path === undefined || ref === undefined) {
@@ -59,9 +75,30 @@ export function recheckPlan(
     }
 
     const existing = declaredAt.get(ref)
+    if (existing === undefined) {
+      outcomes.set(opIndex, 'fresh')
+      continue
+    }
+    if (existing !== path) {
+      outcomes.set(opIndex, 'moved')
+      continue
+    }
+
+    // The reference is there, at the path the engine computed. Whether that is
+    // "already declared" depends on what the file SAYS: this outcome is what
+    // the CLI prints as "the repository already says it", so it has to mean
+    // the repository says what the plan says. Decided by the reference alone,
+    // it reported a requested narrowing as work already done, with an empty
+    // diff and exit 0. `restates` is the one place that rule lives — the same
+    // question `planEdits` asks to decide whether to write any bytes.
+    const there = declares.get(ref)
     outcomes.set(
       opIndex,
-      existing === undefined ? 'fresh' : existing === path ? 'already-declared' : 'moved',
+      there !== undefined &&
+        operation.op === 'create-entity' &&
+        !restates(there, operation.entity)
+        ? 'differs'
+        : 'already-declared',
     )
   }
 

@@ -44,7 +44,13 @@ const sign = (entity: unknown = access, over: Partial<SignatureContext> = {}): S
 }
 
 /** A parsed file the way readRepository would have handed it over. */
-const fileHolding = (path: string, name: string, env = 'prod'): RepositoryFile => ({
+const fileHolding = (
+  path: string,
+  name: string,
+  env = 'prod',
+  /** 'none' writes no level at all — §4.1's unstated level. */
+  level: 'read' | 'readwrite' | 'none' = 'read',
+): RepositoryFile => ({
   path,
   entities: [
     {
@@ -52,7 +58,8 @@ const fileHolding = (path: string, name: string, env = 'prod'): RepositoryFile =
       kind: 'Resource',
       metadata: { name, annotations: { [ENV_ANNOTATION]: env } },
       spec: {
-        type: 'database-access', access: 'read',
+        type: 'database-access',
+        ...(level === 'none' ? {} : { access: level }),
         owner: 'group:default/tiger',
         dependsOn: ['resource:default/orders-db-prod'],
       },
@@ -114,6 +121,32 @@ describe('recheckPlan', () => {
     )
 
     expect(recheck(sign(), snapshot([already])).outcomes.get(0)).toBe('already-declared')
+  })
+
+  it('reports differs when that file states another level than the plan does', () => {
+    // Already-declared was decided by NAME alone, so a plan stating `read`
+    // against a file granting `readwrite` came out "the repository already
+    // says it" with an empty diff — the tool asserting a falsehood about an
+    // authorisation, in the direction that hands out write.
+    const wider = fileHolding(
+      'dependencies/access/billing-api-orders-db-prod.yml',
+      'billing-api-orders-db-prod',
+      'prod',
+      'readwrite',
+    )
+
+    expect(recheck(sign(), snapshot([wider])).outcomes.get(0)).toBe('differs')
+  })
+
+  it('reports differs when that file states no level and the plan states one', () => {
+    const unstated = fileHolding(
+      'dependencies/access/billing-api-orders-db-prod.yml',
+      'billing-api-orders-db-prod',
+      'prod',
+      'none',
+    )
+
+    expect(recheck(sign(), snapshot([unstated])).outcomes.get(0)).toBe('differs')
   })
 
   it('reports moved when the entity exists at a different path', () => {
