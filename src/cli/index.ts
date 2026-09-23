@@ -22,6 +22,7 @@ import { isForgeHandle } from '../scaffold/codeowners.js'
 import { VERSION } from '../core/index.js'
 import type { LlmClient } from '../llm/client.js'
 import type { CommandResult } from './commands/result.js'
+import { plain } from './render/plain.js'
 
 /**
  * Where a Plan comes from, and it is a union rather than two optional fields so
@@ -310,8 +311,15 @@ export function renderEvent(event: AgentEvent): string | undefined {
 }
 
 /** Bounded and flattened: one event is one line, and a reason is model-authored. */
+/**
+ * One line of a reason, for a stream a terminal reads.
+ *
+ * `plain` first, then the flatten: stripping after truncating would leave the
+ * front half of a sequence whose final byte the 200-character cut removed, and
+ * a half-written CSI is still a CSI to whatever renders the line next.
+ */
 const oneLine = (reason: string): string => {
-  const flat = reason.replace(/\s+/g, ' ').trim()
+  const flat = plain(reason).replace(/\s+/g, ' ').trim()
   return flat.length > 200 ? `${flat.slice(0, 200)}…` : flat
 }
 
@@ -495,7 +503,8 @@ const promptOnTerminal = (): Ask => async (question) => {
       reader.once('close', () => resolve(undefined))
     })
     return await Promise.race([
-      reader.question(`  ${question.path}\n      ${question.question}\n  > `),
+      // The model wrote the question; the path beside it is the engine's.
+      reader.question(`  ${question.path}\n      ${plain(question.question)}\n  > `),
       closed,
     ])
   } finally {
