@@ -8,7 +8,7 @@ reviewed, then merged.
 
 ```bash
 git clone https://github.com/pcaboor/idp-agent && cd idp-agent
-pnpm install && pnpm test     # 685 tests, no API key, no network, no cost
+pnpm install && pnpm test     # 790 tests, no API key, no network, no cost
 ```
 
 That is the whole setup. The suite never reaches a model, and it never will: that is a
@@ -146,6 +146,7 @@ Node >= 22, pnpm 10. No Docker, no database, no API key.
 | [`AGENTS.md`](AGENTS.md) | a coding agent, or anyone, opening the repository cold |
 | [`docs/design.md`](docs/design.md) | the full specification: doctrine, architecture, journeys |
 | [`docs/plans/`](docs/plans) | the per-stage implementation plans, task by task |
+| [`docs/reviews/`](docs/reviews) | dated code reviews: what was found, at which commit |
 | [`SECURITY.md`](SECURITY.md) | the threat model, and what is *not* guaranteed |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | three commands and the rules the CI enforces |
 
