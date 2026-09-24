@@ -22,6 +22,7 @@ describe('IacFsProvider', () => {
     const repository = await new IacFsProvider(FIXTURES).load()
 
     expect(repository.rejected).toEqual([])
+    expect(repository.ignored).toEqual([])
     expect(refs(repository.entities)).toEqual(refs(fixtures.entities))
   })
 
@@ -44,8 +45,33 @@ describe('IacFsProvider', () => {
     expect(entities.some((entity) => entity.metadata.name === 'billing-db-prod')).toBe(true)
   })
 
+  it('sets aside a document it does not model, against the file it came from', async () => {
+    // Neither refused nor dropped: a Group beside the entities is part of a
+    // real catalogue, and `main` counts what was set aside.
+    const repo = await mkdtemp(path.join(tmpdir(), 'iac-provider-'))
+    await cp(FIXTURES, repo, { recursive: true })
+    await mkdir(path.join(repo, 'org'), { recursive: true })
+    await writeFile(
+      path.join(repo, 'org/tiger.yml'),
+      'apiVersion: backstage.io/v1alpha1\nkind: Group\nmetadata:\n  name: tiger\n',
+    )
+
+    const { entities, rejected, ignored } = await new IacFsProvider(repo).load()
+
+    expect(rejected).toEqual([])
+    expect(ignored).toEqual([
+      {
+        source: 'org/tiger.yml',
+        kind: 'Group',
+        ref: 'group:default/tiger',
+        reason: 'kind Group is not modelled by this tool; group tiger left as is',
+      },
+    ])
+    expect(entities).toHaveLength(33)
+  })
+
   it('reads an empty directory as no entity and no rejection', async () => {
     const repo = await mkdtemp(path.join(tmpdir(), 'iac-provider-empty-'))
-    expect(await new IacFsProvider(repo).load()).toEqual({ entities: [], rejected: [] })
+    expect(await new IacFsProvider(repo).load()).toEqual({ entities: [], rejected: [], ignored: [] })
   })
 })

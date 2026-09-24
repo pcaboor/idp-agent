@@ -1,5 +1,6 @@
 import type { Entity } from '../schemas/entity.js'
 import { resolveEntityPath } from '../paths/entity-path.js'
+import type { IgnoredDocument } from '../yaml/serialize.js'
 
 /**
  * What CI must refuse. The catalogue ingests a duplicate in silence and lets
@@ -14,6 +15,7 @@ export type Rule =
   | 'missing-witness'
   | 'misplaced-entity'
   | 'dangling-reference'
+  | 'not-modelled'
 
 export type Severity = 'error' | 'warning'
 
@@ -31,6 +33,11 @@ export interface RepositoryFile {
   readonly entities: readonly Entity[]
   /** One message per document the schema refused. Reported, never dropped. */
   readonly rejections: readonly string[]
+  /**
+   * Documents set aside as someone else's — a Group, an API, a mkdocs.yml.
+   * Reported, never refused, and never an entity to any other rule.
+   */
+  readonly ignored: readonly IgnoredDocument[]
   /** Documents in the file, including the null ones a witness is made of. */
   readonly documents: number
 }
@@ -61,12 +68,17 @@ export function checkRepository(snapshot: RepositorySnapshot): Violation[] {
   const declared = new Set<string>()
   const byRef = new Map<string, string[]>()
 
+  // What a set-aside document declares is not an entity to any rule, but it is
+  // there: a reference to it is not dangling, only to something not modelled.
+  const aside = new Set<string>()
+
   for (const file of snapshot.files) {
     for (const entity of file.entities) {
       const ref = refOf(entity)
       declared.add(ref)
       byRef.set(ref, [...(byRef.get(ref) ?? []), file.path])
     }
+    for (const { ref } of file.ignored) if (ref !== undefined) aside.add(ref)
   }
 
   // A duplicate is one violation naming every file involved: reporting one of
@@ -92,6 +104,20 @@ export function checkRepository(snapshot: RepositorySnapshot): Violation[] {
   ])
 
   for (const file of snapshot.files) {
+    // Warning, not error: a repository that is also the company's catalogue
+    // declares Groups and APIs beside the entities this tool manages, and a
+    // red build there would push people to move them out — or to delete them.
+    // Named, because a document read and never mentioned is one the user
+    // believes was checked.
+    for (const ignored of file.ignored) {
+      violations.push({
+        rule: 'not-modelled',
+        file: file.path,
+        severity: 'warning',
+        message: ignored.reason,
+      })
+    }
+
     for (const rejection of file.rejections) {
       violations.push({
         rule: 'invalid-entity',
@@ -155,7 +181,7 @@ export function checkRepository(snapshot: RepositorySnapshot): Violation[] {
   for (const file of snapshot.files) {
     for (const entity of file.entities) {
       for (const reference of referencesOf(entity)) {
-        if (declared.has(reference)) continue
+        if (declared.has(reference) || aside.has(reference)) continue
         violations.push({
           rule: 'dangling-reference',
           file: file.path,

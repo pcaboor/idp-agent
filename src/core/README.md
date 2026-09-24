@@ -19,7 +19,12 @@ and nothing here can be steered by what it validates. Hence the property tests r
   so `no` or `123` survive as strings for the YAML 1.1 readers that also read the repository.
   `parseDocuments` is the matching one place YAML becomes entities, for `context/`'s readers
   and for the bytes a plan would write: a document the parser faults is a rejection, never
-  the value `toJS()` would have guessed.
+  the value `toJS()` would have guessed. It sorts before it judges: a Component or Resource
+  goes to the strict `entitySchema`, while another kind — a Group, an API — or a mapping
+  with no kind that is plainly another tool's, like a `mkdocs.yml` or a Helm `Chart.yaml`,
+  is `ignored`, returned with a reason and never refused. Anything that looks like a failed
+  entity — an empty kind, Backstage's `apiVersion` or a `metadata` with no kind, a document
+  that is not a mapping — is still a rejection.
 - **Textual surgery** — `insertDocument`, `removeDocument`, `appendSequenceItem`,
   `listDocumentNames`. Line edits, because a reviewer must see an added line, not an AST
   round-trip's reformat. Locating a document by lines is a heuristic, so what it cannot

@@ -10,11 +10,16 @@ reads the demo SI, a directory laid out exactly like an IaC repository. `IacFsPr
 `source` is the file's repository-relative path.
 
 `LoadResult` pairs `entities` with `rejected: Rejection[]` — one `{ source, reason }` for every
-document `entitySchema` refused, or the parser faulted (a duplicate key or an unclosed bracket,
-with its line and column; an alias bomb, which the parser stops on without a position). Both
-readers go through `core/`'s `parseDocuments`, the one reader of entity documents, and `iac-fs`
-also rejects a file it cannot open — no permission, a link to nothing — rather than ending
-`validate` on a stack trace. Throwing would lose every valid entity because of one bad one;
+document `entitySchema` refused — a Component or Resource, or anything that looks like a failed
+entity — or the parser faulted (a duplicate key or an unclosed bracket, with its line and column;
+an alias bomb, which the parser stops on without a position) — and with `ignored`, the same
+`source` and `reason` plus the `kind` and the reference, for every document this tool does not
+model: a Group, an API, a `mkdocs.yml` beside the entities. Those are part of a real catalogue,
+so they are set aside rather than refused, `main` counts them in one line, and a reference to one
+is not called dangling.
+Both readers go through `core/`'s `parseDocuments`, the one reader of entity documents, and
+`iac-fs` also rejects a file it cannot open — no permission, a link to nothing — rather than
+ending `validate` on a stack trace. Throwing would lose every valid entity because of one bad one;
 swallowing is what the catalogue does — it ignores duplicates in silence (design.md § 4.4)
 and reports nothing for what it could not ingest — and a tool that inherits the failure mode
 it exists to prevent is worth nothing.

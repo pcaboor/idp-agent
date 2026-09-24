@@ -243,11 +243,20 @@ agrees with a pre-`access` declaration, which is the case it exists to express, 
 refused against a grant that declares one.
 
 **The proposal schemas are strict, and deliberately stricter than `entitySchema`.** That
-asymmetry is the point. `entitySchema` READS a real Backstage catalogue, whose files
-legitimately carry fields this tool does not model, so making it strict would break the
-reader on any real repository. A PROPOSAL travels the other way: an unmodelled field there
-is either an invention, or a field the deterministic serialiser will drop in silence.
-Both are unacceptable.
+asymmetry is the point. `entitySchema` READS the Components and Resources of a real
+Backstage catalogue, whose files legitimately carry fields this tool does not model, so
+making it strict would break the reader on any real repository. Those two kinds are the
+only ones it reads. The rest of a real catalogue — Groups, Users, APIs, Systems, Locations,
+Templates — and a YAML file that is no catalogue entry at all, a `mkdocs.yml` beside the
+entities, are set aside by `parseDocuments` before the schema runs: reported, as a
+`not-modelled` warning in `validate` and one summary line in the read commands, and never
+refused, because refusing them turned a catalogue Backstage reads without complaint into a
+red build. A mistyped kind is told from a custom one by where it is declared, never by
+guessing what was meant: Backstage's own `backstage.io/` apiVersion defines a closed set of
+kinds, so `kind: Resouce` under it is refused with the list of the kinds that group
+defines, while a kind of somebody's own lives under their own apiVersion and is set aside.
+A PROPOSAL travels the other way: an unmodelled field there is either an invention, or a
+field the deterministic serialiser will drop in silence. Both are unacceptable.
 
 Four things are absent from a proposal, and each absence is a guarantee rather than an
 omission:
@@ -463,7 +472,7 @@ share one sentence and one exit code, and a reason printed under a sentence that
 contradicts it is not saying it.
 
 Gate [4] is not a second set of rules. It applies the Plan **virtually** — builds the
-snapshot that would exist if the plan landed — and runs the same six `validate` rules CI
+snapshot that would exist if the plan landed — and runs the same seven `validate` rules CI
 runs over the result. It exists because the catalogue lags the repository by about two
 minutes (§4.4): what was true when the plan was drafted may not be true now, so an entity
 may have appeared, or appeared somewhere else. (It was gate [5] until the reordering above,

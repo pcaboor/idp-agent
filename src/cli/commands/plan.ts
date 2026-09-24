@@ -197,7 +197,15 @@ interface Contexts {
  * would vouch for references this repository has never seen.
  */
 const graphOf = (snapshot: RepositorySnapshot): EntityGraph =>
-  EntityGraph.from(snapshot.files.flatMap((file) => [...file.entities]))
+  EntityGraph.from(
+    snapshot.files.flatMap((file) => [...file.entities]),
+    // A document set aside — an API, a System — still exists, so a reference
+    // to it resolves. Left out, the summary the agents read counted it
+    // dangling where `validate` does not.
+    snapshot.files.flatMap((file) =>
+      file.ignored.flatMap(({ ref }) => (ref === undefined ? [] : [ref])),
+    ),
+  )
 
 /**
  * Both gates read the same repository, so they are built together and the

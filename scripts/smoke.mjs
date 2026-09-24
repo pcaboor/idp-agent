@@ -9,7 +9,7 @@
  */
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { cpSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -220,6 +220,23 @@ check({
   code: 0,
   stdout:
     /1 error already in the repository, in files this plan does not touch[\s\S]*\+\+\+ b\/catalog\/databases\/orders-db-prod\.yml/,
+})
+
+// A declarations repository that is also the company's Backstage catalogue: a
+// Group beside the entities is set aside with a warning, never refused — the
+// generated CI runs exactly this, and a red build here would push people to
+// move their Groups out.
+const CATALOGUE = path.join(ELSEWHERE, 'catalogue')
+cpSync(path.join(ROOT, 'fixtures/si-demo'), CATALOGUE, { recursive: true })
+mkdirSync(path.join(CATALOGUE, 'org'), { recursive: true })
+writeFileSync(
+  path.join(CATALOGUE, 'org/tiger.yml'),
+  '---\napiVersion: backstage.io/v1alpha1\nkind: Group\nmetadata:\n  name: tiger\nspec:\n  type: team\n  children: []\n',
+)
+check({
+  args: ['validate', 'catalogue'],
+  code: 0,
+  stdout: /^warning org\/tiger\.yml: kind Group is not modelled[\s\S]*33 entities in 34 files, 0 violations/m,
 })
 
 // The one check that can catch "green tests, broken package": the templates

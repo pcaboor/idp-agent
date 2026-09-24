@@ -205,6 +205,259 @@ describe('parseDocuments, the one reader of entity documents', () => {
   })
 
   it('counts a null document, which a witness is made of, and rejects nothing for it', () => {
-    expect(parseDocuments('---\n')).toEqual({ entities: [], rejections: [], documents: 1 })
+    expect(parseDocuments('---\n')).toEqual({ entities: [], rejections: [], ignored: [], documents: 1 })
+  })
+})
+
+describe('parseDocuments over a real Backstage catalogue', () => {
+  // A declarations repository is often the company's catalogue as well: Groups,
+  // Users, Systems, APIs, Locations beside the entities this tool manages, and a
+  // mkdocs.yml or renovate.yaml at the root. Refusing each of those made
+  // `validate` red on a catalogue Backstage reads without complaint; dropping
+  // them would be the silent ignore the tool exists to compensate for. They are
+  // set aside, and said to be.
+  const document = (...lines: string[]): string => ['---', ...lines, ''].join('\n')
+  const read = (...lines: string[]) => parseDocuments(document(...lines))
+
+  it('sets aside a mapping that declares neither apiVersion nor kind', () => {
+    const { entities, rejections, ignored } = read('site_name: Billing', 'nav:', '  - Home: index.md')
+    expect(entities).toEqual([])
+    expect(rejections).toEqual([])
+    expect(ignored).toEqual([{ reason: 'not a catalogue entity: no apiVersion or kind' }])
+  })
+
+  it.each([
+    ['Group', 'team-a', 'kind Group is not modelled by this tool; group team-a left as is'],
+    ['API', 'billing-events', 'kind API is not modelled by this tool; api billing-events left as is'],
+    ['User', 'jdoe', 'kind User is not modelled by this tool; user jdoe left as is'],
+    ['Location', 'root', 'kind Location is not modelled by this tool; location root left as is'],
+    ['Template', 'new-service', 'kind Template is not modelled by this tool; template new-service left as is'],
+  ])('sets aside a %s, naming its kind and name', (kind, name, reason) => {
+    const { entities, rejections, ignored } = read(
+      'apiVersion: backstage.io/v1alpha1',
+      `kind: ${kind}`,
+      'metadata:',
+      `  name: ${name}`,
+      'spec: {}',
+    )
+    expect(entities).toEqual([])
+    expect(rejections).toEqual([])
+    expect(ignored).toEqual([{ kind, reason, ref: `${kind.toLowerCase()}:default/${name}` }])
+  })
+
+  it('sets aside a kind of its own, declared under its own apiVersion', () => {
+    const { rejections, ignored } = read(
+      'apiVersion: acme.com/v1',
+      'kind: Gadget',
+      'metadata:',
+      '  name: widget',
+    )
+    expect(rejections).toEqual([])
+    expect(ignored).toEqual([
+      {
+        kind: 'Gadget',
+        reason: 'kind Gadget is not modelled by this tool; gadget widget left as is',
+        ref: 'gadget:default/widget',
+      },
+    ])
+  })
+
+  // Backstage's own group defines a closed set of kinds. Under it, a kind it
+  // does not define is a typo, not somebody's own kind — and set aside, a
+  // mistyped `Resouce` would pass CI as a warning with the entity missing.
+  it.each(['Resouce', 'Componet', 'Gadget'])(
+    'refuses %s under Backstage’s own apiVersion, naming the kinds it defines',
+    (kind) => {
+      const { entities, rejections, ignored } = read(
+        'apiVersion: backstage.io/v1alpha1',
+        `kind: ${kind}`,
+        'metadata:',
+        '  name: orders-db-prod',
+      )
+      expect(entities).toEqual([])
+      expect(ignored).toEqual([])
+      expect(rejections).toEqual([
+        `kind ${kind} is not one Backstage defines under backstage.io/v1alpha1 ` +
+          '(API, Component, Domain, Group, Location, Resource, System, Template, User)',
+      ])
+    },
+  )
+
+  it('matches Backstage’s kinds case-insensitively, as Backstage does', () => {
+    const { rejections, ignored } = read('apiVersion: backstage.io/v1alpha1', 'kind: group')
+    expect(rejections).toEqual([])
+    expect(ignored.map((one) => one.kind)).toEqual(['group'])
+  })
+
+  it('sets aside a Kubernetes Deployment, whatever its apiVersion', () => {
+    const { rejections, ignored } = read(
+      'apiVersion: apps/v1',
+      'kind: Deployment',
+      'metadata:',
+      '  name: billing-api',
+    )
+    expect(rejections).toEqual([])
+    expect(ignored).toEqual([
+      {
+        kind: 'Deployment',
+        reason: 'kind Deployment is not modelled by this tool; deployment billing-api left as is',
+        ref: 'deployment:default/billing-api',
+      },
+    ])
+  })
+
+  it('names no entity when the set-aside document states no name', () => {
+    expect(read('apiVersion: backstage.io/v1alpha1', 'kind: System').ignored).toEqual([
+      { kind: 'System', reason: 'kind System is not modelled by this tool; left as is' },
+    ])
+  })
+
+  it('reads a Component through the strict schema, beside the documents it sets aside', () => {
+    const { entities, rejections, ignored, documents } = parseDocuments(
+      [
+        document(
+          'apiVersion: backstage.io/v1alpha1',
+          'kind: Component',
+          'metadata:',
+          '  name: billing-api',
+          'spec:',
+          '  type: service',
+          '  lifecycle: production',
+          '  owner: group:default/tiger',
+        ),
+        document('apiVersion: backstage.io/v1alpha1', 'kind: API', 'metadata:', '  name: billing-events'),
+      ].join('\n'),
+    )
+    expect(entities.map((entity) => entity.metadata.name)).toEqual(['billing-api'])
+    expect(rejections).toEqual([])
+    expect(ignored.map((one) => one.kind)).toEqual(['API'])
+    expect(documents).toBe(2)
+  })
+
+  it('still refuses a Resource the schema refuses: stricter than Backstage on purpose', () => {
+    const { rejections, ignored } = read(
+      'apiVersion: backstage.io/v1alpha1',
+      'kind: Resource',
+      'metadata:',
+      '  name: orders-db',
+      'spec:',
+      '  type: database',
+    )
+    expect(ignored).toEqual([])
+    expect(rejections).toHaveLength(1)
+    expect(rejections[0]).toMatch(/owner/)
+  })
+
+  it('refuses a kind that is Component or Resource spelled in another case', () => {
+    // Backstage compares kinds case-insensitively, so this IS a Component to
+    // the catalogue. Setting it aside would turn a declaration this tool
+    // manages into a warning; the strict schema refuses it instead.
+    const { rejections, ignored } = read(
+      'apiVersion: backstage.io/v1alpha1',
+      'kind: component',
+      'metadata:',
+      '  name: billing-api',
+    )
+    expect(ignored).toEqual([])
+    expect(rejections).toHaveLength(1)
+  })
+
+  it('refuses a backstage.io document that states no kind', () => {
+    const { rejections, ignored } = read('apiVersion: backstage.io/v1alpha1', 'metadata:', '  name: x')
+    expect(ignored).toEqual([])
+    expect(rejections).toHaveLength(1)
+  })
+
+  it('refuses a backstage.io document that states no kind, even with nothing else', () => {
+    const { rejections, ignored } = read('apiVersion: backstage.io/v1beta1')
+    expect(ignored).toEqual([])
+    expect(rejections).toHaveLength(1)
+  })
+
+  it('sets aside a document of another tool that has an apiVersion and no kind', () => {
+    // A Helm Chart.yaml: `apiVersion: v2` is Helm's, and the chart is common in
+    // an IaC repository. Only Backstage's apiVersion makes a kindless document
+    // a failed entity.
+    const { rejections, ignored } = read('apiVersion: v2', 'name: web', 'version: 0.1.0')
+    expect(rejections).toEqual([])
+    expect(ignored).toEqual([{ reason: 'not a catalogue entity: no kind' }])
+  })
+
+  it.each([
+    ['metadata', ['metadata:', '  name: orders-db']],
+    ['spec', ['spec:', '  type: database']],
+  ])('refuses a mapping with a %s and no header, which is an entity missing its header', (_, lines) => {
+    const { rejections, ignored } = read(...lines)
+    expect(ignored).toEqual([])
+    expect(rejections).toHaveLength(1)
+  })
+
+  it.each([
+    ['empty', '""'],
+    ['blank', '"   "'],
+  ])('refuses a document whose kind is %s, which names nobody\'s kind', (_, kind) => {
+    const { rejections, ignored } = read(
+      'apiVersion: backstage.io/v1alpha1',
+      `kind: ${kind}`,
+      'metadata:',
+      '  name: blank',
+    )
+    expect(ignored).toEqual([])
+    expect(rejections).toHaveLength(1)
+  })
+
+  it('quotes a kind or a name that is not plain, so the reason cannot forge a line', () => {
+    // The reason is printed to the CI log and a terminal, and neither field
+    // went through the entity schema. A newline there would start a line of
+    // its own — an `error` line, a `::error::` annotation — and an escape
+    // sequence would reach the reviewer's terminal.
+    const [set] = read(
+      'apiVersion: acme.com/v1',
+      'kind: "Gro\\u001b[31mup"',
+      'metadata:',
+      '  name: "x\\n::error file=a.yml::forged\\u009b2K"',
+    ).ignored
+    expect(set?.reason).toBe(
+      'kind "Gro\\u001b[31mup" is not modelled by this tool; ' +
+        '"gro\\u001b[31mup" "x\\n::error file=a.yml::forged\\u009b2K" left as is',
+    )
+    expect(set?.reason).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/)
+  })
+
+  it('quotes a kind that is not plain in the refusal of a misdeclared kind too', () => {
+    const [refused] = read(
+      'apiVersion: backstage.io/v1alpha1',
+      'kind: "Reso\\u001b[31muce\\n::error::forged"',
+    ).rejections
+    expect(refused).toMatch(/^kind "Reso\\u001b\[31muce\\n::error::forged" is not one Backstage/)
+    expect(refused).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/)
+  })
+
+  it('names the reference of a set-aside document, so a dependency on it is not dangling', () => {
+    const [set] = read(
+      'apiVersion: backstage.io/v1alpha1',
+      'kind: API',
+      'metadata:',
+      '  name: Billing-Events',
+      '  namespace: payments',
+    ).ignored
+    // Backstage compares references case-insensitively, and a `dependsOn` this
+    // tool accepts is written in lower case.
+    expect(set?.ref).toBe('api:payments/billing-events')
+  })
+
+  it('refuses a document whose kind is not a string', () => {
+    const { rejections, ignored } = read('apiVersion: backstage.io/v1alpha1', 'kind: 42')
+    expect(ignored).toEqual([])
+    expect(rejections).toHaveLength(1)
+  })
+
+  it.each([
+    ['a scalar', 'just a sentence'],
+    ['a sequence', '- a\n- b'],
+  ])('refuses %s, which is not a mapping', (_, body) => {
+    const { rejections, ignored } = parseDocuments(`---\n${body}\n`)
+    expect(ignored).toEqual([])
+    expect(rejections).toHaveLength(1)
   })
 })

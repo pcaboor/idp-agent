@@ -188,6 +188,82 @@ describe('graph and show with --repo', () => {
     expect(err).not.toMatch(DEMO)
   })
 
+  describe('over a repository that is also a Backstage catalogue', () => {
+    const group = (name: string): string =>
+      `---\napiVersion: backstage.io/v1alpha1\nkind: Group\nmetadata:\n  name: ${name}\nspec:\n  type: team\n  children: []\n`
+    const user =
+      '---\napiVersion: backstage.io/v1alpha1\nkind: User\nmetadata:\n  name: jdoe\nspec:\n  memberOf: [tiger]\n'
+    const MKDOCS = 'site_name: Declarations\nnav:\n  - Home: index.md\n'
+
+    it('sums up what it did not load in one line, never one per document', async () => {
+      const cwd = await workspace({
+        'teams.yml': `${group('tiger')}\n${group('lion')}`,
+        'jdoe.yml': user,
+        'mkdocs.yml': MKDOCS,
+      })
+
+      const { code, out, err } = await run(['graph', '--env', 'prod', '--repo', 'iac'], { cwd })
+
+      expect(code).toBe(0)
+      expect(out).toContain('billing-db-prod')
+      expect(err.split('\n').filter((line) => line.startsWith('not loaded:'))).toEqual([
+        'not loaded: 4 documents this tool does not model (Group ×2, User ×1, not an entity ×1)',
+      ])
+      // Set aside, not refused: nothing about them reads as a failure.
+      expect(err).not.toMatch(/skipped/)
+      expect(err).not.toMatch(/tiger|lion|jdoe|mkdocs/)
+    })
+
+    it('does not call dangling a reference to a document it set aside', async () => {
+      // The API is in the repository and counted as not loaded; "dangling"
+      // would say it is not there at all.
+      const ledger = LEDGER.replace(
+        '    - resource:default/mysql-prod-01\n',
+        '    - resource:default/mysql-prod-01\n    - api:default/ledger-events\n',
+      )
+      const cwd = await workspace({
+        'ledger.yml': ledger,
+        'ledger-events.yml':
+          '---\napiVersion: backstage.io/v1alpha1\nkind: API\nmetadata:\n  name: ledger-events\n',
+      })
+
+      const { code, out, err } = await run(['graph', '--env', 'prod', '--repo', 'iac'], { cwd })
+
+      expect(code).toBe(0)
+      expect(out).toContain('ledger-db-prod')
+      expect(err).toContain('not loaded: 1 document this tool does not model (API ×1)')
+      expect(out).not.toMatch(/dangling/)
+    })
+
+    it('does not blame the flag for a repository holding only catalogue documents', async () => {
+      // An organisation's catalogue — Groups and Users — is a catalogue, and
+      // "--repo names the declarations repository" would send the user
+      // looking for another one.
+      const cwd = await mkdtemp(path.join(tmpdir(), 'read-repo-org-'))
+      await mkdir(path.join(cwd, 'iac'), { recursive: true })
+      await writeFile(path.join(cwd, 'iac', 'tiger.yml'), group('tiger'), 'utf8')
+
+      const { code, err } = await run(['graph', '--repo', 'iac'], { cwd })
+
+      expect(code).toBe(1)
+      expect(err).toContain('not loaded: 1 document this tool does not model (Group ×1)')
+      expect(err).not.toMatch(/declares no entity/)
+    })
+
+    it('still points at the flag when nothing it read was catalogue at all', async () => {
+      // A mkdocs.yml and nothing else is what an application repository
+      // looks like, which is the mistake that line exists for.
+      const cwd = await mkdtemp(path.join(tmpdir(), 'read-repo-app-'))
+      await mkdir(path.join(cwd, 'app'), { recursive: true })
+      await writeFile(path.join(cwd, 'app', 'mkdocs.yml'), MKDOCS, 'utf8')
+
+      const { err } = await run(['graph', '--repo', 'app'], { cwd })
+
+      expect(err).toContain('not loaded: 1 document this tool does not model (not an entity ×1)')
+      expect(err).toMatch(/declares no entity/)
+    })
+  })
+
   it('says so when the repository declares no entity, rather than looking like a miss', async () => {
     // The likeliest way to get here is `--repo` pointed at an application
     // repository instead of the declarations one.

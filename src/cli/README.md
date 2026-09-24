@@ -25,7 +25,9 @@ states the fact and stays free of the process — and `bin.ts` assigns it to
 
 **stdout.** `cli/` is the only layer that writes to it. `main(argv, deps)` takes injectable `MainDeps` —
 `root`, `cwd`, `out`, `err` — so `tests/unit/main.test.ts` captures output into arrays and runs against
-`tests/golden/broken-si`. Entities the provider rejected go to `err`, never dropped in silence.
+`tests/golden/broken-si`. Entities the provider rejected go to `err`, never dropped in silence,
+one `skipped` line each; documents it set aside as a kind this tool does not model go there
+too, as one `not loaded:` line counting them by kind.
 
 **Where the SI comes from.** `graph`, `show` and `ask` pick a `ContextProvider` and nothing
 after it knows which: `IacFsProvider` over the declarations repository `--repo` names,

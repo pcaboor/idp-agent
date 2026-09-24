@@ -4,7 +4,7 @@ import { parseArgs } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { FixtureProvider } from '../context/fixtures/index.js'
 import { IacFsProvider } from '../context/iac-fs/provider.js'
-import type { ContextProvider } from '../context/provider.js'
+import type { ContextProvider, Ignored } from '../context/provider.js'
 import { PLAN_LIMITS } from '../core/schemas/plan.js'
 import { NoModelConfiguredError, chooseModel } from '../llm/providers.js'
 import { openRecording, resolveMode } from '../llm/recording.js'
@@ -501,12 +501,13 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     return failed(error, err)
   }
 
-  const { entities, rejected } = await provider.load()
+  const { entities, rejected, ignored } = await provider.load()
   // Reported, never dropped in silence: that silent drop is the catalogue
   // behaviour this tool exists to compensate for (design 4.4).
   for (const rejection of rejected) {
     err(`skipped ${rejection.source}: ${rejection.reason}\n`)
   }
+  if (ignored.length > 0) err(`${notLoaded(ignored)}\n`)
   // A repository that declares nothing answers every question with a miss —
   // "No entity named", "No entity matches" — which reads as a fact about the
   // name or the filter. The likeliest cause is the other one: `--repo` pointed
@@ -515,12 +516,19 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   // an empty declarations repository is a real, freshly scaffolded state.
   // Not when something was rejected: those files were entity declarations
   // that did not parse, the `skipped` lines above say which, and blaming the
-  // flag would send the user to look for another repository.
-  if (command.repo !== undefined && entities.length === 0 && rejected.length === 0) {
+  // flag would send the user to look for another repository. Nor when a
+  // document with a kind was set aside: a repository of Groups and Users is a
+  // catalogue, only not of anything this tool models. A mkdocs.yml alone is
+  // what an application repository looks like, so that still gets the line.
+  const catalogue = ignored.some((document) => document.kind !== undefined)
+  if (command.repo !== undefined && entities.length === 0 && rejected.length === 0 && !catalogue) {
     err(`${command.repo} declares no entity; --repo names the declarations repository\n`)
   }
 
-  const graph = EntityGraph.from(entities)
+  const graph = EntityGraph.from(
+    entities,
+    ignored.flatMap(({ ref }) => (ref === undefined ? [] : [ref])),
+  )
 
   if (command.name === 'ask') {
     return agentBacked(deps, err, out, 'question', async (client) =>
@@ -560,6 +568,32 @@ async function providerOf(
   }
   err(`${DEMO_NOTICE}\n`)
   return new FixtureProvider(deps.root ?? DEFAULT_ROOT)
+}
+
+/**
+ * Everything the read commands set aside, as ONE line. A real catalogue holds
+ * hundreds of Users, and a line each would bury the answer under what is, in
+ * that repository, expected; counted by kind, because the kind is what tells a
+ * reader whether the count is. The kind comes from a file, so it is flattened
+ * like any other text this tool did not write.
+ */
+function notLoaded(ignored: readonly Ignored[]): string {
+  const byKind = new Map<string, number>()
+  let unkinded = 0
+  for (const { kind } of ignored) {
+    if (kind === undefined) {
+      unkinded += 1
+      continue
+    }
+    const label = oneLine(kind)
+    byKind.set(label, (byKind.get(label) ?? 0) + 1)
+  }
+  const counts = [...byKind]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([kind, count]) => `${kind} ×${String(count)}`)
+  if (unkinded > 0) counts.push(`not an entity ×${String(unkinded)}`)
+  const documents = ignored.length === 1 ? 'document' : 'documents'
+  return `not loaded: ${String(ignored.length)} ${documents} this tool does not model (${counts.join(', ')})`
 }
 
 const DEMO_NOTICE =

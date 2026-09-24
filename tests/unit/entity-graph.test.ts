@@ -90,6 +90,17 @@ describe('EntityGraph', () => {
     ])
   })
 
+  it('does not call dangling a reference to a document the repository set aside', () => {
+    // An API is read and not modelled; it exists, so it is not "nothing".
+    const orphan = resource('ghost-access', 'database-access', 'dev', [
+      'api:default/billing-events',
+      'resource:default/vanished',
+    ])
+    expect(EntityGraph.from([orphan], ['api:default/billing-events']).danglingReferences()).toEqual([
+      { from: 'resource:default/ghost-access', to: 'resource:default/vanished' },
+    ])
+  })
+
   it('has no dangling reference in a consistent graph', () => {
     expect(EntityGraph.from([host, db, access, component]).danglingReferences()).toEqual([])
   })
