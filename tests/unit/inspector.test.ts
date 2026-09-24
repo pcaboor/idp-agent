@@ -290,6 +290,20 @@ describe('inspect', () => {
     await expect(inspect(client, EMPTY, emit)).rejects.toThrow(/provider is down/)
   })
 
+  it('closes the event stream as stopped, not refused, before letting a failure through', async () => {
+    // Nothing was judged: the call beneath the agent threw. The caller prints
+    // the error; the stream only has to show the agent ended.
+    const client: LlmClient = {
+      generate: () => Promise.reject(new Error('502 from the gateway')),
+    }
+    const { events, emit } = collect()
+    await expect(inspect(client, EMPTY, emit)).rejects.toThrow('502')
+    expect(events).toEqual([
+      { type: 'agent:start', agent: 'inspector' },
+      { type: 'stopped', agent: 'inspector', reason: '502 from the gateway' },
+    ])
+  })
+
   it('tells the model what the snapshot excluded, without being asked for it', async () => {
     // A model told "here is the repository" about a snapshot that silently
     // dropped half of it answers confidently about the missing half. No tool

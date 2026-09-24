@@ -533,6 +533,7 @@ type AgentEvent =
   | { type: 'tool:result';  name: string; rows: number; truncated: number; error?: string }
   | { type: 'answer:ready'; refs: string[] }
   | { type: 'refused';      agent: AgentName; reason: string }
+  | { type: 'stopped';      agent: AgentName; reason: string }
   | { type: 'repair';       attempt: 1 | 2 | 3; gate: Gate; reason: string }
   | { type: 'retry';        agent: AgentName; reason: string }
   | { type: 'plan:ready';   operations: number }
@@ -551,6 +552,12 @@ is a number with no fact attached. `retry` is an agent handing its own malformed
 call back to the model, inside its own turn — it has failed no gate, and naming one there
 would invent it. Sharing a field put two counters under one name, one restarting inside
 every attempt of the other, and the rendered sequence went backwards within a run.
+
+`stopped` and `refused` are two facts for the same reason. `refused` is an agent judging;
+`stopped` closes an agent whose model call threw — a timeout, a provider failure — and the
+error goes on to the caller, which prints it. So `cli/index.ts` renders `stopped` without
+its reason: with it, the one line a failed call ends on was printed twice, the first time
+as the agent refusing.
 
 Ink consumes the stream at stage 7; tests consume the same stream and assert the sequence,
 and `cli/index.ts` renders one line per event on **stderr** until then — stdout carries

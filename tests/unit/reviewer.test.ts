@@ -576,7 +576,7 @@ describe('a review that did not happen is not an approval', () => {
 
     await expect(reviewPlan(exploding, { plan: PLAN, intent: INTENT, derived: [], targets: [], effects: [] }, emit)).rejects.toThrow('502')
 
-    expect(events.map((event) => event.type)).toEqual(['agent:start', 'refused'])
-    expect(reasonOf(events.find((event) => event.type === 'refused'))).toContain('502')
+    expect(events.map((event) => event.type)).toEqual(['agent:start', 'stopped'])
+    expect(reasonOf(events.find((event) => event.type === 'stopped'))).toContain('502')
   })
 })

@@ -42,8 +42,10 @@ model wrote (`render/plain.ts` says where); what they print from a repository fi
 covered by this paragraph.
 
 **Exit codes.** `EXIT.ok` is 0, `EXIT.notFound` is 1 (the answer is negative: a filter that
-matches nothing, an ambiguous name, or a repository that does not conform), `EXIT.badUsage` is 2 (the arguments were
-refused, or no model is configured), `EXIT.unsupported` is 3 (understood, and this build
+matches nothing, an ambiguous name, or a repository that does not conform — and a model call
+that failed, in the one line `llm/failures.ts` wrote for it), `EXIT.badUsage` is 2 (the
+arguments were refused, or no model, no key or no usable `IDP_TIMEOUT` is configured),
+`EXIT.unsupported` is 3 (understood, and this build
 will not act on it). Only `cli/index.ts` turns `CommandResult.found` into an exit code — a command
 states the fact and stays free of the process — and `bin.ts` assigns it to
 `process.exitCode`.

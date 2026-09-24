@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 1221 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 1307 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -39,7 +39,7 @@ answer is negative — nothing matched, a name was ambiguous, **the repository d
 conform**, a gate refused a plan, the repair loop stopped at three attempts, or something
 failed unexpectedly · `2` the arguments were refused — a bad flag, a plan file that is not
 a plan, a `--repo` that is not a directory, a `.idp-agent.yml` that does not parse — or no
-model is configured · `3` the request was understood and this build will not act on it: a
+model, no key or no usable `IDP_TIMEOUT` is configured · `3` the request was understood and this build will not act on it: a
 change request put to `ask`, a question the model refused, or a plan holding values nobody
 can vouch for, **asked rather than guessed**. A command returns
 `{ text, found, unsupported? }`; only `cli/index.ts` turns that into a code.

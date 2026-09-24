@@ -372,11 +372,9 @@ export async function reviewPlan(
       // the rejection through untouched leaves a stream showing an agent that
       // began and never ended.
       emit({
-        type: 'refused',
+        type: 'stopped',
         agent: 'reviewer',
-        reason: bounded(
-          `the run stopped: ${error instanceof Error ? error.message : String(error)}`,
-        ),
+        reason: bounded(error instanceof Error ? error.message : String(error)),
       })
       throw error
     }
