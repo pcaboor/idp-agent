@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appendedOnly, insertedOnly } from '../../src/core/plan/effect.js'
+import { appendedOnly, insertedOnly, listsConsumer } from '../../src/core/plan/effect.js'
 import type { Entity } from '../../src/core/schemas/entity.js'
 import { serializeEntity } from '../../src/core/yaml/serialize.js'
 
@@ -97,6 +97,38 @@ describe('appendedOnly', () => {
     )
     expect(appendedOnly(BEFORE, after, REF, CONSUMER)).toBe(
       `the result does not list ${CONSUMER} under ${REF}`,
+    )
+  })
+})
+
+describe('a grant that writes its references in short form', () => {
+  // Backstage fills in an omitted kind and namespace, and a real catalogue
+  // relies on it. The file keeps its short form — the surgery never rewrites
+  // what a human wrote — so both checks must compare what the READER makes of
+  // it, which is the full form every plan names.
+  const SHORT = file(grant('grant-a', ['component:checkout'], 'tiger'), grant('grant-b', []))
+
+  it('counts a consumer listed in short form as listed', () => {
+    expect(listsConsumer(SHORT, REF, 'component:default/checkout')).toBe(true)
+    expect(listsConsumer(SHORT, REF, CONSUMER)).toBe(false)
+  })
+
+  it('holds for the consumer appended in full next to short-form neighbours', () => {
+    const after = file(
+      grant('grant-a', ['component:checkout', CONSUMER], 'tiger'),
+      grant('grant-b', []),
+    )
+    expect(appendedOnly(SHORT, after, REF, CONSUMER)).toBeUndefined()
+  })
+
+  it('still refuses a result that rewrote a short form into the full one', () => {
+    // Equal to the reader, and still a byte a reviewer did not ask for.
+    const after = file(
+      grant('grant-a', ['component:checkout', CONSUMER], 'group:default/tiger'),
+      grant('grant-b', []),
+    )
+    expect(appendedOnly(SHORT, after, REF, CONSUMER)).toBe(
+      `the result changes more of ${REF} than its consumers`,
     )
   })
 })

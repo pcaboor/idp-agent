@@ -293,6 +293,52 @@ describe('planEdits, amending an entity', () => {
   })
 })
 
+describe('planEdits, amending a grant written in short form', () => {
+  // The same grant as a person would write it for Backstage, which fills in
+  // the omitted kind and namespace. Nothing rewrites it; everything reads it.
+  const SHORT_FILE = [
+    '---',
+    'apiVersion: backstage.io/v1alpha1',
+    'kind: Resource',
+    'metadata:',
+    '  name: checkout-orders-db-prod',
+    '  annotations:',
+    '    company.fr/env: prod',
+    'spec:',
+    '  type: database-access',
+    '  access: read',
+    '  owner: tiger',
+    '  dependsOn:',
+    '    - resource:orders-db-prod',
+    '  dependencyOf:',
+    '    - component:checkout-web',
+    '',
+  ].join('\n')
+
+  it('sees a consumer it lists in short form as already listed', () => {
+    const signed = sign(AMEND_INTENT, [addConsumer('component:default/checkout-web')])
+    const { edits, dropped } = planEdits(signed, repository([[AMEND_PATH, SHORT_FILE]]))
+
+    expect(dropped).toEqual([])
+    expect(edits).toHaveLength(1)
+    expect(at(edits, 0).after).toBe(SHORT_FILE)
+  })
+
+  it('appends a new consumer in full and leaves the short forms as written', () => {
+    const signed = sign(AMEND_INTENT, [addConsumer('component:default/billing-api')])
+    const { edits, dropped } = planEdits(signed, repository([[AMEND_PATH, SHORT_FILE]]))
+
+    expect(dropped).toEqual([])
+    expect(edits).toHaveLength(1)
+    expect(at(edits, 0).after).toBe(
+      SHORT_FILE.replace(
+        '    - component:checkout-web\n',
+        '    - component:checkout-web\n    - component:default/billing-api\n',
+      ),
+    )
+  })
+})
+
 describe('planEdits, two operations on one file', () => {
   it('emits ONE edit for the file, carrying both operations', () => {
     // The defect this design invites, twice over. Reading both operations from

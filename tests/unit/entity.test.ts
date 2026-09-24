@@ -12,12 +12,22 @@ describe('entity schemas', () => {
     expect(parsed.metadata.annotations).toEqual({})
   })
 
-  it('rejects an owner without a group or user prefix', () => {
-    const result = resourceSchema.safeParse({
+  it('reads an owner without a prefix as a group, the way Backstage does', () => {
+    const parsed = resourceSchema.parse({
       apiVersion: 'backstage.io/v1alpha1',
       kind: 'Resource',
       metadata: { name: 'billing-db-dev' },
       spec: { type: 'database', owner: 'tiger' },
+    })
+    expect(parsed.spec.owner).toBe('group:default/tiger')
+  })
+
+  it('rejects an owner that is neither a group nor a user', () => {
+    const result = resourceSchema.safeParse({
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Resource',
+      metadata: { name: 'billing-db-dev' },
+      spec: { type: 'database', owner: 'component:tiger' },
     })
     expect(result.success).toBe(false)
   })

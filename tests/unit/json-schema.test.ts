@@ -61,6 +61,20 @@ describe('entityJsonSchema', () => {
     expect(JSON.stringify(entityJsonSchema())).toContain('readwrite')
   })
 
+  it('describes the short references the reader accepts, not only the full form', () => {
+    // The file shipped to a repository is what an editor checks it against. A
+    // schema stricter than the reader flags the owner Backstage's own example
+    // writes; the one rule it cannot state is named instead.
+    const [component] = (entityJsonSchema() as {
+      oneOf: { properties: { spec: { properties: { owner: { pattern: string } } } } }[]
+    }).oneOf
+    const owner = new RegExp(component?.properties.spec.properties.owner.pattern ?? '$^')
+    expect(owner.test('artist-relations-team')).toBe(true)
+    expect(owner.test('Group:payments/team-a')).toBe(true)
+    expect(owner.test('component:team-a')).toBe(false)
+    expect(entityJsonSchema().$comment).toMatch(/metadata\.namespace/)
+  })
+
   it('is a real JSON Schema document', () => {
     expect(entityJsonSchema()).toHaveProperty('$schema')
   })
@@ -69,5 +83,12 @@ describe('entityJsonSchema', () => {
 describe('planJsonSchema', () => {
   it('exports without throwing, and describes the operation union', () => {
     expect(JSON.stringify(planJsonSchema())).toContain('create-entity')
+  })
+
+  it('does not describe a leniency only the reader has', () => {
+    // A proposal names every reference in full and carries no
+    // metadata.namespace: the reader's short-form note is not true of it.
+    expect(planJsonSchema().$comment).not.toMatch(/namespace/)
+    expect(planJsonSchema().$comment).toMatch(/dependencyOf/)
   })
 })

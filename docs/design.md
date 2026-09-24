@@ -259,6 +259,15 @@ defines, while a kind of somebody's own lives under their own apiVersion and is 
 A PROPOSAL travels the other way: an unmodelled field there is either an invention, or a
 field the deterministic serialiser will drop in silence. Both are unacceptable.
 
+References follow the same asymmetry. A real catalogue writes `owner: team-a` and
+`resource:orders-db`, and Backstage fills in the omitted kind and namespace by documented
+defaults — the referring entity's namespace, and per field a default kind (Group for an
+owner, none at all for `dependsOn` and `dependencyOf`, where the kind must be written).
+`entitySchema` applies those same defaults and yields `kind:namespace/name`, so everything
+downstream compares one spelling while the file keeps the one a person wrote. That is
+reading what Backstage reads, not inferring: a `dependsOn` with no kind is still refused.
+A proposal, and everything the engine writes, takes the full form only.
+
 Four things are absent from a proposal, and each absence is a guarantee rather than an
 omission:
 

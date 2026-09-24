@@ -55,7 +55,10 @@ export type UnknownValue = z.infer<typeof unknownSchema>
  * other kinds never reach the schema: `parseDocuments` sets them aside. A
  * PROPOSAL is the other direction: an unmodelled field there is either an
  * invention or a field that will be dropped in silence when `ordered()`
- * serialises it. Both are unacceptable.
+ * serialises it. Both are unacceptable. The same holds for references:
+ * `entitySchema` reads Backstage's short forms and fills them in, while a
+ * proposal names every reference in full, through the strict
+ * `entityRefSchema` and `ownerRefSchema`.
  *
  * Three things are deliberately absent, and each absence is a guarantee:
  *

@@ -12,6 +12,9 @@ and nothing here can be steered by what it validates. Hence the property tests r
 - **Schemas** — `entitySchema`, `planSchema`, `operationSchema`, `PLAN_LIMITS`, `findUnknowns`,
   `isApplicable`, `RESOURCE_TYPES` behind `natureOf`/`folderOf`. The trust boundary: `Operation`
   is closed, so what is unmodelled cannot be requested, and an `{ unknown }` is never filled in.
+  `entitySchema` reads Backstage's short references (`owner: team-a`) and yields the full
+  `kind:namespace/name`, filling in only Backstage's own defaults; a proposal takes the full
+  form only.
 - **Entity paths** — `computeEntityPath`, `resolveEntityPath`, `assertInsideRepo`,
   `PathEscapeError`. The engine, not the model, decides where a file lands, and containment is
   re-checked here rather than trusted to whichever caller eventually writes.
