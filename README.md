@@ -10,7 +10,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 1126, no API key" src="https://img.shields.io/badge/tests-1126%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 1169, no API key" src="https://img.shields.io/badge/tests-1169%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -46,7 +46,7 @@ idp-agent sits between the two:
   your request or to what your repository already holds. Anything else becomes a question.
 - ✂️ **Minimal diffs.** It edits the text surgically and never reformats a file, so a
   reviewer sees one added line, not a reshuffled file.
-- 🧪 **Reproducible without an API key.** 1126 tests run offline from recordings: no
+- 🧪 **Reproducible without an API key.** 1169 tests run offline from recordings: no
   network, no cost, no flaky model.
 
 > Platform GitOps is the use case. The real subject is **how to build a reliable
@@ -178,9 +178,9 @@ export IDP_MODEL=<model-id>
 ## Commands
 
 ```bash
-idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource] [--repo <dir>]
-idp-agent show <name-or-reference> [--repo <dir>]
-idp-agent ask "<question>" [--repo <dir>]        # needs IDP_PROVIDER and IDP_MODEL
+idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource] [--repo <dir> | --demo]
+idp-agent show <name-or-reference> [--repo <dir> | --demo]
+idp-agent ask "<question>" [--repo <dir> | --demo]  # needs IDP_PROVIDER and IDP_MODEL
 idp-agent validate <directory>                   # what the generated CI runs
 idp-agent init platform <dir> --owner @org/team  # the only command that writes
 idp-agent plan --from <plan.json> --repo <dir>   # no model, and none is possible
@@ -198,7 +198,10 @@ idp-agent init [--repo <dir>]                    # the catalog-info.yml it would
 
 `plan --repo` names the **declarations** repository. `init --repo` names the
 **application** repository being declared. `graph`, `show` and `ask` take the first kind;
-without `--repo` they read the fictional demo SI and say so on stderr.
+without `--repo` they read the directory you are standing in when it is a declarations
+repository (a folder under `catalog/` or `dependencies/` holding a `.witness.yml`, as
+`init platform` writes them), and the fictional demo SI otherwise, or with `--demo`. Either way
+they say which on stderr, and name a repository by its folder.
 
 **Exit codes:** `0` success · `1` negative answer (nothing matched, the repository doesn't
 conform, or a gate refused the plan) · `2` bad arguments, or no model configured · `3`

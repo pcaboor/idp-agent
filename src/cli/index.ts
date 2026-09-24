@@ -4,6 +4,7 @@ import { parseArgs } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { FixtureProvider } from '../context/fixtures/index.js'
 import { IacFsProvider } from '../context/iac-fs/provider.js'
+import { isDeclarationsRepository } from '../context/iac-fs/snapshot.js'
 import type { ContextProvider, Ignored } from '../context/provider.js'
 import { PLAN_LIMITS } from '../core/schemas/plan.js'
 import { NoModelConfiguredError, chooseModel } from '../llm/providers.js'
@@ -36,14 +37,19 @@ import { RepositoryArgumentError, declarationsRoot, type DeclarationsCommand } f
 export type PlanSource = { from: string } | { intent: string }
 
 /**
- * The three read commands take the same optional `repo`: the declarations
- * repository, as `plan --repo` means it. Absent is the demo SI — an absence
- * rather than a value, which is what exactOptionalPropertyTypes keeps it.
+ * Where the three read commands read from: `repo`, the declarations repository
+ * as `plan --repo` means it, or `demo`, the fictional SI. Neither is the
+ * working directory when it is a declarations repository and the demo SI when
+ * it is not — absences rather than values, which is what
+ * exactOptionalPropertyTypes keeps them. Both is unrepresentable, and refused
+ * at parsing.
  */
+export type ReadFrom = { repo?: string; demo?: never } | { demo: true; repo?: never }
+
 export type Command =
-  | { name: 'graph'; options: GraphOptions; repo?: string }
-  | { name: 'show'; query: string; repo?: string }
-  | { name: 'ask'; intent: string; repo?: string }
+  | ({ name: 'graph'; options: GraphOptions } & ReadFrom)
+  | ({ name: 'show'; query: string } & ReadFrom)
+  | ({ name: 'ask'; intent: string } & ReadFrom)
   | { name: 'validate'; directory: string }
   | { name: 'plan'; source: PlanSource; repo: string; json: boolean }
   | { name: 'init-platform'; directory: string; owner: string }
@@ -54,17 +60,18 @@ export type Command =
 
 const HELP = `idp-agent - turn an intent into reviewed infrastructure declarations
 
-  idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource] [--repo <directory>]
-  idp-agent show <name-or-reference> [--repo <directory>]
-  idp-agent ask "<question>" [--repo <directory>]     needs IDP_PROVIDER and IDP_MODEL
+  idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource] [--repo <directory> | --demo]
+  idp-agent show <name-or-reference> [--repo <directory> | --demo]
+  idp-agent ask "<question>" [--repo <directory> | --demo]     needs IDP_PROVIDER and IDP_MODEL
   idp-agent validate <directory>
   idp-agent plan "<intent>" --repo <directory> [--json]
   idp-agent plan --from <plan.json> --repo <directory> [--json]
   idp-agent init [--repo <directory>]
   idp-agent init platform <directory> --owner @org/team
 
-  graph, show and ask read the fictional demo SI unless --repo names your
-  declarations repository, the one plan --repo names.
+  graph, show and ask read the declarations repository --repo names, the one
+  plan --repo names; without it, the current directory when it is one, and
+  the fictional demo SI otherwise or with --demo.
   plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL. Both write nothing.
 `
 
@@ -189,7 +196,7 @@ export function parseArguments(argv: string[]): Command {
       // goes after `--`, which parseArgs' own refusal says.
       const { values, positionals } = parseArgs({
         args: rest,
-        options: { repo: { type: 'string' } },
+        options: READ_OPTIONS,
         allowPositionals: true,
         strict: true,
       })
@@ -200,7 +207,9 @@ export function parseArguments(argv: string[]): Command {
       if (intent.length > PLAN_LIMITS.maxIntentLength) {
         return { name: 'error', message: `a question is limited to ${PLAN_LIMITS.maxIntentLength} characters` }
       }
-      return { name: 'ask', intent, ...repoOf(values.repo) }
+      const from = readFrom('ask', values)
+      if ('message' in from) return from
+      return { name: 'ask', intent, ...from }
     } catch (error) {
       return { name: 'error', message: (error as Error).message }
     }
@@ -210,7 +219,7 @@ export function parseArguments(argv: string[]): Command {
     try {
       const { values, positionals } = parseArgs({
         args: rest,
-        options: { repo: { type: 'string' } },
+        options: READ_OPTIONS,
         allowPositionals: true,
         strict: true,
       })
@@ -224,7 +233,9 @@ export function parseArguments(argv: string[]): Command {
           message: `show takes one name or reference, not ${positionals.length}: ${positionals.join(', ')}`,
         }
       }
-      return { name: 'show', query, ...repoOf(values.repo) }
+      const from = readFrom('show', values)
+      if ('message' in from) return from
+      return { name: 'show', query, ...from }
     } catch (error) {
       return { name: 'error', message: (error as Error).message }
     }
@@ -238,7 +249,7 @@ export function parseArguments(argv: string[]): Command {
           env: { type: 'string' },
           type: { type: 'string' },
           kind: { type: 'string' },
-          repo: { type: 'string' },
+          ...READ_OPTIONS,
         },
         strict: true,
       })
@@ -246,6 +257,8 @@ export function parseArguments(argv: string[]): Command {
       if (kind !== undefined && kind !== 'Component' && kind !== 'Resource') {
         return { name: 'error', message: 'kind must be Component or Resource' }
       }
+      const from = readFrom('graph', values)
+      if ('message' in from) return from
       return {
         name: 'graph',
         options: {
@@ -253,7 +266,7 @@ export function parseArguments(argv: string[]): Command {
           ...(values.type !== undefined ? { type: values.type } : {}),
           ...(kind !== undefined ? { kind } : {}),
         },
-        ...repoOf(values.repo),
+        ...from,
       }
     } catch (error) {
       return { name: 'error', message: (error as Error).message }
@@ -263,9 +276,27 @@ export function parseArguments(argv: string[]): Command {
   return { name: 'error', message: `unknown command "${commandName}"` }
 }
 
-/** Omitted rather than undefined: no `--repo` is the demo SI, an absence. */
-const repoOf = (repo: string | undefined): { repo?: string } =>
-  repo !== undefined ? { repo } : {}
+/** The two options that say where a read command's SI comes from. */
+const READ_OPTIONS = { repo: { type: 'string' }, demo: { type: 'boolean' } } as const
+
+/**
+ * `--repo` or `--demo`, each omitted rather than undefined when not given.
+ * Both is refused rather than one of them winning: the user named two sources
+ * and there is no answer to which one they meant.
+ */
+function readFrom(
+  command: 'graph' | 'show' | 'ask',
+  values: { repo?: string | undefined; demo?: boolean | undefined },
+): ReadFrom | { name: 'error'; message: string } {
+  if (values.demo === true && values.repo !== undefined) {
+    return {
+      name: 'error',
+      message: `${command} takes --repo <directory> or --demo, never both: one names your declarations repository and the other the fictional SI`,
+    }
+  }
+  if (values.demo === true) return { demo: true }
+  return values.repo !== undefined ? { repo: values.repo } : {}
+}
 
 /**
  * What main writes to and reads from. Injected so the command is tested without
@@ -504,13 +535,15 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   }
 
   // The one decision the read commands make about where the SI comes from;
-  // everything after the provider is the same for both.
-  let provider: ContextProvider
+  // everything after the provider is the same for all three roads.
+  let read: Read
   try {
-    provider = await providerOf(command.name, command.repo, deps, err)
+    read = await providerOf(command, deps, err)
   } catch (error) {
     return failed(error, err)
   }
+  const { provider } = read
+  const repository = read.road === 'demo' ? undefined : read.repository
 
   const { entities, rejected, ignored } = await provider.load()
   // Reported, never dropped in silence: that silent drop is the catalogue
@@ -532,8 +565,11 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   // catalogue, only not of anything this tool models. A mkdocs.yml alone is
   // what an application repository looks like, so that still gets the line.
   const catalogue = ignored.some((document) => document.kind !== undefined)
-  if (command.repo !== undefined && entities.length === 0 && rejected.length === 0 && !catalogue) {
-    err(`${command.repo} declares no entity; --repo names the declarations repository\n`)
+  // Only for `--repo`: a working directory is read because its witnesses say
+  // it is a declarations repository, so an empty one is the freshly scaffolded
+  // state and there is no flag to blame.
+  if (read.road === 'repo' && entities.length === 0 && rejected.length === 0 && !catalogue) {
+    err(`${oneLine(read.repository)} declares no entity; --repo names the declarations repository\n`)
   }
 
   const graph = EntityGraph.from(
@@ -550,7 +586,11 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
         // An overview names what it read and counts what it could not: the
         // same facts as the lines above, for the answer that describes the
         // whole catalogue.
-        source: { ...repoOf(command.repo), ignored, rejected: rejected.length },
+        source: {
+          ...(repository !== undefined ? { repo: repository } : {}),
+          ignored,
+          rejected: rejected.length,
+        },
         emit: deps.events ?? progress(err),
         err,
       }),
@@ -563,27 +603,69 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
 }
 
 /**
- * Where a read command's SI comes from.
+ * What a read command reads, the road that reached it — `--repo`, the working
+ * directory it stands in, or the demo SI — and the name of the repository it is
+ * when it is one: its folder's, never the path as typed — `--repo .` named
+ * nothing, and an overview headed "the repository ." said so.
+ */
+type Read =
+  | { road: 'repo' | 'standing'; provider: ContextProvider; repository: string }
+  | { road: 'demo'; provider: ContextProvider }
+
+/**
+ * Where a read command's SI comes from, in this order.
  *
- * With `--repo`, the declarations repository through `iac-fs` — the reader
- * `plan` and `validate` use, behind the guard `plan` uses, resolved against
- * the working directory a relative path was typed in. Without it, the demo SI,
- * and a line on stderr saying so before anything else: an answer about an
- * invented company that does not say it is invented is read as an answer about
- * the user's own. stderr, because stdout is the answer and gets piped.
+ * `--repo`: the declarations repository through `iac-fs` — the reader `plan`
+ * and `validate` use, behind the guard `plan` uses, resolved against the
+ * working directory a relative path was typed in. `--demo`: the demo SI.
+ * Neither: the working directory when its markers say it is a declarations
+ * repository (`isDeclarationsRepository`, which never walks), so nobody types
+ * `--repo .` from inside their own; the demo SI otherwise.
+ *
+ * The demo SI, and a repository read from the working directory, are each said
+ * on stderr in one line, before anything else — only `--repo` is silent: an
+ * answer about an invented company that does not say it is invented is read
+ * as an answer about the user's own, `--demo` or not, and an answer about the
+ * directory someone happens to stand in, as an answer about the demo they
+ * expected. stderr, because stdout is the answer and gets piped.
+ *
+ * The working directory is asked for only on the roads that need it: a shell
+ * can stand in a directory since removed, where `process.cwd()` throws, and the
+ * demo SI needs none — so that is a directory that is not a declarations
+ * repository, not a failure.
  */
 async function providerOf(
-  command: Exclude<DeclarationsCommand, 'plan'>,
-  repo: string | undefined,
+  command: { name: Exclude<DeclarationsCommand, 'plan'> } & ReadFrom,
   deps: MainDeps,
   err: (chunk: string) => void,
-): Promise<ContextProvider> {
-  if (repo !== undefined) {
-    return new IacFsProvider(await declarationsRoot(command, repo, deps.cwd ?? process.cwd()))
+): Promise<Read> {
+  if (command.repo !== undefined) {
+    const root = await declarationsRoot(command.name, command.repo, deps.cwd ?? process.cwd())
+    return { road: 'repo', provider: new IacFsProvider(root), repository: folderOf(root) }
+  }
+  if (command.demo !== true) {
+    const root = standingIn(deps)
+    if (root !== undefined && (await isDeclarationsRepository(root))) {
+      const repository = folderOf(root)
+      err(`${standingNotice(repository)}\n`)
+      return { road: 'standing', provider: new IacFsProvider(root), repository }
+    }
   }
   err(`${DEMO_NOTICE}\n`)
-  return new FixtureProvider(deps.root ?? DEFAULT_ROOT)
+  return { road: 'demo', provider: new FixtureProvider(deps.root ?? DEFAULT_ROOT) }
 }
+
+/** The working directory, or none when it has been removed from under the shell. */
+function standingIn(deps: MainDeps): string | undefined {
+  try {
+    return path.resolve(deps.cwd ?? process.cwd())
+  } catch {
+    return undefined
+  }
+}
+
+/** A repository's name: its folder's. The root of the filesystem has none, so it is its path. */
+const folderOf = (root: string): string => path.basename(root) || root
 
 /**
  * Everything the read commands set aside, as ONE line. A real catalogue holds
@@ -613,6 +695,11 @@ function notLoaded(ignored: readonly Ignored[]): string {
 
 const DEMO_NOTICE =
   'reading the demo SI, a fictional company; pass --repo <directory> to read your own declarations repository'
+
+/** Flattened: a folder's name is whatever someone called it, escape sequences included. */
+const standingNotice = (repository: string): string =>
+  `reading the declarations repository in the current directory (${oneLine(repository)}); ` +
+  '--repo <directory> reads another, --demo the fictional SI'
 
 /**
  * Colour belongs to a terminal, and only main knows whether it holds one: an

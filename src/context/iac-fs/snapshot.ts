@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises'
+import { lstat, readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { RepositoryFile, RepositorySnapshot } from '../../core/validate/rules.js'
 import { parseDocuments } from '../../core/yaml/serialize.js'
@@ -86,6 +86,43 @@ async function readOne(root: string, absolute: string): Promise<RepositoryFile> 
   // The same reader `core/` uses on the bytes a plan would write, so a file
   // cannot be conformant here and broken there.
   return { path: where, ...parseDocuments(content) }
+}
+
+/** The two roots `init platform` lays its witnessed folders under. */
+const DECLARATION_ROOTS = ['catalog', 'dependencies'] as const
+
+/**
+ * Whether `directory` is a declarations repository, told by its markers: a
+ * `catalog/` or a `dependencies/` holding at least one folder with a witness in
+ * it, which is the layout `init platform` writes. An application repository
+ * declares itself in a `catalog-info.yaml` at its root and has neither.
+ *
+ * One `readdir` of the root, one of each of those two and one `lstat` per
+ * folder they list, never a walk: this runs wherever `ask` is typed, $HOME
+ * included, and a guess about the directory must not cost a scan of it. A
+ * declarations repository one folder down is therefore not found, which is
+ * right — `--repo` names it.
+ *
+ * Entries are judged as `walk` judges them, by what `readdir` reports, so a
+ * `catalog/` that is a symbolic link is not followed here because it is not
+ * followed there, and a root that can be searched but not listed is a no
+ * because `walk` cannot list it: saying yes would announce a repository and
+ * then read nothing. Anything unreadable is a no, and the demo SI is read, as
+ * without this.
+ */
+export async function isDeclarationsRepository(directory: string): Promise<boolean> {
+  const top = await readdir(directory, { withFileTypes: true }).catch(() => [])
+  for (const name of DECLARATION_ROOTS) {
+    if (!top.some((entry) => entry.name === name && entry.isDirectory())) continue
+    const folder = path.join(directory, name)
+    const entries = await readdir(folder, { withFileTypes: true }).catch(() => [])
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const witness = await lstat(path.join(folder, entry.name, WITNESS)).catch(() => undefined)
+      if (witness?.isFile() === true) return true
+    }
+  }
+  return false
 }
 
 export async function readRepository(root: string): Promise<RepositorySnapshot> {

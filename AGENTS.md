@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 1126 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 1169 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -99,9 +99,14 @@ The two `--repo` flags name different repositories, which is the first thing tha
 someone up. `plan --repo` is the **declarations** repository the preview is decided
 against; `init --repo` is the **application** repository being declared. For
 `plan "<intent>"` the Inspector reads the directory the user is standing in. `graph`,
-`show` and `ask` take `--repo` in `plan`'s sense, through the same guard; without it they
-read the fictional `fixtures/si-demo/` and say so in one line on stderr, because an answer
-about an invented company that does not say so is read as one about the user's own.
+`show` and `ask` take `--repo` in `plan`'s sense, through the same guard. Without it they
+read the working directory when its root carries the markers `init platform` writes — a
+witnessed folder under `catalog/` or `dependencies/`, looked for there and never by walking
+— and otherwise, or with `--demo`, the fictional `fixtures/si-demo/`. `--demo` with `--repo`
+is refused. The demo SI, and a repository read from the working directory, are each said in
+one line on stderr — only `--repo` is silent — because an answer about an invented company
+that does not say so is read as one about the user's own; a repository is named by its
+folder, never as the `.` it was typed as.
 
 ## Layering
 
