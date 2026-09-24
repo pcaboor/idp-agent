@@ -157,6 +157,20 @@ describe('answerQuestion', () => {
     )
   })
 
+  it('hands back an answer the flat advertisement allows and the union refuses', async () => {
+    // A provider is shown `refs` as optional (llm/tool-schema.ts), and the
+    // client passes an invalid call through unchanged: this parse is the gate.
+    const client = scripted([
+      turnCalling('answer', { outcome: 'entities' }),
+      turnCalling('answer', { outcome: 'nothing' }),
+    ])
+    const { emit } = collect()
+    expect((await answerQuestion(client, fakeTools([]), INPUT, emit)).answer.outcome).toBe(
+      'nothing',
+    )
+    expect(client.calls).toBe(2)
+  })
+
   it('reports unanswerable when the model stops without calling answer', async () => {
     const client = scripted([{ text: 'the answer is 4', toolCalls: [], finishReason: 'stop' }])
     const { emit } = collect()
