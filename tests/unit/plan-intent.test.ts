@@ -612,6 +612,18 @@ describe('what a run looks like on a terminal', () => {
     expect(renderEvent({ type: 'refused', agent: 'reviewer', reason: 'not asked for' })).toBe(
       '! reviewer refused: not asked for',
     )
+    expect(
+      renderEvent({
+        type: 'overridden',
+        path: 'operations.0.entity.spec.owner',
+        owner: 'group:default/lynx',
+        determined: 'group:default/tiger',
+        from: ['component:default/billing-api'],
+      }),
+    ).toBe(
+      '  = operations.0.entity.spec.owner is group:default/lynx, as stated; ' +
+        'component:default/billing-api would give group:default/tiger',
+    )
     // The questions and the answer ARE what the command prints, on stdout. A
     // stderr copy would state one fact twice.
     expect(renderEvent({ type: 'answer:ready', refs: ['resource:default/x'] })).toBeUndefined()

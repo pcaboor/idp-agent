@@ -3,9 +3,10 @@ import { renderUnifiedDiff, type FileEdit } from '../../src/core/diff/unified.js
 import { planEdits } from '../../src/core/plan/edits.js'
 import type { SignatureContext } from '../../src/core/plan/sign.js'
 import { signPlan } from '../../src/core/plan/sign.js'
-import { findUnknowns, planSchema } from '../../src/core/schemas/plan.js'
+import { findUnknowns, planSchema, type Plan } from '../../src/core/schemas/plan.js'
 import { parseEntity } from '../../src/core/yaml/serialize.js'
 import { listDocumentNames } from '../../src/core/yaml/surgery.js'
+import { saidWithLevels } from '../support/provenance.js'
 
 const vocabulary = {
   kinds: ['Component', 'Resource'],
@@ -15,8 +16,6 @@ const vocabulary = {
 }
 
 const context = (over: Partial<SignatureContext> = {}): SignatureContext => ({
-  // A person's own request, which is what every fixture here models.
-  wordsOf: 'user',
   witnessed: new Set([
     'resource:default/orders-db-prod',
     'resource:default/checkout-orders-db-prod',
@@ -27,14 +26,19 @@ const context = (over: Partial<SignatureContext> = {}): SignatureContext => ({
   vocabulary,
   repoRoot: '/repo',
   declared: new Map(),
-  // The level is asked, never read out of the request, so a fixture that
-  // wants a complete plan answers for it — which is what a run does.
-  answered: new Set(['read']),
   ...over,
 })
 
+/**
+ * Signed against the request the plan carries — a person's own, which is what
+ * every fixture here models — with `read` answered for each level it states.
+ * A level is asked, never read out of the request, so a fixture that wants a
+ * complete plan answers for it, which is what a run does.
+ */
+const signAs = (plan: Plan, c: SignatureContext) => signPlan(plan, c, saidWithLevels(plan))
+
 const sign = (intent: string, operations: unknown[]) => {
-  const result = signPlan(planSchema.parse({ intent, operations }), context())
+  const result = signAs(planSchema.parse({ intent, operations }), context())
   if ('outcome' in result) throw new Error(`refused: ${JSON.stringify(result.refusals)}`)
   return result
 }
@@ -382,7 +386,7 @@ describe('planEdits, what it refuses to do quietly', () => {
       entityRef: 'component:default/checkout-orders-db-prod',
       patch: { patch: 'add-dependency-of' as const, consumer: 'component:default/billing-api' },
     }
-    const signed = signPlan(
+    const signed = signAs(
       planSchema.parse({ intent: AMEND_INTENT, operations: [asComponent] }),
       context({
         witnessed: new Set([
@@ -429,7 +433,7 @@ describe('planEdits, what it refuses to do quietly', () => {
       entityRef: 'resource:default/billing-api-orders-db-prod',
       patch: { patch: 'add-dependency-of' as const, consumer: 'component:default/payments-api' },
     }
-    const signed = signPlan(
+    const signed = signAs(
       planSchema.parse({ intent: CREATE_INTENT, operations: [createAccess, patchIt] }),
       context({
         witnessed: new Set([

@@ -1,6 +1,6 @@
 import type { Plan } from '../schemas/plan.js'
 import { RESOURCE_TYPES, natureOf, type ResourceType } from '../schemas/resource-types.js'
-import { echoes } from './echoes.js'
+import { stated, type Provenance } from './provenance.js'
 
 /**
  * A right's owner is not a choice. It is a consequence.
@@ -38,7 +38,7 @@ import { echoes } from './echoes.js'
  *      of every entity in THAT SAME graph, and `seededVocabulary` only ever
  *      adds environments, so it never removes one;
  *   3. `signPlan` reaches the leaf `operations.N.entity.spec.owner`. It is not
- *      `.op`, `.patch`, `.kind` or `.type`, so it is not structural; `echoes`
+ *      `.op`, `.patch`, `.kind` or `.type`, so it is not structural; `stated`
  *      may or may not match; `witnessed` holds entity refs, never owner refs;
  *   4. so it falls to `enumerated(vocabulary, path, text)`, which for a path
  *      ending in `.owner` answers `vocabulary.owners.includes(value)` — true by
@@ -61,21 +61,28 @@ import { echoes } from './echoes.js'
  * never saw.
  *
  * So the question asked about a value already in the field is not "is something
- * there" but "did the REQUEST put it there", and `echoes` answers it — the same
- * function the signature classifies `echoed` with, so the two cannot drift
- * about what the request says. That distinction lives IN the plan, in
- * `plan.intent`, and it has to: a caller that grows the request by what the
- * user answered (`withAnswers`) grows what is protected here in the same
- * breath, while a record kept alongside the plan — "these paths were derived
- * last round" — would not survive the one thing the loop does between rounds,
- * which is give the Architect another turn and get back a different plan under
- * the same indices.
+ * there" but "did the USER put it there" — in the request, or answering for
+ * this owner at a prompt — and `stated` answers it, the same predicate the
+ * signature classifies an owner `echoed` with. Both come from `provenance.ts`,
+ * the one module every gate reads what the user said from, so the three cannot
+ * drift about it. The words are the provenance's, never `plan.intent`'s, and
+ * an answer counts at the path it was typed for: a record kept alongside the
+ * plan — "these paths were derived last round" — would not survive the
+ * Architect handing back a different plan under the same indices, but what the
+ * user typed at a field is the user's whatever the engine concluded there
+ * before.
+ *
+ * Reading the request alone made the loop unable to end. An owner nothing
+ * determines — a consumer the catalogue does not declare, or two teams — was
+ * asked, answered, withdrawn on the next pass because the request did not
+ * carry it, and asked again until the rounds ran out.
  *
  * Three outcomes for a right's owner, every pass, whoever wrote what is there:
  *
- *   the request states it      left alone — rule 1, now saying what it claimed
+ *   the user states it         left alone — rule 1: the request, or an answer;
+ *                              reported when the consumers determine another
  *   one consumer answers it    written, and reported, even when it does not move
- *   nothing answers it         a stated value is WITHDRAWN back to a question
+ *   nothing answers it         a value in the field is WITHDRAWN to a question
  *
  * What this does NOT cover, stated as plainly as `sign.ts` states its own:
  *
@@ -100,10 +107,10 @@ import { echoes } from './echoes.js'
  *   - The guarantee in rule 3 below holds only while the caller builds this map
  *     and the signature's vocabulary from ONE graph. Two graphs, and a derived
  *     owner is a value the signer has never heard of.
- *   - It reads the intent of the plan it is HANDED. A caller that lets a
- *     drafter's own `intent` through would let that drafter write the sentence
- *     that protects the owner it wanted; `repair` imposes the caller's, the
- *     way it already does for the signature.
+ *   - It trusts the provenance it is HANDED. `plan.intent` is never read, so
+ *     a drafter's own sentence protects nothing; a caller that built the
+ *     provenance out of that sentence would undo it, which is why `repair`
+ *     takes the provenance from its caller and never from the draft.
  *   - `derived` says the engine computed this owner. It does not say the
  *     proposal had nothing in the field: a right's owner is not the model's to
  *     state (§5.2), so a model that guessed the same value is reported the
@@ -128,6 +135,25 @@ export interface ContestedOwner {
 }
 
 /**
+ * An owner the user stated, kept, where the consumers determine another.
+ *
+ * The user's word outranks the consumers (rule 1), and that is a decision the
+ * engine made about two facts that disagree — so it is stated, not left for a
+ * reader to spot in a diff carrying one team's authorisation and another
+ * team's consumer. The case is not rare in the ask loop: the owner question
+ * and a consumer question are put in the same round, so an owner can be typed
+ * before the consumer that then determines a different one.
+ */
+export interface OverriddenOwner {
+  readonly path: string
+  /** What the user stated, and what the plan keeps. */
+  readonly owner: string
+  /** What the consumers would have given. */
+  readonly determined: string
+  readonly from: readonly string[]
+}
+
+/**
  * The plan, and what happened to it.
  *
  * Not a bare `Plan`, and the extra two fields are the reason. This function
@@ -147,6 +173,7 @@ export interface Derivation {
   readonly plan: Plan
   readonly derived: readonly DerivedOwner[]
   readonly contested: readonly ContestedOwner[]
+  readonly overridden: readonly OverriddenOwner[]
 }
 
 /**
@@ -162,27 +189,10 @@ const isResourceType = (value: unknown): value is ResourceType =>
 /**
  * Absent and `{unknown}` are the same fact: nobody stated an owner. It is what
  * says whether there is a value to withdraw, and no longer what says whether a
- * value may be overwritten — see `requested`.
+ * value may be overwritten — that is `stated`'s.
  */
 const unstated = (owner: unknown): boolean =>
   owner === undefined || (typeof owner === 'object' && owner !== null && 'unknown' in owner)
-
-/**
- * Did the REQUEST put this value here?
- *
- * Rule 1 never overwrites the request's owner, and this is the whole of what
- * "the request's" means — the stronger claim than anything the catalogue
- * implies, because it is what the user asked for rather than something that
- * merely exists. `echoes` is the signature's own test, so an owner left alone
- * here is one gate [2] then classifies `echoed`: one function, one answer about
- * what the request says.
- *
- * Everything else in the field is not the request's and is not protected by a
- * rule about it — the engine's own conclusion from an earlier pass included.
- * That is audit F2, in one predicate.
- */
-const requested = (intent: string, owner: unknown): boolean =>
-  typeof owner === 'string' && echoes(intent, owner)
 
 /**
  * The question a withdrawn owner goes back to being.
@@ -196,9 +206,14 @@ const requested = (intent: string, owner: unknown): boolean =>
 const WITHDRAWN =
   'the request does not state an owner for this access, and its consumers do not determine one'
 
-export function deriveOwners(plan: Plan, owners: ReadonlyMap<string, string>): Derivation {
+export function deriveOwners(
+  plan: Plan,
+  owners: ReadonlyMap<string, string>,
+  provenance: Provenance,
+): Derivation {
   const derived: DerivedOwner[] = []
   const contested: ContestedOwner[] = []
+  const overridden: OverriddenOwner[] = []
   /**
    * opIndex → the owner to write, or the question to put back in its place.
    * Collected first; the plan is cloned once.
@@ -211,11 +226,16 @@ export function deriveOwners(plan: Plan, owners: ReadonlyMap<string, string>): D
     if (entity.kind !== 'Resource') continue
     if (!isResourceType(entity.spec.type) || natureOf(entity.spec.type) !== 'right') continue
     const current = entity.spec.owner
-    // Rule 1, and the only thing that outranks the consumers. Not "something is
-    // already there": that was what let the engine's own value protect itself.
-    if (requested(plan.intent, current)) continue
-
     const path = `operations.${index}.entity.spec.owner`
+    // Rule 1, and the only thing that outranks the consumers: the user stated
+    // this owner. Not "something is already there" — that was what let the
+    // engine's own value protect itself (F2) — and not "the request names it"
+    // alone, which withdrew an owner the user had just typed for this field.
+    // Decided before the consumers are read, and acted on after: what they
+    // would have given is what `overridden` reports.
+    const kept =
+      typeof current === 'string' && stated(provenance, path, current) ? current : undefined
+
     const from: string[] = []
     const found = new Set<string>()
     for (const consumer of entity.spec.dependencyOf ?? []) {
@@ -240,6 +260,14 @@ export function deriveOwners(plan: Plan, owners: ReadonlyMap<string, string>): D
     // consumer would send an access shared by a team's two services back to the
     // user over a question nobody has.
     const [only] = found
+    if (kept !== undefined) {
+      // Only a single determined owner is overridden. Two teams are the
+      // contest the user's word settles, which is what asking them was for.
+      if (found.size === 1 && only !== undefined && only !== kept) {
+        overridden.push({ path, owner: kept, determined: only, from })
+      }
+      continue
+    }
     if (found.size === 1 && only !== undefined) {
       settled.set(index, only)
       // Reported on every pass, including the one where the value does not
@@ -264,7 +292,7 @@ export function deriveOwners(plan: Plan, owners: ReadonlyMap<string, string>): D
     if (!unstated(current)) settled.set(index, { unknown: WITHDRAWN })
   }
 
-  if (settled.size === 0) return { plan, derived, contested }
+  if (settled.size === 0) return { plan, derived, contested, overridden }
 
   // Cloned, never mutated in place. The caller still holds the plan it was
   // handed — `repair` keeps one as the partial plan a clean stop shows — and a
@@ -279,5 +307,5 @@ export function deriveOwners(plan: Plan, owners: ReadonlyMap<string, string>): D
     operation.entity.spec.owner = value
   }
 
-  return { plan: clone, derived, contested }
+  return { plan: clone, derived, contested, overridden }
 }

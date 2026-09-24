@@ -259,9 +259,11 @@ export async function draftPlan(
       if (!reads) {
         const buffered = propose.taken()
         if (buffered !== undefined) {
-          // The intent is the request, in the user's words. `signPlan` measures
-          // every proposed value against it, so a model-authored one would let
-          // a proposal vouch for itself — see the propose tool's own comment.
+          // The intent is the request, in the user's words, and the plan's
+          // record of what was asked. No gate reads it — they read the
+          // caller's `Provenance` — but a model-authored one would be a
+          // proposal writing its own request, and vouching for itself the day
+          // a caller built the provenance from it. See the propose tool.
           //
           // Validated HERE, against the whole plan, and inside the loop. The
           // propose tool checks the operations; `planSchema` checks the plan,

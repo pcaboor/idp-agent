@@ -26,7 +26,7 @@ const proposableOperationSchema = z.discriminatedUnion('op', [createEntity, upda
  *
  * There is **no `intent` field**, and that is not an economy of tokens.
  * `signPlan` classifies a proposed value by where it came from, and a value that
- * appears in `plan.intent` is `echoed` — which signs cleanly. A model that wrote
+ * appears in the request is `echoed` — which signs cleanly. A model that wrote
  * its own intent would be writing both sides of that comparison: put
  * "secret-backdoor" in the intent and every leaf of the plan vouches for itself.
  * The intent is the user's words; `draftPlan` fills them in.

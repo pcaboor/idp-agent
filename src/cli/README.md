@@ -45,6 +45,8 @@ worst thing a CLI in a pipeline can do — the questions print and the run exits
 always has. `undefined` is a decline, and so is an empty line.
 
 Both roads then run **all the gates again** on the filled plan, bounded by
-`ASK_LIMITS.maxRounds`. An answer is not exempted from the signature: the request GREW by
-it (`withAnswers`), because the user is the authority the intent comes from — which is
-what stops the same field being asked about twice.
+`ASK_LIMITS.maxRounds`. An answer is not exempted from any gate: it joins what the user
+stated — `provenanceOf` in `plan.ts`, the request plus every answer at the field it
+answered — and the derivation, the signature and the policies all read that one
+`Provenance`. That is what stops the same field being asked about twice, and what makes an
+answer count exactly as the same value typed into the request would, at that field.

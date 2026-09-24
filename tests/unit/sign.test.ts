@@ -4,6 +4,8 @@ import { signPlan } from '../../src/core/plan/sign.js'
 import type { SignatureContext, SignedPlan } from '../../src/core/plan/sign.js'
 import { planSchema } from '../../src/core/schemas/plan.js'
 import { findUnknowns } from '../../src/core/schemas/plan.js'
+import { nothingStated, type Provenance } from '../../src/core/plan/provenance.js'
+import { saidWithLevels, userSaid } from '../support/provenance.js'
 
 const vocabulary = {
   kinds: ['Component', 'Resource'],
@@ -16,17 +18,12 @@ const vocabulary = {
 const EMPTY = { kinds: [], types: [], environments: [], owners: [] }
 
 const context = (over: Partial<SignatureContext> = {}): SignatureContext => ({
-  // A person's own request, which is what every fixture here models.
-  wordsOf: 'user',
   // Both ends of the grant: a right is over something and held by somebody,
   // and in a real repository both are declared before it is written.
   witnessed: new Set(['resource:default/orders-db-prod', 'component:default/billing-api']),
   vocabulary,
   repoRoot: '/repo',
   declared: new Map(),
-  // The level is asked, never read out of the request, so a fixture that
-  // wants a complete plan answers for it — which is what a run does.
-  answered: new Set(['read']),
   ...over,
 })
 
@@ -62,8 +59,17 @@ const component = {
   },
 }
 
-const signed = (p: ReturnType<typeof plan>, c = context()) => {
-  const result = signPlan(p, c)
+/**
+ * Signed against what a person stated: the request the plan carries — their
+ * own, which is what every fixture here models — and `read` answered for each
+ * level it states. A level is asked and never read out of the request, so a
+ * fixture that wants a complete plan answers for it, which is what a run does.
+ */
+const sign = (p: ReturnType<typeof plan>, c = context(), stated = saidWithLevels(p)) =>
+  signPlan(p, c, stated)
+
+const signed = (p: ReturnType<typeof plan>, c = context(), stated?: Provenance) => {
+  const result = sign(p, c, stated)
   if ('outcome' in result) throw new Error(`refused: ${JSON.stringify(result.refusals)}`)
   return result
 }
@@ -86,7 +92,7 @@ describe('signPlan', () => {
   it('turns an owner nobody can vouch for into a question, not a value', () => {
     // The hole task 2 could not close: group:default/ghost-team is
     // syntactically perfect. Only the vocabulary knows it is fiction.
-    const result = signPlan(
+    const result = sign(
       plan({ ...access, spec: { ...access.spec, owner: 'group:default/ghost-team' } }),
       context(),
     )
@@ -128,7 +134,7 @@ describe('signPlan', () => {
   it('leaves an entity that is already declared to the re-check', () => {
     // The signer says where a value came from. Whether the entity exists is a
     // fact about the repository now, and the re-check owns that.
-    const result = signPlan(
+    const result = sign(
       plan(access),
       context({ declared: new Map([['resource:default/billing-api-orders-db-prod', 'x.yml']]) }),
     )
@@ -186,7 +192,7 @@ describe('the level a grant is for', () => {
     // is not enumerable, for the reason an environment is not: `readwrite`
     // exists in any repository that has granted it once, so letting the
     // catalogue vouch for it would hand out write on a request that said read.
-    const result = signPlan(
+    const result = sign(
       plan(at('readwrite'), 'give billing-api read access to orders-db in prod'),
       context(),
     )
@@ -305,7 +311,7 @@ describe('the brand', () => {
     // `clarify.answer` clones, and a clone of a frozen object is not frozen —
     // which is the whole reason a freeze may stand where a lock on the type
     // could not.
-    const asked = signPlan(
+    const asked = sign(
       plan({ ...access, spec: { ...access.spec, owner: 'group:default/ghost-team' } }),
       context(),
     )
@@ -422,7 +428,10 @@ describe('whose words the request is', () => {
       ],
     })
 
-    const result = signed(plan, context({ wordsOf: 'engine', vocabulary: EMPTY }))
+    const result = signed(plan, context({ vocabulary: EMPTY }), {
+      ...userSaid(composedByEngine),
+      wordsOf: 'engine',
+    })
 
     expect(
       result.classified.find((one) => one.path === 'operations.0.entity.metadata.name')?.class,
@@ -432,7 +441,8 @@ describe('whose words the request is', () => {
   it('still vouches for what the inspection actually read', () => {
     // The other half, and the reason this is not simply a removal: the four
     // values an inspection establishes are read out of the project's own
-    // files, and they stand behind themselves through `answered`.
+    // files, and they stand behind themselves as answers, each at the field
+    // it was read for.
     const plan = planSchema.parse({
       intent: composedByEngine,
       operations: [
@@ -449,11 +459,16 @@ describe('whose words the request is', () => {
 
     const result = signed(
       plan,
-      context({
+      context({ vocabulary: EMPTY }),
+      {
+        ...userSaid(composedByEngine, {
+          'operations.0.entity.metadata.name': 'billing-api',
+          'operations.0.entity.spec.type': 'service',
+          'operations.0.entity.spec.lifecycle': 'production',
+          'operations.0.entity.spec.owner': 'group:default/tiger',
+        }),
         wordsOf: 'engine',
-        vocabulary: EMPTY,
-        answered: new Set(['billing-api', 'service', 'production', 'group:default/tiger']),
-      }),
+      },
     )
 
     expect(
@@ -589,7 +604,7 @@ describe('a Component type is not a closed union either', () => {
     // classifying it structurally vouched for 63 characters a model composed —
     // the one free-text field it controls in front of the Reviewer, and bytes
     // in a `catalog-info.yaml` on the `init --repo` road.
-    const result = signPlan(typed(INJECTION), context())
+    const result = sign(typed(INJECTION), context())
     if ('outcome' in result) throw new Error('should have signed with an unknown')
 
     expect(INJECTION.length).toBeLessThanOrEqual(63)
@@ -627,7 +642,7 @@ describe('a Component type is not a closed union either', () => {
     // `database-access` at all — that one is refused by the schema before the
     // signature sees it, and the folder layout is derived from it.
     const resource = signed(plan(access), context({ vocabulary: { ...vocabulary, types: [] } }))
-    const componentType = signPlan(
+    const componentType = sign(
       typed('service', 'declare billing-api'),
       context({ vocabulary: { ...vocabulary, types: [] } }),
     )
@@ -676,7 +691,7 @@ describe('the level an update states', () => {
       'give billing-api access to the read replica of orders-db',
       'give billing-api read access, absolutely no write access',
     ]) {
-      const result = signed(joining('read', intent), context({ answered: new Set() }))
+      const result = signed(joining('read', intent), context(), userSaid(intent))
       expect(findUnknowns(result.plan)).toContain('operations.0.patch.access')
     }
   })
@@ -685,7 +700,6 @@ describe('the level an update states', () => {
     const result = signed(
       joining('read', 'give billing-api access to orders-db in prod'),
       context({
-        answered: new Set(['read']),
         // The consumer is vouched for the ordinary way; only the level needs
         // an answer, which is the friction this rule costs.
         witnessed: new Set(['resource:default/orders-db-prod', 'component:default/billing-api']),
@@ -730,23 +744,135 @@ describe('a level is asked, never read out of the request', () => {
     // A value the user typed at a prompt is not the same fact as a word that
     // appears in their sentence, and the signature now holds the two apart.
     // Without this the loop would ask the same question for ever.
-    const result = signed(
-      plan(grant, 'give billing-api access to orders-db in prod'),
-      context({ answered: new Set(['readwrite']) }),
-    )
+    const answered = plan(grant, 'give billing-api access to orders-db in prod')
+    const result = signed(answered, context(), saidWithLevels(answered, 'readwrite'))
 
     expect(result.classified.find((leaf) => leaf.path.endsWith('.access'))?.class).toBe('echoed')
     expect(findUnknowns(result.plan)).toEqual([])
   })
 
   it('does not let an answer about one field vouch for another', () => {
-    // An answer is about the question it answered. `withAnswers` grows the
-    // intent, so an answered owner would otherwise vouch for any word in it.
+    // An answer is about the question it answered: `readwrite` typed for the
+    // owner is not the level, however it is spelled.
+    const intent = 'give billing-api access to orders-db in prod'
     const result = signed(
-      plan(grant, 'give billing-api access to orders-db in prod'),
-      context({ answered: new Set(['group:default/tiger']) }),
+      plan(grant, intent),
+      context(),
+      userSaid(intent, { 'operations.0.entity.spec.owner': 'readwrite' }),
     )
 
     expect(findUnknowns(result.plan)).toContain('operations.0.entity.spec.access')
+  })
+})
+
+describe('an answer vouches for the field it answered, and nowhere else', () => {
+  /** Two grants, both stating `read`: one a creation, one an update. */
+  const twoGrants = planSchema.parse({
+    intent: 'give billing-api access to orders-db in prod',
+    operations: [
+      { op: 'create-entity', entity: access },
+      {
+        op: 'update-entity',
+        entityRef: 'resource:default/orders-db-prod',
+        patch: {
+          patch: 'add-dependency-of',
+          consumer: 'component:default/billing-api',
+          access: 'read',
+        },
+      },
+    ],
+  })
+
+  it('leaves the other grant’s level a question when one level was answered', () => {
+    // The value set this replaced vouched for `read` wherever it appeared, so
+    // answering the first grant's level settled the second one's too — a
+    // level nobody was asked about, signed as though the user had said it.
+    const result = signed(
+      twoGrants,
+      context(),
+      userSaid(twoGrants.intent, { 'operations.0.entity.spec.access': 'read' }),
+    )
+
+    expect(findUnknowns(result.plan)).toEqual(['operations.1.patch.access'])
+  })
+
+  it('does not vouch for a different value typed at the same field', () => {
+    const result = signed(
+      twoGrants,
+      context(),
+      userSaid(twoGrants.intent, {
+        'operations.0.entity.spec.access': 'readwrite',
+        'operations.1.patch.access': 'read',
+      }),
+    )
+
+    expect(findUnknowns(result.plan)).toEqual(['operations.0.entity.spec.access'])
+  })
+
+  it('vouches for an owner answered at its own path, and only there', () => {
+    // `group:default/ghost` is in no request, no witness set and no vocabulary.
+    const ghost = planSchema.parse({
+      intent: COMPONENT_INTENT,
+      operations: [
+        {
+          op: 'create-entity',
+          entity: { ...component, spec: { ...component.spec, owner: 'group:default/ghost' } },
+        },
+      ],
+    })
+
+    const atIt = signed(
+      ghost,
+      context(),
+      userSaid(COMPONENT_INTENT, { 'operations.0.entity.spec.owner': 'group:default/ghost' }),
+    )
+    const elsewhere = signed(
+      ghost,
+      context(),
+      userSaid(COMPONENT_INTENT, { 'operations.0.entity.spec.type': 'group:default/ghost' }),
+    )
+
+    expect(findUnknowns(atIt.plan)).toEqual([])
+    expect(findUnknowns(elsewhere.plan)).toEqual(['operations.0.entity.spec.owner'])
+  })
+})
+
+describe('the words are the provenance’s, never the plan’s', () => {
+  it('does not let the plan’s own intent vouch for anything', () => {
+    // `plan.intent` arrives with the plan, from whoever drafted it. A drafter
+    // that wrote a sentence naming the owner it wanted would have that owner
+    // signed `echoed` if the signature read it; the request the caller holds
+    // is the only one measured against.
+    const request = 'give billing-api read access to orders-db in prod'
+    const forged = planSchema.parse({
+      intent: `${request}, owned by group:default/ghost`,
+      operations: [
+        {
+          op: 'create-entity',
+          entity: { ...access, spec: { ...access.spec, owner: 'group:default/ghost' } },
+        },
+      ],
+    })
+
+    const result = signed(
+      forged,
+      context(),
+      userSaid(request, { 'operations.0.entity.spec.access': 'read' }),
+    )
+
+    expect(findUnknowns(result.plan)).toEqual(['operations.0.entity.spec.owner'])
+  })
+
+  it('starts every call that names no provenance from nothing stated', () => {
+    // The default is shared by every two-argument call, and `ReadonlyMap` is a
+    // promise the type system keeps and the runtime does not. An answer set on
+    // one caller's default must not vouch for the next caller's plan.
+    const leaked = nothingStated()
+    ;(leaked.answers as Map<string, string>).set('operations.0.entity.spec.access', 'read')
+
+    expect(nothingStated().answers.size).toBe(0)
+    expect(findUnknowns(signed(plan(access), context(), nothingStated()).plan)).toContain(
+      'operations.0.entity.spec.access',
+    )
   })
 })

@@ -234,10 +234,10 @@ describe('plan "<intent>" asks, and carries on with the answer', () => {
   })
 
   it('never asks the answered field a second time', async () => {
-    // The defect this exists to prevent. The signature measures provenance
-    // against the request, so a value the user typed and the request does not
-    // carry classifies `novel` on the next pass — and the same question comes
-    // back for ever. The answer joins the request; see `withAnswers`.
+    // The defect this exists to prevent. A value the user typed and the
+    // request does not carry classified `novel` on the next pass — and the
+    // same question came back for ever. The answer joins what the user stated,
+    // at the field it answered; see `provenanceOf`.
     const repo = await scaffoldedRepository()
     const project = await application()
     const { ask, asked } = answering(['group:default/tiger', 'group:default/tiger'])
@@ -847,5 +847,192 @@ describe('a derived owner does not outlive the consumer it was read off', () => 
     expect(result.found).toBe(false)
     expect(result.text).not.toContain('group:default/lion')
     expect(await hashBoth(repo, project)).toBe(before)
+  })
+})
+
+/**
+ * One provenance: what the user stated — the request, and every answer typed
+ * at a prompt, at the field it answered — read by the derivation, the
+ * signature and the policies alike.
+ *
+ * Each of the three used to hold its own idea of it. The signature counted an
+ * answer; the derivation and the environment policies read only the request,
+ * so an owner the user answered was withdrawn on the next pass and asked again
+ * until the rounds ran out, and an environment the user answered did not count
+ * as asked — a plan the same word typed into the request would have refused
+ * passed.
+ */
+
+/** A consumer this repository declares nothing about, so no owner follows from it. */
+const UNDECLARED_CONSUMER = 'component:default/checkout-web'
+
+const UNDERIVABLE =
+  `open a database-access granting read to resource:default/orders-db-prod in prod for ` +
+  `${UNDECLARED_CONSUMER}, named checkout-web-orders-db-prod`
+
+const UNDERIVABLE_ACCESS = {
+  op: 'create-entity',
+  entity: {
+    kind: 'Resource',
+    metadata: { name: 'checkout-web-orders-db-prod', env: 'prod' },
+    spec: {
+      type: 'database-access',
+      access: 'read',
+      owner: { unknown: 'the request does not state an owner for this access' },
+      dependsOn: ['resource:default/orders-db-prod'],
+      dependencyOf: [UNDECLARED_CONSUMER],
+    },
+  },
+}
+
+/** In no consumer, no catalogue and no request: only the answer vouches for it. */
+const ANSWERED_OWNER = 'group:default/lynx'
+
+describe('an answer counts for what the user said, at the field they said it', () => {
+  it('keeps an owner the user answered when no consumer determines one (--from)', async () => {
+    // The loop that never converged: the owner is asked, answered, and the
+    // next pass withdrew it — nothing in the REQUEST stated it — so it was
+    // asked again until the rounds ran out, and the run ended on exit 3 with
+    // "Fill them in and run this again" about a field the user had filled.
+    const repo = await catalogued()
+    const from = await planFile(repo, { intent: UNDERIVABLE, operations: [UNDERIVABLE_ACCESS] })
+    const before = await hashTree(repo)
+    const { ask, asked } = answeringPath({ '.spec.owner': ANSWERED_OWNER })
+
+    const result = await runPlan({ from, repo, ask })
+
+    expect(asked.filter((question) => question.path === OWNER_PATH)).toHaveLength(1)
+    expect(result.found).toBe(true)
+    expect(result.unsupported).toBeUndefined()
+    expect(result.text).toContain(`+  owner: ${ANSWERED_OWNER}`)
+    expect(result.text.trimEnd().endsWith(CLOSING)).toBe(true)
+    expect(await hashTree(repo)).toBe(before)
+  })
+
+  it('converges on the seeded plan without asking the owner twice (intent)', async () => {
+    // The same loop on the drafted road, where the filled plan seeds the next
+    // round: one Architect turn, one Reviewer turn, one question per field.
+    const repo = await scaffoldedRepository()
+    const project = await application()
+    const before = await hashBoth(repo, project)
+    const client = converging([UNDERIVABLE_ACCESS])
+    const { ask, asked } = answeringPath({ '.spec.owner': ANSWERED_OWNER })
+
+    const result = await runIntent({
+      intent: UNDERIVABLE,
+      repo,
+      project,
+      client,
+      emit: collect().emit,
+      ask,
+    })
+
+    expect(asked.filter((question) => question.path === OWNER_PATH)).toHaveLength(1)
+    expect(result.found).toBe(true)
+    expect(result.text).toContain(`+  owner: ${ANSWERED_OWNER}`)
+    expect(client.seen.filter((request) => request.agent === 'architect')).toHaveLength(1)
+    expect(client.seen.filter((request) => request.agent === 'reviewer')).toHaveLength(1)
+    expect(await hashBoth(repo, project)).toBe(before)
+  })
+
+  it('refuses an answered environment exactly as it refuses a typed one (--from)', async () => {
+    // `dev`, answered at the grant's environment, on a grant whose name carries
+    // `prod` — a segment the witnessed `orders-db-prod` vouches for, so the
+    // signature passes it and only the policy can see it. Typed into the
+    // request, `environment-mismatch` refuses it; typed at a prompt, the policy
+    // used to count no environment as asked and stayed silent, and the plan
+    // reached a diff. The request names no environment in words on purpose.
+    const repo = await catalogued()
+    // A policy measures against the environments the repository uses, and this
+    // one used only prod: `dev` has to exist before naming it can count.
+    await writeFile(
+      path.join(repo, 'catalog', 'databases', 'orders-db-dev.yml'),
+      DATABASE_DOCUMENT.replaceAll('orders-db-prod', 'orders-db-dev').replace(
+        'env: prod',
+        'env: dev',
+      ),
+      'utf8',
+    )
+    const request = 'give component:default/billing-api read access to the orders database'
+    const grant = (env: unknown) => {
+      const operation = accessFor('component:default/billing-api', {
+        unknown: 'the request does not state an owner for this access',
+      })
+      const { entity } = operation
+      return { ...operation, entity: { ...entity, metadata: { ...entity.metadata, env } } }
+    }
+    const report = async (plan: unknown): Promise<{ found: boolean; policies: unknown[] }> => {
+      const from = await planFile(repo, plan)
+      const { ask } = answeringPath({ '.metadata.env': 'dev' })
+      const result = await runPlan({ from, repo, ask, json: true })
+      const { policies } = JSON.parse(result.text) as { policies: unknown[] }
+      return { found: result.found, policies }
+    }
+
+    const typed = await report({ intent: `${request} in dev`, operations: [grant('dev')] })
+    const answered = await report({
+      intent: request,
+      operations: [grant({ unknown: 'the request names no environment' })],
+    })
+
+    expect(typed.found).toBe(false)
+    expect(typed.policies).toEqual([
+      expect.objectContaining({
+        policy: 'environment-mismatch',
+        path: 'operations.0.entity.metadata',
+      }),
+    ])
+    // The same refusal, at the same field. The sentence differs on purpose:
+    // it says whose word `dev` was, and the request never said it.
+    const where = (report: { found: boolean; policies: unknown[] }) => ({
+      found: report.found,
+      policies: report.policies.map((one) => {
+        const { policy, opIndex, path: at } = one as Record<string, unknown>
+        return { policy, opIndex, path: at }
+      }),
+    })
+    expect(where(answered)).toEqual(where(typed))
+    expect(answered.policies).toEqual([
+      expect.objectContaining({
+        message: expect.stringContaining('dev was answered at operations.0.entity.metadata.env'),
+      }),
+    ])
+  })
+
+  it('keeps an answered owner over a consumer answered in the same round, and says so', async () => {
+    // Both questions leave in one round: the consumer is one nobody vouched
+    // for, and nothing determines the owner yet. The user answers lynx for the
+    // owner and billing-api — tiger's — for the consumer. Their word about the
+    // owner stands, as it would in the request; the run says out loud that
+    // the consumer determines someone else.
+    const repo = await catalogued()
+    const from = await planFile(repo, {
+      intent: CONSUMER_QUESTION,
+      operations: [
+        accessFor(UNDECLARED_CONSUMER, {
+          unknown: 'the request does not state an owner for this access',
+        }),
+      ],
+    })
+    const { events, emit } = collect()
+    const { ask, asked } = answeringPath({
+      '.spec.owner': ANSWERED_OWNER,
+      '.dependencyOf.0': 'component:default/billing-api',
+    })
+
+    const result = await runPlan({ from, repo, ask, emit })
+
+    expect(asked.map((question) => question.path)).toEqual(
+      expect.arrayContaining([OWNER_PATH, CONSUMER_PATH]),
+    )
+    expect(result.found).toBe(true)
+    expect(result.text).toContain(`+  owner: ${ANSWERED_OWNER}`)
+    expect(events).toContainEqual({
+      type: 'overridden',
+      path: OWNER_PATH,
+      owner: ANSWERED_OWNER,
+      determined: 'group:default/tiger',
+      from: ['component:default/billing-api'],
+    })
   })
 })

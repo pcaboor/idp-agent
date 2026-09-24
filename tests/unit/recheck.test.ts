@@ -3,10 +3,11 @@ import { planEdits } from '../../src/core/plan/edits.js'
 import { recheckPlan } from '../../src/core/plan/recheck.js'
 import { signPlan } from '../../src/core/plan/sign.js'
 import type { SignatureContext, SignedPlan } from '../../src/core/plan/sign.js'
-import { planSchema } from '../../src/core/schemas/plan.js'
+import { planSchema, type Plan } from '../../src/core/schemas/plan.js'
 import { parseDocuments, serializeEntity } from '../../src/core/yaml/serialize.js'
 import { ENV_ANNOTATION } from '../../src/core/schemas/vocabulary.js'
 import type { RepositoryFile, RepositorySnapshot } from '../../src/core/validate/rules.js'
+import { saidWithLevels } from '../support/provenance.js'
 
 const vocabulary = {
   kinds: ['Component', 'Resource'],
@@ -16,17 +17,20 @@ const vocabulary = {
 }
 
 const signature = (over: Partial<SignatureContext> = {}): SignatureContext => ({
-  // A person's own request, which is what every fixture here models.
-  wordsOf: 'user',
   witnessed: new Set(['resource:default/orders-db-prod', 'component:default/billing-api']),
   vocabulary,
   repoRoot: '/repo',
   declared: new Map(),
-  // The level is asked, never read out of the request, so a fixture that
-  // wants a complete plan answers for it — which is what a run does.
-  answered: new Set(['read']),
   ...over,
 })
+
+/**
+ * Signed against the request the plan carries — a person's own, which is what
+ * every fixture here models — with `read` answered for each level it states.
+ * A level is asked, never read out of the request, so a fixture that wants a
+ * complete plan answers for it, which is what a run does.
+ */
+const signAs = (plan: Plan, c: SignatureContext) => signPlan(plan, c, saidWithLevels(plan))
 
 const access = {
   kind: 'Resource' as const,
@@ -44,7 +48,7 @@ const sign = (entity: unknown = access, over: Partial<SignatureContext> = {}): S
     intent: 'give billing-api read access to orders-db in prod',
     operations: [{ op: 'create-entity', entity }],
   })
-  const result = signPlan(parsed, signature(over))
+  const result = signAs(parsed, signature(over))
   if ('outcome' in result) throw new Error(`refused: ${JSON.stringify(result.refusals)}`)
   return result
 }
@@ -274,7 +278,7 @@ describe('recheckPlan', () => {
         },
       ],
     })
-    const result = signPlan(
+    const result = signAs(
       parsed,
       // Both references must be vouched for or the signer turns them into
       // questions — which is the signature doing its job, not a fixture detail.
@@ -336,7 +340,7 @@ describe('recheckPlan attributes each violation', () => {
         },
       ],
     })
-    const signed = signPlan(
+    const signed = signAs(
       parsed,
       signature({
         witnessed: new Set([

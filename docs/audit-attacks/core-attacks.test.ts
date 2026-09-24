@@ -12,16 +12,6 @@ import { planSchema, type Plan } from '../../src/core/schemas/plan.js'
 import type { GenerateRequest, GenerateResult, LlmClient } from '../../src/llm/client.js'
 
 const context = (over: Partial<SignatureContext> = {}): SignatureContext => ({
-  // A request somebody typed. Added when `wordsOf` was: without it this
-  // fixture silently became engine-composed, and G's first test failed for a
-  // fixture reason rather than because the defect it asserts was closed —
-  // which would have read here as a closure that never happened.
-  wordsOf: 'user',
-  // Likewise: `answered` arrived with the level question in 84fde41, and this
-  // fixture never gained it — so every test here threw on `context.answered`
-  // instead of asserting, and a crash counts as "failing", which in this
-  // folder reads as "closed". The oracle was lying in the safe direction.
-  answered: new Set<string>(),
   witnessed: new Set(['resource:default/orders-db-prod', 'component:default/billing-api']),
   vocabulary: {
     kinds: ['Component', 'Resource'],
@@ -34,8 +24,22 @@ const context = (over: Partial<SignatureContext> = {}): SignatureContext => ({
   ...over,
 })
 
+/**
+ * A request somebody typed, and nothing answered. What the user stated is the
+ * `Provenance` `signPlan` takes beside the context; left out, it defaults to
+ * nothing stated, and this fixture would silently become engine-composed — G's
+ * first test would then fail for a fixture reason rather than because the
+ * defect it asserts was closed, which reads here as a closure that never
+ * happened. The same trap `wordsOf` and then `answered` set when each arrived
+ * in the context: a crash or a fixture failure counts as "failing", which in
+ * this folder reads as "closed".
+ */
 const signed = (plan: Plan, over: Partial<SignatureContext> = {}): SignedPlan => {
-  const result = signPlan(plan, context(over))
+  const result = signPlan(plan, context(over), {
+    intent: plan.intent,
+    wordsOf: 'user',
+    answers: new Map(),
+  })
   if ('outcome' in result) throw new Error(JSON.stringify(result.refusals))
   return result
 }

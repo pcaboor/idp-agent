@@ -5,6 +5,8 @@ import { signPlan } from '../../src/core/plan/sign.js'
 import type { SignatureContext, SignedPlan } from '../../src/core/plan/sign.js'
 import { findUnknowns, planSchema } from '../../src/core/schemas/plan.js'
 import type { AccessLevel, Nature } from '../../src/core/schemas/resource-types.js'
+import type { Provenance } from '../../src/core/plan/provenance.js'
+import { saidWithLevels, userSaid } from '../support/provenance.js'
 
 const vocabulary = {
   kinds: ['Component', 'Resource'],
@@ -14,8 +16,6 @@ const vocabulary = {
 }
 
 const signature = (over: Partial<SignatureContext> = {}): SignatureContext => ({
-  // A person's own request, which is what every fixture here models.
-  wordsOf: 'user',
   witnessed: new Set([
     'resource:default/orders-db-prod',
     'resource:default/orders-db-dev',
@@ -31,9 +31,6 @@ const signature = (over: Partial<SignatureContext> = {}): SignatureContext => ({
   vocabulary,
   repoRoot: '/repo',
   declared: new Map(),
-  // The level is asked, never read out of the request, so a fixture that
-  // wants a complete plan answers for it — which is what a run does.
-  answered: new Set(['read']),
   ...over,
 })
 
@@ -74,9 +71,15 @@ const policies = (over: Partial<PolicyContext> = {}): PolicyContext => ({
   ...over,
 })
 
+/**
+ * Signed against the request the plan carries — a person's own, which is what
+ * every fixture here models — with `read` answered for each level it states.
+ * A level is asked, never read out of the request, so a fixture that wants a
+ * complete plan answers for it, which is what a run does.
+ */
 const sign = (entity: unknown, intent: string, over: Partial<SignatureContext> = {}): SignedPlan => {
   const parsed = planSchema.parse({ intent, operations: [{ op: 'create-entity', entity }] })
-  const result = signPlan(parsed, signature(over))
+  const result = signPlan(parsed, signature(over), saidWithLevels(parsed))
   if ('outcome' in result) throw new Error(`refused: ${JSON.stringify(result.refusals)}`)
   return result
 }
@@ -101,13 +104,17 @@ const signUpdate = (
   consumer: string,
   intent: string,
   access?: unknown,
-  over: Partial<SignatureContext> = {},
+  stated?: Provenance,
 ): SignedPlan => {
   const parsed = planSchema.parse({ intent, operations: [joining(entityRef, consumer, access)] })
-  const result = signPlan(parsed, signature(over))
+  const result = signPlan(parsed, signature(), stated ?? saidWithLevels(parsed))
   if ('outcome' in result) throw new Error(`refused: ${JSON.stringify(result.refusals)}`)
   return result
 }
+
+/** The policies, measured against the request the signed plan carries and no answer. */
+const check = (signed: SignedPlan, context: PolicyContext = policies()): PolicyViolation[] =>
+  checkPolicies(signed, context, userSaid(signed.plan.intent))
 
 const of = (violations: readonly PolicyViolation[], policy: string): PolicyViolation | undefined =>
   violations.find((violation) => violation.policy === policy)
@@ -139,7 +146,7 @@ describe('environment-mismatch', () => {
       'give billing-api read access to orders-db in dev',
     )
 
-    const violations = checkPolicies(signed, policies())
+    const violations = check(signed, policies())
 
     expect(violations[0]?.policy).toBe('environment-mismatch')
     expect(violations[0]?.message).toContain('prod')
@@ -151,13 +158,13 @@ describe('environment-mismatch', () => {
     // and a policy that fired here would report the same thing twice.
     const signed = sign(accessIn('prod'), 'give billing-api read access to orders-db')
 
-    expect(checkPolicies(signed, policies())).toEqual([])
+    expect(check(signed, policies())).toEqual([])
   })
 
   it('says nothing when every environment in the plan is the one asked for', () => {
     const signed = sign(accessIn('prod'), 'give billing-api read access to orders-db in prod')
 
-    expect(checkPolicies(signed, policies())).toEqual([])
+    expect(check(signed, policies())).toEqual([])
   })
 })
 
@@ -167,7 +174,7 @@ describe('unwitnessed-folder', () => {
     // Writing there invents structure, which is what §7.2 forbids.
     const signed = sign(accessIn('prod'), 'give billing-api read access to orders-db in prod')
 
-    const violations = checkPolicies(signed, policies({ witnesses: new Set(['systems']) }))
+    const violations = check(signed, policies({ witnesses: new Set(['systems']) }))
 
     expect(violations.map((violation) => violation.policy)).toContain('unwitnessed-folder')
     expect(violations[0]?.message).toContain('dependencies/access')
@@ -183,7 +190,7 @@ describe('cross-environment-consumer', () => {
       'give billing-api read access to orders-db in dev',
     )
 
-    const violations = checkPolicies(signed, policies())
+    const violations = check(signed, policies())
 
     expect(violations.map((violation) => violation.policy)).toContain(
       'cross-environment-consumer',
@@ -196,7 +203,7 @@ describe('cross-environment-consumer', () => {
       'give billing-api read access to orders-db in dev',
     )
 
-    expect(checkPolicies(signed, policies())).toEqual([])
+    expect(check(signed, policies())).toEqual([])
   })
 
   it('says nothing about a reference the repository has never seen', () => {
@@ -209,7 +216,7 @@ describe('cross-environment-consumer', () => {
       { witnessed: new Set(['resource:default/ghost']) },
     )
 
-    expect(checkPolicies(signed, policies())).toEqual([])
+    expect(check(signed, policies())).toEqual([])
   })
 })
 
@@ -225,7 +232,7 @@ describe('the policies, over an update-entity', () => {
       'let billing-api use the checkout access to orders-db in dev',
     )
 
-    const violation = of(checkPolicies(signed, policies()), 'environment-mismatch')
+    const violation = of(check(signed, policies()), 'environment-mismatch')
 
     // The engine's own dotted path, as every other violation carries.
     expect(violation?.path).toBe('operations.0.entityRef')
@@ -241,7 +248,7 @@ describe('the policies, over an update-entity', () => {
       'let billing-api use the checkout access to orders-db in dev',
     )
 
-    const violation = of(checkPolicies(signed, policies()), 'cross-environment-consumer')
+    const violation = of(check(signed, policies()), 'cross-environment-consumer')
 
     expect(violation?.path).toBe('operations.0.patch.consumer')
   })
@@ -256,7 +263,7 @@ describe('the policies, over an update-entity', () => {
       'let billing-api use the checkout access to orders-db in prod',
     )
 
-    const violations = checkPolicies(signed, policies({ witnesses: new Set() }))
+    const violations = check(signed, policies({ witnesses: new Set() }))
 
     expect(violations.map((violation) => violation.policy)).not.toContain('unwitnessed-folder')
   })
@@ -271,7 +278,7 @@ describe('the policies, over an update-entity', () => {
       'read',
     )
 
-    expect(checkPolicies(signed, policies())).toEqual([])
+    expect(check(signed, policies())).toEqual([])
   })
 })
 
@@ -297,7 +304,7 @@ describe('declared-level-mismatch, over an update', () => {
     // added consumer line and not the level, so nothing else would ever say so.
     const signed = signUpdate(REF, CONSUMER, 'give billing-api read access to orders-db in prod', 'read')
 
-    const violation = of(checkPolicies(signed, policies()), 'declared-level-mismatch')
+    const violation = of(check(signed, policies()), 'declared-level-mismatch')
 
     expect(violation?.path).toBe('operations.0.patch.access')
     expect(violation?.message).toContain('readwrite')
@@ -320,7 +327,7 @@ describe('declared-level-mismatch, over an update', () => {
       'read',
     )
 
-    const violation = of(checkPolicies(signed, policies()), 'declared-level-mismatch')
+    const violation = of(check(signed, policies()), 'declared-level-mismatch')
 
     expect(violation?.path).toBe('operations.0.patch.access')
     expect(violation?.message).toContain('readwrite')
@@ -337,13 +344,13 @@ describe('declared-level-mismatch, over an update', () => {
       "donne à billing-api l'accès à orders-db en prod",
       'read',
       // Nothing answered: the level is a question whatever the sentence says.
-      { answered: new Set<string>() },
+      userSaid("donne à billing-api l'accès à orders-db en prod"),
     )
 
     expect(findUnknowns(signed.plan)).toEqual(['operations.0.patch.access'])
     // A question is not a claim: the CLI asks before any preview, and refusing
     // here would state one stop twice.
-    expect(checkPolicies(signed, policies())).toEqual([])
+    expect(check(signed, policies())).toEqual([])
   })
 
   it('says nothing when the level stated is the level declared', () => {
@@ -354,7 +361,7 @@ describe('declared-level-mismatch, over an update', () => {
       'read',
     )
 
-    expect(checkPolicies(signed, policies())).toEqual([])
+    expect(check(signed, policies())).toEqual([])
   })
 
   it('refuses an update stating a level against a declaration that states none', () => {
@@ -369,7 +376,7 @@ describe('declared-level-mismatch, over an update', () => {
       'read',
     )
 
-    const violation = of(checkPolicies(signed, policies()), 'declared-level-mismatch')
+    const violation = of(check(signed, policies()), 'declared-level-mismatch')
 
     expect(violation?.path).toBe('operations.0.patch.access')
     expect(violation?.message).toContain('states no level')
@@ -383,7 +390,7 @@ describe('declared-level-mismatch, over an update', () => {
     const signed = signUpdate('resource:default/legacy-orders-db-prod', CONSUMER,
       'let billing-api use the legacy access to orders-db in prod')
 
-    expect(checkPolicies(signed, policies())).toEqual([])
+    expect(check(signed, policies())).toEqual([])
   })
 
   it('refuses an update that states no level against a grant that declares one', () => {
@@ -392,7 +399,7 @@ describe('declared-level-mismatch, over an update', () => {
     // grant has no level, and the consumer would receive one.
     const signed = signUpdate(REF, CONSUMER, 'give billing-api read access to orders-db in prod')
 
-    const violation = of(checkPolicies(signed, policies()), 'declared-level-mismatch')
+    const violation = of(check(signed, policies()), 'declared-level-mismatch')
 
     expect(violation?.path).toBe('operations.0.patch.access')
     expect(violation?.message).toContain('readwrite')
@@ -404,7 +411,7 @@ describe('declared-level-mismatch, over an update', () => {
     // grant this repository declares, and no level of it is wrong yet.
     const signed = signUpdate(REF, CONSUMER, 'give billing-api read access to orders-db in prod', 'read')
 
-    expect(checkPolicies(signed, policies({ levels: new Map() }))).toEqual([])
+    expect(check(signed, policies({ levels: new Map() }))).toEqual([])
   })
 })
 
@@ -419,7 +426,7 @@ describe('declared-level-mismatch, over a creation', () => {
     // that says the opposite.
     const signed = sign(accessIn('prod'), READ_IN_PROD)
 
-    const violations = checkPolicies(
+    const violations = check(
       signed,
       policies({
         levels: new Map<string, AccessLevel | undefined>([[REF, 'readwrite']]),
@@ -437,7 +444,7 @@ describe('declared-level-mismatch, over a creation', () => {
     // with no level does not already say `read`, and appending cannot add one.
     const signed = sign(accessIn('prod'), READ_IN_PROD)
 
-    const violations = checkPolicies(
+    const violations = check(
       signed,
       policies({
         levels: new Map<string, AccessLevel | undefined>([[REF, undefined]]),
@@ -456,7 +463,7 @@ describe('declared-level-mismatch, over a creation', () => {
     const signed = sign(accessIn('prod'), READ_IN_PROD)
 
     expect(
-      checkPolicies(
+      check(
         signed,
         policies({ levels: new Map<string, AccessLevel | undefined>([[REF, 'read']]) }),
       ),
@@ -466,7 +473,7 @@ describe('declared-level-mismatch, over a creation', () => {
   it('says nothing about a grant the repository has never declared', () => {
     const signed = sign(accessIn('prod'), READ_IN_PROD)
 
-    expect(checkPolicies(signed, policies())).toEqual([])
+    expect(check(signed, policies())).toEqual([])
   })
 })
 
@@ -480,8 +487,128 @@ describe('the list itself', () => {
       'give billing-api read access to orders-db in dev',
     )
 
-    const violations = checkPolicies(signed, policies({ witnesses: new Set() }))
+    const violations = check(signed, policies({ witnesses: new Set() }))
 
     expect(new Set(violations.map((violation) => violation.policy)).size).toBeGreaterThan(1)
+  })
+})
+
+/**
+ * The environments a request names are the ones a policy measures against, and
+ * an environment the user typed at a prompt is named just as surely. Reading
+ * only the request, a plan refused with `dev` typed into it passed with `dev`
+ * answered at its environment.
+ */
+describe('an environment the user answered', () => {
+  const REQUEST = 'give billing-api read access to orders-db'
+  // Signed against a request that names dev, so the environment is vouched for
+  // whatever provenance the policy is then handed: what differs below is the
+  // policy's reading of what the user stated, and nothing else.
+  const signed = sign(
+    { ...accessIn('dev'), metadata: { name: 'billing-api-orders-db-prod', env: 'dev' } },
+    `${REQUEST} in dev`,
+  )
+
+  it('counts as asked, exactly as the same word in the request does', () => {
+    const typed = checkPolicies(signed, policies(), userSaid(`${REQUEST} in dev`))
+    const answered = checkPolicies(
+      signed,
+      policies(),
+      userSaid(REQUEST, { 'operations.0.entity.metadata.env': 'dev' }),
+    )
+    const neither = checkPolicies(signed, policies(), userSaid(REQUEST))
+
+    expect(of(typed, 'environment-mismatch')?.message).toContain('the plan touches prod')
+    const where = ({ policy, opIndex, path }: PolicyViolation) => ({ policy, opIndex, path })
+    expect(answered.map(where)).toEqual(typed.map(where))
+    expect(of(neither, 'environment-mismatch')).toBeUndefined()
+  })
+
+  it('credits the answer, never the request, for an environment the request did not name', () => {
+    // Put to the user on stdout and handed back to the Architect: a message
+    // saying the request named `dev` about a request that never did would be
+    // the engine misquoting the person it is reporting to.
+    const typed = of(checkPolicies(signed, policies(), userSaid(`${REQUEST} in dev`)), 'environment-mismatch')
+    const answered = of(
+      checkPolicies(
+        signed,
+        policies(),
+        userSaid(REQUEST, { 'operations.0.entity.metadata.env': 'dev' }),
+      ),
+      'environment-mismatch',
+    )
+
+    expect(typed?.message).toContain('the request named dev')
+    expect(answered?.message).not.toContain('the request named')
+    expect(answered?.message).toContain('dev was answered at operations.0.entity.metadata.env')
+  })
+
+  it('counts only at a field this plan holds, holding the value that was answered', () => {
+    // The request names prod and the update joins a dev grant. An answer at a
+    // path the plan does not have — or at one holding another value — is not
+    // the user naming the environment this plan touches.
+    const update = signUpdate(
+      'resource:default/checkout-orders-db-dev',
+      'component:default/billing-api',
+      'let billing-api use the checkout access to orders-db in prod',
+    )
+    const staging = sign(accessIn('staging', ['resource:default/orders-db-prod']), `${REQUEST} in staging`)
+
+    for (const [plan, answers] of [
+      [update, { 'operations.7.entity.metadata.env': 'dev' }],
+      [update, { 'operations.0.entity.metadata.env': 'dev' }],
+      [staging, { 'operations.0.entity.metadata.env': 'dev' }],
+    ] as const) {
+      const request = plan === update ? plan.plan.intent : `${REQUEST} in prod`
+      const violation = of(
+        checkPolicies(plan, policies(), userSaid(request, answers)),
+        'environment-mismatch',
+      )
+      expect(violation?.message).not.toContain('dev was answered')
+      expect(violation?.message).toContain('the request named prod.')
+    }
+  })
+
+  it('counts for the operation it answered, and for no other', () => {
+    // Operation 0 is a database declared in dev, the user answering dev for
+    // it; operation 1 joins a dev grant on a request that named prod. The
+    // answer was about operation 0's environment and says nothing about 1's.
+    const REQUESTED = 'give component:default/billing-api read access to the orders database in prod'
+    const parsed = planSchema.parse({
+      intent: REQUESTED,
+      operations: [
+        {
+          op: 'create-entity',
+          entity: {
+            kind: 'Resource',
+            metadata: { name: 'orders-db', env: 'dev' },
+            spec: { type: 'database', owner: 'group:default/tiger' },
+          },
+        },
+        joining('resource:default/checkout-orders-db-dev', 'component:default/billing-api', 'read'),
+      ],
+    })
+    const stated = userSaid(REQUESTED, {
+      'operations.0.entity.metadata.env': 'dev',
+      'operations.1.patch.access': 'read',
+    })
+    const result = signPlan(parsed, signature(), stated)
+    if ('outcome' in result) throw new Error(`refused: ${JSON.stringify(result.refusals)}`)
+
+    const mismatches = checkPolicies(result, policies(), stated)
+      .filter((violation) => violation.policy === 'environment-mismatch')
+      .map((violation) => violation.path)
+
+    expect(mismatches).toEqual(['operations.1.entityRef'])
+  })
+
+  it('counts only when it was answered at an environment', () => {
+    const elsewhere = checkPolicies(
+      signed,
+      policies(),
+      userSaid(REQUEST, { 'operations.0.entity.spec.owner': 'dev' }),
+    )
+
+    expect(of(elsewhere, 'environment-mismatch')).toBeUndefined()
   })
 })

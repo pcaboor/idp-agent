@@ -2,6 +2,7 @@ import { questionsOf, type Question } from '../core/plan/clarify.js'
 import { deriveOwners, type DerivedOwner } from '../core/plan/derive.js'
 import { planEdits, type DroppedOperation } from '../core/plan/edits.js'
 import { checkPolicies, type PolicyContext } from '../core/plan/policies.js'
+import type { Provenance } from '../core/plan/provenance.js'
 import { recheckPlan, type Recheck } from '../core/plan/recheck.js'
 import { declaredLevel } from '../core/plan/grant.js'
 import { signPlan, type SignatureContext, type SignedPlan } from '../core/plan/sign.js'
@@ -124,17 +125,20 @@ export type RepairOutcome =
 
 export interface RepairInput {
   /**
-   * The request, in the user's own words, from the caller that read them.
+   * What the user stated — the request in their own words, and what they
+   * answered at a prompt — from the caller that read them.
    *
-   * Held here and imposed on every draft rather than taken from the plan,
-   * because `plan.intent` arrives from the same callback as the plan. The
-   * signature measures provenance against the intent — a value that appears in
-   * it is `echoed`, the strongest claim a value can carry — so a drafter that
-   * wrote its own intent could name the owner it wanted to propose and have
-   * the gate vouch for it. `draftPlan` does overwrite the field today; this is
-   * the gate not depending on that, since it is the gate that would be wrong.
+   * Held here and never taken from the plan, because `plan.intent` arrives
+   * from the same callback as the plan. Every gate that asks whether a value
+   * is the user's reads THIS — a value the user stated is `echoed`, the
+   * strongest claim a value can carry, and an owner the user stated outranks
+   * its consumers — so a drafter that wrote its own intent could otherwise
+   * name the owner it wanted to propose and have the gates vouch for it.
+   * `draftPlan` does overwrite the field today; this is the gate not depending
+   * on that, since it is the gate that would be wrong. The request is imposed
+   * on every draft as well, so the plan a report carries says what was asked.
    */
-  readonly intent: string
+  readonly provenance: Provenance
   /**
    * Ask the Architect for a plan. `report` is what the previous attempt's gate
    * refused, in the engine's own words; it is absent on the first attempt,
@@ -315,14 +319,17 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
     // member there could never appear in `failed`, and the event would name a
     // gate that never fails. The five gates of §6.1 stay five.
     //
-    // The caller's intent, never the draft's — the same substitution the
-    // signature makes four lines below, and now for a second reason. The
-    // derivation keeps an owner the REQUEST states (F2), so a drafter left free
-    // to supply its own `intent` could write the sentence that protects the
-    // owner it wanted. The plan a seeded round hands back carries the PREVIOUS
-    // round's request as well, which is the request without the answer that
-    // round was seeded with.
-    const derivation = deriveOwners({ ...parsed.data, intent: input.intent }, input.owners)
+    // The caller's provenance, never the draft's. The derivation keeps an
+    // owner the user stated (F2), so a drafter whose own `intent` counted
+    // could write the sentence that protects the owner it wanted; the gates
+    // read `input.provenance` and no gate reads `plan.intent`. The caller's
+    // request is imposed on the plan all the same, so the plan the later gates
+    // judge and a clean stop shows carries what the user asked for.
+    const derivation = deriveOwners(
+      { ...parsed.data, intent: input.provenance.intent },
+      input.owners,
+      input.provenance,
+    )
     // Stated, never silent. The engine is overwriting a model's explicit "I do
     // not know" with a value the model never wrote; the same rule that makes a
     // truncated tool result audible makes this one.
@@ -334,6 +341,16 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       if (announced.has(one.path)) continue
       announced.add(one.path)
       emit({ type: 'derived', path: one.path, owner: one.owner, from: [...one.from] })
+    }
+    // An owner the user stated, kept over the one its consumers determine:
+    // a decision about two facts that disagree, said once per path for the
+    // same reason. Keyed apart from `derived`, since one path can be derived
+    // on one attempt and overridden on the next.
+    for (const one of derivation.overridden) {
+      const key = `overridden ${one.path}`
+      if (announced.has(key)) continue
+      announced.add(key)
+      emit({ type: 'overridden', ...one, from: [...one.from] })
     }
     // `derivation.contested` is deliberately not emitted. A contested owner is
     // still a question, and it already leaves as an `ask`; a stderr line beside
@@ -352,8 +369,8 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
     // turns the ones nobody can vouch for into questions rather than refusing
     // them — "declare, never infer" means asking (see `signPlan`).
     gates.push('signature')
-    // The caller's intent, never the draft's. See RepairInput.intent.
-    const signed = signPlan({ ...derivation.plan, intent: input.intent }, input.signature)
+    // The caller's provenance, never the draft's. See RepairInput.provenance.
+    const signed = signPlan(derivation.plan, input.signature, input.provenance)
     if ('outcome' in signed) {
       fail(
         'signature',
@@ -384,7 +401,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
     // into a question by emitting one `{unknown}` anywhere in the plan, and
     // the loop would stop asking it to try again.
     gates.push('policy')
-    const violations = checkPolicies(signed, input.policy)
+    const violations = checkPolicies(signed, input.policy, input.provenance)
     if (violations.length > 0) {
       fail(
         'policy',

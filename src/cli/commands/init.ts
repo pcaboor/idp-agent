@@ -10,6 +10,7 @@ import { readProject } from '../../context/project-fs/snapshot.js'
 import type { FileEdit } from '../../core/diff/unified.js'
 import { questionsOf } from '../../core/plan/clarify.js'
 import { materialise } from '../../core/plan/materialise.js'
+import type { Provenance } from '../../core/plan/provenance.js'
 import { signPlan } from '../../core/plan/sign.js'
 import { planSchema, type Operation, type Plan } from '../../core/schemas/plan.js'
 import { reasonOf } from '../../core/schemas/reject.js'
@@ -95,16 +96,19 @@ export const CATALOG_INFO = 'catalog-info.yaml'
  * The request, composed by the ENGINE out of what the inspection established.
  *
  * `init` has no sentence a user typed — the gesture is "declare this
- * repository" and the answer is in its own files — but `signPlan` measures
- * every proposed value against `plan.intent`, so something has to be there, and
- * what is there decides what the gate can vouch for.
+ * repository" and the answer is in its own files — but a plan carries its
+ * request and the Architect is handed one, so something has to be there. It is
+ * the engine's sentence, and it vouches for nothing: the provenance `runInitRepo`
+ * signs with says so (`wordsOf: 'engine'`).
  *
  * It names **exactly the four values `proposedComponentSchema` lets a model
- * write**, and only where the inspection actually established them. That is the
- * guarantee this buys: a name, a type, a lifecycle or an owner the Architect
- * invents is echoed by nothing, enumerated by nothing, and becomes a question
- * the CLI puts to the user (design §4.1). The Architect cannot introduce a fact
- * the repository does not state.
+ * write**, and only where the inspection actually established them — and
+ * those four, placed at the fields they were read for (`inspected`), are what
+ * the signature is measured against. That is the guarantee this buys: a name,
+ * a type, a lifecycle or an owner the Architect invents is vouched for by
+ * nothing, enumerated by nothing, and becomes a question the CLI puts to the
+ * user (design §4.1). The Architect cannot introduce a fact the repository
+ * does not state.
  *
  * The type was the one of the four that did not hold, and the sentence above is
  * only true because `sign.ts` stopped classifying a Component's `spec.type`
@@ -112,16 +116,16 @@ export const CATALOG_INFO = 'catalog-info.yaml'
  * Resource's is, so an invented one signed `derived` and reached the
  * `catalog-info.yaml` below without anyone being asked. On this road the
  * vocabulary is empty — the graph is `EntityGraph.from([])`, see `runInitRepo`
- * — so a Component type is echoed by this request or it is a question, and
- * there is no third answer.
+ * — so a Component type is the one the inspection read or it is a question,
+ * and there is no third answer.
  *
  * `forgeHandle` is deliberately absent, and its absence is the point of the
  * field: `@acme/platform` is a forge handle and `group:default/platform` is an
  * entity reference, two namespaces that do not survive translation. It is
  * stated to the model as a handle — `formatFacts` prints it — and kept out of
- * the one string that could make it vouch for itself as an owner.
- * `runtime` is absent too: it is evidence for `spec.type`, not a value any
- * proposal field carries, and a value in the request is a value that signs.
+ * this sentence and out of `inspected`, so it can never vouch for itself as an
+ * owner. `runtime` is absent too: it is evidence for `spec.type`, not a value
+ * any proposal field carries.
  *
  * What this does NOT cover, and it is the reason nothing here writes: the
  * Inspector is a model reading files, so this request is not a human's words.
@@ -129,12 +133,12 @@ export const CATALOG_INFO = 'catalog-info.yaml'
  * nothing about whether the inspection was right — §7.3's "confirms the owner
  * it inferred rather than assuming it" is a human reading the diff below.
  */
-const stated = (value: ProjectFacts[keyof ProjectFacts]): string | undefined =>
+const known = (value: ProjectFacts[keyof ProjectFacts]): string | undefined =>
   typeof value === 'string' ? value : undefined
 
 export function requestOf(facts: ProjectFacts): string {
   const values = [facts.name, facts.type, facts.lifecycle, facts.owner]
-    .map(stated)
+    .map(known)
     .filter((value): value is string => value !== undefined)
 
   return [
@@ -181,6 +185,35 @@ function componentsOf(
   }
 
   return refusals.length > 0 ? { refusals } : { proposals }
+}
+
+/**
+ * What the inspection read, as answers at the fields it read them for.
+ *
+ * The four values `requestOf` names, placed where a Component carries each one
+ * — its name, its type, its lifecycle, its owner — in every Component the
+ * Architect proposed. A fact vouches for the field it was read for and for no
+ * other: the lifecycle the inspection read as `production` says nothing about
+ * a `spec.type` spelled the same way, and a set of values used to say it did.
+ * A fact that is `{unknown}` places nothing, and neither does a field the
+ * inspection has no fact for; both leave the value vouched for by nothing,
+ * which is a question — the safe direction.
+ */
+function inspected(facts: ProjectFacts, proposals: readonly Operation[]): Map<string, string> {
+  const fields = [
+    ['metadata.name', facts.name],
+    ['spec.type', facts.type],
+    ['spec.lifecycle', facts.lifecycle],
+    ['spec.owner', facts.owner],
+  ] as const
+  const answers = new Map<string, string>()
+  for (const [index] of proposals.entries()) {
+    for (const [field, fact] of fields) {
+      const value = known(fact)
+      if (value !== undefined) answers.set(`operations.${String(index)}.entity.${field}`, value)
+    }
+  }
+  return answers
 }
 
 /**
@@ -257,30 +290,33 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
     }
   }
 
-  const signed = signPlan({ intent: request, operations: narrowed.proposals }, {
-    // `requestOf` wrote this sentence, so it vouches for no word in it — a
-    // Component named `repository-files` used to sign echoed against "declare
-    // this repository ... from what its own files state", which is the engine
-    // vouching for the model with its own prose.
-    //
-    // What the inspection actually READ out of the project stands behind
-    // itself, in `answered`: the same four values the sentence names, and the
-    // same guarantee this block always claimed — a name, type, lifecycle or
-    // owner the Architect invents is vouched for by nothing and becomes a
-    // question.
+  // `requestOf` wrote this sentence, so it vouches for no word in it — a
+  // Component named `repository-files` used to sign echoed against "declare
+  // this repository ... from what its own files state", which is the engine
+  // vouching for the model with its own prose.
+  //
+  // What the inspection actually READ out of the project stands behind itself,
+  // as answers at the fields it was read for: the same four values the sentence
+  // names, and the same guarantee this block always claimed — a name, type,
+  // lifecycle or owner the Architect invents is vouched for by nothing and
+  // becomes a question.
+  const provenance: Provenance = {
+    intent: request,
     wordsOf: 'engine',
-    // Nothing the engine returned, because nothing was read: see the graph
-    // above. Every value is vouched for by the inspection or by nothing.
-    witnessed: tools.witnessed,
-    vocabulary: seeded,
-    repoRoot: options.project,
-    declared: new Map(),
-    answered: new Set(
-      [facts.name, facts.type, facts.lifecycle, facts.owner]
-        .map(stated)
-        .filter((value): value is string => value !== undefined),
-    ),
-  })
+    answers: inspected(facts, narrowed.proposals),
+  }
+  const signed = signPlan(
+    { intent: request, operations: narrowed.proposals },
+    {
+      // Nothing the engine returned, because nothing was read: see the graph
+      // above. Every value is vouched for by the inspection or by nothing.
+      witnessed: tools.witnessed,
+      vocabulary: seeded,
+      repoRoot: options.project,
+      declared: new Map(),
+    },
+    provenance,
+  )
   if ('outcome' in signed) {
     return {
       text: [
