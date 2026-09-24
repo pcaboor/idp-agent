@@ -202,4 +202,36 @@ describe('architecture', () => {
     )
     expect(offending).toEqual([])
   })
+
+  it('trace/ reaches nothing but types, and only cli/ reaches it', async () => {
+    // A trace is built from what the harness emits, and it leaves the process
+    // through cli/, which owns every way out (ADR-0009). `fetch` needs no
+    // import, so trace/'s source is read for the name too — the limit
+    // SECURITY.md states for the rules above.
+    const offending: string[] = []
+    for (const file of await sourceFiles(path.join(SOURCE_ROOT, 'trace'))) {
+      const name = path.relative(SOURCE_ROOT, file)
+      const code = (await readFile(file, 'utf8'))
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/.*$/gm, '')
+      for (const match of code.matchAll(/^\s*(?:import|export)(\s+type)?\b[^'"]*['"]([^'"]+)['"]/gm)) {
+        const typeOnly = match[1] !== undefined
+        const specifier = match[2] ?? ''
+        if (DISK.test(specifier) || NETWORK.test(specifier) || MODEL_SDK.test(specifier)) {
+          offending.push(`${name} imports ${specifier}`)
+        }
+        if (/(^|\/)cli\//.test(specifier)) offending.push(`${name} imports ${specifier}`)
+        if (/(^|\/)(agents|llm)\//.test(specifier) && !typeOnly) {
+          offending.push(`${name} imports values from ${specifier}`)
+        }
+      }
+      if (/\bfetch\b/.test(code)) offending.push(`${name} names fetch`)
+    }
+    for (const { file, specifier } of await importsUnder(SOURCE_ROOT)) {
+      if (/(^|\/)trace\//.test(specifier) && !file.startsWith('cli/') && !file.startsWith('trace/')) {
+        offending.push(`${file} imports ${specifier}`)
+      }
+    }
+    expect(offending).toEqual([])
+  })
 })
