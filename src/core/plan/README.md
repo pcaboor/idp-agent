@@ -118,10 +118,15 @@ comparing documents would call a genuine replay a change.
 
 It never reads, writes or asks. `planEdits` takes the bytes that exist and returns the
 bytes that would exist; putting them on disk is stage 5's business, in a layer that is
-allowed to have one. `recheckPlan` applies the plan **virtually** — a new snapshot, never a
-mutation of the one it was handed — and runs `checkRepository` over the result, so the
-re-check is the six rules CI already runs asked about a repository that does not exist yet,
-rather than a second set of rules to keep in agreement with the first.
+allowed to have one. What stage 5 inherits is the guarantee `effect.ts` checks: every edit,
+read back with the parser, carries out its operation and changes nothing else, and an
+operation whose bytes do not is dropped with a reason naming the file. The surgery that
+produced the bytes finds documents by reading lines; it can be wrong, and an unchanged file
+is the one mistake that would otherwise read as "already done". `recheckPlan` applies the
+plan **virtually** — a new snapshot, never a mutation of the one it was handed — and runs
+`checkRepository` over the result, so the re-check is the six rules CI already runs asked
+about a repository that does not exist yet, rather than a second set of rules to keep in
+agreement with the first.
 
 And `planEdits` does not judge. Whether the entity already lives in another file is
 `recheckPlan`'s `moved` verdict, whether the folder was ever declared is a policy, and

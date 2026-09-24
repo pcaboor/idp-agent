@@ -1,3 +1,5 @@
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { FixtureProvider } from '../../src/context/fixtures/index.js'
@@ -57,5 +59,29 @@ describe('FixtureProvider', () => {
   it('ignores a witness file, which declares nothing', async () => {
     const { rejected } = await new FixtureProvider(ROOT).load()
     expect(rejected.filter((r) => r.source.includes('witness'))).toEqual([])
+  })
+})
+
+describe('FixtureProvider, over a document the parser has refused', () => {
+  it('reports a duplicate key instead of loading the last value', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'fixtures-dup-'))
+    await writeFile(
+      path.join(root, 'twice.yml'),
+      [
+        '---',
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: Resource',
+        'metadata:',
+        '  name: twice',
+        'spec:',
+        '  type: database',
+        '  owner: group:default/tiger',
+        '  owner: group:default/lion',
+        '',
+      ].join('\n'),
+    )
+    const { entities, rejected } = await new FixtureProvider(root).load()
+    expect(entities).toEqual([])
+    expect(rejected).toEqual([{ source: 'twice.yml', reason: expect.stringContaining('DUPLICATE_KEY') }])
   })
 })

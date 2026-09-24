@@ -184,9 +184,15 @@ describe('appendSequenceItem', () => {
     )
   })
 
-  it('returns the text unchanged when the entity is not in the file', () => {
-    // Absent means already done: a branch may be replayed (design 4.3).
-    expect(appendSequenceItem(existing, 'ghost', 'dependencyOf', CONSUMER)).toBe(existing)
+  it('refuses when it cannot find the entity in the file', () => {
+    // This used to return the text unchanged, citing "absent means already
+    // done" — which is a rule about REMOVAL (§4.3): a line that is gone is a
+    // removal that happened. An append whose target cannot be found has done
+    // nothing, and the unchanged text it returned was byte-identical to "the
+    // consumer is already listed": `nothing to change.`, exit 0.
+    expect(() => appendSequenceItem(existing, 'ghost', 'dependencyOf', CONSUMER)).toThrow(
+      SurgeryError,
+    )
   })
 
   it('returns the text unchanged when the item is already in the sequence', () => {
@@ -243,9 +249,24 @@ describe('appendSequenceItem', () => {
     expect(() => appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toThrow(SurgeryError)
   })
 
-  it('returns the text unchanged when the document has no spec block', () => {
+  it('refuses when the document has no spec block', () => {
+    // Same falsehood as above: nothing appended, reported as already listed.
     const file = lines('---', 'kind: Resource', 'metadata:', `  name: ${ACCESS}`)
-    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(file)
+    expect(() => appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toThrow(
+      /no spec block/,
+    )
+  })
+
+  it('refuses a spec written as a flow mapping', () => {
+    const file = lines(
+      '---',
+      'metadata:',
+      `  name: ${ACCESS}`,
+      'spec: {type: database-access, owner: group:default/tiger}',
+    )
+    expect(() => appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toThrow(
+      SurgeryError,
+    )
   })
 
   it('reads the field from spec, not from a key of the same name elsewhere', () => {
@@ -370,5 +391,329 @@ spec:
     // Appended, not prepended: the new consumer goes below the ones there.
     expect(added).toBeGreaterThan(existing)
     expect(existing).toBeGreaterThan(comment)
+  })
+})
+
+describe('the shapes a catalogue file is found in', () => {
+  // Every case here is a file the YAML parser reads and `validate` calls
+  // conformant, so `planEdits` finds the entity in it. The surgery used to
+  // find none of them, and returned the text unchanged: "already listed".
+  // Exact bytes, because the only acceptable output is the input plus one line.
+
+  const GRANT = [
+    'apiVersion: backstage.io/v1alpha1',
+    'kind: Resource',
+    'metadata:',
+    `  name: ${ACCESS}`,
+    'spec:',
+    '  type: database-access',
+    '  dependencyOf:',
+    '    - component:default/checkout',
+  ]
+  const ADDED = `    - ${CONSUMER}`
+
+  it('amends a first document that has no --- line', () => {
+    const file = lines(...GRANT)
+    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(
+      lines(...GRANT, ADDED),
+    )
+  })
+
+  it('amends an implicit first document behind a header comment and blank lines', () => {
+    const file = lines('# owned by tiger', '', ...GRANT)
+    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(
+      lines('# owned by tiger', '', ...GRANT, ADDED),
+    )
+  })
+
+  it('amends the second document of a file whose first has no --- line', () => {
+    const other = GRANT.map((line) => line.replace(ACCESS, 'other-access-prod'))
+    const file = lines(...other, '', '---', ...GRANT)
+    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(
+      lines(...other, '', '---', ...GRANT, ADDED),
+    )
+  })
+
+  it('keeps a byte-order mark where it was', () => {
+    const file = `﻿${lines('---', ...GRANT)}`
+    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(
+      `﻿${lines('---', ...GRANT, ADDED)}`,
+    )
+  })
+
+  it('keeps a byte-order mark in front of an implicit first document', () => {
+    const file = `﻿${lines(...GRANT)}`
+    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(
+      `﻿${lines(...GRANT, ADDED)}`,
+    )
+  })
+
+  it('reads a file indented by four spaces, and writes four', () => {
+    const file = lines(
+      '---',
+      'kind: Resource',
+      'metadata:',
+      `    name: ${ACCESS}`,
+      'spec:',
+      '    type: database-access',
+      '    dependencyOf:',
+      '        - component:default/checkout',
+    )
+    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(
+      lines(
+        '---',
+        'kind: Resource',
+        'metadata:',
+        `    name: ${ACCESS}`,
+        'spec:',
+        '    type: database-access',
+        '    dependencyOf:',
+        '        - component:default/checkout',
+        `        - ${CONSUMER}`,
+      ),
+    )
+  })
+
+  it('opens the field at four spaces in a spec indented by four', () => {
+    const file = lines(
+      'kind: Resource',
+      'metadata:',
+      `    name: ${ACCESS}`,
+      'spec:',
+      '    type: database-access',
+    )
+    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(
+      lines(
+        'kind: Resource',
+        'metadata:',
+        `    name: ${ACCESS}`,
+        'spec:',
+        '    type: database-access',
+        '    dependencyOf:',
+        `        - ${CONSUMER}`,
+      ),
+    )
+  })
+
+  it('reads keys that carry a trailing comment', () => {
+    const file = lines(
+      '---',
+      'metadata: # identity',
+      `  name: ${ACCESS} # do not rename`,
+      'spec: # the grant',
+      '  dependencyOf: # consumers',
+      '    - component:default/checkout',
+    )
+    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(
+      lines(
+        '---',
+        'metadata: # identity',
+        `  name: ${ACCESS} # do not rename`,
+        'spec: # the grant',
+        '  dependencyOf: # consumers',
+        '    - component:default/checkout',
+        ADDED,
+      ),
+    )
+  })
+
+  it('reads a quoted name', () => {
+    const file = lines('---', 'metadata:', `  name: "${ACCESS}"`, 'spec:', '  type: x')
+    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(
+      lines(
+        '---',
+        'metadata:',
+        `  name: "${ACCESS}"`,
+        'spec:',
+        '  type: x',
+        '  dependencyOf:',
+        ADDED,
+      ),
+    )
+  })
+
+  it('is not closed by a comment at column zero inside the spec', () => {
+    // A comment is not a key. Read as one, it closed the spec above the
+    // existing `dependencyOf:`, and a second key of that name was opened:
+    // a duplicate key, which is not YAML any more.
+    const file = lines(
+      '---',
+      'metadata:',
+      `  name: ${ACCESS}`,
+      'spec:',
+      '  type: database-access',
+      '# who may read it',
+      '  dependencyOf:',
+      '    - component:default/checkout',
+    )
+    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(
+      lines(
+        '---',
+        'metadata:',
+        `  name: ${ACCESS}`,
+        'spec:',
+        '  type: database-access',
+        '# who may read it',
+        '  dependencyOf:',
+        '    - component:default/checkout',
+        ADDED,
+      ),
+    )
+  })
+
+  it('is not closed by a comment at column zero inside metadata', () => {
+    const file = lines(
+      '---',
+      'metadata:',
+      '# the name is the identity',
+      `  name: ${ACCESS}`,
+      'spec:',
+      '  dependencyOf:',
+      '    - component:default/checkout',
+    )
+    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(
+      lines(
+        '---',
+        'metadata:',
+        '# the name is the identity',
+        `  name: ${ACCESS}`,
+        'spec:',
+        '  dependencyOf:',
+        '    - component:default/checkout',
+        ADDED,
+      ),
+    )
+  })
+
+  it.each([
+    ['a space before the colon', '  dependencyOf :'],
+    ['double quotes', '  "dependencyOf":'],
+    ['single quotes', "  'dependencyOf':"],
+  ])('recognises the key written with %s, rather than opening a second one', (_, key) => {
+    const file = lines(
+      '---',
+      'metadata:',
+      `  name: ${ACCESS}`,
+      'spec:',
+      key,
+      '    - component:default/checkout',
+      '  owner: group:default/tiger',
+    )
+    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(
+      lines(
+        '---',
+        'metadata:',
+        `  name: ${ACCESS}`,
+        'spec:',
+        key,
+        '    - component:default/checkout',
+        ADDED,
+        '  owner: group:default/tiger',
+      ),
+    )
+  })
+
+  it('refuses a key it cannot read rather than opening a second one', () => {
+    // An explicit key is legal YAML and rare enough not to be worth parsing.
+    // Opening `dependencyOf:` beside it would be a duplicate key.
+    const file = lines(
+      '---',
+      'metadata:',
+      `  name: ${ACCESS}`,
+      'spec:',
+      '  ? dependencyOf',
+      '  : - component:default/checkout',
+    )
+    expect(() => appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toThrow(
+      SurgeryError,
+    )
+  })
+
+  it('reads an item through its trailing comment', () => {
+    // Unstripped, `- x # why` read as a different item from `x`, and the
+    // consumer was listed a second time.
+    const file = lines(
+      '---',
+      'metadata:',
+      `  name: ${ACCESS}`,
+      'spec:',
+      '  dependencyOf:',
+      `    - ${CONSUMER} # since the migration`,
+    )
+    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(file)
+  })
+})
+
+describe('a file written with CRLF line endings', () => {
+  // A file saved on Windows ends every line in `\r\n`. The classifiers read
+  // the `\r` as part of the line, so `---`, `metadata:` and `name:` matched
+  // nothing: the document was not found, and a grant the parser read fine was
+  // refused as unfindable. The added lines take the file's own ending, so the
+  // result is still one line added rather than a file of mixed endings.
+  const crlf = (...body: string[]) => body.join('\r\n') + '\r\n'
+  const GRANT = [
+    '---',
+    'apiVersion: backstage.io/v1alpha1',
+    'kind: Resource',
+    'metadata:',
+    `  name: ${ACCESS}`,
+    'spec:',
+    '  type: database-access',
+  ]
+
+  it('appends an item, ending it the way the file ends its lines', () => {
+    const file = crlf(...GRANT, '  dependencyOf:', '    - component:default/checkout')
+    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(
+      crlf(...GRANT, '  dependencyOf:', '    - component:default/checkout', `    - ${CONSUMER}`),
+    )
+  })
+
+  it('opens the field with the file’s ending', () => {
+    expect(appendSequenceItem(crlf(...GRANT), ACCESS, 'dependencyOf', CONSUMER)).toBe(
+      crlf(...GRANT, '  dependencyOf:', `    - ${CONSUMER}`),
+    )
+  })
+
+  it('rewrites an empty flow sequence without losing the key line’s ending', () => {
+    expect(
+      appendSequenceItem(crlf(...GRANT, '  dependencyOf: []'), ACCESS, 'dependencyOf', CONSUMER),
+    ).toBe(crlf(...GRANT, '  dependencyOf:', `    - ${CONSUMER}`))
+  })
+
+  it('keeps a CRLF file that ends without a line break ending without one', () => {
+    const file = crlf(...GRANT).slice(0, -2)
+    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(
+      crlf(...GRANT, '  dependencyOf:', `    - ${CONSUMER}`).slice(0, -2),
+    )
+  })
+
+  it('finds a consumer already listed, and returns the file as it was', () => {
+    const file = crlf(...GRANT, '  dependencyOf:', `    - ${CONSUMER}`)
+    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(file)
+  })
+
+  it('reads a file whose endings are mixed, and leaves each line’s ending as it was', () => {
+    // An LF file with lines pasted from somewhere else. They keep their `\r`;
+    // a file with no single ending has none to copy, so the added ones get `\n`.
+    const pasted = ['metadata:\r', `  name: ${ACCESS}\r`]
+    const file = lines(...GRANT.slice(0, 3), ...pasted, ...GRANT.slice(5))
+    expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(
+      lines(
+        ...GRANT.slice(0, 3),
+        ...pasted,
+        ...GRANT.slice(5),
+        '  dependencyOf:',
+        `    - ${CONSUMER}`,
+      ),
+    )
+  })
+})
+
+describe('an empty flow sequence written with blanks inside', () => {
+  it('is rewritten the way `[]` is, not refused as a flow sequence', () => {
+    const head = ['---', 'metadata:', `  name: ${ACCESS}`, 'spec:']
+    expect(
+      appendSequenceItem(lines(...head, '  dependencyOf: [ ]'), ACCESS, 'dependencyOf', CONSUMER),
+    ).toBe(lines(...head, '  dependencyOf:', `    - ${CONSUMER}`))
   })
 })

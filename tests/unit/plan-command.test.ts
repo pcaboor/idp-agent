@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -417,5 +417,123 @@ describe('plan --from', () => {
     ])
     expect(code).toBe(2)
     expect(err).toContain('never both')
+  })
+})
+
+describe('plan --from, amending a grant a person wrote by hand', () => {
+  // The bug this closes: `appendSequenceItem` found documents by their `---`
+  // line and `name:` at exactly two spaces, while `planEdits` had already
+  // found the entity with the real parser. So a file the parser read and the
+  // surgery could not came back unchanged, and an unchanged file is what "the
+  // consumer is already listed" looks like: `nothing to change.`, exit 0, and
+  // nobody was granted anything.
+  const GRANT_PATH = 'dependencies/access/billing-api-billing-db-prod.yml'
+  const REPORTING = 'component:default/reporting-worker'
+
+  const grant = (lines: readonly string[]): string => `${lines.join('\n')}\n`
+
+  const amend = async (content: string) => {
+    const root = await scaffoldedRepository()
+    await declare(root, GRANT_PATH, content)
+    const from = await planFile(root, {
+      intent:
+        `let ${REPORTING} use resource:default/billing-api-billing-db-prod, ` +
+        'the readwrite access to billing-db in prod',
+      operations: [
+        {
+          op: 'update-entity',
+          entityRef: 'resource:default/billing-api-billing-db-prod',
+          patch: { patch: 'add-dependency-of', consumer: REPORTING, access: 'readwrite' },
+        },
+      ],
+    })
+    const before = await hashTree(root)
+    const result = await run(['plan', '--from', from, '--repo', root], answering('readwrite'))
+    expect(await hashTree(root)).toBe(before)
+    return result
+  }
+
+  it('amends a grant whose file does not open with ---', async () => {
+    const { code, out } = await amend(
+      grant([
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: Resource',
+        'metadata:',
+        '  name: billing-api-billing-db-prod',
+        '  annotations:',
+        '    company.fr/env: prod',
+        'spec:',
+        '  type: database-access',
+        '  access: readwrite',
+        '  owner: group:default/tiger',
+        '  dependsOn:',
+        '    - resource:default/billing-db-prod',
+        '  dependencyOf:',
+        '    - component:default/billing-api',
+      ]),
+    )
+
+    expect(out).not.toContain('nothing to change')
+    expect(code).toBe(0)
+    expect(out).toContain(`+++ b/${GRANT_PATH}`)
+    expect(out).toContain(`+    - ${REPORTING}`)
+    // One line, and only that one: textual surgery, never a reparse (§4.3).
+    expect(out.split('\n').filter((line) => /^[+-](?![+-])/.test(line))).toEqual([
+      `+    - ${REPORTING}`,
+    ])
+  })
+
+  it('refuses a shape it cannot amend, and never calls that "nothing to change"', async () => {
+    // A flow-mapping spec: the parser reads it, a line edit cannot extend it.
+    // Whatever the surgery can or cannot do, the operation is not carried out,
+    // and saying so is the only honest answer — exit 3, with the reason.
+    const { code, out } = await amend(
+      grant([
+        '---',
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: Resource',
+        'metadata:',
+        '  name: billing-api-billing-db-prod',
+        '  annotations:',
+        '    company.fr/env: prod',
+        'spec: {type: database-access, access: readwrite, owner: group:default/tiger, ' +
+          'dependsOn: [resource:default/billing-db-prod], ' +
+          'dependencyOf: [component:default/billing-api]}',
+      ]),
+    )
+
+    expect(code).toBe(3)
+    expect(out).toContain('this plan changes nothing, and the repository does not already say it')
+    expect(out).not.toContain('nothing to change')
+    expect(out).toContain(GRANT_PATH)
+    expect(out).not.toContain('@@')
+  })
+})
+
+describe('plan --from, over a repository it cannot read whole', () => {
+  // `readRepository` turns an unreadable file into a rejection, and `plan`
+  // then read every file again for its bytes and ended on the raw EACCES.
+  // Skipping the file is not the answer: `planEdits` takes a path it holds no
+  // bytes for as a file that does not exist, and would preview a creation
+  // over one that does. The run is refused, naming the file.
+  it.skipIf(process.getuid?.() === 0)('refuses, naming the file it could not read', async () => {
+    // Root reads through a mode of 000, so the case cannot be staged as root.
+    const root = await scaffoldedRepository()
+    const locked = 'catalog/databases/locked.yml'
+    await declare(root, locked, entityDocument('locked-db-prod', 'database', 'prod'))
+    const from = await planFile(root, CREATE_PLAN)
+    // Hashed while readable: the hash reads every file too.
+    const before = await hashTree(root)
+
+    await chmod(path.join(root, ...locked.split('/')), 0o000)
+    const result = await run(['plan', '--from', from, '--repo', root], answering('read')).finally(
+      () => chmod(path.join(root, ...locked.split('/')), 0o600),
+    )
+
+    expect(result.code).toBe(2)
+    expect(result.out).not.toContain('@@')
+    expect(result.err).toContain(locked)
+    expect(result.err).toContain('EACCES')
+    expect(await hashTree(root)).toBe(before)
   })
 })

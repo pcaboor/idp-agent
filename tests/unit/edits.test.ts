@@ -559,3 +559,191 @@ describe('what the diff of an update can and cannot state', () => {
     expect(diff).not.toContain('access:')
   })
 })
+
+describe('planEdits reads back what it wrote', () => {
+  // The guarantee, stated where it is tested: an edit is offered only when the
+  // parser, reading the bytes back, finds the operation carried out and
+  // nothing else changed. The surgery is a line-level heuristic underneath;
+  // this is what makes a wrong guess a named drop instead of a wrong diff, or
+  // an unchanged file that reads as "already listed".
+  const billingApi = addConsumer('component:default/billing-api')
+
+  it('drops an update whose target only the parser can find, and leaves the file alone', () => {
+    // A flow-mapping `metadata`: the parser reads the entity, a line edit
+    // cannot find it. That used to be before === after — "nothing to change".
+    const file = [
+      '---',
+      'apiVersion: backstage.io/v1alpha1',
+      'kind: Resource',
+      'metadata: {name: checkout-orders-db-prod, annotations: {company.fr/env: prod}}',
+      'spec:',
+      '  type: database-access',
+      '  access: read',
+      '  owner: group:default/tiger',
+      '  dependencyOf:',
+      '    - component:default/checkout-web',
+      '',
+    ].join('\n')
+
+    const { edits, dropped } = planEdits(sign(AMEND_INTENT, [billingApi]), repository([[AMEND_PATH, file]]))
+
+    expect(edits).toEqual([])
+    expect(dropped).toHaveLength(1)
+    expect(dropped[0]?.reason).toContain(AMEND_PATH)
+    expect(dropped[0]?.reason).toContain('component:default/billing-api')
+  })
+
+  it('drops an update the surgery carried to the wrong document', () => {
+    // Two entities of one name and two kinds in one file. `planEdits` resolves
+    // the RESOURCE by its full reference; the surgery finds documents by name
+    // and amends the first — the Component. The bytes change and the grant
+    // does not: only reading them back can tell.
+    const component = [
+      '---',
+      'apiVersion: backstage.io/v1alpha1',
+      'kind: Component',
+      'metadata:',
+      '  name: checkout-orders-db-prod',
+      'spec:',
+      '  type: service',
+      '  lifecycle: production',
+      '  owner: group:default/tiger',
+      '',
+    ].join('\n')
+    const file = `${component}\n${AMEND_FILE}`
+
+    const { edits, dropped } = planEdits(sign(AMEND_INTENT, [billingApi]), repository([[AMEND_PATH, file]]))
+
+    expect(edits).toEqual([])
+    expect(dropped).toHaveLength(1)
+    expect(dropped[0]?.reason).toContain(AMEND_PATH)
+  })
+
+  it('reports a consumer the parser reads as listed as already done, in any shape', () => {
+    // A flow sequence the surgery refuses to split — and does not need to: the
+    // consumer is there. Already done is an unchanged file, not a drop.
+    const file = AMEND_FILE.replace(
+      '  dependencyOf:\n    - component:default/checkout-web',
+      '  dependencyOf: [component:default/checkout-web, component:default/billing-api]',
+    )
+
+    const { edits, dropped } = planEdits(sign(AMEND_INTENT, [billingApi]), repository([[AMEND_PATH, file]]))
+
+    expect(dropped).toEqual([])
+    expect(edits).toHaveLength(1)
+    expect(at(edits, 0).after).toBe(file)
+  })
+
+  it('names the file when the surgery refuses a shape', () => {
+    const file = AMEND_FILE.replace(
+      '  dependencyOf:\n    - component:default/checkout-web',
+      '  dependencyOf: [component:default/checkout-web]',
+    )
+
+    const { edits, dropped } = planEdits(sign(AMEND_INTENT, [billingApi]), repository([[AMEND_PATH, file]]))
+
+    expect(edits).toEqual([])
+    expect(dropped[0]?.reason).toContain(AMEND_PATH)
+    expect(dropped[0]?.reason).toContain('flow sequence')
+  })
+
+  it('drops a creation whose file would not read back', () => {
+    // The file at the computed path already holds a document the parser
+    // faults. Appending beside it produces bytes nobody can vouch for, so the
+    // creation is named and the file is left alone.
+    const broken = `${document('other-access', [])}  owner: group:default/lion\n`
+
+    const { edits, dropped } = planEdits(
+      sign(CREATE_INTENT, [createAccess]),
+      repository([[ACCESS_PATH, broken]]),
+    )
+
+    expect(edits).toEqual([])
+    expect(dropped).toHaveLength(1)
+    expect(dropped[0]?.reason).toContain(ACCESS_PATH)
+    expect(dropped[0]?.reason).toContain('DUPLICATE_KEY')
+  })
+})
+
+describe('planEdits, beside a document the parser faults', () => {
+  // A duplicate key in a SIBLING document says nothing about whether the
+  // target lists the consumer. Read as one, the file answered "not listed" for
+  // a consumer that was, and the unchanged file was then dropped as "the edit
+  // left the file as it was" — a plan told the repository did not say what it
+  // said.
+  const billingApi = addConsumer('component:default/billing-api')
+  const brokenSibling = [
+    '---',
+    'apiVersion: backstage.io/v1alpha1',
+    'kind: Resource',
+    'metadata:',
+    '  name: sibling-access',
+    '  name: sibling-access-again',
+    '',
+  ].join('\n')
+
+  it('reports a consumer the target already lists as already done', () => {
+    const file = `${document('checkout-orders-db-prod', [
+      'component:default/checkout-web',
+      'component:default/billing-api',
+    ])}\n${brokenSibling}`
+
+    const { edits, dropped } = planEdits(
+      sign(AMEND_INTENT, [billingApi]),
+      repository([[AMEND_PATH, file]]),
+    )
+
+    expect(dropped).toEqual([])
+    expect(edits).toEqual([{ path: AMEND_PATH, before: file, after: file }])
+  })
+
+  it('names the fault the file already had, rather than blaming the edit', () => {
+    const file = `${AMEND_FILE}\n${brokenSibling}`
+
+    const { edits, dropped } = planEdits(
+      sign(AMEND_INTENT, [billingApi]),
+      repository([[AMEND_PATH, file]]),
+    )
+
+    expect(edits).toEqual([])
+    expect(dropped).toHaveLength(1)
+    expect(dropped[0]?.reason).toContain('the file does not parse')
+    expect(dropped[0]?.reason).toContain('DUPLICATE_KEY')
+  })
+})
+
+describe('planEdits, amending an entity that carries no consumers', () => {
+  // The line reads back as YAML, and the entity schema strips it: a Component
+  // has no `dependencyOf`. Comparing raw values let it through, and a second
+  // run — asking the schema whether the consumer was listed — found it not
+  // listed, then found the line, and dropped what it had just offered.
+  const path = 'catalog/components/checkout-web.yml'
+  const file = [
+    '---',
+    'apiVersion: backstage.io/v1alpha1',
+    'kind: Component',
+    'metadata:',
+    '  name: checkout-web',
+    'spec:',
+    '  type: service',
+    '  lifecycle: production',
+    '  owner: group:default/tiger',
+    '',
+  ].join('\n')
+  const onComponent = {
+    op: 'update-entity' as const,
+    entityRef: 'component:default/checkout-web',
+    patch: { patch: 'add-dependency-of' as const, consumer: 'component:default/billing-api' },
+  }
+
+  it('drops the operation, naming why, and gives the same answer every time', () => {
+    const signed = sign(AMEND_INTENT, [onComponent])
+    const first = planEdits(signed, repository([[path, file]]))
+
+    expect(first.edits).toEqual([])
+    expect(first.dropped).toHaveLength(1)
+    expect(first.dropped[0]?.reason).toContain(path)
+    expect(first.dropped[0]?.reason).toContain('only a Resource lists its consumers')
+    expect(planEdits(signed, repository([[path, file]]))).toEqual(first)
+  })
+})

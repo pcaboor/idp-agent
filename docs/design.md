@@ -729,10 +729,17 @@ Schemas, serialiser, path computation, diff. No I/O. Around 60 % of the suite.
 ∀ entity          → serialise then reload yields the same entity
 ∀ file + entity   → insert then remove yields the file BYTE FOR BYTE
 ∀ Plan            → applying twice == applying once
+∀ Plan + file     → the edit, read back, carries out the operation and nothing else —
+                    or the operation is dropped, naming the file
 ```
 
 The fourth is "textual surgery, never a reparse" made executable: replacing insertion
-with `parse + stringify` breaks it. The fifth encodes "absent means already done".
+with `parse + stringify` breaks it. The fifth encodes "absent means already done". The
+sixth is **effectiveness**, and it is what makes the fourth safe: surgery locates a
+document by reading lines, which is a heuristic. The misses it knows of it refuses; one it
+does not know of amends the wrong document, opens a key twice, or leaves the file as it
+was — byte-identical to "already done". So every edit is read back with the parser before
+it is offered, and an unchanged file means the parser found the work already done.
 
 ### 9.3 Recordings — end to end, no API key
 

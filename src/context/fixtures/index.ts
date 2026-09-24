@@ -1,9 +1,8 @@
 import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { parseAllDocuments } from 'yaml'
-import { entitySchema, type Entity } from '../../core/schemas/entity.js'
+import type { Entity } from '../../core/schemas/entity.js'
+import { parseDocuments } from '../../core/yaml/serialize.js'
 import type { ContextProvider, LoadResult, Rejection } from '../provider.js'
-import { reasonOf } from '../../core/schemas/reject.js'
 
 
 const YAML_EXTENSIONS = new Set(['.yml', '.yaml'])
@@ -42,17 +41,11 @@ export class FixtureProvider implements ContextProvider {
       const source = path.relative(this.rootDir, file)
       const content = await readFile(file, 'utf8')
 
-      for (const document of parseAllDocuments(content)) {
-        const value: unknown = document.toJS()
-        // A witness file declares nothing; its absence is what would be an error.
-        if (value === null || value === undefined) continue
-
-        const parsed = entitySchema.safeParse(value)
-        if (parsed.success) entities.push(parsed.data)
-        else {
-          rejected.push({ source, reason: reasonOf(parsed.error) })
-        }
-      }
+      // The one reader of entity documents: a document the parser faulted is
+      // a rejection here too, never the value `toJS()` would have guessed.
+      const read = parseDocuments(content)
+      entities.push(...read.entities)
+      rejected.push(...read.rejections.map((reason) => ({ source, reason })))
     }
 
     return { entities, rejected }

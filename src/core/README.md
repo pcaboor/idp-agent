@@ -17,8 +17,13 @@ and nothing here can be steered by what it validates. Hence the property tests r
   re-checked here rather than trusted to whichever caller eventually writes.
 - **The serialiser** — `serializeEntity`, `parseEntity`. The one place a structure becomes YAML,
   so `no` or `123` survive as strings for the YAML 1.1 readers that also read the repository.
-- **Textual surgery** — `insertDocument`, `removeDocument`, `listDocumentNames`. Line edits,
-  because a reviewer must see an added line, not an AST round-trip's reformat.
+  `parseDocuments` is the matching one place YAML becomes entities, for `context/`'s readers
+  and for the bytes a plan would write: a document the parser faults is a rejection, never
+  the value `toJS()` would have guessed.
+- **Textual surgery** — `insertDocument`, `removeDocument`, `appendSequenceItem`,
+  `listDocumentNames`. Line edits, because a reviewer must see an added line, not an AST
+  round-trip's reformat. Locating a document by lines is a heuristic, so what it cannot
+  locate it refuses, and `planEdits` reads every edit back with the parser before offering it.
 
 **The rule: nothing in `core/` may read, write, fetch or ask.** Work that needs a disk belongs
 in `context/` or `cli/`, work that needs a model in `agents/` or `llm/` — carve out the pure

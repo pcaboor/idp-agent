@@ -1,10 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { parseAllDocuments } from 'yaml'
-import { entitySchema } from '../../core/schemas/entity.js'
-import type { Entity } from '../../core/schemas/entity.js'
 import type { RepositoryFile, RepositorySnapshot } from '../../core/validate/rules.js'
-import { reasonOf } from '../../core/schemas/reject.js'
+import { parseDocuments } from '../../core/yaml/serialize.js'
 
 /**
  * Reads a repository laid out the way `init platform` produces one, keeping
@@ -66,24 +63,23 @@ async function walk(root: string, directory: string, found: Walked): Promise<voi
 }
 
 async function readOne(root: string, absolute: string): Promise<RepositoryFile> {
-  const content = await readFile(absolute, 'utf8')
-  const entities: Entity[] = []
-  const rejections: string[] = []
-  let documents = 0
-
-  for (const document of parseAllDocuments(content)) {
-    const value: unknown = document.toJS()
-    documents += 1
-    // A null document declares nothing — a comment-only file is one, and that
-    // is what a witness is made of.
-    if (value === null || value === undefined) continue
-
-    const parsed = entitySchema.safeParse(value)
-    if (parsed.success) entities.push(parsed.data)
-    else rejections.push(reasonOf(parsed.error))
+  const where = relative(root, absolute)
+  let content: string
+  try {
+    content = await readFile(absolute, 'utf8')
+  } catch (error) {
+    // A file the walk found and the read could not open — no permission, a
+    // link to a directory or to nothing, a file deleted in between. One of
+    // those ended `validate` on a stack trace that reported none of the other
+    // files; it is a rejection for this path instead, the same shape as a
+    // document the schema refused, and `invalid-entity` reports it.
+    const why = (error as NodeJS.ErrnoException).code ?? String(error)
+    return { path: where, entities: [], rejections: [`could not be read: ${why}`], documents: 0 }
   }
 
-  return { path: relative(root, absolute), entities, rejections, documents }
+  // The same reader `core/` uses on the bytes a plan would write, so a file
+  // cannot be conformant here and broken there.
+  return { path: where, ...parseDocuments(content) }
 }
 
 export async function readRepository(root: string): Promise<RepositorySnapshot> {
