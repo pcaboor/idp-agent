@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createClient } from '../../src/llm/runtime.js'
+import { createClient, usageOf } from '../../src/llm/runtime.js'
 import { openRecording } from '../../src/llm/recording.js'
 import type { Recording, RecordingStore } from '../../src/llm/recording.js'
 import type { GenerateRequest } from '../../src/llm/client.js'
@@ -152,6 +152,60 @@ describe('the request contract', () => {
     expect(toToolChoice('auto')).toBe('auto')
     expect(toToolChoice('none')).toBe('none')
     expect(toToolChoice({ tool: 'answer' })).toEqual({ type: 'tool', toolName: 'answer' })
+  })
+})
+
+describe('token usage', () => {
+  it('keeps the counts a provider reported and drops the ones it did not', () => {
+    expect(
+      usageOf({ inputTokens: 120, outputTokens: 3, totalTokens: 123, inputTokenDetails: {} }),
+    ).toEqual({ inputTokens: 120, outputTokens: 3, totalTokens: 123 })
+    // Absent is not zero: an unreported count stays unreported.
+    expect(usageOf({ inputTokens: 120, outputTokens: undefined, totalTokens: undefined })).toEqual({
+      inputTokens: 120,
+    })
+  })
+
+  it('has no usage at all when nothing was reported', () => {
+    expect(usageOf(undefined)).toBeUndefined()
+    expect(usageOf('120 tokens')).toBeUndefined()
+    expect(usageOf({ inputTokens: undefined, outputTokens: Number.NaN })).toBeUndefined()
+  })
+
+  it('replays the usage a recording carries', async () => {
+    const counted: Recording = {
+      ...recording,
+      turns: [
+        {
+          ...turn('supervisor', 0, []),
+          result: {
+            content: [{ type: 'text', text: 'QUESTION' }],
+            finishReason: 'stop',
+            usage: { inputTokens: 120, outputTokens: 1, totalTokens: 121 },
+          },
+        },
+      ],
+    }
+    const client = createClient({
+      tape: await openRecording({
+        scenario: 'demo',
+        store: { read: async () => counted, write: async () => {} },
+        mode: 'replay',
+        warn: () => {},
+      }),
+      mode: 'replay',
+    })
+
+    expect((await client.generate(ask('supervisor'))).usage).toEqual({
+      inputTokens: 120,
+      outputTokens: 1,
+      totalTokens: 121,
+    })
+  })
+
+  it('replays a recording made before usage was stored with no usage, never a zero', async () => {
+    const result = await (await replaying()).generate(ask('supervisor'))
+    expect('usage' in result).toBe(false)
   })
 })
 

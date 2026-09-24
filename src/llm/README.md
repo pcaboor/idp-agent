@@ -151,6 +151,15 @@ One consequence worth knowing before you debug it: turn *n*'s prompt embeds turn
 tool output, so a single changed fixture row cascades digest warnings down the rest of a
 scenario. That is also why the SI summary the model sees is bucketed rather than exact.
 
+## Token usage
+
+`GenerateResult.usage` is what the provider reported — `inputTokens`, `outputTokens`,
+`totalTokens`, each only if reported — read by `usageOf` in `runtime.ts`. A recording made
+from now on stores it under `result.usage`; the digest covers the request, not the result,
+so no tape goes stale by gaining it. The recordings made before it carry none, and replaying
+one gives a result with **no** `usage` key — never a count of 0. `src/trace/` reports that
+as `idp.usage: absent`.
+
 ## The third way in, and why it exists
 
 A recording is not the only keyless path. `MainDeps.client` takes an `LlmClient`
