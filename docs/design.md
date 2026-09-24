@@ -367,7 +367,7 @@ the model's to write (§ 5.3).
 
 ### 5.5 Dependency rules, enforced in CI
 
-Two rules were written here first; **thirteen** are enforced today, in
+Two rules were written here first; **fourteen** are enforced today, in
 `tests/architecture/dependencies.test.ts`. The two founding ones:
 
 1. `core/` never imports `agents/` or `llm/`.
@@ -383,11 +383,12 @@ agent imports it, so a runtime import there would put `ai` inside the agent clos
 the filesystem implementation of the recording store lives in `cli/`, not in `llm/`, for
 the same reason.
 
-The other eleven extend the same idea to the layers added since: `core/` reaches neither
+The other twelve extend the same idea to the layers added since: `core/` reaches neither
 the network, nor the disk, nor the model SDK, nor `context/`, `cli/` or `scaffold/`; only
 `llm/` imports the model SDK, and `agents/` imports `llm/client.js` and nothing else from
 it; `scaffold/` imports `core/` and nothing else of ours, and exactly one module in it
-writes; only `context/iac-fs` and `context/project-fs` read a user's repository. **Add a
+writes; only `context/iac-fs` and `context/project-fs` read a user's repository; `trace/`
+reaches nothing but types and never names `fetch`, and only `cli/` reaches it. **Add a
 rule when you add a layer** — the count in this paragraph is the one that drifts first.
 
 ---
@@ -611,6 +612,11 @@ the diff and the `--json` report, and both are piped. `ask` and `answer:ready` r
 nothing there, deliberately: they *are* the command's output and they reach the user on
 stdout, so a copy on stderr would state one fact twice. The harness is therefore testable
 without a terminal, and the future MCP server reuses these events.
+
+MLflow reads the same stream (ADR-0009). `src/trace/` folds it, with each model call, into
+a trace — which is why an agent's end, an attempt's bounds and every gate that passed are
+events too: a span is closed by what happened, never by whatever came next. None of them
+renders on stderr; they are structure, and the lines they bound already say what happened.
 
 ---
 

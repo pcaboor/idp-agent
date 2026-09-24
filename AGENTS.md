@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 1733 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 1760 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -158,6 +158,7 @@ check — reads the developer's own. `IDP_REPO` must be absolute or start with `
 cli/  ──→  context/   ──→  core/
   ├──→  agents/   ──→  llm/client.ts   (types only — this is the whole rule)
   ├──→  llm/      ──→  the model SDK   (cli/ builds the client; agents/ may not)
+  ├──→  trace/    ──→  agents/events, llm/client   (types only; cli/ ships the trace)
   └──→  scaffold/ ──→  core/
 ```
 
@@ -172,6 +173,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 | `cli/` | argument parsing, commands, rendering, `.idp-agent.yml` and the personal `config.yml`, which source a command reads — the only layer that writes to stdout |
 | `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |
 | `agents/` | the five agents, the bounded turn, the repair loop, the tool registries — reaches no disk, transitively |
+| `trace/` | the trace of one run: `createTraceBuilder` over the event stream and the model calls, the `traced` client decorator, and `toOtlpJson` — pure; `cli/trace-sink.ts` is how a trace leaves |
 | `scaffold/` | the `init platform` layout, the packaged templates, and the only writer we own |
 
 Each folder carries its own README stating what lives there, what may not, and which
@@ -371,16 +373,18 @@ them never reaches the one that spends a model call. Three attempts, then a clea
   checklist; tick its boxes as you go — Stage 1 shipped with all 36 unticked, which is
   how a plan stops being a status signal.
 - No `switch` on a closed union without `const _exhaustive: never = value` in `default`.
-- **Thirteen** architecture rules are enforced by `tests/architecture/`. `core/` imports
+- **Fourteen** architecture rules are enforced by `tests/architecture/`. `core/` imports
   neither `agents/`, `llm/`, `context/`, `cli/`, `scaffold/`, the disk, the network nor the
   model SDK. `agents/` imports neither `fs`, `child_process` nor a git client — **and
   nothing reachable from it does either**, the test walks the transitive closure. Only
   `llm/` imports the model SDK, and `agents/` imports `llm/client.js` and nothing else from
   it. `scaffold/` imports `core/` and nothing else of ours; only `write.ts` and
   `templates.ts` touch the disk there, and only `write.ts` imports a writing function. Only
-  `context/iac-fs` and `context/project-fs` read a user's repository. Add a rule when you
-  add a layer — and re-count this number when you do, because it is the one that drifts
-  first: `pnpm vitest run tests/architecture --reporter=verbose`.
+  `context/iac-fs` and `context/project-fs` read a user's repository. `trace/` reaches
+  nothing but types — no disk, no network, no `fetch`, no SDK, nothing of `cli/` — and only
+  `cli/` reaches it. Add a rule when you add a layer — and re-count this number when you
+  do, because it is the one that drifts first:
+  `pnpm vitest run tests/architecture --reporter=verbose`.
 - **No test calls a model.** `tests/setup/offline.ts` replaces `fetch` with a thrower
   unless `IDP_RECORDING=record`, so a forgotten recording fails loudly instead of quietly
   spending whoever's key is in the shell. An agent-backed command is driven either by a
