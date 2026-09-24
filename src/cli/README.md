@@ -17,7 +17,7 @@ and return a `CommandResult` — `text` plus `found`. No I/O and no process, so
 data and return a string. Pure functions, asserted directly in `tests/unit/render.test.ts`.
 `renderOverview(overview, source)` is the text of `ask`'s `overview` answer: the model
 chose it, and every word of it is written here from `context/graph/overview.ts`'s figures —
-a headline naming the demo SI or the `--repo` as given, then short sections, each list cut
+a headline naming the demo SI or the repository by its folder, then short sections, each list cut
 at five with the remainder counted (`tests/unit/render-overview.test.ts`). `runAsk` gets the
 source and what the reader set aside and rejected from `main`, which already has them.
 
@@ -37,8 +37,12 @@ too, as one `not loaded:` line counting them by kind.
 **Where the SI comes from.** `graph`, `show` and `ask` pick a `ContextProvider` and nothing
 after it knows which: `IacFsProvider` over the declarations repository `--repo` names,
 resolved against `cwd` and refused with exit 2 by `repository.ts`'s `declarationsRoot` —
-the guard `plan` uses too — or `FixtureProvider` over the demo SI, which then says so in one
-line on `err`. `tests/unit/read-repo.test.ts` holds both roads.
+the guard `plan` uses too; with no `--repo`, `IacFsProvider` over `cwd` itself when
+`isDeclarationsRepository` says it is one; otherwise, or with `--demo`, `FixtureProvider`
+over the demo SI. The demo SI, `--demo` or not, and the working directory each say so in one
+line on `err` — only `--repo` is silent — and `--demo` with `--repo` is a parse error. A
+repository is named by its folder's basename, whichever road reached it.
+`tests/unit/read-repo.test.ts` holds all three.
 
 **Asking (§7.5).** A plan holding an `{unknown}` is a question, and `plan` puts it to the
 user rather than printing it and leaving. `MainDeps.ask` is the seam — `(question) =>

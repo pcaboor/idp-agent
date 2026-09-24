@@ -7,7 +7,10 @@ stage 4, `backstage-http` at MVP (design.md § 3). Two implementations exist. `F
 reads the demo SI, a directory laid out exactly like an IaC repository. `IacFsProvider`
 (`iac-fs/provider.ts`) reads a user's declarations repository through `readRepository`, so
 `ask`, `graph` and `show` given `--repo` see the files `plan` and `validate` see, and a rejection's
-`source` is the file's repository-relative path.
+`source` is the file's repository-relative path. `isDeclarationsRepository` (beside it, in
+`iac-fs/snapshot.ts`) is how those three decide the working directory is one: a witnessed folder
+directly under `catalog/` or `dependencies/`, read at the root and never walked, and not through
+a symbolic link, which `readRepository` would not follow either.
 
 `LoadResult` pairs `entities` with `rejected: Rejection[]` — one `{ source, reason }` for every
 document `entitySchema` refused — a Component or Resource, or anything that looks like a failed

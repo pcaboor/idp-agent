@@ -58,9 +58,9 @@ describe('renderOverview', () => {
     expect(headline).toMatch(/40 entities/)
   })
 
-  it('names the repository exactly as it was given with --repo', () => {
-    const [headline] = renderOverview(BUSY, { repo: '../iac' }).split('\n')
-    expect(headline).toContain('../iac')
+  it('names the repository by the name it is handed, which main takes from its folder', () => {
+    const [headline] = renderOverview(BUSY, { repo: 'IaC' }).split('\n')
+    expect(headline).toBe('Overview of the repository IaC: 40 entities')
     expect(headline).not.toMatch(/demo SI/)
   })
 

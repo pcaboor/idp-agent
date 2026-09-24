@@ -14,7 +14,11 @@ import { plain } from './plain.js'
  */
 export const OVERVIEW_LIMITS = { rows: 5 } as const
 
-/** Where the overview was read from. No `repo` is the demo SI, an absence. */
+/**
+ * Where the overview was read from. `repo` is the repository's name — its
+ * folder's, which `main` resolves, so `--repo .` reads as the folder it is and
+ * not as a dot. No `repo` is the demo SI, an absence.
+ */
 export interface OverviewSource {
   repo?: string
 }

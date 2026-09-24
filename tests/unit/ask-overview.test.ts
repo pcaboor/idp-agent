@@ -1,4 +1,4 @@
-import { cp, mkdtemp, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -119,6 +119,27 @@ describe('ask for an overview, end to end', () => {
     expect(out).toMatch(/rejected\s+1 document/)
     // The skipped line the rejection is named on is still where it always was.
     expect(err).toContain('skipped broken.yml')
+  })
+
+  it('names the repository by its folder, however it was reached', async () => {
+    // "Overview of the repository .: 2 entities" was the headline `--repo .`
+    // printed: the argument as typed, which names nothing.
+    const parent = await mkdtemp(path.join(tmpdir(), 'ask-overview-folder-'))
+    const repo = path.join(parent, 'IaC')
+    await cp(FIXTURES, repo, { recursive: true })
+    await mkdir(path.join(parent, 'elsewhere'))
+    const headline = /^Overview of the repository IaC: 33 entities$/
+
+    for (const [argv, cwd] of [
+      [['ask', '--repo', '.', 'what is in this SI?'], repo],
+      [['ask', '--repo', '../IaC', 'what is in this SI?'], path.join(parent, 'elsewhere')],
+      [['ask', '--repo', `${repo}/`, 'what is in this SI?'], parent],
+      [['ask', 'what is in this SI?'], repo],
+    ] as const) {
+      const { code, out } = await run([...argv], { cwd })
+      expect(code).toBe(0)
+      expect(out.split('\n')[0]).toMatch(headline)
+    }
   })
 })
 

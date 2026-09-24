@@ -1,7 +1,8 @@
-import { cp, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, rename, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { runInitPlatform } from '../../src/cli/commands/init.js'
 import { main, type MainDeps } from '../../src/cli/index.js'
 import type {
   AgentName,
@@ -273,6 +274,175 @@ describe('graph and show with --repo', () => {
     expect(out).toContain('No entity matches')
     expect(err).toMatch(/no entity/)
     expect(err).not.toMatch(DEMO)
+    // By its folder, never as the `.` it was typed as.
+    expect(err).toContain(`${path.basename(cwd)} declares no entity`)
+  })
+})
+
+/**
+ * A declarations repository as `init platform` writes one, named `IaC` like
+ * the owner's, holding the ledger — so a hit on it proves which SI was read —
+ * inside a scratch directory that is not one itself.
+ */
+const scaffolded = async (): Promise<{ parent: string; repo: string }> => {
+  const parent = await mkdtemp(path.join(tmpdir(), 'read-repo-standing-'))
+  const repo = path.join(parent, 'IaC')
+  await runInitPlatform({ root: repo, owner: '@acme/platform', version: '0.0.0' })
+  await writeFile(path.join(repo, 'catalog', 'databases', 'ledger-db-prod.yml'), LEDGER, 'utf8')
+  return { parent, repo }
+}
+
+const STANDING = /^reading the declarations repository in the current directory \(IaC\)/
+
+describe('graph and show without --repo, standing in a declarations repository', () => {
+  it.each([
+    [['graph', '--env', 'prod']],
+    [['show', 'ledger-db-prod']],
+  ])('%j reads it, and says so on stderr in one line naming its folder', async (argv) => {
+    const { repo } = await scaffolded()
+    const { code, out, err } = await run(argv, { cwd: repo })
+    expect(code).toBe(0)
+    expect(out).toContain('ledger-db-prod')
+    const lines = err.split('\n').filter((line) => line !== '')
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatch(STANDING)
+    expect(lines[0]).toContain('--repo')
+    expect(lines[0]).toContain('--demo')
+    expect(err).not.toMatch(DEMO)
+    expect(out).not.toMatch(/current directory/)
+  })
+
+  it('gives the answer --repo . gives there, less the line', async () => {
+    const { repo } = await scaffolded()
+    for (const argv of [['graph'], ['show', 'ledger-db-prod']]) {
+      const standing = await run(argv, { cwd: repo })
+      const named = await run([...argv, '--repo', '.'], { cwd: repo })
+      expect(standing.code).toBe(named.code)
+      expect(standing.out).toBe(named.out)
+      expect(named.err).not.toMatch(/current directory/)
+    }
+  })
+
+  it('reads the demo SI from the folder above it: markers at the root, never a walk', async () => {
+    const { parent } = await scaffolded()
+    const { code, out, err } = await run(['show', 'ledger-db-prod'], { cwd: parent })
+    expect(code).toBe(1)
+    expect(out).toContain('No entity named')
+    expect(err).toMatch(DEMO)
+  })
+
+  it('reads the demo SI from an application repository, which is not a declarations one', async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), 'read-repo-application-'))
+    await writeFile(
+      path.join(cwd, 'catalog-info.yaml'),
+      'apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: billing-api\n',
+      'utf8',
+    )
+    const demo = await run(['graph', '--env', 'prod'])
+    const { code, out, err } = await run(['graph', '--env', 'prod'], { cwd })
+    expect(code).toBe(demo.code)
+    expect(out).toBe(demo.out)
+    expect(err).toBe(demo.err)
+    expect(err).toMatch(DEMO)
+  })
+
+  it('reads the demo SI there when --demo says so, with its own line', async () => {
+    const { repo } = await scaffolded()
+    const { code, out, err } = await run(['show', 'ledger-db-prod', '--demo'], { cwd: repo })
+    expect(code).toBe(1)
+    expect(out).toContain('No entity named')
+    expect(err).toMatch(DEMO)
+    expect(err).not.toMatch(/current directory/)
+  })
+
+  it('reads the repository --repo names, not the one it stands in', async () => {
+    const { repo } = await scaffolded()
+    await cp(FIXTURES, path.join(repo, '..', 'demo-copy'), { recursive: true })
+    const { code, out, err } = await run(['show', 'billing-db-prod', '--repo', '../demo-copy'], {
+      cwd: repo,
+    })
+    expect(code).toBe(0)
+    expect(out).toContain('reached by services')
+    expect(err).toBe('')
+  })
+
+  it.each([
+    [['graph', '--demo', '--repo', '.']],
+    [['show', 'ledger-db-prod', '--repo=.', '--demo']],
+    [['ask', '--demo', '--repo', '.', 'which database holds the ledger?']],
+  ])('refuses --demo with --repo with 2, reading neither: %j', async (argv) => {
+    const { repo } = await scaffolded()
+    const client = scripted(LEDGER_TURNS)
+    const { code, out, err } = await run(argv, { cwd: repo, client })
+    expect(code).toBe(2)
+    // Its own refusal, not the unknown-option error `--demo` got before it existed.
+    expect(err).toContain('--repo <directory> or --demo, never both')
+    // The notice, not the help text printed after the refusal, which names the demo SI.
+    expect(err).not.toMatch(/^reading/m)
+    expect(out).toBe('')
+    expect(client.seen).toEqual([])
+  })
+
+  it('does not blame --repo for an empty repository it stands in: nobody passed it', async () => {
+    // Freshly scaffolded, which is a real state, and read because its
+    // witnesses say what it is — so the one line is the standing one.
+    const parent = await mkdtemp(path.join(tmpdir(), 'read-repo-standing-empty-'))
+    const repo = path.join(parent, 'IaC')
+    await runInitPlatform({ root: repo, owner: '@acme/platform', version: '0.0.0' })
+    const { code, out, err } = await run(['graph'], { cwd: repo })
+    expect(code).toBe(1)
+    expect(out).toContain('No entity matches')
+    const lines = err.split('\n').filter((line) => line !== '')
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatch(STANDING)
+  })
+
+  it('flattens a folder name that carries escape sequences into its line', async () => {
+    const { parent, repo } = await scaffolded()
+    const hostile = path.join(parent, 'IaC\u001b[2J\u001b[31mred\nsecond')
+    await rename(repo, hostile)
+    const { code, err } = await run(['show', 'ledger-db-prod'], { cwd: hostile })
+    expect(code).toBe(0)
+    expect(err).toMatch(/^reading the declarations repository in the current directory \(IaC/)
+    expect(err).not.toContain('\u001b')
+    expect(err.split('\n').filter((line) => line !== '')).toHaveLength(1)
+  })
+})
+
+describe('graph and show when the working directory is gone', () => {
+  // A shell can stand in a directory someone removed; process.cwd() then
+  // throws. The demo SI needs no working directory, so neither --demo nor
+  // the road that falls back to it may fail on one.
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const gone = (): void => {
+    vi.spyOn(process, 'cwd').mockImplementation(() => {
+      throw Object.assign(new Error('ENOENT: no such file or directory, uv_cwd'), {
+        code: 'ENOENT',
+      })
+    })
+  }
+
+  it.each([
+    [['graph', '--env', 'prod', '--demo']],
+    [['graph', '--env', 'prod']],
+    [['show', 'billing-db-prod', '--demo']],
+    [['show', 'billing-db-prod']],
+  ])('%j reads the demo SI and says so', async (argv) => {
+    gone()
+    const { code, out, err } = await run(argv)
+    expect(code).toBe(0)
+    expect(out).toContain('billing-db-prod')
+    expect(err.split('\n').filter((line) => line !== '')).toEqual([expect.stringMatching(DEMO)])
+  })
+
+  it('reads the demo SI when the injected working directory does not exist', async () => {
+    const cwd = path.join(await mkdtemp(path.join(tmpdir(), 'read-repo-gone-')), 'nowhere')
+    const { code, err } = await run(['show', 'billing-db-prod'], { cwd })
+    expect(code).toBe(0)
+    expect(err).toMatch(DEMO)
   })
 })
 
@@ -347,6 +517,28 @@ describe('ask with --repo', () => {
     // reference no tool returned, so this is exit 3 and not a quiet hit.
     const client = scripted(LEDGER_TURNS)
     const { code, err } = await run(['ask', 'which database holds the ledger?'], { client })
+    expect(code).toBe(3)
+    expect(err).toMatch(DEMO)
+  })
+
+  it('answers from the repository it stands in when no --repo is given', async () => {
+    const { repo } = await scaffolded()
+    const { code, out, err } = await run(['ask', 'which database holds the ledger?'], {
+      cwd: repo,
+      client: scripted(LEDGER_TURNS),
+    })
+    expect(code).toBe(0)
+    expect(out).toContain('resource:default/ledger-db-prod')
+    expect(err).toMatch(STANDING)
+    expect(err).not.toMatch(DEMO)
+  })
+
+  it('reads the demo SI with --demo, standing in the same repository', async () => {
+    const { repo } = await scaffolded()
+    const { code, err } = await run(['ask', '--demo', 'which database holds the ledger?'], {
+      cwd: repo,
+      client: scripted(LEDGER_TURNS),
+    })
     expect(code).toBe(3)
     expect(err).toMatch(DEMO)
   })

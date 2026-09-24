@@ -92,3 +92,35 @@ describe('parseArguments: --repo on the read commands', () => {
     expect(parseArguments(['show', '--repo', 'iac']).name).toBe('error')
   })
 })
+
+describe('parseArguments: --demo on the read commands', () => {
+  // The demo SI whatever the working directory holds. Omitted when absent,
+  // like `repo`, so the strict cases above still hold.
+  it.each([
+    [['graph', '--demo'], { name: 'graph', options: {}, demo: true }],
+    [['show', 'billing-db-prod', '--demo'], { name: 'show', query: 'billing-db-prod', demo: true }],
+    [['ask', '--demo', 'which databases?'], { name: 'ask', intent: 'which databases?', demo: true }],
+  ])('reads %j', (argv, expected) => {
+    expect(parseArguments(argv)).toStrictEqual(expected)
+  })
+
+  it.each([
+    [['graph', '--demo', '--repo', 'iac']],
+    [['show', 'billing-db-prod', '--repo=iac', '--demo']],
+    [['ask', '--demo', '--repo', 'iac', 'which databases?']],
+  ])('refuses %j: two sources, and no answer to which one won', (argv) => {
+    expect(parseArguments(argv)).toMatchObject({
+      name: 'error',
+      // Its own words: before `--demo` existed, strict parsing refused it as
+      // an unknown option, and a message merely naming it would pass on that.
+      message: expect.stringContaining('--repo <directory> or --demo, never both'),
+    })
+  })
+
+  it.each([[['plan', '--demo', 'x', '--repo', 'iac']], [['init', '--demo']]])(
+    'is not an option of %j',
+    (argv) => {
+      expect(parseArguments(argv).name).toBe('error')
+    },
+  )
+})

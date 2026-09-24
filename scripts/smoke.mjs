@@ -64,17 +64,20 @@ let checks = 0
  * `absentFromStdout` / `absentFromStderr` say where something must NOT be: a
  * line meant for a person has to stay out of the stream that gets piped.
  *
+ * `cwd` is where the binary runs, ELSEWHERE unless a check is about the
+ * directory the user is standing in.
+ *
  * @param {{args: string[], code: number, stdout?: RegExp, stderr?: RegExp,
- *   absentFromStdout?: RegExp, absentFromStderr?: RegExp}} expected
+ *   absentFromStdout?: RegExp, absentFromStderr?: RegExp, cwd?: string}} expected
  */
-function check({ args, code, stdout, stderr, absentFromStdout, absentFromStderr }) {
+function check({ args, code, stdout, stderr, absentFromStdout, absentFromStderr, cwd }) {
   checks += 1
-  const label = `idp-agent ${args.join(' ')}`
+  const label = `${cwd === undefined ? '' : `(in ${path.basename(cwd)}) `}idp-agent ${args.join(' ')}`
   // spawnSync, not execFileSync: the latter hands back stderr only when the
   // process fails, and a check on what a SUCCESSFUL run says on stderr — or
   // keeps off it — then passes or fails on an empty string.
   const run = spawnSync(process.execPath, [BIN, ...args], {
-    cwd: ELSEWHERE,
+    cwd: cwd ?? ELSEWHERE,
     env: CLEAN_ENV,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -228,6 +231,26 @@ check({
   absentFromStderr: DEMO,
 })
 check({ args: ['graph', '--repo', 'missing'], code: 2, stderr: /missing is not a directory/ })
+
+// No --repo, standing in a declarations repository as `init platform` writes
+// one, with one entity the demo SI does not declare: it is read, and named by
+// its folder, and the demo line is not printed. A copy of the scaffolded one,
+// which the hashes above say must stay as it was.
+const STANDING = path.join(ELSEWHERE, 'IaC')
+cpSync(PREVIEWED, STANDING, { recursive: true })
+writeFileSync(
+  path.join(STANDING, 'catalog/databases/ledger-db-prod.yml'),
+  '---\napiVersion: backstage.io/v1alpha1\nkind: Resource\nmetadata:\n  name: ledger-db-prod\n' +
+    'spec:\n  type: database\n  owner: group:default/tiger\n',
+)
+check({
+  args: ['show', 'ledger-db-prod'],
+  cwd: STANDING,
+  code: 0,
+  stdout: /resource:default\/ledger-db-prod/,
+  stderr: /^reading the declarations repository in the current directory \(IaC\)/,
+  absentFromStderr: DEMO,
+})
 
 // A repository that was already wrong before the plan, as a real one usually
 // is: one document the reader rejects, in a file the plan never touches. The
