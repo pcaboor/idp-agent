@@ -259,7 +259,9 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
   // NOT cover: it cannot tell whether this component is already declared
   // somewhere, and a duplicate is caught by the merge request rather than here.
   const graph = EntityGraph.from([])
-  const tools = buildTools(graph)
+  // The Architect's tools, as `plan` builds them. An empty catalogue refuses
+  // no value anyway; the option is here so the two Architects cannot drift.
+  const tools = buildTools(graph, { refuseUnusedValues: false })
   const { summary, vocabulary } = summariseGraph(graph)
   const seeded = seededVocabulary(vocabulary, config)
 

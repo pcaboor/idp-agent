@@ -312,3 +312,71 @@ describe('answerQuestion', () => {
     expect(events.some((event) => event.type === 'refused')).toBe(true)
   })
 })
+
+describe('answerQuestion, when an answer did not fit', () => {
+  const said = (text: string): GenerateResult => ({ text, toolCalls: [], finishReason: 'stop' })
+  const reasonOf = (outcome: { answer: { outcome: string; reason?: string } }): string =>
+    outcome.answer.outcome === 'unanswerable' ? (outcome.answer.reason ?? '') : ''
+
+  it('says so over the prose that followed, when nothing was read in between', async () => {
+    // The model answered; "nothing matched", or its own afterthought, would
+    // hide that the answer was refused.
+    const client = scripted([
+      turnCalling('answer', { outcome: 'entities' }),
+      said('I am not sure.'),
+      said('Still not sure.'),
+    ])
+    const { emit } = collect()
+    const reason = reasonOf(await answerQuestion(client, fakeTools([]), INPUT, emit))
+    expect(reason).toBe(
+      'the model answered once and no answer fitted the answer tool; the last: ' +
+        'refs: Invalid input: expected array, received undefined',
+    )
+  })
+
+  it('counts every refused answer and names the last issue', async () => {
+    const client = scripted([
+      turnCalling('answer', { outcome: 'bogus' }),
+      turnCalling('answer', { outcome: 'entities' }),
+    ])
+    const { emit } = collect()
+    const reason = reasonOf(await answerQuestion(client, fakeTools([]), INPUT, emit))
+    expect(reason).toMatch(/^the model answered 2 times and no answer fitted the answer tool; the last: refs: /)
+  })
+
+  it('lets a later read outrank an earlier refused answer', async () => {
+    // Refused on turn one, then two reads and a turn of prose: the run did not
+    // end on the refusal, and the reason must say how it did end.
+    const client = scripted([
+      turnCalling('answer', { outcome: 'bogus' }),
+      turnCalling('search_entities', { nameContains: 'billing' }),
+      turnCalling('search_entities', { nameContains: 'billing' }),
+      said('I found billing-db-prod but cannot decide.'),
+    ])
+    const { emit } = collect()
+    const reason = reasonOf(await answerQuestion(client, fakeTools([A]), INPUT, emit))
+    expect(reason).toBe('I found billing-db-prod but cannot decide.')
+  })
+
+  it('hands the model the field that did not fit, as the person is told it', async () => {
+    const seen: Array<{ transcript: unknown[] }> = []
+    const turns = [
+      turnCalling('answer', { outcome: 'entities' }),
+      turnCalling('answer', { outcome: 'nothing' }),
+    ]
+    const client: LlmClient = {
+      generate: async (request) => {
+        seen.push(request)
+        return turns[seen.length - 1] ?? said('')
+      },
+    }
+    const { emit } = collect()
+    await answerQuestion(client, fakeTools([]), INPUT, emit)
+    expect(seen[1]?.transcript).toContainEqual({
+      role: 'tool',
+      id: 'c1',
+      name: 'answer',
+      result: { error: 'answer: refs: Invalid input: expected array, received undefined' },
+    })
+  })
+})

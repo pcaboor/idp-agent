@@ -262,6 +262,26 @@ describe.each(Object.keys(WIRES) as ProviderName[])('the %s wire', (provider) =>
     expect(result.toolCalls).toEqual([{ id, name: tool, args }])
   })
 
+  it('never leaves a tool to a provider default of strict mode', async () => {
+    // Measured against OpenAI's Responses API with gpt-6-luna: a function tool
+    // sent with no `strict` comes back echoed as `strict: true`, and the model
+    // is then made to fill every property — `env: ""`, `env: "default"` — so a
+    // search that needed no environment matched nothing, and an overview came
+    // with refs attached. Every schema here has optional fields, which strict
+    // mode cannot express. Anthropic accepts the flag only on models that
+    // support it, and otherwise ignores it; it must still never be true.
+    const sent = serving(wire.saying('done'))
+    await client().generate(request(specs, 'auto'))
+
+    for (const tool of records(sent[0]?.body['tools'])) {
+      const nested = tool['function'] as Body | undefined
+      const flag = tool['strict'] ?? nested?.['strict']
+      const name = String(tool['name'] ?? nested?.['name'])
+      expect(flag, `${name} is sent in strict mode`).not.toBe(true)
+      if (provider !== 'anthropic') expect(flag, `${name} leaves strict to a default`).toBe(false)
+    }
+  })
+
   it('passes a call its union refuses through as sent, for the agent to hand back', async () => {
     // The flat advertisement lets `{ outcome: "entities" }` through with no
     // refs. The SDK checks it against the union, flags it invalid, and returns

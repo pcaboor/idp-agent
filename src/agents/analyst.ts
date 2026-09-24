@@ -1,4 +1,4 @@
-import { answerSchema, type Answer } from '../core/schemas/query.js'
+import { QUERY_LIMITS, answerSchema, type Answer } from '../core/schemas/query.js'
 import type { LlmClient, Transcript } from '../llm/client.js'
 import type { EventSink } from './events.js'
 import { MAX_REPAIRS, takeTurn } from './forced-turn.js'
@@ -76,6 +76,13 @@ export async function answerQuestion(
   let said = ''
   /** Turns granted back for a refused terminal call. See MAX_REPAIRS. */
   let repairs = 0
+  /**
+   * Answer calls the union refused, and why the last one was. A model that
+   * answered three times and never fitted did not find the catalogue silent,
+   * and the refusal must not say it did. Cleared by a read that returns rows:
+   * a run that went on to read the catalogue did not end on the refusal.
+   */
+  const rejected = { times: 0, issue: '' }
 
   let stop = false
 
@@ -136,12 +143,17 @@ export async function answerQuestion(
       const outcome = tools.run(call)
       truncated += outcome.truncated
       read += outcome.rows
+      if (outcome.rows > 0) {
+        rejected.times = 0
+        rejected.issue = ''
+      }
       if (reads) {
         emit({
           type: 'tool:result',
           name: call.name,
           rows: outcome.rows,
           truncated: outcome.truncated,
+          ...(outcome.error === undefined ? {} : { error: outcome.error }),
         })
       }
 
@@ -156,11 +168,19 @@ export async function answerQuestion(
         // and a turn is granted back, or on the forced turn the correction is
         // written into a transcript that is never sent again.
         if (repairs < MAX_REPAIRS) repairs += 1
+        const [issue] = parsed.error.issues
+        rejected.times += 1
+        rejected.issue =
+          issue === undefined
+            ? 'invalid'
+            : `${issue.path.length > 0 ? `${issue.path.join('.')}: ` : ''}${issue.message}`
+        // The same issue the person is told, field path and all: a model
+        // told only "expected array" has to guess which field it was.
         transcript.push({
           role: 'tool',
           id: call.id,
           name: call.name,
-          result: { error: `answer: ${parsed.error.issues[0]?.message ?? 'invalid'}` },
+          result: { error: `answer: ${rejected.issue}` },
         })
         continue
       }
@@ -182,7 +202,7 @@ export async function answerQuestion(
 
   // A turn of prose on the last allowed turn is the model saying why, and it
   // was being thrown away. It becomes the reason when there is nothing better.
-  const signed = sign(answer, tools.witnessed, said)
+  const signed = sign(answer, tools.witnessed, said, rejected)
   if (signed.outcome === 'unanswerable' && answer?.outcome !== 'unanswerable') {
     emit({ type: 'refused', agent: 'analyst', reason: signed.reason })
   } else {
@@ -203,11 +223,29 @@ export async function answerQuestion(
  * the first is the whole read-side guarantee, the second catches a model that
  * saw rows and then claimed emptiness.
  */
-function sign(answer: Answer | undefined, witnessed: ReadonlySet<string>, said: string): Answer {
+function sign(
+  answer: Answer | undefined,
+  witnessed: ReadonlySet<string>,
+  said: string,
+  rejected: { times: number; issue: string },
+): Answer {
   if (answer === undefined) {
-    // Say what happened, not how the loop is built. An empty witness set means
-    // the catalogue held nothing for this — very often because it was not a
-    // question about the catalogue at all.
+    // Say what happened, not how the loop is built. A model whose answers were
+    // refused, with nothing read since, is the engine's fact and outranks
+    // anything the model said in prose afterwards: "nothing matched" there was
+    // false. Every refused answer since the last read is counted; only the last
+    // is named.
+    if (rejected.times > 0) {
+      const times = rejected.times === 1 ? 'once' : `${rejected.times} times`
+      return unanswerable(
+        `the model answered ${times} and no answer fitted the answer tool; the last: ${rejected.issue}`.slice(
+          0,
+          QUERY_LIMITS.maxReason,
+        ),
+      )
+    }
+    // An empty witness set means the catalogue held nothing for this — very
+    // often because it was not a question about the catalogue at all.
     if (said !== '') return unanswerable(said.slice(0, 400))
     return unanswerable(
       witnessed.size === 0

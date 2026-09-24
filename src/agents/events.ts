@@ -16,7 +16,12 @@ export type AgentEvent =
   | { type: 'agent:start'; agent: AgentName }
   | { type: 'classified'; classification: 'MUTATION' | 'QUESTION' }
   | { type: 'tool:call'; name: string; args: unknown }
-  | { type: 'tool:result'; name: string; rows: number; truncated: number }
+  /**
+   * `error` is there when the tool refused the call or answered with an error:
+   * a refused call reads no rows, and a renderer given only the count would
+   * draw it as a search that ran and found nothing.
+   */
+  | { type: 'tool:result'; name: string; rows: number; truncated: number; error?: string }
   /**
    * The Analyst's answer, signed. `outcome` is there because `refs` alone
    * cannot tell an overview from an empty result — both carry none — and a

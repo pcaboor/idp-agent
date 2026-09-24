@@ -58,10 +58,189 @@ describe('search_entities', () => {
     expect(outcome.rows).toBe(0)
   })
 
-  it('returns an empty result rather than an error when nothing matches', async () => {
-    const outcome = (await tools()).run(call('search_entities', { env: 'nowhere' }))
+  it('returns an empty result rather than an error when known values match nothing together', async () => {
+    // Every value is one the catalogue uses; no entity has all of them. That is
+    // an answer, and an error there would send the model looking for a typo.
+    const outcome = (await tools()).run(
+      call('search_entities', { type: 'database', env: 'prod', nameContains: 'no-such-name' }),
+    )
     expect(outcome.rows).toBe(0)
+    expect(outcome.error).toBeUndefined()
     expect(text(outcome.result)).not.toMatch(/error/)
+  })
+
+  it('states the error it refused a call with, beside the result the model reads', async () => {
+    const outcome = (await tools()).run(call('search_entities', { kind: 'Banana' }))
+    expect(outcome.error).toMatch(/^search_entities: /)
+    expect(outcome.result).toEqual({ error: outcome.error })
+  })
+})
+
+describe('search_entities, given a value the catalogue does not use', () => {
+  // A real model fills every optional criterion it is shown, and an invented
+  // environment used to come back as an empty result: a legitimate-looking
+  // "nothing", for a search that could never have matched. It is an error the
+  // model can act on instead, naming the values the catalogue does use.
+  const component = (name: string, extra: { env?: string; type?: string; owner?: string } = {}) =>
+    ({
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Component',
+      metadata: {
+        name,
+        annotations: extra.env === undefined ? {} : { 'company.fr/env': extra.env },
+      },
+      spec: {
+        type: extra.type ?? 'website',
+        lifecycle: 'production',
+        owner: extra.owner ?? 'group:default/artist-relations-team',
+      },
+    }) satisfies Entity
+
+  const ARTIST_WEB = component('artist-web')
+  const lone = () => buildTools(EntityGraph.from([ARTIST_WEB]))
+  const errorOf = (outcome: ToolOutcome): string => {
+    expect(outcome.rows).toBe(0)
+    expect(outcome.error).toBeDefined()
+    expect(outcome.result).toEqual({ error: outcome.error })
+    return outcome.error ?? ''
+  }
+
+  it('refuses an environment in a catalogue that declares none, and says to omit it', () => {
+    const outcome = lone().run(call('search_entities', { kind: 'Component', env: 'default' }))
+    expect(errorOf(outcome)).toBe(
+      'search_entities: env "default" matches no entity: ' +
+        'this catalogue declares no environment — omit env',
+    )
+  })
+
+  it('refuses an environment nobody uses, and names the ones in use', () => {
+    const built = buildTools(
+      EntityGraph.from([
+        component('a', { env: 'prod' }),
+        component('b', { env: 'dev' }),
+        component('c', { env: 'prod' }),
+      ]),
+    )
+    const outcome = built.run(call('search_entities', { env: 'staging' }))
+    expect(errorOf(outcome)).toBe(
+      'search_entities: env "staging" matches no entity; environments in use: dev, prod',
+    )
+  })
+
+  it('says how many entities declare no environment, since no env value reaches them', () => {
+    const built = buildTools(
+      EntityGraph.from([component('a', { env: 'prod' }), ARTIST_WEB]),
+    )
+    const outcome = built.run(call('search_entities', { env: 'default' }))
+    expect(errorOf(outcome)).toBe(
+      'search_entities: env "default" matches no entity; environments in use: prod; ' +
+        '1 entity declares none — omit env to include it',
+    )
+  })
+
+  it('still matches no entity without an environment on an env that is in use', () => {
+    const built = buildTools(
+      EntityGraph.from([component('a', { env: 'prod' }), ARTIST_WEB]),
+    )
+    const outcome = built.run(call('search_entities', { env: 'prod' }))
+    expect(rows(outcome).map((row) => row.name)).toEqual(['a'])
+    expect(outcome.error).toBeUndefined()
+  })
+
+  it('refuses a type nobody uses, and names the ones in use', () => {
+    const outcome = lone().run(call('search_entities', { type: 'service' }))
+    expect(errorOf(outcome)).toBe(
+      'search_entities: type "service" matches no entity; types in use: website',
+    )
+  })
+
+  it('refuses a kind nobody uses, and names the ones in use', () => {
+    const outcome = lone().run(call('search_entities', { kind: 'Resource' }))
+    expect(errorOf(outcome)).toBe(
+      'search_entities: kind "Resource" matches no entity; kinds in use: Component',
+    )
+  })
+
+  it('refuses an owner nobody uses, and names the ones in use', () => {
+    const outcome = lone().run(call('search_entities', { owner: 'group:default/tiger' }))
+    expect(errorOf(outcome)).toBe(
+      'search_entities: owner "group:default/tiger" matches no entity; ' +
+        'owners in use: group:default/artist-relations-team',
+    )
+  })
+
+  it('names every criterion the catalogue does not use, not just the first', () => {
+    const outcome = lone().run(
+      call('search_entities', { type: 'service', env: 'prod', owner: 'group:default/tiger' }),
+    )
+    const error = errorOf(outcome)
+    expect(error).toMatch(/type "service" matches no entity/)
+    expect(error).toMatch(/env "prod" matches no entity/)
+    expect(error).toMatch(/owner "group:default\/tiger" matches no entity/)
+  })
+
+  it('answers when every value is in use', () => {
+    const built = lone()
+    const outcome = built.run(
+      call('search_entities', {
+        kind: 'Component',
+        type: 'website',
+        owner: 'group:default/artist-relations-team',
+        nameContains: 'artist-web',
+      }),
+    )
+    expect(rows(outcome).map((row) => row.ref)).toEqual(['component:default/artist-web'])
+    expect(outcome.error).toBeUndefined()
+    expect(built.witnessed.has('component:default/artist-web')).toBe(true)
+  })
+
+  it('leaves nameContains a plain filter: a fragment nobody has is an empty answer', () => {
+    const outcome = lone().run(call('search_entities', { nameContains: 'billing' }))
+    expect(outcome.rows).toBe(0)
+    expect(outcome.error).toBeUndefined()
+    expect(outcome.result).toEqual({ rows: [] })
+  })
+
+  it('bounds the list of values it names, and counts the rest', () => {
+    const many = Array.from({ length: 14 }, (_, index) =>
+      component(`svc-${String(index)}`, { type: `type-${String(index).padStart(2, '0')}` }),
+    )
+    const outcome = buildTools(EntityGraph.from(many)).run(
+      call('search_entities', { type: 'database' }),
+    )
+    const error = errorOf(outcome)
+    expect(error).toMatch(/types in use: type-00, type-01, .*, type-09 and 4 more$/)
+    expect(error).not.toContain('type-10')
+  })
+
+  it('refuses nothing on an empty catalogue, where the empty result is the whole truth', () => {
+    // `init` builds its tools over an empty graph and relies on this.
+    const built = buildTools(EntityGraph.from([]))
+    for (const criteria of [
+      { kind: 'Component' },
+      { type: 'website' },
+      { env: 'prod' },
+      { owner: 'group:default/tiger' },
+    ]) {
+      const outcome = built.run(call('search_entities', criteria))
+      expect(outcome.result).toEqual({ rows: [] })
+      expect(outcome.error).toBeUndefined()
+    }
+  })
+
+  it('witnesses nothing when it refuses', () => {
+    const built = lone()
+    built.run(call('search_entities', { kind: 'Component', env: 'default' }))
+    expect(built.witnessed.size).toBe(0)
+  })
+
+  it('can be told to keep the empty result, for an agent whose recordings expect it', () => {
+    // The Architect's plan-mode tapes were recorded against the silent empty
+    // result; the tool result is part of every later request's digest.
+    const built = buildTools(EntityGraph.from([ARTIST_WEB]), { refuseUnusedValues: false })
+    const outcome = built.run(call('search_entities', { kind: 'Component', env: 'default' }))
+    expect(outcome.result).toEqual({ rows: [] })
+    expect(outcome.error).toBeUndefined()
   })
 })
 
@@ -71,6 +250,7 @@ describe('get_entity', () => {
     // answering confidently about an entity that does not exist.
     const outcome = (await tools()).run(call('get_entity', { ref: 'resource:default/nope' }))
     expect(text(outcome.result)).toContain('no such entity')
+    expect(outcome.error).toContain('no such entity')
     expect(text(outcome.result)).not.toContain('billing')
   })
 
@@ -178,7 +358,9 @@ describe('the level a row states', () => {
 
 describe('the answer tool and the registry itself', () => {
   it('refuses an unknown tool name instead of ignoring the call', async () => {
-    expect(text((await tools()).run(call('delete_everything', {})).result)).toMatch(/unknown tool/)
+    const outcome = (await tools()).run(call('delete_everything', {}))
+    expect(text(outcome.result)).toMatch(/unknown tool/)
+    expect(outcome.error).toMatch(/unknown tool/)
   })
 
   it('returns the answer as given, for the loop to validate and the engine to sign', async () => {

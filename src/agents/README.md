@@ -44,7 +44,25 @@ Plain data, handed in. Never a graph, never a provider, never a path.
   and no tools at all. It answers `MUTATION` or `QUESTION`, and a third answer is refused
   rather than defaulted — declare, never infer.
 - The **Analyst** and the **Architect** get a tool registry built for them in `tools/`,
-  whose functions close over an `EntityGraph` the agent itself never holds.
+  whose functions close over an `EntityGraph` the agent itself never holds. A refused
+  call comes back as an error the model reads and the `tool:result` event carries, so
+  the terminal prints the reason rather than `0 row(s)`.
+
+  The Analyst's `search_entities` also refuses a `kind`, `type`, `env` or `owner` **no
+  entity carries**, naming the values in use: a real model fills every optional
+  criterion it is shown, and an invented `env: "default"` read as a search that ran and
+  found nothing. `nameContains` stays a plain filter. The Architect's registry is built
+  with `refuseUnusedValues: false` and still answers those with an empty result, for
+  now: four of its five plan-mode tapes searched on such a value, and a tool result is
+  part of every later request's digest. Whether to turn the refusal on for it is an open
+  decision, not a consequence of re-recording — the Architect reads an empty result as a
+  finding (`type: database-access` finding no grant is how it learns one must be
+  proposed), and an error there changes what it is told on a normal path. Until that is
+  decided, `plan` and `init` share the same opt-out.
+- The Analyst's `answer` **discards** any field its outcome does not declare — the flat
+  advertisement shows `refs` and `reason` beside every outcome, and a real model fills
+  them — and never reads it (ADR-0007, amended). When every answer it sent was refused,
+  the refusal says so and names the issue, rather than that nothing matched.
 - The **Inspector** gets a `ProjectSnapshot` that `context/project-fs` has already read,
   capped and stripped: `.env*`, key material, credential files, `.git/`, `node_modules/`
   and hidden directories bar `.github` are gone before this folder sees anything.

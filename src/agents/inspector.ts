@@ -199,6 +199,7 @@ export async function inspect(
           name: call.name,
           rows: outcome.rows,
           truncated: outcome.truncated,
+          ...(outcome.error === undefined ? {} : { error: outcome.error }),
         })
       }
 
