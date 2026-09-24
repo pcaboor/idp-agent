@@ -95,6 +95,11 @@ describe('values YAML would read back as something else', () => {
     numeric: '123',
     float: '1.0',
     octalish: '0755',
+    // Strings to YAML 1.1 and numbers to YAML 1.2, which is what this library
+    // and Backstage read: a 1.2 octal, and an exponent with no decimal point.
+    octal12: '0o17',
+    exponent: '1e3',
+    exponentUpper: '1E3',
     yamlTrue: 'true',
     yamlNo: 'no',
     yamlYes: 'yes',
@@ -120,6 +125,14 @@ describe('values YAML would read back as something else', () => {
 
   it('round-trips a plain entity', () => {
     expect(parseEntity(serializeEntity(entity))).toEqual(entity)
+  })
+
+  it('round-trips a name only YAML 1.2 would read as a number', () => {
+    // `0o1` is a valid Backstage name. Quoted for 1.1 alone, it went out bare
+    // and came back as the number 1 — the counterexample the property test
+    // "serialise then reload" hit about once in two hundred thousand runs.
+    const named = { ...entity, metadata: { ...entity.metadata, name: '0o1' } }
+    expect(parseEntity(serializeEntity(named))).toEqual(named)
   })
 
   it('round-trips a right that states the level it grants', () => {
