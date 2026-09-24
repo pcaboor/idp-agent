@@ -254,6 +254,13 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
     // it names. Clamped so that raising the bound cannot make the two disagree.
     const attempt = Math.min(number, 3) as 1 | 2 | 3
     const gates: Gate[] = []
+    // The attempt's bounds and each verdict, on the stream as they happen. The
+    // record says the same once the loop is over; a trace built from the
+    // stream (src/trace/) needs it while the loop is running, and a test in
+    // tests/unit/repair.test.ts holds the two to agreeing.
+    emit({ type: 'attempt:start', attempt })
+    const passed = (gate: Gate): void => emit({ type: 'gate:passed', attempt, gate })
+    const ended = (): void => emit({ type: 'attempt:end', attempt })
 
     const fail = (gate: Gate, findings: readonly string[]): void => {
       // One list of findings, two renderings: the report the model reads and
@@ -264,6 +271,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       refusal = { gate, reason }
       attempts.push({ attempt, gates: [...gates], failed: gate, report })
       emit({ type: 'repair', attempt, gate, reason })
+      ended()
     }
 
     const drafted = await input.draft(report)
@@ -282,6 +290,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       // correction, and the report we could hand back would say nothing the
       // model does not already know.
       attempts.push({ attempt, gates, failed: undefined, report: undefined })
+      ended()
       // The refusal an earlier attempt recorded is kept, not overwritten. A
       // second attempt that produced no draft at all does not un-refuse the
       // first one, and `plan` still carries the partial plan a gate judged —
@@ -317,6 +326,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       fail('zod', [reasonOf(parsed.error)])
       continue
     }
+    passed('zod')
     // Between [1] and [2], and **not a gate**.
     //
     // After the parse because it needs a Plan — it reads `spec.type` and
@@ -415,6 +425,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       )
       continue
     }
+    passed('signature')
 
     // A question is NOT a failed gate, and this is where it leaves the loop.
     //
@@ -446,6 +457,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       )
       continue
     }
+    passed('policy')
 
     // A question is NOT a failed gate, and this is where it leaves the loop.
     //
@@ -461,6 +473,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       // whoever is watching (design §6.2).
       for (const question of questions) emit({ type: 'ask', question })
       attempts.push({ attempt, gates: [...gates], failed: undefined, report: undefined })
+      ended()
       return { outcome: 'questions', plan: signed.plan, questions, attempts, truncated, rejections }
     }
 
@@ -496,6 +509,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       )
       continue
     }
+    passed('recheck')
 
     // [5] The Reviewer. The only gate that costs anything, and it is last for
     // that reason: FOUR free gates have refused everything they can, so a
@@ -515,6 +529,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       // Architect a report saying "fix this" would spend the remaining paid
       // attempts on a defect that does not exist, and end by telling the user
       // their plan was refused. It stops here, saying what actually happened.
+      ended()
       return {
         outcome: 'stopped',
         plan: signed.plan,
@@ -529,8 +544,10 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       fail('reviewer', [verdict.reason])
       continue
     }
+    passed('reviewer')
 
     attempts.push({ attempt, gates: [...gates], failed: undefined, report: undefined })
+    ended()
     return { outcome: 'planned', signed, edits, dropped, recheck, attempts, truncated, rejections }
   }
 

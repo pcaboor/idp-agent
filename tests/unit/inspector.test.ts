@@ -224,9 +224,11 @@ describe('inspect', () => {
       'agent:start',
       ...Array.from({ length: INSPECTOR_LIMITS.maxTurns }, () => ['tool:call', 'tool:result']).flat(),
       'refused',
+      'agent:end',
     ])
     expect(events.at(0)).toEqual({ type: 'agent:start', agent: 'inspector' })
-    expect(events.at(-1)).toEqual({ type: 'refused', agent: 'inspector', reason: expect.any(String) })
+    expect(events.at(-2)).toEqual({ type: 'refused', agent: 'inspector', reason: expect.any(String) })
+    expect(events.at(-1)).toEqual({ type: 'agent:end', agent: 'inspector', threw: false })
   })
 
   it('gives up early when the reads keep returning nothing', async () => {
@@ -301,6 +303,7 @@ describe('inspect', () => {
     expect(events).toEqual([
       { type: 'agent:start', agent: 'inspector' },
       { type: 'stopped', agent: 'inspector', reason: '502 from the gateway' },
+      { type: 'agent:end', agent: 'inspector', threw: true },
     ])
   })
 

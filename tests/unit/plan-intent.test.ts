@@ -691,10 +691,10 @@ describe('what a run looks like on a terminal', () => {
     // Stage 7 draws these with Ink. Until then the stream has to be legible as
     // a log: appended lines, no cursor movement, nothing that needs a TTY.
     expect(renderEvent({ type: 'agent:start', agent: 'architect' })).toBe('· architect')
-    expect(renderEvent({ type: 'tool:call', name: 'search_entities', args: { env: 'prod' } })).toBe(
+    expect(renderEvent({ type: 'tool:call', id: 'c1', name: 'search_entities', args: { env: 'prod' } })).toBe(
       '  → search_entities',
     )
-    expect(renderEvent({ type: 'tool:result', name: 'search_entities', rows: 25, truncated: 3 })).toBe(
+    expect(renderEvent({ type: 'tool:result', id: 'c1', name: 'search_entities', rows: 25, truncated: 3 })).toBe(
       '  ← 25 row(s) · 3 more not shown',
     )
     expect(renderEvent({ type: 'plan:ready', operations: 2 })).toBe('· a draft with 2 operation(s)')
@@ -817,5 +817,14 @@ describe('what a run looks like on a terminal', () => {
       'reviewer',
     ])
     expect(result.text).not.toContain(CLOSING)
+  })
+
+  it('renders nothing for the events that only bound a span', () => {
+    // An agent's end, an attempt's bounds and a gate that passed are structure
+    // for a trace (src/trace/). The lines they bound already say what happened.
+    expect(renderEvent({ type: 'agent:end', agent: 'architect', threw: false })).toBeUndefined()
+    expect(renderEvent({ type: 'attempt:start', attempt: 1 })).toBeUndefined()
+    expect(renderEvent({ type: 'attempt:end', attempt: 1 })).toBeUndefined()
+    expect(renderEvent({ type: 'gate:passed', attempt: 1, gate: 'zod' })).toBeUndefined()
   })
 })

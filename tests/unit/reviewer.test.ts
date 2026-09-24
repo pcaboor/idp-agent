@@ -427,7 +427,7 @@ describe('reviewPlan', () => {
     expect(client.calls).toBe(1)
     // Nothing else on the sink: the union has no verdict event, and a plan that
     // cleared this gate is reported by the gate after it.
-    expect(events.map((event) => event.type)).toEqual(['agent:start'])
+    expect(events.map((event) => event.type)).toEqual(['agent:start', 'agent:end'])
   })
 
   it('stops the plan when the reviewer rejects', async () => {
@@ -576,7 +576,8 @@ describe('a review that did not happen is not an approval', () => {
 
     await expect(reviewPlan(exploding, { plan: PLAN, intent: INTENT, derived: [], targets: [], effects: [] }, emit)).rejects.toThrow('502')
 
-    expect(events.map((event) => event.type)).toEqual(['agent:start', 'stopped'])
+    expect(events.map((event) => event.type)).toEqual(['agent:start', 'stopped', 'agent:end'])
+    expect(events.at(-1)).toEqual({ type: 'agent:end', agent: 'reviewer', threw: true })
     expect(reasonOf(events.find((event) => event.type === 'stopped'))).toContain('502')
   })
 })

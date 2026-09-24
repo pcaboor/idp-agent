@@ -5,6 +5,7 @@ import { reasonOf } from '../core/schemas/reject.js'
 import type { LlmClient, ModelToolSpec, Transcript } from '../llm/client.js'
 import type { EventSink } from './events.js'
 import { MAX_REPAIRS, takeTurn } from './forced-turn.js'
+import { asAgent } from './lifetime.js'
 
 /** The terminal tool. Named once so the loop and the spec cannot disagree. */
 export const VERDICT_TOOL = 'verdict'
@@ -331,8 +332,14 @@ export async function reviewPlan(
   input: ReviewInput,
   emit: EventSink,
 ): Promise<Verdict> {
-  emit({ type: 'agent:start', agent: 'reviewer' })
+  return asAgent('reviewer', emit, () => reviewAgainstRequest(client, input, emit))
+}
 
+async function reviewAgainstRequest(
+  client: LlmClient,
+  input: ReviewInput,
+  emit: EventSink,
+): Promise<Verdict> {
   const transcript: Transcript[] = [{ role: 'user', text: opening(input) }]
   let verdict: Verdict | undefined
   /** What the model said on a turn that called nothing. Becomes the reason. */

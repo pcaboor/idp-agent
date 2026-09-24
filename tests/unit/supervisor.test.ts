@@ -58,13 +58,15 @@ describe('classify', () => {
     expect(events).toEqual([
       { type: 'agent:start', agent: 'supervisor' },
       { type: 'classified', classification: 'QUESTION' },
+      { type: 'agent:end', agent: 'supervisor', threw: false },
     ])
   })
 
   it('emits a refusal before it throws, so the failure is never silent', async () => {
     const { events, emit } = collect()
     await classify(saying('UNCLEAR'), INPUT, emit).catch(() => {})
-    expect(events.at(-1)).toMatchObject({ type: 'refused', agent: 'supervisor' })
+    expect(events.at(-2)).toMatchObject({ type: 'refused', agent: 'supervisor' })
+    expect(events.at(-1)).toEqual({ type: 'agent:end', agent: 'supervisor', threw: true })
   })
 
   it('gives the model no tools, as the design specifies', async () => {

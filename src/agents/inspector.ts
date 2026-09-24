@@ -3,6 +3,7 @@ import type { ProjectSnapshot } from '../context/project-fs/types.js'
 import type { LlmClient, Transcript } from '../llm/client.js'
 import type { EventSink } from './events.js'
 import { MAX_REPAIRS, takeTurn } from './forced-turn.js'
+import { asAgent } from './lifetime.js'
 import {
   REPORT_TOOL,
   buildProjectTools,
@@ -108,8 +109,14 @@ export async function inspect(
   snapshot: ProjectSnapshot,
   emit: EventSink,
 ): Promise<ProjectFacts> {
-  emit({ type: 'agent:start', agent: 'inspector' })
+  return asAgent('inspector', emit, () => inspectRepository(client, snapshot, emit))
+}
 
+async function inspectRepository(
+  client: LlmClient,
+  snapshot: ProjectSnapshot,
+  emit: EventSink,
+): Promise<ProjectFacts> {
   const tools = buildProjectTools(snapshot)
   const transcript: Transcript[] = [{ role: 'user', text: opening(snapshot) }]
   let facts: ProjectFacts | undefined
@@ -190,12 +197,13 @@ export async function inspect(
       // The report is the terminal channel, not a read: it ends the inspection
       // or is refused, never one more tool call in the stream.
       const reads = call.name !== REPORT_TOOL
-      if (reads) emit({ type: 'tool:call', name: call.name, args: call.args })
+      if (reads) emit({ type: 'tool:call', id: call.id, name: call.name, args: call.args })
       const outcome = tools.run(call)
       read += outcome.rows
       if (reads) {
         emit({
           type: 'tool:result',
+          id: call.id,
           name: call.name,
           rows: outcome.rows,
           truncated: outcome.truncated,

@@ -1236,3 +1236,91 @@ describe('the free gate runs before the paid one', () => {
     expect(reviewer.facts[0]?.effects[0]?.effect).toContain('already declares it')
   })
 })
+
+/**
+ * The attempts as the stream tells them: each one's gates, passed or refused,
+ * between its own attempt:start and attempt:end. It is what a trace is built
+ * from (src/trace/), so it must never tell a run differently from the record
+ * `repair()` returns.
+ */
+interface Told {
+  attempt: number
+  passed: Gate[]
+  refused: Gate | undefined
+  closed: boolean
+}
+
+const told = (events: readonly AgentEvent[]): Told[] => {
+  const attempts: Told[] = []
+  for (const event of events) {
+    if (event.type === 'attempt:start') {
+      attempts.push({ attempt: event.attempt, passed: [], refused: undefined, closed: false })
+    }
+    const current = attempts.at(-1)
+    if (current === undefined) continue
+    if (event.type === 'gate:passed') current.passed.push(event.gate)
+    if (event.type === 'repair') current.refused = event.gate
+    if (event.type === 'attempt:end') current.closed = true
+  }
+  return attempts
+}
+
+const recorded = (outcome: RepairOutcome): Told[] =>
+  outcome.attempts.map((one) => ({
+    attempt: one.attempt,
+    passed: one.gates.filter((gate) => gate !== one.failed),
+    refused: one.failed,
+    closed: true,
+  }))
+
+const RUNS: readonly (readonly [string, () => RepairInput])[] = [
+  ['a plan that passes every gate', () => inputs()],
+  ['a refusal at the zod gate', () => inputs({ draft: drafting(REFUSED_BY_ZOD).draft })],
+  [
+    'three refusals at the policy gate',
+    () => inputs({ provenance: stating(DEV_INTENT), draft: drafting(MISMATCHED).draft }),
+  ],
+  [
+    'three refusals by the Reviewer',
+    () => inputs({ review: reviewing({ verdict: 'reject', reason: 'more than was asked' }).review }),
+  ],
+  [
+    'a question the signer asked',
+    () => inputs({ provenance: stating(DECLARE_INTENT), draft: drafting(UNVOUCHED).draft }),
+  ],
+  ['a draft with no proposal in it', () => inputs({ draft: drafting(undefined).draft })],
+]
+
+describe('the stream tells each attempt the way the record does', () => {
+  it.each(RUNS)('%s', async (_label, given) => {
+    const { events, emit } = collect()
+
+    const outcome = await repair(given(), emit)
+
+    expect(told(events)).toEqual(recorded(outcome))
+  })
+
+  it('closes the attempt a Reviewer with no opinion ended, without calling it a refusal', async () => {
+    // The one exit that records no attempt in the outcome: the Reviewer was
+    // never reached, so nothing was refused. The stream still bounds the
+    // attempt that ran four gates.
+    const { events, emit } = collect()
+
+    await repair(
+      inputs({
+        review: reviewing({ verdict: 'no-opinion', reason: 'the reviewer could not be reached' })
+          .review,
+      }),
+      emit,
+    )
+
+    expect(told(events)).toEqual([
+      {
+        attempt: 1,
+        passed: ['zod', 'signature', 'policy', 'recheck'],
+        refused: undefined,
+        closed: true,
+      },
+    ])
+  })
+})
