@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 1021 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 1051 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -206,14 +206,17 @@ YAML, only a structure, and `propose()` writes into a typed buffer, never to dis
 > **The agent drafts. The engine signs.**
 
 `Operation` is a closed discriminated union — what is not modelled cannot be requested,
-and there is no delete operation in v0.1. The proposal schemas are `strictObject`s with
-four deliberate absences, each a guarantee: no `apiVersion`, no `annotations` (there is
-nowhere to put `idp-agent.dev/source-file`, which is how a model would aim at its own
-path), no `description` (free prose has no provenance, so it signs as `novel` and becomes
-a question about a sentence the model just invented), and no path anywhere. Every `Plan`
-field a model *chooses* is either a value or `{ unknown: string }`, and a `Plan` holding
-an `unknown` cannot be applied: the CLI stops and asks. `metadata.name` is the exception
-and not an oversight — an entity with no name is not an entity, so that is refused at the
+and there is no delete operation in v0.1. A proposal names every reference in full,
+`kind:namespace/name`; only the reader, `entitySchema`, accepts Backstage's short forms
+(`owner: team-a`), filling in the kind and namespace by Backstage's own defaults and never
+rewriting the file. The proposal schemas are `strictObject`s with four deliberate
+absences, each a guarantee: no `apiVersion`, no `annotations` (there is nowhere to put
+`idp-agent.dev/source-file`, which is how a model would aim at its own path), no
+`description` (free prose has no provenance, so it signs as `novel` and becomes a question
+about a sentence the model just invented), and no path anywhere. Every `Plan` field a
+model *chooses* is either a value or `{ unknown: string }`, and a `Plan` holding an
+`unknown` cannot be applied: the CLI stops and asks. `metadata.name` is the exception and
+not an oversight — an entity with no name is not an entity, so that is refused at the
 schema rather than asked about. Orchestration is plain TypeScript; no agent decides the
 sequence.
 

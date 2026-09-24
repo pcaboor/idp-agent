@@ -5,4 +5,4 @@ metadata:
   name: bad-db-dev
 spec:
   type: database
-  owner: tiger
+  owner: component:tiger
