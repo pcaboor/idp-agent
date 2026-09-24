@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import type { AgentEvent } from '../../src/agents/events.js'
-import type { AgentName, GenerateRequest, GenerateResult } from '../../src/llm/client.js'
+import type { AgentName, GenerateRequest, GenerateResult, Transcript } from '../../src/llm/client.js'
 import { createTraceBuilder, type TraceBuilder } from '../../src/trace/builder.js'
 import { fakeClock, fakeIds, skeletonOf, spanNamed } from '../support/trace.js'
 
@@ -99,6 +99,23 @@ describe('agents, model calls and tools', () => {
     expect(call.outputs).toEqual({ text: 'QUESTION', toolCalls: [], finishReason: 'stop' })
   })
 
+  it('records what each call was sent, not what the transcript grew into after it', () => {
+    // Every agent keeps one transcript and pushes onto it after each call. A
+    // span holding that array would show every call the agent's last one.
+    const builder = building()
+    const transcript: Transcript[] = [{ role: 'user', text: 'hello' }]
+    const sent = (): GenerateRequest => ({ ...request('architect'), transcript })
+    builder.modelCallEnded(builder.modelCallStarted(sent()), { result: RESULT })
+    transcript.push({ role: 'assistant', text: 'QUESTION', toolCalls: [] })
+    builder.modelCallEnded(builder.modelCallStarted(sent()), { result: RESULT })
+    const trace = builder.finish(DONE)
+
+    const sentBy = (name: string): unknown =>
+      (spanNamed(trace, name).inputs as { transcript: unknown }).transcript
+    expect(sentBy('architect call 0')).toEqual([{ role: 'user', text: 'hello' }])
+    expect(sentBy('architect call 1')).toHaveLength(2)
+  })
+
   it('names the tools a model was offered, never their schemas', () => {
     const builder = building()
     const offered: GenerateRequest = {
@@ -152,6 +169,30 @@ describe('agents, model calls and tools', () => {
       message: '502 from the gateway',
     })
   })
+
+  it('records a failure that cannot be printed, rather than throwing on it', () => {
+    // `traced` reports the failure before rethrowing it: a throw here would
+    // replace the provider's error with the trace's.
+    const unprintable = new Error('hidden')
+    Object.defineProperty(unprintable, 'message', {
+      get: () => {
+        throw new Error('no message for you')
+      },
+    })
+    const builder = building()
+    for (const thrown of [Object.create(null) as unknown, unprintable]) {
+      const handle = builder.modelCallStarted(request('reviewer'))
+      expect(() => builder.modelCallEnded(handle, { error: thrown })).not.toThrow()
+    }
+    const trace = builder.finish(DONE)
+
+    for (const name of ['reviewer call 0', 'reviewer call 1']) {
+      expect(spanNamed(trace, name).status).toEqual({
+        code: 'ERROR',
+        message: 'an error that could not be printed',
+      })
+    }
+  })
 })
 
 describe('an agent’s outcome', () => {
@@ -182,6 +223,21 @@ describe('an agent’s outcome', () => {
     expect(spanNamed(builder.finish(DONE), 'reviewer').status).toEqual({
       code: 'ERROR',
       message: 'the agent threw',
+    })
+  })
+
+  it('keeps the refusal’s reason when the agent then threw', () => {
+    // A provider failure, as the Inspector and the Architect report it: the
+    // refusal says why, and `asAgent` then ends the agent with `threw`.
+    const builder = building()
+    emitAll(builder, [
+      { type: 'agent:start', agent: 'inspector' },
+      { type: 'refused', agent: 'inspector', reason: 'the run stopped: 502 from the gateway' },
+      { type: 'agent:end', agent: 'inspector', threw: true },
+    ])
+    expect(spanNamed(builder.finish(DONE), 'inspector').status).toEqual({
+      code: 'ERROR',
+      message: 'the run stopped: 502 from the gateway',
     })
   })
 
@@ -265,8 +321,9 @@ describe('the repair loop', () => {
       { type: 'gate:passed', attempt: 2, gate: 'zod' },
       { type: 'attempt:end', attempt: 2 },
     ])
+    const trace = builder.finish(DONE)
 
-    expect(skeletonOf(builder.finish(DONE)).children).toEqual([
+    expect(skeletonOf(trace).children).toEqual([
       {
         name: 'attempt 1',
         type: 'CHAIN',
@@ -289,6 +346,11 @@ describe('the repair loop', () => {
         children: [{ name: 'gate zod', type: 'CHAIN', status: 'OK', children: [] }],
       },
     ])
+    // A verdict is a moment, not a stretch of time: three of the five gates
+    // are free, and the Reviewer's cost is its own AGENT span.
+    const gates = trace.spans.filter((span) => span.name.startsWith('gate '))
+    expect(gates).toHaveLength(4)
+    for (const span of gates) expect(span.end).toBe(span.start)
   })
 
   it('puts the agents an attempt ran inside it, beside its gates', () => {
@@ -399,6 +461,141 @@ describe('an event that fits nowhere', () => {
       },
     ])
   })
+
+  it('keeps a tool call with no result a leaf, beside what came after it', () => {
+    // The Architect's real sequence: a refused `answer` call is emitted and
+    // never gets a result. It must not become the parent of the rest of the
+    // agent's work, nor the span its later events land on.
+    const builder = building()
+    emitAll(builder, [
+      { type: 'agent:start', agent: 'architect' },
+      { type: 'tool:call', id: 'c1', name: 'answer', args: {} },
+      { type: 'tool:call', id: 'c2', name: 'search_entities', args: { env: 'prod' } },
+      { type: 'tool:result', id: 'c2', name: 'search_entities', rows: 2, truncated: 0 },
+    ])
+    builder.modelCallEnded(builder.modelCallStarted(request('architect')), { result: RESULT })
+    emitAll(builder, [
+      { type: 'plan:ready', operations: 1 },
+      { type: 'agent:end', agent: 'architect', threw: false },
+    ])
+    const trace = builder.finish(DONE)
+
+    expect(skeletonOf(trace).children).toEqual([
+      {
+        name: 'architect',
+        type: 'AGENT',
+        status: 'OK',
+        children: [
+          {
+            name: 'answer',
+            type: 'TOOL',
+            status: 'ERROR: closed when agent:architect ended, by no event of its own',
+            children: [],
+          },
+          { name: 'search_entities', type: 'TOOL', status: 'OK', children: [] },
+          { name: 'architect call 0', type: 'CHAT_MODEL', status: 'OK', children: [] },
+        ],
+      },
+    ])
+    expect(spanNamed(trace, 'architect').events.map((event) => event.name)).toEqual(['plan:ready'])
+    expect(spanNamed(trace, 'answer').events).toEqual([])
+  })
+
+  it('pairs a result with the latest call of its id, and still closes the earlier one', () => {
+    const builder = building()
+    emitAll(builder, [
+      { type: 'agent:start', agent: 'inspector' },
+      { type: 'tool:call', id: 'c1', name: 'read_file', args: { path: 'a' } },
+      { type: 'tool:call', id: 'c1', name: 'read_file', args: { path: 'b' } },
+      { type: 'tool:result', id: 'c1', name: 'read_file', rows: 1, truncated: 0 },
+      { type: 'agent:end', agent: 'inspector', threw: false },
+    ])
+    const tools = builder.finish(DONE).spans.filter((span) => span.type === 'TOOL')
+
+    expect(tools.map((span) => [span.inputs, span.outputs, span.status])).toEqual([
+      [
+        { id: 'c1', name: 'read_file', args: { path: 'a' } },
+        undefined,
+        { code: 'ERROR', message: 'closed when agent:inspector ended, by no event of its own' },
+      ],
+      [{ id: 'c1', name: 'read_file', args: { path: 'b' } }, { rows: 1, truncated: 0 }, { code: 'OK' }],
+    ])
+  })
+
+  it('keeps why a span failed when something else has to close it', () => {
+    const builder = building()
+    emitAll(builder, [
+      { type: 'attempt:start', attempt: 1 },
+      { type: 'agent:start', agent: 'architect' },
+      { type: 'refused', agent: 'architect', reason: 'the draft ended with no proposal' },
+      { type: 'attempt:end', attempt: 1 },
+      { type: 'attempt:start', attempt: 2 },
+      { type: 'repair', attempt: 2, gate: 'policy', reason: 'environment-mismatch at operations.0' },
+    ])
+
+    expect(skeletonOf(builder.finish(DONE)).children).toEqual([
+      {
+        name: 'attempt 1',
+        type: 'CHAIN',
+        status: 'OK',
+        children: [
+          {
+            name: 'architect',
+            type: 'AGENT',
+            status:
+              'ERROR: the draft ended with no proposal (closed when attempt:1 ended, by no event of its own)',
+            children: [],
+          },
+        ],
+      },
+      {
+        name: 'attempt 2',
+        type: 'CHAIN',
+        status: 'ERROR: refused at the policy gate (closed by finish, by no event of its own)',
+        children: [
+          {
+            name: 'gate policy',
+            type: 'CHAIN',
+            status: 'ERROR: environment-mismatch at operations.0',
+            children: [],
+          },
+        ],
+      },
+    ])
+  })
+
+  it('reports a refusal or a repair that names nothing open, and still keeps what it said', () => {
+    const builder = building()
+    emitAll(builder, [
+      { type: 'refused', agent: 'reviewer', reason: 'no verdict' },
+      { type: 'repair', attempt: 2, gate: 'policy', reason: 'environment-mismatch at operations.0' },
+    ])
+    const trace = builder.finish(DONE)
+
+    expect(skeletonOf(trace).children).toEqual([
+      {
+        name: 'unbalanced event',
+        type: 'CHAIN',
+        status: 'ERROR: refused matched no open agent reviewer',
+        children: [],
+      },
+      {
+        name: 'gate policy',
+        type: 'CHAIN',
+        status: 'ERROR: environment-mismatch at operations.0',
+        children: [],
+      },
+      {
+        name: 'unbalanced event',
+        type: 'CHAIN',
+        status: 'ERROR: repair matched no open attempt 2',
+        children: [],
+      },
+    ])
+    expect(trace.spans[0]?.events.map((event) => [event.name, event.attributes])).toEqual([
+      ['refused', { agent: 'reviewer', reason: 'no verdict' }],
+    ])
+  })
 })
 
 describe('finish', () => {
@@ -434,5 +631,30 @@ describe('finish', () => {
     ])
     const starts = spans.map((span) => span.start)
     expect(starts).toEqual([...starts].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0)))
+  })
+
+  it('orders by when each span began, whatever ids it was handed', () => {
+    // The order travels with the closed span. A map keyed on span id put the
+    // root last the day two spans shared one.
+    const builder = createTraceBuilder({
+      clock: fakeClock(),
+      ids: { traceId: () => '4bf92f3577b34da6a3ce929d0e0e4736', spanId: () => '0000000000000001' },
+      name: 'idp-agent plan',
+      inputs: {},
+    })
+    emitAll(builder, [
+      { type: 'agent:start', agent: 'supervisor' },
+      { type: 'agent:end', agent: 'supervisor', threw: false },
+      { type: 'attempt:start', attempt: 1 },
+      { type: 'gate:passed', attempt: 1, gate: 'zod' },
+      { type: 'attempt:end', attempt: 1 },
+    ])
+
+    expect(builder.finish(DONE).spans.map((span) => span.name)).toEqual([
+      'idp-agent plan',
+      'supervisor',
+      'attempt 1',
+      'gate zod',
+    ])
   })
 })

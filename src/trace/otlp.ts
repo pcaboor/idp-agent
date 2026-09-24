@@ -28,10 +28,13 @@ interface OtlpAttribute {
 const attribute = (key: string, value: AttributeValue): OtlpAttribute => {
   if (typeof value === 'string') return { key, value: { stringValue: value } }
   if (typeof value === 'boolean') return { key, value: { boolValue: value } }
-  // int64 travels as a string in OTLP/JSON.
-  return Number.isInteger(value)
-    ? { key, value: { intValue: String(value) } }
-    : { key, value: { doubleValue: value } }
+  // int64 travels as a string in OTLP/JSON, and only a safe integer is one
+  // exactly: `String(1e21)` is "1e+21", which no int64 parser reads.
+  if (Number.isSafeInteger(value)) return { key, value: { intValue: String(value) } }
+  if (Number.isFinite(value)) return { key, value: { doubleValue: value } }
+  // NaN and ±Infinity have no JSON number: `JSON.stringify` would send null,
+  // a value nobody recorded. Their name is at least what was recorded.
+  return { key, value: { stringValue: String(value) } }
 }
 
 const mlflow = (key: string, value: unknown): OtlpAttribute => ({
