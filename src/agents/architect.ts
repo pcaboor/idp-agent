@@ -253,6 +253,7 @@ export async function draftPlan(
           name: call.name,
           rows: outcome.rows,
           truncated: outcome.truncated,
+          ...(outcome.error === undefined ? {} : { error: outcome.error }),
         })
       }
 

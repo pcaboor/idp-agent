@@ -37,12 +37,29 @@ a guarantee of its own.
 
 `ask "Talk about this project"` ended on `cannot answer`, exit 3, on a real repository: the
 union had no member for a request to describe the catalogue as a whole, so the model's only
-legal answer was a refusal. The union gains `overview`, and it carries **no field** — it is a
-`strictObject`, so an overview arriving with a `summary` is refused and handed back rather
-than stripped. The model only chooses it; the engine writes it, every figure computed from
-the graph and from what the reader set aside (`context/graph/overview.ts`, rendered by
-`cli/render/overview.ts`). There is nothing in it to witness, which is what lets it cross
-under this decision rather than beside it: the consequence above still holds word for word,
-because no model-authored text reaches stdout. What the model could still get wrong is the
-choice — an overview for a question that wanted entities — and that prints a true
-description of the wrong thing, never a false one.
+legal answer was a refusal. The union gains `overview`, and it carries **no field**: whatever
+arrives with it is discarded at the parse (amended below). The model only chooses it; the
+engine writes it, every figure computed from the graph and from what the reader set aside
+(`context/graph/overview.ts`, rendered by `cli/render/overview.ts`). There is nothing in it to
+witness, which is what lets it cross under this decision rather than beside it: the
+consequence above still holds word for word, because no model-authored text reaches stdout.
+What the model could still get wrong is the choice — an overview for a question that wanted
+entities — and that prints a true description of the wrong thing, never a false one.
+
+### Amended — 2026-09-24: extra fields are discarded, not refused
+
+The overview was first a `strictObject`, so an overview arriving with a `summary` was refused
+and handed back rather than stripped. A real model then answered "Talk about this project"
+with `{"outcome":"overview","refs":["component:default/site-placeholder"],"reason":" "}` three
+times running — the tool is advertised flat (`llm/tool-schema.ts`), so `refs` and `reason` are
+optional properties it sees beside every outcome, and it fills every one it is shown. Each
+answer was refused, and the question ended on "nothing in the catalogue matched", which was
+false. Every branch of the union now **discards** a field it does not declare. That keeps the
+guarantee rather than relaxing it: a discarded field is gone at the parse, so nothing
+downstream can read it, put it in the `answer:ready` event or print it. Two fields are kept,
+and neither is new. An `entities` answer's references are checked against the witness set and
+re-read before printing, so a `site-placeholder` no tool returned is still refused and named.
+An `unanswerable` answer's reason is the model's own prose, unchecked, and reaches stderr only
+(`cannot answer: …`), as it always has — never stdout, so the consequence above is untouched.
+`ask-real-model.test.ts` replays those calls verbatim and asserts the invented reference and
+the reason reach neither stdout, stderr nor the event stream.

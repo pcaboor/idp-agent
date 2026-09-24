@@ -37,10 +37,18 @@ export const getDependenciesInputSchema = z.object({
  *
  * `overview` is a request for the catalogue described as a whole, and the
  * model only CHOOSES it: the engine computes and writes the description from
- * the graph (ADR-0007). It carries no field, and is strict so that it stays
- * that way — a `summary` riding along would be refused and handed back rather
- * than stripped in silence, so a model is never led to think it has a place
- * to write one.
+ * the graph (ADR-0007). It carries no field.
+ *
+ * What rides along with any outcome is DISCARDED, never refused. The tool is
+ * advertised flat (llm/tool-schema.ts), so `refs` and `reason` are optional
+ * properties a model sees beside every outcome, and a real one fills them all:
+ * an overview carrying an invented ref and a blank reason was refused three
+ * times, and the question ended on "nothing matched". Stripping is safe
+ * because a discarded field is gone at the parse — nothing downstream can read
+ * it, put it in an event or print it. Two fields are kept, as before: `entities`
+ * refs, checked against the witness set and re-read before printing, and
+ * `unanswerable`'s reason, which is the model's prose, unchecked, and reaches
+ * stderr only.
  */
 export const answerSchema = z.discriminatedUnion('outcome', [
   z.object({
@@ -48,7 +56,7 @@ export const answerSchema = z.discriminatedUnion('outcome', [
     refs: z.array(entityRefSchema).min(1).max(QUERY_LIMITS.maxRows),
   }),
   z.object({ outcome: z.literal('nothing') }),
-  z.strictObject({ outcome: z.literal('overview') }),
+  z.object({ outcome: z.literal('overview') }),
   z.object({
     outcome: z.literal('unanswerable'),
     reason: z.string().min(1).max(QUERY_LIMITS.maxReason),

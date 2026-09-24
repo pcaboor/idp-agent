@@ -101,12 +101,22 @@ function toMessages(transcript: Transcript[]): ModelMessage[] {
 /**
  * Declared without `execute`: the hand-written loop runs the tools, the SDK
  * only reports the calls (design § 3, low-level mode).
+ *
+ * `strict: false`, always, and said rather than left to a default. OpenAI's
+ * Responses API treats a function tool sent with no `strict` as strict, and
+ * strict decoding makes the model fill every property: measured with
+ * gpt-6-luna, a search that needed no environment went out with `env: ""`,
+ * then `"default"`, then `"*"`, and matched nothing each time — the model even
+ * reported that the tool "requires an environment". Every schema here has
+ * optional fields, which strict mode cannot express; the agents' own parse is
+ * what validates a call. Anthropic ignores the flag on a model without strict
+ * tools, with a warning, and Mistral's default is already false.
  */
 export function toTools(specs: ModelToolSpec[]): ToolSet {
   return Object.fromEntries(
     specs.map((spec) => [
       spec.name,
-      tool({ description: spec.description, inputSchema: advertised(spec) }),
+      tool({ description: spec.description, inputSchema: advertised(spec), strict: false }),
     ]),
   )
 }

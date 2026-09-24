@@ -530,7 +530,7 @@ type AgentEvent =
   | { type: 'agent:start';  agent: AgentName }
   | { type: 'classified';   classification: 'MUTATION' | 'QUESTION' }
   | { type: 'tool:call';    name: string; args: unknown }
-  | { type: 'tool:result';  name: string; rows: number; truncated: number }
+  | { type: 'tool:result';  name: string; rows: number; truncated: number; error?: string }
   | { type: 'answer:ready'; refs: string[] }
   | { type: 'refused';      agent: AgentName; reason: string }
   | { type: 'repair';       attempt: 1 | 2 | 3; gate: Gate; reason: string }

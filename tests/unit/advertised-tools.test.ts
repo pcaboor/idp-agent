@@ -54,13 +54,13 @@ describe('every tool an agent hands the client', () => {
     })
     // The overview is a member of the flattened union too, and still the one
     // member with no field at all: the flat object offers `reason` beside it,
-    // and the union refuses it there.
+    // and the union discards it there rather than keeping it.
     expect(await schema.validate?.({ outcome: 'overview' })).toEqual({
       success: true,
       value: { outcome: 'overview' },
     })
     expect(
       await schema.validate?.({ outcome: 'overview', reason: 'a summary the model wrote' }),
-    ).toMatchObject({ success: false })
+    ).toEqual({ success: true, value: { outcome: 'overview' } })
   })
 })

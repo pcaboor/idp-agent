@@ -4,7 +4,7 @@ import { ownerRefSchema } from '../../core/schemas/entity.js'
 import { PLAN_LIMITS, proposedName, unknownSchema } from '../../core/schemas/plan.js'
 import { RESOURCE_TYPE_NAMES } from '../../core/schemas/resource-types.js'
 import type { ModelToolCall, ModelToolSpec } from '../../llm/client.js'
-import type { ToolOutcome } from './graph-tools.js'
+import { refused, type ToolOutcome } from './graph-tools.js'
 
 /**
  * A value, or an explicitly undetermined one. `unknownSchema` is reused rather
@@ -107,13 +107,10 @@ const readInputSchema = z.strictObject({
   path: z.string().min(1).max(512),
 })
 
-const failed = (tool: string, error: z.ZodError): ToolOutcome => ({
+const failed = (tool: string, error: z.ZodError): ToolOutcome =>
   // Returned, not thrown: the loop has to be able to continue after a bad call,
   // and the model has to be able to read what was wrong with it.
-  result: { error: `${tool}: ${error.issues[0]?.message ?? 'invalid arguments'}` },
-  rows: 0,
-  truncated: 0,
-})
+  refused(`${tool}: ${error.issues[0]?.message ?? 'invalid arguments'}`)
 
 /**
  * The Inspector's read tools, closed over a snapshot that was taken before any
@@ -194,14 +191,10 @@ export function buildProjectTools(snapshot: ProjectSnapshot): {
           // The reason, not "no such file". A model told the manifest is missing
           // goes looking elsewhere; a model told it was excluded knows the fact
           // is unknowable from here and reports it unknown, which is correct.
-          return { result: { error: `not read: ${excluded.reason}` }, rows: 0, truncated: 0 }
+          return refused(`not read: ${excluded.reason}`)
         }
 
-        return {
-          result: { error: 'this snapshot holds no file at that path' },
-          rows: 0,
-          truncated: 0,
-        }
+        return refused('this snapshot holds no file at that path')
       }
 
       if (call.name === REPORT_TOOL) {
@@ -210,7 +203,7 @@ export function buildProjectTools(snapshot: ProjectSnapshot): {
         return { result: call.args, rows: 0, truncated: 0 }
       }
 
-      return { result: { error: `unknown tool "${call.name}"` }, rows: 0, truncated: 0 }
+      return refused(`unknown tool "${call.name}"`)
     },
   }
 }

@@ -6,6 +6,7 @@ import {
   getDependenciesInputSchema,
   getEntityInputSchema,
   searchCriteriaSchema,
+  type SearchCriteria,
 } from '../../core/schemas/query.js'
 import { levelledOf } from '../../core/schemas/resource-types.js'
 import { ENV_ANNOTATION, refOf, type EntityGraph } from '../../context/graph/entity-graph.js'
@@ -15,7 +16,22 @@ export interface ToolOutcome {
   result: unknown
   rows: number
   truncated: number
+  /**
+   * What the tool refused the call with, when it did: the same text the model
+   * reads in `result`. Beside it, not dug back out of it, so the stream can say
+   * a call was refused — a refused call reads no rows, and "0 row(s)" is what a
+   * search that ran and found nothing looks like.
+   */
+  error?: string
 }
+
+/** Returned, never thrown: the loop continues and the model reads the reason. */
+export const refused = (error: string): ToolOutcome => ({
+  result: { error },
+  rows: 0,
+  truncated: 0,
+  error,
+})
 
 /** Declare, never infer: an absent value is stated as absent (design 4.1). */
 const UNDECLARED = '(undeclared)'
@@ -75,15 +91,97 @@ const rowOf = (entity: Entity): Row => ({
   owner: entity.spec.owner,
 })
 
-const failed = (tool: string, error: z.ZodError): ToolOutcome => ({
+const failed = (tool: string, error: z.ZodError): ToolOutcome =>
   // Returned, not thrown: the loop has to be able to continue after a bad call,
   // and the model has to be able to read what was wrong with it.
-  result: { error: `${tool}: ${error.issues[0]?.message ?? 'invalid arguments'}` },
-  rows: 0,
-  truncated: 0,
-})
+  refused(`${tool}: ${error.issues[0]?.message ?? 'invalid arguments'}`)
 
-export function buildTools(graph: EntityGraph): {
+/** How many values in use a refusal names before it counts the rest. */
+const MAX_NAMED = 10
+
+const listed = (values: ReadonlySet<string>): string => {
+  const sorted = [...values].sort()
+  const named = sorted.slice(0, MAX_NAMED).join(', ')
+  return sorted.length > MAX_NAMED ? `${named} and ${sorted.length - MAX_NAMED} more` : named
+}
+
+/**
+ * The criteria of a search that no entity in the catalogue carries, each said
+ * with the values that are in use.
+ *
+ * A real model fills every optional criterion it is shown, and an invented one
+ * — `env: "default"` on a catalogue that declares no environment — used to
+ * come back as an empty result: a search that could never have matched,
+ * reading exactly like one that ran and found nothing, and the question ended
+ * on "No entity matches". Said as an error, it is something the model can act
+ * on. Only an exact value is checked: `nameContains` is a fragment, and an
+ * empty result for one is an answer.
+ *
+ * An empty catalogue refuses nothing: every value is unused there, and the
+ * empty result is the whole truth.
+ */
+function unusedCriteria(graph: EntityGraph, criteria: SearchCriteria): string[] {
+  const entities = graph.all()
+  if (entities.length === 0) return []
+  const unused: string[] = []
+
+  const check = (
+    label: string,
+    plural: string,
+    value: string | undefined,
+    of: (entity: Entity) => string,
+  ): void => {
+    if (value === undefined) return
+    const inUse = new Set(entities.map(of))
+    if (!inUse.has(value)) {
+      unused.push(`${label} "${value}" matches no entity; ${plural} in use: ${listed(inUse)}`)
+    }
+  }
+  check('kind', 'kinds', criteria.kind, (entity) => entity.kind)
+  check('type', 'types', criteria.type, (entity) => entity.spec.type)
+
+  // An entity with no environment is matched by no env value — unchanged, and
+  // said, since omitting env is then the only way to reach it.
+  if (criteria.env !== undefined) {
+    const declared = entities.map((entity) => entity.metadata.annotations[ENV_ANNOTATION])
+    const inUse = new Set(declared.filter((env): env is string => env !== undefined))
+    const none = declared.length - declared.filter((env) => env !== undefined).length
+    if (inUse.size === 0) {
+      unused.push(
+        `env "${criteria.env}" matches no entity: this catalogue declares no environment — omit env`,
+      )
+    } else if (!inUse.has(criteria.env)) {
+      unused.push(
+        `env "${criteria.env}" matches no entity; environments in use: ${listed(inUse)}` +
+          (none > 0
+            ? `; ${none} ${none === 1 ? 'entity declares' : 'entities declare'} none — omit env to include it`
+            : ''),
+      )
+    }
+  }
+
+  check('owner', 'owners', criteria.owner, (entity) => entity.spec.owner)
+  return unused
+}
+
+export function buildTools(
+  graph: EntityGraph,
+  options: {
+    /**
+     * Refuse a search on a value no entity carries (see `unusedCriteria`).
+     * Off for the Architect alone (`plan` and `init`), pending a decision. Its
+     * plan-mode tapes were recorded against the silent empty result, a tool
+     * result is part of every later request's digest, and four of its five
+     * searched on a kind, type or owner the catalogue does not use. But turning
+     * it on is not only a re-recording: the Architect reads an empty result as
+     * a finding — no `database-access` grant yet is how it learns to propose
+     * one — and an error there changes what it is told on a normal path. The
+     * follow-up is to decide that, re-record those four tapes, and delete this
+     * option.
+     */
+    refuseUnusedValues?: boolean
+  } = {},
+): {
   specs: ModelToolSpec[]
   run(call: ModelToolCall): ToolOutcome
   witnessed: ReadonlySet<string>
@@ -152,6 +250,12 @@ export function buildTools(graph: EntityGraph): {
         const parsed = searchCriteriaSchema.safeParse(call.args)
         if (!parsed.success) return failed('search_entities', parsed.error)
         const { kind, type, env, owner, nameContains } = parsed.data
+        if (options.refuseUnusedValues ?? true) {
+          const unused = unusedCriteria(graph, parsed.data)
+          // Every criterion named, not the first: a model corrects one and
+          // comes back with the next invented one otherwise.
+          if (unused.length > 0) return refused(`search_entities: ${unused.join('. ')}`)
+        }
         // Omitted rather than passed as undefined: exactOptionalPropertyTypes
         // draws the distinction, and so does the shipped code in cli/index.ts.
         return report(
@@ -170,9 +274,7 @@ export function buildTools(graph: EntityGraph): {
         if (!parsed.success) return failed('get_entity', parsed.error)
         const found = graph.get(parsed.data.ref)
         // No nearest match, deliberately. Declare, never infer (design 4.1).
-        if (found === undefined) {
-          return { result: { error: 'no such entity' }, rows: 0, truncated: 0 }
-        }
+        if (found === undefined) return refused('no such entity')
         return report([found])
       }
 
@@ -193,7 +295,7 @@ export function buildTools(graph: EntityGraph): {
         return { result: call.args, rows: 0, truncated: 0 }
       }
 
-      return { result: { error: `unknown tool "${call.name}"` }, rows: 0, truncated: 0 }
+      return refused(`unknown tool "${call.name}"`)
     },
   }
 }

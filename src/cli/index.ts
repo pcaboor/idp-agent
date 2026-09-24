@@ -333,6 +333,10 @@ export function renderEvent(event: AgentEvent): string | undefined {
       // the transcript is what stage 7 shows.
       return `  → ${event.name}`
     case 'tool:result':
+      // A refused call reads no rows, and "0 row(s)" is what a search that ran
+      // and found nothing looks like; the reason is what tells them apart. One
+      // bounded line, like every reason: it can quote a value the model sent.
+      if (event.error !== undefined) return `  ← refused: ${oneLine(event.error)}`
       // Truncation is stated, never silent — the rule the whole tool layer is
       // built on, and the one a reader has to see too.
       return `  ← ${event.rows} row(s)${event.truncated > 0 ? ` · ${event.truncated} more not shown` : ''}`

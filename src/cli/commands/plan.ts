@@ -919,9 +919,11 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
 
   // The Architect's read tools sit on the repository, not on the fixture SI,
   // and `buildTools` owns the witness set they fill — what the ENGINE returned
-  // during the draft, never what the model wrote.
+  // during the draft, never what the model wrote. A search on a value nobody
+  // uses still answers with an empty result here, as it did when the plan-mode
+  // tapes were recorded — an open decision, see `refuseUnusedValues`.
   const graph = graphOf(snapshot)
-  const tools = buildTools(graph)
+  const tools = buildTools(graph, { refuseUnusedValues: false })
   const contexts = contextsOf(root, snapshot, graph, { config, witnessed: tools.witnessed })
   const summary = formatSummary(contexts.summary, contexts.vocabulary)
   // Before the Inspector too: a repository `plan` cannot read whole is refused,

@@ -123,13 +123,32 @@ describe('ask for an overview, end to end', () => {
 })
 
 describe('the answer tool, for an overview', () => {
-  it('has no field for prose: an overview carrying text is refused, not stripped', () => {
-    expect(answerSchema.safeParse({ outcome: 'overview' }).success).toBe(true)
-    expect(answerSchema.safeParse({ outcome: 'overview', text: PROSE }).success).toBe(false)
-    expect(answerSchema.safeParse({ outcome: 'overview', summary: PROSE }).success).toBe(false)
+  it('has no field for prose: whatever rides along is discarded, never kept', () => {
+    // A model shown the flat advertisement fills `refs` and `reason` on every
+    // outcome. Refusing them cost three turns and ended on a false "nothing
+    // matched"; stripping them keeps the guarantee, because the overview is
+    // written from the graph and nothing the model sent is read at all.
+    expect(answerSchema.parse({ outcome: 'overview' })).toEqual({ outcome: 'overview' })
+    expect(answerSchema.parse({ outcome: 'overview', text: PROSE })).toEqual({ outcome: 'overview' })
+    expect(
+      answerSchema.parse({ outcome: 'overview', refs: ['component:default/x'], reason: PROSE }),
+    ).toEqual({ outcome: 'overview' })
   })
 
-  it('hands an overview with prose back to the model, and takes the clean one', async () => {
+  it('discards the same extras on every other outcome, and keeps each one\'s own field', () => {
+    const extras = { refs: ['component:default/x'], reason: PROSE, summary: PROSE }
+    expect(answerSchema.parse({ ...extras, outcome: 'nothing' })).toEqual({ outcome: 'nothing' })
+    expect(answerSchema.parse({ ...extras, outcome: 'entities' })).toEqual({
+      outcome: 'entities',
+      refs: ['component:default/x'],
+    })
+    expect(answerSchema.parse({ ...extras, outcome: 'unanswerable' })).toEqual({
+      outcome: 'unanswerable',
+      reason: PROSE,
+    })
+  })
+
+  it('takes an overview with prose the first time, and keeps none of it', async () => {
     const { entities } = await new FixtureProvider(FIXTURES).load()
     const events: AgentEvent[] = []
     const client = scripted({
@@ -145,8 +164,8 @@ describe('the answer tool, for an overview', () => {
       (event) => void events.push(event),
     )
     expect(outcome.answer).toEqual({ outcome: 'overview' })
-    expect(client.seen).toHaveLength(2)
-    expect(JSON.stringify(client.seen[1]?.transcript)).toMatch(/answer: /)
+    expect(client.seen).toHaveLength(1)
+    expect(JSON.stringify(events)).not.toContain('thriving')
   })
 
   it('tells the Analyst when to choose it, and never to refuse it', async () => {

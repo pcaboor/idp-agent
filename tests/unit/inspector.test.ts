@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { INSPECTOR_LIMITS, inspect } from '../../src/agents/inspector.js'
 import { buildProjectTools } from '../../src/agents/tools/project-tools.js'
 import type { AgentEvent } from '../../src/agents/events.js'
+import { renderEvent } from '../../src/cli/index.js'
 import type { ProjectSnapshot } from '../../src/context/project-fs/snapshot.js'
 import type {
   GenerateRequest,
@@ -109,6 +110,27 @@ describe('projectFactsSchema', () => {
 })
 
 describe('inspect', () => {
+  it('carries the error of a refused read on its tool:result, and the terminal prints it', async () => {
+    // A refused read counts no rows; without the error the stream drew it as
+    // "← 0 row(s)", a read that ran and found nothing.
+    const client = scripted([
+      turnCalling('read_file', { path: 'missing.json' }),
+      turnCalling('report_facts', report()),
+    ])
+    const { events, emit } = collect()
+    await inspect(client, EMPTY, emit)
+    const result = events.find((event) => event.type === 'tool:result')
+    expect(result).toMatchObject({
+      type: 'tool:result',
+      name: 'read_file',
+      rows: 0,
+      error: 'this snapshot holds no file at that path',
+    })
+    expect(result === undefined ? undefined : renderEvent(result)).toBe(
+      '  ← refused: this snapshot holds no file at that path',
+    )
+  })
+
   it('returns the facts the model signed off through the terminal tool', async () => {
     const client = scripted([
       turnCalling('list_files', {}),

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { ARCHITECT_LIMITS, draftPlan } from '../../src/agents/architect.js'
 import { MAX_REPAIRS } from '../../src/agents/forced-turn.js'
 import type { AgentEvent } from '../../src/agents/events.js'
+import { renderEvent } from '../../src/cli/index.js'
 import { buildTools } from '../../src/agents/tools/graph-tools.js'
 import type { ProjectFacts } from '../../src/agents/tools/project-tools.js'
 import { PROPOSE_TOOL, buildProposeTool } from '../../src/agents/tools/propose-tool.js'
@@ -368,6 +369,27 @@ describe('the Architect is never handed a path', () => {
 })
 
 describe('draftPlan', () => {
+  it('carries the error of a refused read on its tool:result, and the terminal prints it', async () => {
+    // A refused read counts no rows; without the error the stream drew it as
+    // "← 0 row(s)", a search that ran and found nothing.
+    const client = scripted([
+      turnCalling('get_entity', { ref: 'resource:default/nowhere' }),
+      proposing([ACCESS]),
+    ])
+    const { events, emit } = collect()
+    await draftPlan(client, readTools(), INPUT, emit)
+    const result = events.find((event) => event.type === 'tool:result')
+    expect(result).toMatchObject({
+      type: 'tool:result',
+      name: 'get_entity',
+      rows: 0,
+      error: 'no such entity',
+    })
+    expect(result === undefined ? undefined : renderEvent(result)).toBe(
+      '  ← refused: no such entity',
+    )
+  })
+
   it('returns the plan the model proposed, with both operations intact', async () => {
     const client = scripted([
       turnCalling('search_entities', { type: 'database', env: 'prod' }),
