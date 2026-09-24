@@ -7,7 +7,13 @@ import { IacFsProvider } from '../context/iac-fs/provider.js'
 import { isDeclarationsRepository } from '../context/iac-fs/snapshot.js'
 import type { ContextProvider, Ignored } from '../context/provider.js'
 import { PLAN_LIMITS } from '../core/schemas/plan.js'
-import { NoModelConfiguredError, chooseModel } from '../llm/providers.js'
+import { ModelCallError } from '../llm/failures.js'
+import {
+  ModelSettingError,
+  NoModelConfiguredError,
+  chooseModel,
+  timeoutOf,
+} from '../llm/providers.js'
 import { openRecording, resolveMode } from '../llm/recording.js'
 import { createClient, type ClientMode } from '../llm/runtime.js'
 import { fileRecordingStore } from './recording-fs.js'
@@ -73,6 +79,9 @@ const HELP = `idp-agent - turn an intent into reviewed infrastructure declaratio
   plan --repo names; without it, the current directory when it is one, and
   the fictional demo SI otherwise or with --demo.
   plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL. Both write nothing.
+  Every model-backed command also needs that provider's key (ANTHROPIC_API_KEY,
+  MISTRAL_API_KEY or OPENAI_API_KEY); IDP_TIMEOUT bounds each model call, in
+  seconds, 120 by default.
 `
 
 export function parseArguments(argv: string[]): Command {
@@ -391,6 +400,10 @@ export function renderEvent(event: AgentEvent): string | undefined {
       )
     case 'refused':
       return `! ${event.agent} refused: ${oneLine(event.reason)}`
+    case 'stopped':
+      // No reason: it is the error the command prints next, as its last line,
+      // and said here too it would reach the user twice.
+      return `! ${event.agent} stopped`
     case 'ask':
     case 'answer:ready':
       return undefined
@@ -771,7 +784,14 @@ function report(result: CommandResult, out: (chunk: string) => void): number {
  *
  * These refusals are the user's arguments and earn exit 2 — a plan file that is
  * not a plan, a `--repo` that is not a directory or holds a file `plan` cannot
- * read, a `.idp-agent.yml` that does not parse, a run with no model configured.
+ * read, a `.idp-agent.yml` that does not parse, a run with no model configured,
+ * no key for it, or an IDP_TIMEOUT that is not a number of seconds.
+ *
+ * A model call that could not succeed — it timed out, the provider refused the
+ * key or failed, the output limit or a content filter stopped it — is exit 1,
+ * in the one line `llm/failures.ts` wrote for it. Nothing the user typed was
+ * wrong, and the same command may well succeed on the next run.
+ *
  * Anything else is still a failure and must not leave as exit 0 with a stack
  * trace: that is indistinguishable from success to a script.
  */
@@ -780,10 +800,15 @@ function failed(error: unknown, err: (chunk: string) => void): number {
     error instanceof PlanInputError ||
     error instanceof RepositoryArgumentError ||
     error instanceof ConfigError ||
-    error instanceof NoModelConfiguredError
+    error instanceof NoModelConfiguredError ||
+    error instanceof ModelSettingError
   ) {
     err(`${error.message}\n`)
     return EXIT.badUsage
+  }
+  if (error instanceof ModelCallError) {
+    err(`${error.message}\n`)
+    return EXIT.notFound
   }
   err(`${error instanceof Error ? error.message : String(error)}\n`)
   return EXIT.notFound
@@ -843,7 +868,12 @@ async function openSession(
   const mode: ClientMode =
     recording === 'record' ? 'record' : deps.scenario !== undefined ? 'replay' : 'live'
 
+  // Both read before a tape is opened or an agent started: a missing key or a
+  // bad IDP_TIMEOUT is a refusal of the configuration, said up front, and not a
+  // failure discovered at the first request. Replay reads neither — a recording
+  // names its own model and needs no key.
   const choice = mode === 'replay' ? undefined : chooseModel(env)
+  const timeout = mode === 'replay' ? undefined : timeoutOf(env)
   const tape =
     mode === 'live'
       ? undefined
@@ -859,6 +889,7 @@ async function openSession(
       mode,
       ...(tape !== undefined ? { tape } : {}),
       ...(choice !== undefined ? { choice } : {}),
+      ...(timeout !== undefined ? { timeout } : {}),
     }),
     save: async (): Promise<void> => {
       if (mode === 'record' && tape !== undefined) await tape.save()

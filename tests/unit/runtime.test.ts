@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createClient } from '../../src/llm/runtime.js'
 import { openRecording } from '../../src/llm/recording.js'
 import type { Recording, RecordingStore } from '../../src/llm/recording.js'
@@ -152,5 +152,98 @@ describe('the request contract', () => {
     expect(toToolChoice('auto')).toBe('auto')
     expect(toToolChoice('none')).toBe('none')
     expect(toToolChoice({ tool: 'answer' })).toEqual({ type: 'tool', toolName: 'answer' })
+  })
+})
+
+describe('a recorded turn the agents cannot use', () => {
+  const tapeOf = async (finishReason: string, content: unknown[]) =>
+    createClient({
+      tape: await openRecording({
+        scenario: 'demo',
+        store: {
+          read: async () => ({
+            version: 1,
+            scenario: 'demo',
+            turns: [{ ...turn('analyst', 0, content), result: { content, finishReason } }],
+          }),
+          write: async () => {},
+        },
+        mode: 'replay',
+        warn: () => {},
+      }),
+      mode: 'replay',
+    })
+
+  it('fails on replay the way it would have failed live, naming the recorded model', async () => {
+    // Judged on replay too, so a tape holding such a turn — written by hand,
+    // or by a build before the check — cannot hand the agent a barren turn a
+    // live run would have refused.
+    const client = await tapeOf('length', [])
+    await expect(client.generate(ask('analyst'))).rejects.toThrow(
+      'mistral a-model: the model hit its output limit before answering',
+    )
+  })
+
+  it('still hands back a turn that hit the limit with a call in it', async () => {
+    const client = await tapeOf('length', [
+      { type: 'tool-call', toolCallId: 'c1', toolName: 'answer', input: {} },
+    ])
+    await expect(client.generate(ask('analyst'))).resolves.toMatchObject({ finishReason: 'length' })
+  })
+
+  it('fails on a content filter, whatever came with it', async () => {
+    const client = await tapeOf('content-filter', [{ type: 'text', text: 'I cannot' }])
+    await expect(client.generate(ask('analyst'))).rejects.toThrow(
+      'mistral a-model: the provider refused to answer',
+    )
+  })
+})
+
+describe('a recording run the model cannot answer', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('refuses the turn the way a live run does, and saves nothing', async () => {
+    // Record mode is a live call with a tape beside it: a turn stopped on its
+    // output limit with nothing in it is refused there too. The command saves
+    // the tape only after a run that succeeded, so none is written.
+    vi.stubEnv('OPENAI_API_KEY', 'test-key-not-a-real-one')
+    vi.stubEnv('OPENAI_BASE_URL', undefined)
+    vi.stubGlobal(
+      'fetch',
+      async (): Promise<Response> =>
+        new Response(
+          JSON.stringify({
+            id: 'resp_01',
+            object: 'response',
+            created_at: 0,
+            status: 'incomplete',
+            model: 'gpt-6-luna',
+            output: [],
+            incomplete_details: { reason: 'max_output_tokens' },
+            usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    )
+    const written: Recording[] = []
+    const tape = await openRecording({
+      scenario: 'demo',
+      store: { read: async () => undefined, write: async (_, taped) => void written.push(taped) },
+      mode: 'record',
+      warn: () => {},
+    })
+    const client = createClient({
+      tape,
+      mode: 'record',
+      choice: { provider: 'openai', model: 'gpt-6-luna' },
+    })
+
+    await expect(client.generate(ask('analyst'))).rejects.toThrow(
+      'openai gpt-6-luna: the model hit its output limit before answering',
+    )
+    expect(written).toEqual([])
   })
 })

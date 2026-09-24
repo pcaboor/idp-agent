@@ -30,6 +30,17 @@ export type AgentEvent =
   | { type: 'answer:ready'; outcome: Answer['outcome']; refs: string[] }
   | { type: 'refused'; agent: AgentName; reason: string }
   /**
+   * An agent's loop ended because the call beneath it threw — the model timed
+   * out, the provider failed — and the error goes on to the caller.
+   *
+   * Not `refused`: nothing was judged, and a line saying the Inspector refused
+   * is read as the Inspector having an opinion. It closes `agent:start` all the
+   * same, and carries the error's message for a consumer that shows no more
+   * than the stream. The CLI prints that error itself as the run's last line,
+   * which is why its renderer leaves the reason out.
+   */
+  | { type: 'stopped'; agent: AgentName; reason: string }
+  /**
    * A proposal was refused and handed back for correction, with the reason.
    *
    * `gate` is optional, and the optionality is what keeps the union honest

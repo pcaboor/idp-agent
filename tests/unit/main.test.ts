@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { main } from '../../src/cli/index.js'
 
 const FIXTURES = path.resolve(import.meta.dirname, '../../fixtures/si-demo')
@@ -7,6 +7,21 @@ const BROKEN = path.resolve(import.meta.dirname, '../golden/broken-si')
 
 /** Collects what the command would have written, so main() is testable. */
 const capture = (): { out: string[]; err: string[] } => ({ out: [], err: [] })
+
+/**
+ * A configured model, key included. The key is fake and set in both places the
+ * run reads: `chooseModel` checks the injected environment, the adapter reads
+ * the process's. The request then reaches `tests/setup/offline.ts`'s thrower.
+ */
+const CONFIGURED = {
+  IDP_PROVIDER: 'mistral',
+  IDP_MODEL: 'some-model',
+  MISTRAL_API_KEY: 'test-key-not-a-real-one',
+}
+
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
 
 describe('main', () => {
   it('prints the help and succeeds', async () => {
@@ -119,25 +134,27 @@ describe('main', () => {
   it('calls the model rather than hunting for a recording, when one is configured', async () => {
     // A real run has no scenario to replay. Before this, `idp-agent ask` with a
     // provider configured died looking for a recording called "live".
+    vi.stubEnv('MISTRAL_API_KEY', CONFIGURED.MISTRAL_API_KEY)
     const io = capture()
     const code = await main(['ask', 'which databases are in prod?'], {
       root: FIXTURES,
-      env: { IDP_PROVIDER: 'mistral', IDP_MODEL: 'some-model' },
+      env: CONFIGURED,
       out: (s) => io.out.push(s),
       err: (s) => io.err.push(s),
     })
     expect(io.err.join('')).not.toContain('no recording')
-    // It gets as far as the provider, which refuses for want of a key — the
-    // point being that it went looking for a model and not for a file.
-    expect(io.err.join('')).toMatch(/API key|network/i)
+    // It gets as far as the network, which the suite blocks — the point being
+    // that it went looking for a model and not for a file.
+    expect(io.err.join('')).toMatch(/network/i)
     expect(code).not.toBe(0)
   })
 
   it('reports an unexpected failure instead of exiting 0 with a stack trace', async () => {
+    vi.stubEnv('MISTRAL_API_KEY', CONFIGURED.MISTRAL_API_KEY)
     const io = capture()
     const code = await main(['ask', 'anything'], {
       root: FIXTURES,
-      env: { IDP_PROVIDER: 'mistral', IDP_MODEL: 'some-model' },
+      env: CONFIGURED,
       out: (s) => io.out.push(s),
       err: (s) => io.err.push(s),
     })

@@ -10,12 +10,13 @@ model SDK*, and *`agents/` imports `llm/client.js` and nothing else from `llm/`*
 | file | what it is |
 |---|---|
 | `client.ts` | the interface — `LlmClient`, `AgentName`, `ModelToolSpec`, `ModelToolCall`, `Transcript`. **Types only.** |
-| `providers.ts` | the three adapters, `chooseModel(env)`, `NoModelConfiguredError` |
+| `providers.ts` | the three adapters, `chooseModel(env)` and the key it checks, `timeoutOf(env)`, `NoModelConfiguredError`, `ModelSettingError` |
+| `failures.ts` | what a call that cannot succeed becomes — `ModelTimeoutError`, `ProviderCallError`, `ModelOutputLimitError`, `ModelRefusalError` — each one line. No SDK import |
 | `recording.ts` | the tape, over an abstract `RecordingStore`; `resolveMode`, `RecordingMissError` |
 | `runtime.ts` | the one file that calls a model — `generateText`, the tool plumbing, and the live / record / replay switch |
 | `tool-schema.ts` | `objectRooted` — the object-rooted JSON Schema a tool is advertised in. Pure; imports nothing from the SDK |
 
-**Two of those five import the SDK**, not one: `providers.ts` names the three `@ai-sdk/*`
+**Two of those six import the SDK**, not one: `providers.ts` names the three `@ai-sdk/*`
 adapters and `runtime.ts` calls `ai`. This page claimed for a while that `runtime.ts` was
 the only one, which is the drift the architecture rule is written to survive — the rule is
 about the *folder*, and the folder is what the test checks.
@@ -60,8 +61,71 @@ export IDP_MODEL=<whatever that provider calls it>
 ```
 
 Credentials come from the provider's own environment variable, never from the repository
-(design § 7.0) — `.idp-agent.yml` has no field that could carry one. Adding a fourth
-provider is one entry in `ADAPTERS` in `providers.ts`.
+(design § 7.0) — `.idp-agent.yml` has no field that could carry one. `chooseModel` checks
+that the variable is set — `ANTHROPIC_API_KEY`, `MISTRAL_API_KEY` or `OPENAI_API_KEY`,
+listed in `KEY_VARIABLES` — and refuses with exit 2 naming it, so a missing key is said
+before the Supervisor or the Inspector starts rather than found by the SDK at the first
+request. It checks the key and never reads it into the choice, so the key reaches nothing the
+choice is copied into; the adapter reads it itself. Neither a replay nor an injected client
+calls `chooseModel`, which is why the suite runs with no key. Adding a fourth provider is one
+entry in `ADAPTERS` and one in `KEY_VARIABLES`.
+
+## A call that cannot succeed
+
+Every live call is bounded by `IDP_TIMEOUT` — seconds, 120 by default, a plain positive
+decimal or exit 2. The bound covers the whole call, the SDK's own two retries of a 429 or a
+5xx included. When it expires the request is aborted with a signal the SDK reads as an
+abort, so it is never retried, and the run ends on `ModelTimeoutError`. Before this, one
+request to gpt-6-luna waited five minutes on undici's headers timeout and was then retried
+in silence. The signal is an argument of the call, not a field of the request, so it never
+enters a recording's digest.
+
+What a call can end on, and the line each becomes (`failures.ts`, exit 1 in `cli/index.ts`):
+
+| failure | line, after `<provider> <model>` |
+|---|---|
+| no answer within `IDP_TIMEOUT` | `did not answer within 120 s; set IDP_TIMEOUT=<seconds> to wait longer` |
+| HTTP 401 / 403 | `: the key was refused (HTTP 401); check OPENAI_API_KEY` |
+| HTTP 429 | `: rate limited (HTTP 429)` |
+| an empty account, on a 429 or a 400 | `: the account is out of quota (HTTP 429)` |
+| HTTP 5xx | `: the provider failed (HTTP 503)` |
+| a context-length refusal | `: the request is longer than the model's context window (HTTP 400)` |
+| a refused forced tool choice | `: the model does not take a forced tool choice (HTTP 400): <the provider's words>` |
+| any other 4xx | `: the request was refused (HTTP 400): <the provider's words>` |
+| a 200 the adapter cannot parse | `: the provider's answer could not be read (HTTP 200)` |
+| no connection | `: could not reach the provider: <the SDK's words>` |
+| a turn cut off at its output limit with nothing in it | `: the model hit its output limit before answering` |
+| a content filter | `: the provider refused to answer` |
+
+The status decides first; the provider's words decide only what a status cannot — its
+message and the error code the adapter parsed (`insufficient_quota`, `context_length_exceeded`),
+never the raw body, which as often as not echoes the request, and the request is a catalogue:
+a 400 quoting `billing-db` is not an empty account. Only the two refusals and a lost
+connection carry words of their own, summarised: controls and escape sequences removed,
+anything shaped like a key masked, one line, 120 characters at most. The rest are fixed
+sentences, and that is deliberate — `agents/forced-turn.ts` retries a forced turn as an open
+one when an error mentions `tool_choice` or a `forced tool`, which is right for a provider
+that refuses a forced tool with a 400 and wrong for a timeout or a refused key. Which 400 is
+that one is decided in `runtime.ts` on the provider's whole message, before the summary cuts
+it, and its line says `forced tool` in words of its own. A forced turn that comes back with
+no call because it was cut off or filtered is judged by its finish reason before the fallback
+sees it, for the same reason.
+
+A timer that expires while the SDK waits to retry a 429 or a 5xx, or a host it cannot reach,
+has expired on a provider that did answer: the run ends on that answer — `rate limited
+(HTTP 429)` — rather than on "did not answer". Each attempt's failure is seen through a
+middleware around the adapter, since the SDK says nothing of one until the last fails.
+
+The check on a returned turn runs in every mode, so a replayed tape cannot hand an agent a
+turn a live run would have refused. A run that fails on one saves no tape — the command
+writes it only after a run that succeeded — so the replay check is there for a tape written
+by hand, or by a build before the check.
+
+**No `maxOutputTokens`, and no variable for one.** Every agent's output is a tool call of a
+few hundred tokens, so a cap would bound nothing in practice — except on a reasoning model,
+where reasoning tokens count against it and a cap tight enough to matter produces exactly
+the empty `length` turn above. The provider's own limit stands (the Anthropic adapter
+already sends the model's maximum when it knows the model), and what bounds a call's time and cost is the timeout.
 
 ## Recording and replay
 

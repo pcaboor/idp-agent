@@ -745,8 +745,8 @@ describe('a run that stops is a run that says it stopped', () => {
 
     await expect(draftPlan(exploding, readTools(), INPUT, emit)).rejects.toThrow('502')
 
-    expect(events.map((event) => event.type)).toEqual(['agent:start', 'refused'])
-    const refusal = events.find((event) => event.type === 'refused')
-    expect(refusal && 'reason' in refusal ? refusal.reason : '').toContain('502')
+    expect(events.map((event) => event.type)).toEqual(['agent:start', 'stopped'])
+    const stop = events.find((event) => event.type === 'stopped')
+    expect(stop && 'reason' in stop ? stop.reason : '').toContain('502')
   })
 })

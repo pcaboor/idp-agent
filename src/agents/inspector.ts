@@ -154,9 +154,9 @@ export async function inspect(
       // and letting the rejection through untouched left a stream showing an
       // agent that began and never ended.
       emit({
-        type: 'refused',
+        type: 'stopped',
         agent: 'inspector',
-        reason: `the run stopped: ${error instanceof Error ? error.message : String(error)}`,
+        reason: error instanceof Error ? error.message : String(error),
       })
       throw error
     }

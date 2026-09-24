@@ -612,6 +612,11 @@ describe('what a run looks like on a terminal', () => {
     expect(renderEvent({ type: 'refused', agent: 'reviewer', reason: 'not asked for' })).toBe(
       '! reviewer refused: not asked for',
     )
+    // The reason is the error the command prints next, on its own line: said
+    // here too, it would reach the user twice.
+    expect(renderEvent({ type: 'stopped', agent: 'inspector', reason: 'a timeout' })).toBe(
+      '! inspector stopped',
+    )
     expect(
       renderEvent({
         type: 'overridden',
