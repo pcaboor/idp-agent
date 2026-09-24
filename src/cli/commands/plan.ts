@@ -157,16 +157,28 @@ async function repositoryRoot(repo: string): Promise<string> {
  * to, because a reviewer reads an added line and not an AST (§4.3). Reading
  * twice is the price of not making the snapshot carry a second representation
  * of every file.
+ *
+ * A file it cannot read refuses the run, named. `readRepository` reports one
+ * as a rejection, which is right for `validate`; skipping it here is not:
+ * `planEdits` takes a path it holds no bytes for as a file that does not
+ * exist, and would preview a creation over one that does.
  */
 async function readContents(
   root: string,
   snapshot: RepositorySnapshot,
 ): Promise<ReadonlyMap<string, string>> {
   const entries = await Promise.all(
-    snapshot.files.map(
-      async (file) =>
-        [file.path, await readFile(path.join(root, ...file.path.split('/')), 'utf8')] as const,
-    ),
+    snapshot.files.map(async (file) => {
+      const absolute = path.join(root, ...file.path.split('/'))
+      try {
+        return [file.path, await readFile(absolute, 'utf8')] as const
+      } catch (error) {
+        const why = (error as NodeJS.ErrnoException).code ?? String(error)
+        throw new PlanInputError(
+          `${file.path} could not be read (${why}); plan needs every file of the repository`,
+        )
+      }
+    }),
   )
   return new Map(entries)
 }
@@ -891,9 +903,11 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
   const tools = buildTools(graph)
   const contexts = contextsOf(root, snapshot, graph, { config, witnessed: tools.witnessed })
   const summary = formatSummary(contexts.summary, contexts.vocabulary)
+  // Before the Inspector too: a repository `plan` cannot read whole is refused,
+  // and refused before a model round-trip is spent on it.
+  const contents = await readContents(root, snapshot)
 
   const facts = await inspect(options.client, project, options.emit)
-  const contents = await readContents(root, snapshot)
 
   /** What the user said when asked. The request grows by it; see `withAnswers`. */
   const answers: Answer[] = []

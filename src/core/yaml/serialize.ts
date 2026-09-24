@@ -1,4 +1,4 @@
-import { parse, parseAllDocuments, stringify } from 'yaml'
+import { parse, parseAllDocuments, stringify, type YAMLError } from 'yaml'
 import { entitySchema, type Entity } from '../schemas/entity.js'
 import { reasonOf } from '../schemas/reject.js'
 
@@ -68,38 +68,99 @@ export function serializeEntity(entity: Entity): string {
   return text.endsWith('\n') ? text : `${text}\n`
 }
 
-/** Reads one document back. Used by round-trip tests and by repository readers. */
+/**
+ * Reads one document back, and throws on anything else: the round-trip tests
+ * want exactly that. A repository is read with `parseDocuments`, which reports.
+ */
 export function parseEntity(document: string): Entity {
   return entitySchema.parse(parse(document))
 }
 
 /**
- * Every entity in a multi-document file, and one message per document the
- * schema refused.
+ * One document of a stream as the parser left it: a value, `null` for an
+ * empty one, or why there is none.
+ */
+export type DocumentReading = { readonly value: unknown } | { readonly error: string }
+
+/**
+ * `4:3 DUPLICATE_KEY Map keys must be unique` — where, what, and the parser's
+ * own words, which it suffixes with a location this already states.
+ */
+function describe(error: YAMLError): string {
+  const at = error.linePos?.[0]
+  const where = at === undefined ? '' : `${String(at.line)}:${String(at.col)} `
+  const [first = ''] = error.message.split('\n')
+  return `${where}${error.code} ${first.replace(/ at line \d+, column \d+:?$/, '')}`
+}
+
+/** yaml's own default, stated: a catalogue entity has no business near it. */
+const MAX_ALIAS_COUNT = 100
+
+/**
+ * Every document of a stream, read as far as the parser vouches for it.
  *
- * The repository readers in `context/` do this against a disk; this does it
- * against bytes, so `core/` can read back what it is about to write without
- * one. Rejections are returned rather than thrown for the same reason the
- * readers report them: a file with one bad document still has good ones, and
- * dropping either fact hides a defect.
+ * A document the parser has faulted is an error here, never a value. `toJS()`
+ * returns one regardless — the last of two duplicate keys, the half of an
+ * unclosed sequence it managed to read — and taking it is how a duplicate key
+ * passed `validate` as "0 violations", and how a surgery that broke a file's
+ * syntax passed the re-check that reads its output back. `toJS()` itself is
+ * guarded: an alias bomb trips yaml's alias-count limit, which throws, and one
+ * hostile file must be a rejection rather than the end of the run.
+ */
+export function readDocuments(text: string): DocumentReading[] {
+  const readings: DocumentReading[] = []
+  for (const document of parseAllDocuments(text)) {
+    const [error] = document.errors
+    if (error !== undefined) {
+      readings.push({ error: describe(error) })
+      continue
+    }
+    try {
+      readings.push({ value: document.toJS({ maxAliasCount: MAX_ALIAS_COUNT }) })
+    } catch (thrown) {
+      readings.push({
+        error: `could not be read: ${thrown instanceof Error ? thrown.message : String(thrown)}`,
+      })
+    }
+  }
+  return readings
+}
+
+/**
+ * Every entity in a multi-document file, one message per document that is not
+ * one, and how many documents there were.
+ *
+ * The one reader of entity documents — `readDocuments` is its lower half, and
+ * `plan/effect.ts` the only other caller of that. `context/`'s readers call it
+ * on what they read from a disk, and `core/` on bytes it is about to write, so
+ * a file cannot be conformant to one of them and broken to the other.
+ * Rejections are returned rather than thrown for the same reason the readers
+ * report them: a file with one bad document still has good ones, and dropping
+ * either fact hides a defect.
  */
 export function parseDocuments(text: string): {
   entities: Entity[]
   rejections: string[]
+  /** Documents in the stream, the null ones a witness is made of included. */
+  documents: number
 } {
   const entities: Entity[] = []
   const rejections: string[] = []
+  const readings = readDocuments(text)
 
-  for (const document of parseAllDocuments(text)) {
-    const value: unknown = document.toJS()
+  for (const reading of readings) {
+    if ('error' in reading) {
+      rejections.push(reading.error)
+      continue
+    }
     // A witness is a null document (design 7.2): present on purpose, and not
     // an entity. Counting it as a rejection would make every witnessed folder
     // report one.
-    if (value === null || value === undefined) continue
-    const parsed = entitySchema.safeParse(value)
+    if (reading.value === null || reading.value === undefined) continue
+    const parsed = entitySchema.safeParse(reading.value)
     if (parsed.success) entities.push(parsed.data)
     else rejections.push(reasonOf(parsed.error))
   }
 
-  return { entities, rejections }
+  return { entities, rejections, documents: readings.length }
 }

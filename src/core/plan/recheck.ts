@@ -120,13 +120,7 @@ export function recheckPlan(
    */
   const edited = new Map<string, RepositoryFile>()
   for (const edit of edits) {
-    const { entities, rejections } = parseDocuments(edit.after)
-    edited.set(edit.path, {
-      path: edit.path,
-      entities,
-      rejections,
-      documents: entities.length + rejections.length,
-    })
+    edited.set(edit.path, { path: edit.path, ...parseDocuments(edit.after) })
   }
 
   // Virtually means virtually: a new snapshot, never a mutation of the one we

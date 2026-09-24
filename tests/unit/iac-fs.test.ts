@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -88,5 +88,96 @@ describe('readRepository', () => {
     // validator, either the rules or the fixtures are wrong.
     const violations = checkRepository(await readRepository(FIXTURES))
     expect(violations.filter((violation) => violation.severity === 'error')).toEqual([])
+  })
+})
+
+describe('readRepository, over files it cannot read', () => {
+  // One unreadable file used to end `validate` on a raw stack trace, which
+  // reports nothing about the other files. A file that cannot be read is a
+  // rejection for that path — the same shape as one the schema refused.
+  const repositoryWith = async (): Promise<string> => {
+    const repo = await mkdtemp(path.join(tmpdir(), 'iac-unreadable-'))
+    await mkdir(path.join(repo, 'catalog/databases'), { recursive: true })
+    await writeFile(path.join(repo, 'catalog/databases/.witness.yml'), '---\n')
+    return repo
+  }
+  const rejectionsAt = async (repo: string, file: string): Promise<readonly string[]> => {
+    const snapshot = await readRepository(repo)
+    return snapshot.files.find((one) => one.path === file)?.rejections ?? []
+  }
+
+  it.skipIf(process.getuid?.() === 0)('rejects a file it has no permission to read', async () => {
+    // Root reads through a mode of 000, so the case cannot be staged as root.
+    const repo = await repositoryWith()
+    const file = path.join(repo, 'catalog/databases/locked.yml')
+    await writeFile(file, '---\nkind: Resource\n')
+    await chmod(file, 0o000)
+    try {
+      expect(await rejectionsAt(repo, 'catalog/databases/locked.yml')).toEqual([
+        expect.stringContaining('EACCES'),
+      ])
+    } finally {
+      await chmod(file, 0o600)
+    }
+  })
+
+  it('walks a directory whose name ends in .yml, rather than reading it as a file', async () => {
+    // Not a regression test for the rejection: `walk()` already told a
+    // directory from a file. It pins that the new catch does not turn one into
+    // a rejection — only a LINK to a directory is read, and fails, as a file.
+    const repo = await repositoryWith()
+    await mkdir(path.join(repo, 'catalog/databases/odd.yml'))
+    await writeFile(path.join(repo, 'catalog/databases/odd.yml/.witness.yml'), '---\n')
+    const snapshot = await readRepository(repo)
+    expect(snapshot.files.map((file) => file.path)).not.toContain('catalog/databases/odd.yml')
+  })
+
+  it('rejects a symbolic link that leads nowhere', async () => {
+    const repo = await repositoryWith()
+    await symlink(path.join(repo, 'gone.yml'), path.join(repo, 'catalog/databases/dangling.yml'))
+    expect(await rejectionsAt(repo, 'catalog/databases/dangling.yml')).toEqual([
+      expect.stringContaining('ENOENT'),
+    ])
+  })
+
+  it('rejects a loop of symbolic links', async () => {
+    const repo = await repositoryWith()
+    const at = (name: string) => path.join(repo, 'catalog/databases', name)
+    await symlink(at('b.yml'), at('a.yml'))
+    await symlink(at('a.yml'), at('b.yml'))
+    expect(await rejectionsAt(repo, 'catalog/databases/a.yml')).toEqual([
+      expect.stringContaining('ELOOP'),
+    ])
+  })
+
+  it('rejects a symbolic link to a directory', async () => {
+    const repo = await repositoryWith()
+    await symlink(path.join(repo, 'catalog'), path.join(repo, 'catalog/databases/loop.yml'))
+    expect(await rejectionsAt(repo, 'catalog/databases/loop.yml')).toEqual([
+      expect.stringContaining('EISDIR'),
+    ])
+  })
+
+  it('rejects a duplicate key with its line and column, instead of reading the last one', async () => {
+    const repo = await repositoryWith()
+    await writeFile(
+      path.join(repo, 'catalog/databases/twice.yml'),
+      [
+        '---',
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: Resource',
+        'metadata:',
+        '  name: twice',
+        'spec:',
+        '  type: database',
+        '  owner: group:default/tiger',
+        '  owner: group:default/lion',
+        '',
+      ].join('\n'),
+    )
+    const snapshot = await readRepository(repo)
+    const twice = snapshot.files.find((file) => file.path === 'catalog/databases/twice.yml')
+    expect(twice?.entities).toEqual([])
+    expect(twice?.rejections).toEqual([expect.stringMatching(/^9:3 DUPLICATE_KEY /)])
   })
 })

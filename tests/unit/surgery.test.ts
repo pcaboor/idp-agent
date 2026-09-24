@@ -100,3 +100,73 @@ describe('listDocumentNames', () => {
     expect(listDocumentNames('')).toEqual([])
   })
 })
+
+describe('the same documents, whichever function is looking', () => {
+  // `init` asks `listDocumentNames` whether an entity is already declared, and
+  // `removeDocument` finds its target the same way `appendSequenceItem` does.
+  // A document one of them can see and another cannot is a file where the
+  // three give contradicting answers about the same bytes.
+
+  it('lists a first document that has no --- line', () => {
+    expect(listDocumentNames(`${docA}\n---\n${docB}`)).toEqual(['alpha', 'beta'])
+  })
+
+  it('lists behind a byte-order mark, a header comment, and four-space indentation', () => {
+    const file =
+      '﻿# hand written\n' +
+      'kind: Resource\n' +
+      'metadata: # identity\n' +
+      '    name: alpha # kept\n'
+    expect(listDocumentNames(file)).toEqual(['alpha'])
+  })
+
+  it('does not read a directive or a comment above the first --- as a document', () => {
+    expect(listDocumentNames(`%YAML 1.2\n# note\n---\n${docA}`)).toEqual(['alpha'])
+  })
+
+  it('removes a first document that has no --- line', () => {
+    expect(removeDocument(`${docA}\n---\n${docB}`, 'alpha')).toBe(`---\n${docB}`)
+  })
+
+  it('removes the document after an implicit first one, and the blank line before it', () => {
+    expect(removeDocument(`${docA}\n---\n${docB}`, 'beta')).toBe(docA)
+  })
+
+  it('keeps a file header that a blank line separates from the removed document', () => {
+    expect(removeDocument(`# licence\n\n${docA}\n---\n${docB}`, 'alpha')).toBe(
+      `# licence\n\n---\n${docB}`,
+    )
+  })
+
+  it('keeps a byte-order mark when the first document goes', () => {
+    expect(removeDocument(`﻿---\n${docA}\n---\n${docB}`, 'alpha')).toBe(`﻿---\n${docB}`)
+  })
+})
+
+describe('a file written with CRLF line endings', () => {
+  // `init` asks `listDocumentNames` whether a catalog-info.yaml already
+  // declares the component. Blind to `\r\n`, it answered no, and a second
+  // document of the same name was proposed.
+  const crlf = (text: string) => text.replaceAll('\n', '\r\n')
+
+  it('lists its documents', () => {
+    expect(listDocumentNames(crlf(`---\n${docA}\n---\n${docB}`))).toEqual(['alpha', 'beta'])
+  })
+
+  it('lists an implicit first document', () => {
+    expect(listDocumentNames(crlf(`${docA}\n---\n${docB}`))).toEqual(['alpha', 'beta'])
+  })
+
+  it('removes a document and the blank line that preceded it', () => {
+    expect(removeDocument(crlf(`---\n${docA}\n---\n${docB}`), 'beta')).toBe(crlf(`---\n${docA}`))
+  })
+
+  it('inserts a document with the file’s own line endings', () => {
+    expect(insertDocument(crlf(`---\n${docA}`), docB)).toBe(crlf(`---\n${docA}\n---\n${docB}`))
+  })
+
+  it('removes what it inserted, byte for byte', () => {
+    const file = crlf(`# hand written\n---\n${docA}`)
+    expect(removeDocument(insertDocument(file, docB), 'beta')).toBe(file)
+  })
+})

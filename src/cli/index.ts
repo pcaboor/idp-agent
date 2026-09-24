@@ -543,11 +543,11 @@ function report(result: CommandResult, out: (chunk: string) => void): number {
 /**
  * What a command threw, turned into a code.
  *
- * Three refusals are the user's arguments and earn exit 2 — a plan file that is
- * not a plan, a `--repo` that is not a directory, a `.idp-agent.yml` that does
- * not parse, a run with no model configured. Anything else is still a failure
- * and must not leave as exit 0 with a stack trace: that is indistinguishable
- * from success to a script.
+ * These refusals are the user's arguments and earn exit 2 — a plan file that is
+ * not a plan, a `--repo` that is not a directory or holds a file `plan` cannot
+ * read, a `.idp-agent.yml` that does not parse, a run with no model configured.
+ * Anything else is still a failure and must not leave as exit 0 with a stack
+ * trace: that is indistinguishable from success to a script.
  */
 function failed(error: unknown, err: (chunk: string) => void): number {
   if (

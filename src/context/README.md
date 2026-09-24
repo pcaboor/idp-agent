@@ -7,7 +7,11 @@ stage 4, `backstage-http` at MVP (design.md § 3). `FixtureProvider`, the only i
 today, reads a directory laid out exactly like an IaC repository, so it already has stage 4's shape.
 
 `LoadResult` pairs `entities` with `rejected: Rejection[]` — one `{ source, reason }` for every
-document `entitySchema` refused. Throwing would lose every valid entity because of one bad one;
+document `entitySchema` refused, or the parser faulted (a duplicate key or an unclosed bracket,
+with its line and column; an alias bomb, which the parser stops on without a position). Both
+readers go through `core/`'s `parseDocuments`, the one reader of entity documents, and `iac-fs`
+also rejects a file it cannot open — no permission, a link to nothing — rather than ending
+`validate` on a stack trace. Throwing would lose every valid entity because of one bad one;
 swallowing is what the catalogue does — it ignores duplicates in silence (design.md § 4.4)
 and reports nothing for what it could not ingest — and a tool that inherits the failure mode
 it exists to prevent is worth nothing.

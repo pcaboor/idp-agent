@@ -1,6 +1,6 @@
 import { parse } from 'yaml'
 import { describe, expect, it } from 'vitest'
-import { parseEntity, serializeEntity } from '../../src/core/yaml/serialize.js'
+import { parseDocuments, parseEntity, serializeEntity } from '../../src/core/yaml/serialize.js'
 import type { Entity } from '../../src/core/schemas/entity.js'
 
 const entity: Entity = {
@@ -139,5 +139,72 @@ describe('values YAML would read back as something else', () => {
       metadata: { annotations: Record<string, string> }
     }
     expect(asYaml11.metadata.annotations).toEqual(traps)
+  })
+})
+
+describe('parseDocuments, the one reader of entity documents', () => {
+  // `toJS()` hands back a value for a document the parser has already said is
+  // broken: the last of two duplicate keys, the half of an unclosed sequence
+  // it managed to read. Taking that value is how a duplicate key passed as
+  // "0 violations", and how a surgery that broke a file's syntax passed the
+  // re-check that reads its output.
+  const grant = (...spec: string[]): string =>
+    [
+      '---',
+      'apiVersion: backstage.io/v1alpha1',
+      'kind: Resource',
+      'metadata:',
+      '  name: billing-api-billing-db-dev',
+      'spec:',
+      '  type: database-access',
+      '  owner: group:default/tiger',
+      ...spec,
+      '',
+    ].join('\n')
+
+  it('refuses a document with a duplicate key, naming the line, column and code', () => {
+    const { entities, rejections } = parseDocuments(
+      grant('  dependencyOf:', '    - component:default/a', '  dependencyOf:', '    - component:default/b'),
+    )
+    expect(entities).toEqual([])
+    expect(rejections).toHaveLength(1)
+    expect(rejections[0]).toContain('DUPLICATE_KEY')
+    expect(rejections[0]).toContain('11:3')
+  })
+
+  it('refuses an unclosed flow sequence rather than reading half of it', () => {
+    const { entities, rejections } = parseDocuments(
+      grant('  dependencyOf: [component:default/a, component:default/b'),
+    )
+    expect(entities).toEqual([])
+    expect(rejections).toHaveLength(1)
+    expect(rejections[0]).toMatch(/^\d+:\d+ [A-Z_]+ /)
+  })
+
+  it('refuses an alias bomb instead of throwing', () => {
+    const bomb = [
+      'a: &a [x, x, x, x, x, x, x, x, x]',
+      'b: &b [*a, *a, *a, *a, *a, *a, *a, *a, *a]',
+      'c: &c [*b, *b, *b, *b, *b, *b, *b, *b, *b]',
+      'd: &d [*c, *c, *c, *c, *c, *c, *c, *c, *c]',
+      'e: [*d, *d, *d, *d, *d, *d, *d, *d, *d]',
+      '',
+    ].join('\n')
+    const read = () => parseDocuments(bomb)
+    expect(read).not.toThrow()
+    expect(read().rejections).toHaveLength(1)
+    expect(read().rejections[0]).toMatch(/alias/i)
+  })
+
+  it('keeps the documents it can read beside the one it cannot', () => {
+    const file = `${grant('  owner: group:default/twice')}\n${grant()}`
+    const { entities, rejections, documents } = parseDocuments(file)
+    expect(entities.map((entity) => entity.metadata.name)).toEqual(['billing-api-billing-db-dev'])
+    expect(rejections).toHaveLength(1)
+    expect(documents).toBe(2)
+  })
+
+  it('counts a null document, which a witness is made of, and rejects nothing for it', () => {
+    expect(parseDocuments('---\n')).toEqual({ entities: [], rejections: [], documents: 1 })
   })
 })

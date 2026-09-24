@@ -439,3 +439,41 @@ describe('two components, one catalog-info.yaml', () => {
     expect(listDocumentNames(edits[0]?.after ?? '')).toEqual(['billing-api', 'billing-worker'])
   })
 })
+
+describe('a catalog-info.yaml written with CRLF line endings', () => {
+  it('is seen to declare the component already, and is left as it was', () => {
+    // Blind to `\r\n`, `listDocumentNames` found no document in a file saved on
+    // Windows, and `init` proposed a second declaration of the same name —
+    // the silent duplicate of design 4.4.
+    const text = [
+      '---',
+      'apiVersion: backstage.io/v1alpha1',
+      'kind: Component',
+      'metadata:',
+      '  name: billing-api',
+      'spec:',
+      '  type: service',
+      '  lifecycle: production',
+      '  owner: group:default/tiger',
+      '',
+    ].join('\r\n')
+    const edits = catalogInfoEdits(
+      {
+        intent: 'declare this service',
+        operations: [
+          {
+            op: 'create-catalog-info',
+            repoPath: 'catalog-info.yaml',
+            entity: {
+              kind: 'Component',
+              metadata: { name: 'billing-api' },
+              spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
+            },
+          },
+        ],
+      } as never,
+      { files: [{ path: 'catalog-info.yaml', text }] },
+    )
+    expect(edits).toEqual([{ path: 'catalog-info.yaml', before: text, after: text }])
+  })
+})

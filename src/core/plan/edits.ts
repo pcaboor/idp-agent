@@ -3,6 +3,7 @@ import type { Entity } from '../schemas/entity.js'
 import { findUnknowns } from '../schemas/plan.js'
 import { parseDocuments, serializeEntity } from '../yaml/serialize.js'
 import { appendSequenceItem, insertDocument, SurgeryError } from '../yaml/surgery.js'
+import { appendedOnly, insertedOnly, listsConsumer } from './effect.js'
 import { declaredLevel, proposedLevel, restates, statedAs } from './grant.js'
 import { materialise } from './materialise.js'
 import type { SignedPlan } from './sign.js'
@@ -21,6 +22,19 @@ import type { SignedPlan } from './sign.js'
  * a proposal carries `metadata.env` where an entity carries an annotation, and
  * no apiVersion at all. `recheckPlan` needs the same translation, so neither
  * module owns it.
+ *
+ * **What it guarantees**: every edit it returns carries its operations out,
+ * as the parser reads the result back, and changes nothing else. An update's
+ * file lists the consumer under that entity, every other document and every
+ * other field reading back as before; a creation's file holds one more
+ * document, the entity, and the others unchanged; and neither holds a YAML
+ * error. An operation whose bytes fail that is DROPPED, with a reason naming
+ * the file, and leaves that file as the operations before it had left it.
+ * An edit whose two sides are equal means the parser found the work already
+ * done, never that the surgery could not find where to do it. Stage 5 writes
+ * these bytes to disk, so this is the guarantee that write inherits — design
+ * 9.2's effectiveness. `effect.ts` holds the checks; the surgery underneath is
+ * a best-effort heuristic, and this is what makes it safe for it to be wrong.
  *
  * What this does NOT do is judge. Whether the entity already lives in some
  * other file is `recheckPlan`'s 'moved' verdict, whether the folder was ever
@@ -148,12 +162,16 @@ export function planEdits(signed: SignedPlan, before: ReadonlyMap<string, string
       // operation was dropped" are different answers, and the caller has to
       // tell them apart — absent means already done (§4.3), but only if it is
       // visible.
-      touch(
-        path,
+      const after =
         there !== undefined && existing !== undefined
           ? existing
-          : insertDocument(existing ?? '', serializeEntity(entity)),
-      )
+          : insertDocument(existing ?? '', serializeEntity(entity))
+      const wrong = after === existing ? undefined : insertedOnly(existing, after, entity)
+      if (wrong !== undefined) {
+        dropped.push({ opIndex, reason: `could not add ${refOf(entity)} to ${path}: ${wrong}` })
+        continue
+      }
+      touch(path, after)
       // Declared by THIS plan now, so a later operation can patch it. Without
       // this an update naming an entity the same plan creates was dropped in
       // silence, and the preview showed the creation without the grant.
@@ -180,13 +198,28 @@ export function planEdits(signed: SignedPlan, before: ReadonlyMap<string, string
         continue
       }
 
-      const name = operation.entityRef.slice(operation.entityRef.lastIndexOf('/') + 1)
+      const { entityRef: ref, patch } = operation
+      const failed = (why: string): void => {
+        dropped.push({
+          opIndex,
+          reason: `could not add ${patch.consumer} to ${ref} in ${path}: ${why}`,
+        })
+      }
+
+      // Already listed is the parser's answer, never the surgery's: a flow
+      // sequence the surgery would refuse to split can hold the consumer, and
+      // an unchanged file is then the truth rather than a failure to find it.
+      if (listsConsumer(existing, ref, patch.consumer)) {
+        touch(path, existing)
+        continue
+      }
+
+      const name = ref.slice(ref.lastIndexOf('/') + 1)
+      let after: string
       try {
-        // One line, appended. `appendSequenceItem` leaves the text alone when
-        // the consumer is already listed, which surfaces as before === after
-        // for the same reason a re-declared entity does — and refuses loudly
-        // on a shape it cannot edit textually, which is caught here so one
-        // unamendable file does not lose the rest of the plan.
+        // One line, appended — and refused loudly on a shape the surgery
+        // cannot edit textually, which is caught here so one unamendable file
+        // does not lose the rest of the plan.
         //
         // `patch.access` writes NOTHING, and that is not an oversight. §5.3
         // put the level in the operation so the signature can classify it and
@@ -196,11 +229,26 @@ export function planEdits(signed: SignedPlan, before: ReadonlyMap<string, string
         // is also the one thing this edit cannot show a reviewer: `access:`
         // sits further from the inserted line than the three lines of context
         // a hunk carries, and it stays an unchanged line.
-        touch(path, appendSequenceItem(existing, name, 'dependencyOf', operation.patch.consumer))
+        after = appendSequenceItem(existing, name, 'dependencyOf', patch.consumer)
       } catch (error) {
         if (!(error instanceof SurgeryError)) throw error
-        dropped.push({ opIndex, reason: error.message })
+        failed(error.message)
+        continue
       }
+
+      // The parser said the consumer is not listed, so an unchanged file is a
+      // surgery that found nothing to amend — the exact shape of "nothing to
+      // change" that granted nothing. And a changed one is checked for what
+      // it changed: the surgery finds documents by name, not by reference.
+      const wrong =
+        after === existing
+          ? 'the edit left the file as it was'
+          : appendedOnly(existing, after, ref, patch.consumer)
+      if (wrong !== undefined) {
+        failed(wrong)
+        continue
+      }
+      touch(path, after)
       continue
     }
 
