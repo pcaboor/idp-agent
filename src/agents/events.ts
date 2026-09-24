@@ -61,6 +61,20 @@ export type AgentEvent =
    * says so" is the whole of why the value is allowed to be there.
    */
   | { type: 'derived'; path: string; owner: string; from: readonly string[] }
+  /**
+   * The engine kept an owner the user stated where the consumers determine
+   * another. The user's word outranks the consumers, and that is a decision
+   * about two facts that disagree: said, so a diff carrying one team's
+   * authorisation and another team's consumer is not the first place anyone
+   * sees it. `determined` and `from` are what the consumers would have given.
+   */
+  | {
+      type: 'overridden'
+      path: string
+      owner: string
+      determined: string
+      from: readonly string[]
+    }
   | { type: 'ask'; question: Question }
 
 export type EventSink = (event: AgentEvent) => void

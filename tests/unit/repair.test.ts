@@ -16,6 +16,7 @@ import { PROPOSE_TOOL } from '../../src/agents/tools/propose-tool.js'
 import { EntityGraph, refOf } from '../../src/context/graph/entity-graph.js'
 import { computeEntityPath } from '../../src/core/paths/entity-path.js'
 import type { PolicyContext } from '../../src/core/plan/policies.js'
+import type { Provenance } from '../../src/core/plan/provenance.js'
 import type { SignatureContext } from '../../src/core/plan/sign.js'
 import type { Nature } from '../../src/core/schemas/resource-types.js'
 import { SOURCE_FILE_ANNOTATION, type Entity } from '../../src/core/schemas/entity.js'
@@ -24,6 +25,7 @@ import { ENV_ANNOTATION } from '../../src/core/schemas/vocabulary.js'
 import type { RepositoryFile, RepositorySnapshot } from '../../src/core/validate/rules.js'
 import { serializeEntity } from '../../src/core/yaml/serialize.js'
 import type { GenerateResult, LlmClient, ModelToolCall } from '../../src/llm/client.js'
+import { userSaid } from '../support/provenance.js'
 
 /** Replays a scripted sequence of model turns, so the loop is tested without a model. */
 const scripted = (turns: GenerateResult[]): LlmClient & { calls: number } => {
@@ -106,17 +108,25 @@ const WITNESSED = new Set([
 ])
 
 const signature = (over: Partial<SignatureContext> = {}): SignatureContext => ({
-  // A person's own request, which is what every fixture here models.
-  wordsOf: 'user',
   witnessed: WITNESSED,
   vocabulary: VOCABULARY,
   repoRoot: '/repo',
   declared: new Map(),
-  // The level is asked, never read out of the request, so a fixture that
-  // wants a complete plan answers for it — which is what a run does.
-  answered: new Set(['read']),
   ...over,
 })
+
+/**
+ * What the user stated: `intent`, their own request — which is what every
+ * fixture here models — and `level` answered for the one grant a plan here
+ * carries, whichever shape states it. A level is asked, never read out of the
+ * request, so a fixture that wants a complete plan answers for it, which is
+ * what a run does.
+ */
+const stating = (intent: string, level = 'read'): Provenance =>
+  userSaid(intent, {
+    'operations.0.entity.spec.access': level,
+    'operations.0.patch.access': level,
+  })
 
 const policy = (over: Partial<PolicyContext> = {}): PolicyContext => ({
   vocabulary: VOCABULARY,
@@ -341,7 +351,7 @@ const reviewing = (
 }
 
 const inputs = (over: Partial<RepairInput> = {}): RepairInput => ({
-  intent: INTENT,
+  provenance: stating(INTENT),
   draft: drafting(PLAN).draft,
   review: reviewing({ verdict: 'ok' }).review,
   signature: signature(),
@@ -395,7 +405,7 @@ describe('the five gates of §6.1', () => {
     const reviewer = reviewing({ verdict: 'ok' })
 
     const outcome = stopped(
-      await repair(inputs({ intent: DEV_INTENT, draft: drafting(MISMATCHED).draft, review: reviewer.review }), emit),
+      await repair(inputs({ provenance: stating(DEV_INTENT), draft: drafting(MISMATCHED).draft, review: reviewer.review }), emit),
     )
 
     expect(outcome.attempts[0]?.gates).toEqual(['zod', 'signature', 'policy'])
@@ -431,7 +441,7 @@ describe('each gate refuses on its own', () => {
   it('[3] a policy refuses an environment the request never named', async () => {
     const { events, emit } = collect()
 
-    const outcome = stopped(await repair(inputs({ intent: DEV_INTENT, draft: drafting(MISMATCHED).draft }), emit))
+    const outcome = stopped(await repair(inputs({ provenance: stating(DEV_INTENT), draft: drafting(MISMATCHED).draft }), emit))
 
     expect(outcome.gate).toBe('policy')
     expect(eventsOfType(events, 'repair')[0]?.reason).toContain('environment-mismatch')
@@ -495,7 +505,7 @@ describe('the report handed back to the Architect', () => {
     const { emit } = collect()
     const architect = drafting(MISMATCHED)
 
-    await repair(inputs({ intent: DEV_INTENT, draft: architect.draft }), emit)
+    await repair(inputs({ provenance: stating(DEV_INTENT), draft: architect.draft }), emit)
 
     // The same string a human reads and `findUnknowns` produces. A model
     // repairing a paraphrase is repairing something else.
@@ -518,7 +528,7 @@ describe('three attempts, then a clean stop', () => {
     const { events, emit } = collect()
     const architect = drafting(MISMATCHED)
 
-    const outcome = stopped(await repair(inputs({ intent: DEV_INTENT, draft: architect.draft }), emit))
+    const outcome = stopped(await repair(inputs({ provenance: stating(DEV_INTENT), draft: architect.draft }), emit))
 
     expect(architect.reports).toHaveLength(REPAIR_LIMITS.maxAttempts)
     expect(outcome.attempts).toHaveLength(REPAIR_LIMITS.maxAttempts)
@@ -529,7 +539,7 @@ describe('three attempts, then a clean stop', () => {
     const { emit } = collect()
     const architect = drafting(MISMATCHED)
 
-    const outcome = stopped(await repair(inputs({ intent: DEV_INTENT, draft: architect.draft }), emit))
+    const outcome = stopped(await repair(inputs({ provenance: stating(DEV_INTENT), draft: architect.draft }), emit))
 
     // §6.1: the partial plan is shown with the reason. It is a Plan and not a
     // SignedPlan, and the absence is structural — there is no field to put one
@@ -543,7 +553,7 @@ describe('three attempts, then a clean stop', () => {
     const before = bytesOf(SNAPSHOT)
     const { emit } = collect()
 
-    await repair(inputs({ intent: DEV_INTENT, draft: drafting(MISMATCHED).draft, contents: before }), emit)
+    await repair(inputs({ provenance: stating(DEV_INTENT), draft: drafting(MISMATCHED).draft, contents: before }), emit)
 
     // "No file is written" starts one step earlier than the disk: nothing here
     // may even edit the buffers the caller owns.
@@ -556,7 +566,7 @@ describe('three attempts, then a clean stop', () => {
     const architect = drafting(MISMATCHED, DEV_PLAN)
 
     const outcome = planned(
-      await repair(inputs({ intent: DEV_INTENT, draft: architect.draft }), emit),
+      await repair(inputs({ provenance: stating(DEV_INTENT), draft: architect.draft }), emit),
     )
 
     expect(outcome.attempts).toHaveLength(2)
@@ -574,7 +584,7 @@ describe('a question is not a failed gate', () => {
 
     const outcome = asking(
       await repair(
-        inputs({ intent: DECLARE_INTENT, draft: architect.draft, review: reviewer.review }),
+        inputs({ provenance: stating(DECLARE_INTENT), draft: architect.draft, review: reviewer.review }),
         emit,
       ),
     )
@@ -646,6 +656,31 @@ describe('a right’s owner is derived, not asked', () => {
         type: 'derived',
         path: 'operations.0.entity.spec.owner',
         owner: 'group:default/tiger',
+        from: ['component:default/billing-api'],
+      },
+    ])
+  })
+
+  it('says so when an owner the user stated is kept over the consumer’s', async () => {
+    // Rule 1: the user's word outranks the consumers. A decision about two
+    // facts that disagree, so it is said — once, however many attempts see it.
+    const { events, emit } = collect()
+    const lynx = planOf({ ...ACCESS, spec: { ...ACCESS.spec, owner: 'group:default/lynx' } })
+
+    await repair(
+      inputs({
+        draft: drafting(lynx).draft,
+        provenance: stating(`${INTENT}, owned by group:default/lynx`),
+      }),
+      emit,
+    )
+
+    expect(eventsOfType(events, 'overridden')).toEqual([
+      {
+        type: 'overridden',
+        path: 'operations.0.entity.spec.owner',
+        owner: 'group:default/lynx',
+        determined: 'group:default/tiger',
         from: ['component:default/billing-api'],
       },
     ])
@@ -770,7 +805,7 @@ describe('a question is not a way out of a gate', () => {
     const architect = drafting(both)
     const { emit } = collect()
 
-    const outcome = await repair(inputs({ intent: DEV_INTENT, draft: architect.draft }), emit)
+    const outcome = await repair(inputs({ provenance: stating(DEV_INTENT), draft: architect.draft }), emit)
 
     expect(outcome.outcome).toBe('stopped')
     expect(stopped(outcome).gate).toBe('policy')
@@ -813,7 +848,7 @@ describe('the request is the caller’s, not the draft’s', () => {
     const { emit } = collect()
 
     const outcome = await repair(
-      inputs({ intent: DECLARE_INTENT, draft: drafting(forged).draft }),
+      inputs({ provenance: stating(DECLARE_INTENT), draft: drafting(forged).draft }),
       emit,
     )
 
@@ -860,7 +895,7 @@ describe('what the Architect counted does not die at the seam', () => {
     const { emit } = collect()
 
     const outcome = stopped(
-      await repair(inputs({ intent: DEV_INTENT, draft: thenNothing }), emit),
+      await repair(inputs({ provenance: stating(DEV_INTENT), draft: thenNothing }), emit),
     )
 
     expect(outcome.gate).toBe('policy')
@@ -899,7 +934,7 @@ describe('the one free-text field a model controls', () => {
     const outcome = asking(
       await repair(
         inputs({
-          intent: COMPONENT_INTENT,
+          provenance: stating(COMPONENT_INTENT),
           draft: drafting(drafted).draft,
           review: reviewer.review,
         }),
@@ -1100,12 +1135,12 @@ describe('the free gate runs before the paid one', () => {
             'resource:default/billing-api-orders-db-prod',
             'component:default/billing-api',
           ]),
-          // The level is asked, never read out of the request, so a fixture
-          // that wants to reach gate [5] answers for it — and the answer is
-          // the level this grant declares, because an update hands over what
-          // the grant already grants.
-          answered: new Set(['readwrite']),
         }),
+        // The level is asked, never read out of the request, so a fixture that
+        // wants to reach gate [5] answers for it — and the answer is the level
+        // this grant declares, because an update hands over what the grant
+        // already grants.
+        provenance: stating(INTENT, 'readwrite'),
       }),
       emit,
     )

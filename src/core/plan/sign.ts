@@ -1,4 +1,4 @@
-import { echoes } from './echoes.js'
+import { answered, named, nothingStated, stated, type Provenance } from './provenance.js'
 import type { Plan } from '../schemas/plan.js'
 import { PLAN_LIMITS } from '../schemas/plan.js'
 import { computeEntityPath } from '../paths/entity-path.js'
@@ -44,40 +44,12 @@ export interface PlanRefusal {
   readonly refusals: readonly LeafRefusal[]
 }
 
+/**
+ * The repository a plan is signed against. What the USER stated is the other
+ * half, and it is not here: it changes every round of the ask loop while this
+ * is read once per run, so it travels as a `Provenance` of its own.
+ */
 export interface SignatureContext {
-  /**
-   * Values the user typed at a prompt, as themselves.
-   *
-   * A different fact from "the word appears in the request", and the reason
-   * the two are held apart. The ask loop used to GROW the intent with each
-   * answer so `echoes` would find it again, which worked for an identifier and
-   * failed for a common word — once `read` was in the intent it vouched for
-   * every `read` in the plan — and left the request in a `--json` report
-   * carrying sentences the user never wrote.
-   *
-   * What it does NOT carry is which question each answer belonged to. An
-   * answer here vouches for the VALUE, so answering one field with `read`
-   * would vouch for another field also holding `read` — a narrower map is the
-   * better shape the day a plan asks about two levels at once.
-   */
-  readonly answered: ReadonlySet<string>
-  /**
-   * Whose words `plan.intent` is, which decides whether `echoes` may vouch.
-   *
-   * `echoed` is the strongest claim a leaf can carry — not "this value exists
-   * somewhere" but "the person asked for it" — and it rests entirely on the
-   * intent being a person's own sentence. `init` composes one: "declare this
-   * repository in the catalogue, from what its own files state". Measured
-   * against that, a Component named `repository-files` signs echoed, because
-   * both segments are words the engine wrote about itself. The engine vouched
-   * for the model using the engine's own prose.
-   *
-   * So an engine-composed intent vouches for nothing by word test. What it
-   * legitimately establishes — the values an inspection actually read out of
-   * the project's files — travels in `answered`, which is the field for a value
-   * somebody other than the model stands behind.
-   */
-  readonly wordsOf: 'user' | 'engine'
   /** References the ENGINE returned — the propose tool's witness set. */
   readonly witnessed: ReadonlySet<string>
   readonly vocabulary: Vocabulary
@@ -231,11 +203,21 @@ const created = (plan: Plan): ReadonlySet<string> => {
   return refs
 }
 
-export function signPlan(plan: Plan, context: SignatureContext): SignedPlan | PlanRefusal {
+/**
+ * `provenance` is what the user stated — the request and the answers — and it
+ * is the one source of it: `plan.intent` is never read here (see
+ * `Provenance`). Omitted, nothing is stated, and every value nothing else
+ * vouches for becomes a question rather than a signature.
+ */
+export function signPlan(
+  plan: Plan,
+  context: SignatureContext,
+  provenance: Provenance = nothingStated(),
+): SignedPlan | PlanRefusal {
   const creates = created(plan)
-  // The word test, or nothing at all. See `SignatureContext.wordsOf`.
-  const vouches = (text: string): boolean =>
-    context.wordsOf === 'user' && echoes(plan.intent, text)
+  // The words alone, for a name vouched for segment by segment: an answer is
+  // a whole value for a whole field, never a word inside one.
+  const vouches = (text: string): boolean => named(provenance, text)
   const classified: LeafFinding[] = []
   const refusals: LeafRefusal[] = []
   const asked = new Map<string, string>()
@@ -280,8 +262,8 @@ export function signPlan(plan: Plan, context: SignatureContext): SignedPlan | Pl
       // statement. Read off the object rather than off the path so a proposal
       // nested one level deeper — `create-catalog-info` carries its entity the
       // same way — needs no second rule.
-      const stated = (value as { kind?: unknown }).kind
-      const inherited = typeof stated === 'string' ? stated : kind
+      const declaredKind = (value as { kind?: unknown }).kind
+      const inherited = typeof declaredKind === 'string' ? declaredKind : kind
       for (const [key, nested] of Object.entries(value)) {
         stack.push({ value: nested, path: `${path}.${key}`, opIndex, kind: inherited })
       }
@@ -336,20 +318,22 @@ export function signPlan(plan: Plan, context: SignatureContext): SignedPlan | Pl
       // write look asked for — and "read replica", a database term in a
       // database-access tool, named a level nobody asked for.
       //
-      // So the only provenance a level has is the user answering for it. That
-      // is one question per grant whose level the request did not settle at a
-      // prompt, and an access level is worth a question: granting write where
-      // read was asked for is the accident this whole design exists around.
-      leafClass = context.answered.has(text) ? 'echoed' : 'novel'
+      // So the only provenance a level has is the user answering for it — for
+      // THIS grant's level, at this path. That is one question per grant, and
+      // an access level is worth a question: granting write where read was
+      // asked for is the accident this whole design exists around, and an
+      // answer about one grant settling another's is that accident again.
+      leafClass = answered(provenance, path, text) ? 'echoed' : 'novel'
     } else if (creates.has(text)) {
       // A reference to an entity this same plan declares. Derived, not echoed:
       // it follows from another operation by a rule the engine applied, and
       // nobody wrote it in a request. See `created`.
       leafClass = 'derived'
-    } else if (vouches(text) || context.answered.has(text)) {
+    } else if (stated(provenance, path, text)) {
       // Checked before the vocabulary on purpose. A value can be both, and
       // "the user asked for this" is the stronger claim: it is their request,
-      // not merely something that happens to exist somewhere.
+      // or their answer to this field, not merely something that happens to
+      // exist somewhere.
       leafClass = 'echoed'
     } else if (context.witnessed.has(text) || enumerated(context.vocabulary, path, text)) {
       leafClass = 'enumerated'

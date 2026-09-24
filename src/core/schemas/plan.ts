@@ -268,8 +268,9 @@ export const patchSchema = z.discriminatedUnion('patch', [
      * "accès en lecture" named no level, the gate stayed silent, and a
      * `readwrite` grant was extended to a request for `read` at exit 0. With
      * the level in the operation the signature classifies it like any other
-     * leaf — echoed when the request named it, novel and therefore a question
-     * when it did not, in every script — and a policy compares it to what the
+     * leaf, except that a word in the request never vouches for it — echoed
+     * when the user answered it for this grant, novel and therefore a question
+     * when nobody did, in every script — and a policy compares it to what the
      * repository declares without reading a word of the request.
      *
      * `or(...)` for the reason `metadata.env` and `spec.access` carry it: §5.4

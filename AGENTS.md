@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 999 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 1021 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -252,15 +252,28 @@ three lines of context a hunk carries.
 
 **A right's owner is derived every pass, and a conclusion that cannot be re-derived is
 withdrawn.** `deriveOwners` runs between gates [1] and [2] on both roads, and the only
-owner it leaves alone on a grant is one the **request** states — `echoes`, the signature's
-own test, answers that, so the two cannot drift about what the request says. An owner one
-consumer determines is written and reported; an owner nothing determines goes back to being
-a question, whoever put the value there. That last line is the fix for a run that read
-`group:default/lion` off a consumer the user then replaced, and ended on a diff carrying
-lion's authorisation and somebody else's consumer. The distinction "the user stated this"
-lives **in the plan**, in `plan.intent`, and has to: the ask loop grows that string with
-every answer (`withAnswers`), while a note kept alongside the plan would not survive the
-Architect handing back a different plan under the same indices.
+owner it leaves alone on a grant is one the **user** stated — in the request, or answered
+at a prompt for that owner — and when the consumers determine another, it says so (an
+`overridden` event) rather than leaving the disagreement to the diff. An owner one
+consumer determines is written and reported; an owner nothing determines goes back to
+being a question, whoever put the value there. That last line is the fix for a run that
+read `group:default/lion` off a consumer the user then replaced, and ended on a diff
+carrying lion's authorisation and somebody else's consumer.
+
+**What the user stated is one `Provenance`** (`core/plan/provenance.ts`): the request,
+whose words they are, and every answer typed at a prompt **indexed by the field it
+answered**. `deriveOwners`, `signPlan` and `checkPolicies` all read it, and one module
+defines what it means — `named` (the request's words, and only a person's), `answered`
+(exactly this value at exactly this field) and `stated` (either) — so an answer counts for
+what the user said everywhere it should and only there: an answered owner is not withdrawn
+on the next pass, an environment answered for an operation counts as asked for that
+operation, and answering one grant's level `read` vouches for nothing on another grant.
+The one exception is the index itself: an answer's path is the plan's own, so an Architect
+that redrafts after a gate refused the filled plan and puts a different operation at the
+same index inherits the answer for the same value at the same field. The words live there
+and nowhere else — no gate reads `plan.intent`, which arrives with the plan from whoever
+drafted it. `plan.ts` builds the provenance once per round of the ask loop, and `repair`
+takes it from its caller, never from a draft.
 
 An environment is deliberately **not** enumerable. `prod` always exists, so accepting one
 because the catalogue uses it would let a model pick production for a request that named
@@ -315,12 +328,12 @@ them never reaches the one that spends a model call. Three attempts, then a clea
 - **`draftPlan`'s `vocabulary` parameter is misnamed.** It is the trailing slot of the
   Architect's opening message, concatenated last, and `runIntent` puts the repair report
   there because it is the only seam a caller has. The report must *not* be appended to
-  `intent` instead: `signPlan` measures provenance against that string, so a refusal
-  naming `group:default/tiger` would make that owner `echoed` on the next attempt and the
-  gate that caught the value would end up vouching for it. `deriveOwners` reads the same
-  string for the same reason, so that mistake would now also stop the engine re-deriving
-  the owner it had just refused. Worth renaming the parameter when someone next touches
-  `architect.ts`.
+  `intent` instead: the Architect is shown that string as `request:`, the user's own
+  words, so a refusal naming `group:default/tiger` would come back to it as a request for
+  tiger. No gate reads it — they read the provenance `runIntent` builds from its own
+  `request` — and building the provenance from the Architect's `intent` instead is the
+  change that would let the gate that caught a value vouch for it on the next attempt.
+  Worth renaming the parameter when someone next touches `architect.ts`.
 - **`docs/plans/stage-3-init-platform.md` still documents `init` as a tested refusal.**
   Stage 4 answered that refusal. The historical plan was left alone on purpose — a plan is
   a record of what was decided then — but it is not a description of the code now.

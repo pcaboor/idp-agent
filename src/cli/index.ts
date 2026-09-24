@@ -347,6 +347,13 @@ export function renderEvent(event: AgentEvent): string | undefined {
       // appeared would be the engine asserting a value; naming who it was read
       // off is what makes it checkable against the diff below it.
       return `  = ${event.path} follows from ${event.from.join(', ')}: ${event.owner}`
+    case 'overridden':
+      // Both owners and where the second came from, for the reason `derived`
+      // names its consumers: the line is checked against the diff below it.
+      return (
+        `  = ${event.path} is ${event.owner}, as stated; ` +
+        `${event.from.join(', ')} would give ${event.determined}`
+      )
     case 'refused':
       return `! ${event.agent} refused: ${oneLine(event.reason)}`
     case 'ask':

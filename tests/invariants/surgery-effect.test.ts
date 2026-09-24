@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { planEdits } from '../../src/core/plan/edits.js'
 import { signPlan, type SignedPlan } from '../../src/core/plan/sign.js'
 import { planSchema } from '../../src/core/schemas/plan.js'
+import { userSaid } from '../support/provenance.js'
 
 /**
  * Effectiveness: a plan's bytes carry out the plan, or the plan says they do
@@ -124,19 +125,21 @@ function signed(shape: Shape): SignedPlan {
       },
     ],
   })
-  const result = signPlan(plan, {
-    wordsOf: 'user',
-    witnessed: new Set([refOf(shape), shape.consumer]),
-    vocabulary: {
-      kinds: ['Component', 'Resource'],
-      types: ['database-access'],
-      environments: ['prod'],
-      owners: ['group:default/tiger'],
+  const result = signPlan(
+    plan,
+    {
+      witnessed: new Set([refOf(shape), shape.consumer]),
+      vocabulary: {
+        kinds: ['Component', 'Resource'],
+        types: ['database-access'],
+        environments: ['prod'],
+        owners: ['group:default/tiger'],
+      },
+      repoRoot: '/repo',
+      declared: new Map(),
     },
-    repoRoot: '/repo',
-    declared: new Map(),
-    answered: new Set(),
-  })
+    userSaid(plan.intent),
+  )
   if ('outcome' in result) throw new Error(`refused: ${JSON.stringify(result.refusals)}`)
   return result
 }

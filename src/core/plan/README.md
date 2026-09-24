@@ -41,18 +41,38 @@ than asked of it, exactly as the path already is. Only for a right (`natureOf`),
 when its consumers agree: two teams sharing one access is the case a human must decide, and
 picking the first would be the guess this folder exists to prevent.
 
-It runs **every pass**, and the only owner it leaves alone is one the request states —
-`echoes`, the signature's own test, is what answers that. "Something is already in the
-field" used to be the rule, and it let the engine's own conclusion protect itself: a run
-read `group:default/lion` off a consumer the user then replaced with a different component,
-and the second pass skipped the field because it was no longer empty. The diff carried
-lion's authorisation and billing-api's consumer, and the Reviewer — which runs once, in the
-last round — was told nothing, because the derivation had happened in a round it never saw.
-So a value one consumer determines is written and reported on every pass, including the one
-where it does not move, and a value nothing determines is **withdrawn** back to a question.
-The record of who stated what is `plan.intent` rather than a list kept beside the plan: the
-ask loop grows that string with every answer, and nothing kept beside the plan survives the
-Architect returning a different plan under the same indices.
+It runs **every pass**, and the only owner it leaves alone is one the user stated — in the
+request, or answered at a prompt for that owner; when the consumers determine another, the
+disagreement is reported as `overridden` rather than left for a reader to find in the diff.
+"Something is already in the field" used to be the rule, and it let the engine's own
+conclusion protect itself: a run read `group:default/lion` off a consumer the user then
+replaced with a different component, and the second pass skipped the field because it was
+no longer empty. The diff carried lion's authorisation and billing-api's consumer, and the
+Reviewer — which runs once, in the last round — was told nothing, because the derivation
+had happened in a round it never saw. So a value one consumer determines is written and
+reported on every pass, including the one where it does not move, and a value nothing
+determines is **withdrawn** back to a question.
+
+## One provenance
+
+What the user stated is `provenance.ts`: the request, whose words they are, and every
+answer typed at a prompt, indexed by the field it answered. The derivation, the signature
+and the environment policies all read it, and that one module defines what it means —
+`named` for the request's words, `answered` for exactly this value at exactly this field,
+`stated` for either — so the three cannot disagree about what the user said. They used to:
+the signature counted an answer and the other two read only the request, so an owner the
+user answered was withdrawn on the next pass and asked again until the rounds ran out, and
+an environment the user answered did not count as asked.
+
+An answer is indexed by its field because a value is not the user's everywhere it appears:
+answering one grant's level `read` says nothing about another grant's, and an environment
+answered for one operation counts as asked for that operation only. The index is the plan's
+own, which is the one limit: an Architect that redrafts after a gate refused the filled
+plan, putting a different operation at the same index, inherits the answer for the same
+value at the same field. And the words live in the provenance, never in `plan.intent` —
+that field arrives with the plan, from whoever drafted it, and is only the record a report
+carries. `init` signs with the engine's own sentence, which vouches for nothing (`wordsOf:
+'engine'`), and puts what its inspection read in as answers at the Component's fields.
 
 ## Why there is one producer of a `SignedPlan`
 

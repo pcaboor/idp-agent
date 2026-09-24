@@ -230,13 +230,14 @@ The level is in the operation because it was nowhere else. An update joins a con
 *existing* grant, so the plan stated no level, so the signature had nothing to classify and
 the only remaining gate read the requested level out of the English in the request. A
 request arrives in whatever language the person wrote it in — `core/plan/echoes.ts` states
-that rule and the script-based word boundary it turns on — so *accès en lecture*
-named no level, that gate stayed silent, and a `readwrite` grant was handed to a request for
-`read` at exit 0. Stated as a field, the level is classified like every other leaf — echoed
-when the request named it, novel and therefore a question when it did not, in every script —
-and `declared-level-mismatch` compares it to what the repository declares without reading a
-word of the request. The field is `'read' | 'readwrite' | { unknown }`, and **optional**,
-which `metadata.env` is not: every declaration is in exactly one environment, while a
+that rule and the script-based word boundary it turns on — so *accès en lecture* named no
+level, that gate stayed silent, and a `readwrite` grant was handed to a request for `read`
+at exit 0. Stated as a field, the level is classified like every other leaf, except that a
+word in the request never vouches for it — echoed when the user answered it for that grant,
+novel and therefore a question when they did not, in every script — and
+`declared-level-mismatch` compares it to what the repository declares without reading a word
+of the request. The field is `'read' | 'readwrite' | { unknown }`, and **optional**, which
+`metadata.env` is not: every declaration is in exactly one environment, while a
 `network-access` is opened or it is not and a right with no level has none to state. So an
 omission is a claim — *this grant states no level* — and it is checked like any other: it
 agrees with a pre-`access` declaration, which is the case it exists to express, and is
@@ -288,12 +289,14 @@ No delete operation in v0.1 (see § 4.4).
 An `echoed` leaf means *the person asked for this*, so it rests on the request being a
 person's sentence. `init` composes one from the inspection, and a composed sentence vouches
 for no word in it — what an inspection actually read out of the project's files stands
-behind itself instead. The limit that remains is stated in `sign.ts` rather than fixed: a
-word test cannot tell a word that names something from a word that is merely present, so
-`please-thanks` on "please declare a database in prod, thanks" signs echoed. Every fix is a
-list of words that do not count, and a stop list works in one language and silently weakens
-the check in every other — which is a false guarantee, where a filler-word name is a
-cosmetic one the diff shows.
+behind itself instead, at the field it was read for. An answer typed at a prompt vouches the
+same way, for the field it answered and nowhere else, and the derivation and the policies
+read the request and the answers exactly as the signature does (`core/plan/provenance.ts`).
+The limit that remains is stated in `sign.ts` rather than fixed: a word test cannot tell a
+word that names something from a word that is merely present, so `please-thanks` on "please
+declare a database in prod, thanks" signs echoed. Every fix is a list of words that do not
+count, and a stop list works in one language and silently weakens the check in every other —
+which is a false guarantee, where a filler-word name is a cosmetic one the diff shows.
 
 ### 5.4 Unknown fields
 
@@ -419,7 +422,7 @@ Four ship in v0.1:
 
 | policy | refuses |
 |---|---|
-| `environment-mismatch` | an environment the intent did not name |
+| `environment-mismatch` | an environment the user did not state, in the request or answering for it |
 | `unwitnessed-folder` | a write into a folder the repository never declared |
 | `cross-environment-consumer` | an access whose environment differs from its consumer's |
 | `declared-level-mismatch` | a level the operation states that the repository does not declare |

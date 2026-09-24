@@ -17,6 +17,7 @@ import { deriveOwners } from '../../core/plan/derive.js'
 import { planEdits, type DroppedOperation } from '../../core/plan/edits.js'
 import { declaredLevel, natureOf } from '../../core/plan/grant.js'
 import { checkPolicies, type PolicyContext, type PolicyViolation } from '../../core/plan/policies.js'
+import type { Provenance } from '../../core/plan/provenance.js'
 import { recheckPlan, type Recheck } from '../../core/plan/recheck.js'
 import { signPlan, type SignatureContext, type SignedPlan } from '../../core/plan/sign.js'
 import { planSchema, type Plan } from '../../core/schemas/plan.js'
@@ -270,17 +271,13 @@ function contextsOf(
     vocabulary,
     owners,
     summary: summarised.summary,
+    // What the USER stated is not in either context: it changes every round of
+    // the ask loop and these are built once per run. See `provenanceOf`.
     signature: {
-      // `plan "<intent>"` and `plan --from` both carry the request a person
-      // typed, so the word test stands.
-      wordsOf: 'user',
       witnessed: seed.witnessed ?? new Set(declared.keys()),
       vocabulary,
       repoRoot: root,
       declared,
-      // Filled per round by whichever loop is asking. Empty here because
-      // nothing has been asked yet, and `contextsOf` runs once.
-      answered: new Set<string>(),
     },
     policy: { vocabulary, witnesses: new Set(snapshot.witnesses), environments, levels, natures },
   }
@@ -589,58 +586,29 @@ export type Filling =
   | { readonly outcome: 'refused'; readonly reason: string }
 
 /**
- * The request, and what the user said when they were asked.
+ * What the user has stated by this round: the request, in their own words, and
+ * every answer they typed at a prompt, at the field it answered. The one place
+ * a round's provenance is built, and the one value the derivation, the
+ * signature and the policies are all handed — so an answer counts for what the
+ * user said wherever one of them asks, and only there.
  *
- * **This is what stops an answer being asked about twice**, and it is not a
- * special case bolted onto the signer. `signPlan` classifies every leaf by where
- * it came from, and the strongest claim a value can carry is `echoed` — the
- * request names it. A value the user typed at a prompt and the request does not
- * carry classifies `novel` on the very next pass, `askAbout` puts an
- * `{unknown}` back where the answer was, and the same question returns for
- * ever. The fix is not to exempt the field: it is that the request GREW. The
- * user is the authority the intent comes from, so what they say when asked is
- * part of what they asked for, and `echoed` becomes true of it in the ordinary
- * way.
+ * **This is what stops an answer being asked about twice.** A value typed at a
+ * prompt that nothing else vouches for classified `novel` on the next pass and
+ * an owner nothing determines was withdrawn, and either way the same question
+ * came back for ever. The request itself does not grow — that put sentences
+ * nobody typed into a `--json` report, and let a common word answered once
+ * vouch for every occurrence of it — and an answer is not a bare value either:
+ * it is the user's word about one field, indexed by it (see `Provenance`).
  *
- * Only the VALUES join it, never the dotted paths. A path is engine
- * bookkeeping — `operations`, `metadata`, `env` — and putting it in the string
- * the signature measures against would quietly vouch for those words as values
- * too. The Architect and the Reviewer read this same string, which is the other
- * half of why it has to grow: the Reviewer's question is "is this what was
- * asked for", and it rejects an owner "the request did not mention" — including
- * one the user just mentioned.
- *
- * What this does NOT cover: `echoes` is a whole-request test and always was, so
- * an answered `prod` vouches for `prod` ANYWHERE in the plan, not only at the
- * field it was typed for. That is the existing shape of `echoed` rather than
- * something new here, and the diff is still what a human reads.
- *
- * `undefined` when the answers no longer fit. The signed plan carries this
- * string in `plan.intent` and `--json` hands that plan to a caller who may feed
- * it back to `--from`: a request grown past the schema's own bound would be a
- * plan this tool emits and then refuses to read.
+ * The request is a person's words on both roads — `plan "<intent>"` and
+ * `plan --from` both carry the sentence somebody typed — so the word test
+ * stands. A later answer to the same field replaces an earlier one, as it
+ * replaced it in the plan.
  */
-
-/**
- * The signature context for this round, carrying what the user has answered.
- *
- * An answer is its own provenance. The loop used to put every answer back into
- * the request so `echoes` would find it, which worked for an identifier and
- * failed for a common word — and left a `--json` report quoting a request the
- * user never wrote. A value typed at a prompt is a fact about that value, and
- * `sign.ts` reads it as one.
- *
- * What it does NOT carry is which question each answer belonged to: an answer
- * vouches for the VALUE, so answering one field `read` would vouch for another
- * field also holding `read`. A narrower map is the better shape the day a plan
- * asks about two levels at once.
- */
-const answering = (
-  signature: SignatureContext,
-  answers: readonly Answer[],
-): SignatureContext => ({
-  ...signature,
-  answered: new Set(answers.map((one) => one.value)),
+const provenanceOf = (request: string, answers: readonly Answer[]): Provenance => ({
+  intent: request,
+  wordsOf: 'user',
+  answers: new Map(answers.map((one) => [one.path, one.value])),
 })
 
 /**
@@ -754,23 +722,24 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
   const contexts = contextsOf(root, snapshot, graphOf(snapshot))
   const contents = await readContents(root, snapshot)
 
-  /** What the user said when asked. The request grows by it; see `withAnswers`. */
+  /** What the user said when asked, at the field each answer filled. See `provenanceOf`. */
   const answers: Answer[] = []
   let plan = loaded
+  const request = loaded.intent
 
   // §7.5: the CLI asks. One pass of the whole deterministic sequence per round,
   // because an answer changes the plan and everything downstream of the
   // signature judged the plan as it was — the policies, the bytes, the
   // re-check. Re-running only the signer would show a diff two gates never saw.
   for (let round = 0; ; round += 1) {
-    const request = loaded.intent
+    const provenance = provenanceOf(request, answers)
 
     // The same derivation the loop runs between gates [1] and [2], and it runs
     // here for the reason this file exists: both roads have to answer "what
     // would this do?" the same way, and a rule that applied only to a drafted
     // plan would make the deterministic entry point a different engine. A
     // right's owner follows from its consumer whoever wrote the plan down.
-    const derivation = deriveOwners({ ...plan, intent: request }, contexts.owners)
+    const derivation = deriveOwners({ ...plan, intent: request }, contexts.owners, provenance)
     const derived = derivation.plan
     // Stated on this road too. The engine overwrites a model's explicit "I do
     // not know" here exactly as it does when drafting, and a rule that is
@@ -778,7 +747,10 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
     for (const one of derivation.derived) {
       options.emit?.({ type: 'derived', path: one.path, owner: one.owner, from: [...one.from] })
     }
-    const signed = signPlan(derived, answering(contexts.signature, answers))
+    for (const one of derivation.overridden) {
+      options.emit?.({ type: 'overridden', ...one, from: [...one.from] })
+    }
+    const signed = signPlan(derived, contexts.signature, provenance)
     if ('outcome' in signed) {
       // A refusal is not a question: nothing here can be answered, because the
       // value is not undetermined — it is unusable.
@@ -793,7 +765,7 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
 
     const questions = questionsOf(signed.plan)
     if (questions.length === 0 || options.ask === undefined || round >= ASK_LIMITS.maxRounds) {
-      return previewPlan(signed, questions, contexts, snapshot, contents, options)
+      return previewPlan(signed, questions, contexts, provenance, snapshot, contents, options)
     }
 
     const filled = await fillAnswers(signed.plan, questions, options.ask)
@@ -801,7 +773,7 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
     // The same renderer the run would have ended on with nobody there to ask,
     // so a decline and an unattended run say the same sentence.
     if (filled.outcome === 'declined') {
-      return previewPlan(signed, filled.unanswered, contexts, snapshot, contents, options)
+      return previewPlan(signed, filled.unanswered, contexts, provenance, snapshot, contents, options)
     }
 
     // Gate [1], over the plan the user just changed. An answer is a value
@@ -831,11 +803,12 @@ function previewPlan(
   signed: SignedPlan,
   questions: readonly Question[],
   contexts: Contexts,
+  provenance: Provenance,
   snapshot: RepositorySnapshot,
   contents: ReadonlyMap<string, string>,
   options: { readonly repo: string; readonly json?: boolean; readonly colour?: boolean },
 ): CommandResult {
-  const policies = checkPolicies(signed, contexts.policy)
+  const policies = checkPolicies(signed, contexts.policy, provenance)
   // The edits come first, and the re-check reads them: what CI would say is
   // asked about the very bytes the reviewer is shown, not about a second model
   // of the plan that can disagree with the first.
@@ -957,7 +930,7 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
 
   const facts = await inspect(options.client, project, options.emit)
 
-  /** What the user said when asked. The request grows by it; see `withAnswers`. */
+  /** What the user said when asked, at the field each answer filled. See `provenanceOf`. */
   const answers: Answer[] = []
   /**
    * The plan the user just filled, which the next run of the gates starts from.
@@ -997,13 +970,13 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
 
     const outcome = await repair(
       {
-        // The user's words, held here and imposed on every draft. `signPlan`
-        // measures provenance against this string, so a drafter that wrote its
-        // own intent could name the owner it wanted and have the gate vouch for
-        // it (see `RepairInput.intent`). It is passed once, from the caller that
-        // read it — and it grows only by what the USER said when asked, never
-        // by anything a model wrote (`withAnswers`).
-        intent: request,
+        // What the user stated, held here and never taken from a draft: every
+        // gate measures provenance against it, so a drafter that wrote its own
+        // intent could otherwise name the owner it wanted and have the gates
+        // vouch for it (see `RepairInput.provenance`). The request is passed
+        // once, from the caller that read it, and the answers are only what
+        // the USER typed — never anything a model wrote.
+        provenance: provenanceOf(request, answers),
         draft: (report) => {
           if (seeded !== undefined) {
             const filled = seeded
@@ -1022,10 +995,14 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
               // opening message — and `repair` leaves where the report lands to
               // the caller for exactly that reason.
               //
-              // It must never be appended to `intent`. The signature measures
-              // every proposed value against that string, so a refusal naming
-              // `group:default/tiger` would make that owner `echoed` on the next
-              // attempt: the gate that caught the value would then vouch for it.
+              // It must never be appended to `intent`. The Architect is shown
+              // that string as `request:`, the user's own words, so a refusal
+              // there would read as something the user asked for — a report
+              // naming `group:default/tiger` would come back as a request for
+              // tiger. No gate reads it: they read `provenanceOf(request, …)`,
+              // built from `request` itself, and building the provenance from
+              // this argument instead is what would let the gate that caught a
+              // value vouch for it on the next attempt.
               vocabulary: report === undefined ? '' : `\n${report}`,
             },
             options.emit,
@@ -1041,7 +1018,7 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
         // forgetting is silent.
         review: (plan, facts) =>
           reviewPlan(options.client, { plan, intent: request, ...facts }, options.emit),
-        signature: answering(contexts.signature, answers),
+        signature: contexts.signature,
         policy: contexts.policy,
         // Built off the same graph as `contexts.vocabulary`, which is the whole
         // of what makes a derived owner survive the signature (`deriveOwners`).

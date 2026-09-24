@@ -6,6 +6,7 @@ import { signPlan, type SignatureContext } from '../../src/core/plan/sign.js'
 import type { Entity } from '../../src/core/schemas/entity.js'
 import { findUnknowns, planSchema, type Plan } from '../../src/core/schemas/plan.js'
 import { ENV_ANNOTATION } from '../../src/core/schemas/vocabulary.js'
+import { saidWithLevels, userSaid } from '../support/provenance.js'
 
 const INTENT = 'give billing-api read access to orders-db in prod'
 
@@ -46,17 +47,19 @@ const OWNERS: ReadonlyMap<string, string> = new Map(
 const VOCABULARY = summariseGraph(EntityGraph.from([...CATALOGUE])).vocabulary
 
 const context = (over: Partial<SignatureContext> = {}): SignatureContext => ({
-  // A person's own request, which is what every fixture here models.
-  wordsOf: 'user',
   witnessed: new Set(OWNERS.keys()),
   vocabulary: VOCABULARY,
   repoRoot: '/repo',
   declared: new Map(),
-  // The level is asked, never read out of the request, so a fixture that
-  // wants a complete plan answers for it — which is what a run does.
-  answered: new Set(['read']),
   ...over,
 })
+
+/**
+ * Derived with nothing stated but the request the plan carries — a person's
+ * own, which is what every fixture here models, and no answer typed at all.
+ */
+const derive = (plan: Plan, owners: ReadonlyMap<string, string> = OWNERS) =>
+  deriveOwners(plan, owners, userSaid(plan.intent))
 
 const UNSTATED = { unknown: 'the request does not state an owner for this access' }
 
@@ -96,7 +99,7 @@ const ownerOf = (plan: Plan): unknown => {
 
 describe('deriveOwners', () => {
   it('derives a right’s owner from its one consumer', () => {
-    const result = deriveOwners(planOf(access()), OWNERS)
+    const result = derive(planOf(access()), OWNERS)
 
     expect(ownerOf(result.plan)).toBe('group:default/tiger')
     expect(result.derived).toEqual([
@@ -112,7 +115,7 @@ describe('deriveOwners', () => {
   it('derives when two consumers are owned by the same group', () => {
     // Two consumers is not ambiguity. One answer is one answer, however many
     // declarations agree on it.
-    const result = deriveOwners(
+    const result = derive(
       planOf(
         access({
           dependencyOf: ['component:default/billing-api', 'component:default/invoicing-api'],
@@ -131,7 +134,7 @@ describe('deriveOwners', () => {
   it('leaves the question when two consumers are owned by different groups', () => {
     // The case this whole design exists to prevent picking. Two teams sharing
     // one access is a human decision, and taking the first would be a guess.
-    const result = deriveOwners(
+    const result = derive(
       planOf(
         access({
           dependencyOf: ['component:default/billing-api', 'component:default/reporting-api'],
@@ -151,7 +154,7 @@ describe('deriveOwners', () => {
     // A consumer the catalogue does not hold, rather than no consumer at all:
     // a right naming nobody is refused at the schema now, and the question
     // this asks — what happens when the evidence leads nowhere — is the same.
-    const result = deriveOwners(planOf(access({ dependencyOf: ['component:default/nobody-owns-this'] })), OWNERS)
+    const result = derive(planOf(access({ dependencyOf: ['component:default/nobody-owns-this'] })), OWNERS)
 
     expect(ownerOf(result.plan)).toEqual(UNSTATED)
     expect(result.derived).toEqual([])
@@ -177,7 +180,7 @@ describe('deriveOwners', () => {
         dependencyOf: ['component:default/billing-api'],
       },
     }
-    const result = deriveOwners(unparsed(object), OWNERS)
+    const result = derive(unparsed(object), OWNERS)
 
     expect(ownerOf(result.plan)).toEqual(UNSTATED)
     expect(result.derived).toEqual([])
@@ -185,7 +188,7 @@ describe('deriveOwners', () => {
   })
 
   it('never derives for a Component', () => {
-    const result = deriveOwners(
+    const result = derive(
       planOf({
         kind: 'Component',
         metadata: { name: 'billing-api' },
@@ -201,7 +204,7 @@ describe('deriveOwners', () => {
   it('never overwrites an owner the REQUEST states', () => {
     // The request said it, and that is the stronger claim. Even when the
     // consumer declares something else — especially then.
-    const result = deriveOwners(
+    const result = derive(
       planOf(
         access({
           owner: 'group:default/lynx',
@@ -215,6 +218,15 @@ describe('deriveOwners', () => {
     expect(ownerOf(result.plan)).toBe('group:default/lynx')
     expect(result.derived).toEqual([])
     expect(result.contested).toEqual([])
+    // Kept, and not silently: the consumer says tiger.
+    expect(result.overridden).toEqual([
+      {
+        path: OWNER_PATH,
+        owner: 'group:default/lynx',
+        determined: 'group:default/tiger',
+        from: ['component:default/billing-api'],
+      },
+    ])
   })
 
   it('derives an owner the proposal omitted altogether', () => {
@@ -240,14 +252,14 @@ describe('deriveOwners', () => {
       ],
     } as unknown as Plan
 
-    expect(ownerOf(deriveOwners(bare, OWNERS).plan)).toBe('group:default/tiger')
+    expect(ownerOf(derive(bare, OWNERS).plan)).toBe('group:default/tiger')
   })
 
   it('leaves the plan it was handed untouched', () => {
     const plan = planOf(access())
     const before = JSON.stringify(plan)
 
-    deriveOwners(plan, OWNERS)
+    derive(plan, OWNERS)
 
     expect(JSON.stringify(plan)).toBe(before)
   })
@@ -258,8 +270,8 @@ describe('what the signature then says about it', () => {
     // The real signer, not an assertion about the class by hand: the whole
     // claim is that the value passes THIS gate, and a hand-written expectation
     // about `enumerated` would still hold on the day it stopped being true.
-    const derived = deriveOwners(planOf(access()), OWNERS)
-    const signed = signPlan(derived.plan, context())
+    const derived = derive(planOf(access()), OWNERS)
+    const signed = signPlan(derived.plan, context(), saidWithLevels(derived.plan))
     if ('outcome' in signed) throw new Error(`refused: ${JSON.stringify(signed.refusals)}`)
 
     expect(findUnknowns(signed.plan)).toEqual([])
@@ -269,8 +281,8 @@ describe('what the signature then says about it', () => {
   it('still asks when nothing could be derived', () => {
     // The gate the measured runs stopped on, unchanged for the case the rules
     // refuse to answer: an access with no consumer is still a question.
-    const derived = deriveOwners(planOf(access({ dependencyOf: ['component:default/nobody-owns-this'] })), OWNERS)
-    const signed = signPlan(derived.plan, context())
+    const derived = derive(planOf(access({ dependencyOf: ['component:default/nobody-owns-this'] })), OWNERS)
+    const signed = signPlan(derived.plan, context(), saidWithLevels(derived.plan))
     if ('outcome' in signed) throw new Error(`refused: ${JSON.stringify(signed.refusals)}`)
 
     expect(findUnknowns(signed.plan)).toContain(OWNER_PATH)
@@ -297,7 +309,7 @@ describe('a consumer is not anything a reference points at', () => {
       },
     }
 
-    const result = deriveOwners(planOf(access), OWNERS)
+    const result = derive(planOf(access), OWNERS)
 
     expect(result.derived).toEqual([])
     expect(findUnknowns(result.plan)).toContain('operations.0.entity.spec.owner')
@@ -315,7 +327,7 @@ describe('a consumer is not anything a reference points at', () => {
       },
     }
 
-    const result = deriveOwners(planOf(access), OWNERS)
+    const result = derive(planOf(access), OWNERS)
 
     expect(result.derived).toHaveLength(1)
     expect(result.derived[0]?.owner).toBe('group:default/tiger')
@@ -328,15 +340,15 @@ describe('a consumer is not anything a reference points at', () => {
  * The audit's sequence, in one function: the owner the engine wrote in one pass
  * looked exactly like an owner a person had stated, so the next pass skipped it
  * and lion's authorisation survived on billing-api's access. Every test below
- * asks the same question — is this owner the REQUEST's, or the engine's own —
- * and the answer is read off `plan.intent`, which is where the request lives.
+ * asks the same question — is this owner the USER's, or the engine's own — and
+ * the answer is read off the provenance the derivation is handed.
  */
 describe('a derived owner dies with its evidence', () => {
   it('re-derives the owner when the consumer list changed under it', () => {
     // The whole of F2. Round 1 read `payments-api` and wrote lion; the user
     // then answered the consumer question with `billing-api`. Nothing in the
     // request states lion, so lion is not a value this may keep.
-    const result = deriveOwners(
+    const result = derive(
       planOf(
         access({
           owner: 'group:default/lynx',
@@ -360,7 +372,7 @@ describe('a derived owner dies with its evidence', () => {
     // The consumer the owner followed from was answered with a reference the
     // catalogue says nothing about. There is no evidence left, so there is no
     // value left: it goes back to being the question it always was.
-    const result = deriveOwners(
+    const result = derive(
       planOf(access({ owner: 'group:default/lynx', dependencyOf: ['component:default/nobody-owns-this'] })),
       OWNERS,
     )
@@ -375,7 +387,7 @@ describe('a derived owner dies with its evidence', () => {
     // Contested was already a question when the field was empty. It has to be
     // one when a value is sitting in it too, or the answer this refused to
     // guess is the answer an earlier round happened to write.
-    const result = deriveOwners(
+    const result = derive(
       planOf(
         access({
           owner: 'group:default/tiger',
@@ -396,24 +408,123 @@ describe('a derived owner dies with its evidence', () => {
     // and the engine still says it computed this owner — the Reviewer runs
     // once, in the last round, and `derived` is the only thing that tells it
     // which values were not a model's choice.
-    const once = deriveOwners(planOf(access()), OWNERS)
-    const twice = deriveOwners(once.plan, OWNERS)
+    const once = derive(planOf(access()), OWNERS)
+    const twice = derive(once.plan, OWNERS)
 
     expect(ownerOf(twice.plan)).toBe('group:default/tiger')
     expect(twice.derived).toEqual(once.derived)
   })
 
-  it('reads the request off the plan it is given, not off the catalogue', () => {
+  it('reads the request, not the catalogue', () => {
     // `group:default/lynx` is a real owner in this catalogue and would sign
     // `enumerated`. That is not what protects it here: the request naming it
     // is. Same value, request that does not name it — re-derived.
-    const kept = deriveOwners(
+    const kept = derive(
       planOf(access({ owner: 'group:default/lynx' }), `${INTENT} for group:default/lynx`),
       OWNERS,
     )
-    const replaced = deriveOwners(planOf(access({ owner: 'group:default/lynx' })), OWNERS)
+    const replaced = derive(planOf(access({ owner: 'group:default/lynx' })), OWNERS)
 
     expect(ownerOf(kept.plan)).toBe('group:default/lynx')
     expect(ownerOf(replaced.plan)).toBe('group:default/tiger')
+  })
+})
+
+/**
+ * Rule 1 protects an owner the user STATED, and an answer typed at a prompt is
+ * the user stating it — at the field it answered, and nowhere else.
+ *
+ * Reading only the request made the ask loop unable to end: an owner nothing
+ * determines was asked, answered, withdrawn on the next pass because the
+ * request did not carry it, and asked again until the rounds ran out.
+ */
+describe('an owner the user answered', () => {
+  const undetermined = access({
+    owner: 'group:default/ghost',
+    dependencyOf: ['component:default/nobody-owns-this'],
+  })
+
+  it('is kept when the answer is at that owner’s path', () => {
+    const result = deriveOwners(
+      planOf(undetermined),
+      OWNERS,
+      userSaid(INTENT, { [OWNER_PATH]: 'group:default/ghost' }),
+    )
+
+    expect(ownerOf(result.plan)).toBe('group:default/ghost')
+    expect(result.derived).toEqual([])
+  })
+
+  it('outranks the consumers, exactly as the request does, and says so', () => {
+    // The owner question is put in the same round as the consumer's, so the
+    // answer to one can be given before the answer to the other determines a
+    // different owner. The user's word stands, as it does when the request
+    // carries it; what the consumers would have given is reported beside it,
+    // because a diff with one team's authorisation and another team's
+    // consumer is the shape a reader must be told about.
+    const result = deriveOwners(
+      planOf(access({ owner: 'group:default/ghost' })),
+      OWNERS,
+      userSaid(INTENT, { [OWNER_PATH]: 'group:default/ghost' }),
+    )
+
+    expect(ownerOf(result.plan)).toBe('group:default/ghost')
+    expect(result.derived).toEqual([])
+    expect(result.overridden).toEqual([
+      {
+        path: OWNER_PATH,
+        owner: 'group:default/ghost',
+        determined: 'group:default/tiger',
+        from: ['component:default/billing-api'],
+      },
+    ])
+  })
+
+  it('reports nothing overridden when the consumers agree or determine nothing', () => {
+    const agreeing = deriveOwners(
+      planOf(access({ owner: 'group:default/tiger' })),
+      OWNERS,
+      userSaid(INTENT, { [OWNER_PATH]: 'group:default/tiger' }),
+    )
+    const undeterminedResult = deriveOwners(
+      planOf(undetermined),
+      OWNERS,
+      userSaid(INTENT, { [OWNER_PATH]: 'group:default/ghost' }),
+    )
+
+    expect(agreeing.overridden).toEqual([])
+    expect(undeterminedResult.overridden).toEqual([])
+  })
+
+  it('protects nothing when the same value was answered at another path', () => {
+    const result = deriveOwners(
+      planOf(undetermined),
+      OWNERS,
+      userSaid(INTENT, { 'operations.1.entity.spec.owner': 'group:default/ghost' }),
+    )
+
+    expect(findUnknowns(result.plan)).toContain(OWNER_PATH)
+  })
+
+  it('protects nothing when a different value was answered there', () => {
+    const result = deriveOwners(
+      planOf(undetermined),
+      OWNERS,
+      userSaid(INTENT, { [OWNER_PATH]: 'group:default/lynx' }),
+    )
+
+    expect(findUnknowns(result.plan)).toContain(OWNER_PATH)
+  })
+
+  it('reads the words from the provenance, never from the plan it is handed', () => {
+    // The plan's own `intent` arrives with the plan, from whoever drafted it.
+    // A sentence naming the owner there protects nothing.
+    const result = deriveOwners(
+      planOf(access({ owner: 'group:default/lynx' }), `${INTENT}, owned by group:default/lynx`),
+      OWNERS,
+      userSaid(INTENT),
+    )
+
+    expect(ownerOf(result.plan)).toBe('group:default/tiger')
   })
 })

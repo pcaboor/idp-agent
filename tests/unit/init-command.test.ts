@@ -283,9 +283,10 @@ describe('init, per application', () => {
   })
 
   it('still writes the name the inspection did read', async () => {
-    // The other half: `answered` carries what the project's own files state,
-    // so the four values an inspection establishes still stand behind
-    // themselves and the ordinary run is unchanged.
+    // The other half: what the project's own files state arrives as answers
+    // at the fields it was read for, so the four values an inspection
+    // establishes still stand behind themselves and the ordinary run is
+    // unchanged.
     const project = await application()
     const client = drafting([COMPONENT])
 
@@ -293,6 +294,29 @@ describe('init, per application', () => {
 
     expect(result.text).toContain('+++ b/catalog-info.yaml')
     expect(result.text).toContain('billing-api')
+  })
+
+  it('vouches for a fact at the field it was read for, and nowhere else', async () => {
+    // The inspection read `production` as the LIFECYCLE. A type of
+    // `production` is a value the Architect put in a different field, and
+    // nothing read it there: it is a question, not a fact that happens to
+    // share its spelling with one.
+    const project = await application()
+    const before = await hashTree(project)
+    const client = drafting([
+      {
+        ...COMPONENT,
+        entity: { ...COMPONENT.entity, spec: { ...COMPONENT.entity.spec, type: 'production' } },
+      },
+    ])
+
+    const result = await runInitRepo({ project, client, emit: () => {} })
+
+    expect(result.unsupported).toBe(true)
+    expect(result.text).toContain('operations.0.entity.spec.type')
+    expect(result.text).not.toContain('operations.0.entity.spec.lifecycle')
+    expect(result.text).not.toContain('+++ b/catalog-info.yaml')
+    expect(await hashTree(project)).toBe(before)
   })
 
   it('refuses anything that is not this repository’s own declaration', async () => {
