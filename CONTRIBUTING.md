@@ -20,6 +20,12 @@ pnpm build
 pnpm smoke        # runs the built dist/cli/bin.js, which the suite never does
 ```
 
+**Neither leaves anything in the temp directory.** A test that needs one calls
+`os.tmpdir()` as usual: for the whole run it answers a single directory,
+`idp-agent-test-<pid>-…`, which `tests/setup/tmp.ts` removes when the run ends — files a
+test locked with mode 000 included — and `pnpm smoke` removes its own. There is nothing to
+clean up by hand, and `tests/unit/temp-directory.test.ts` fails if that stops holding.
+
 **`pnpm typecheck` is not a formality.** A green suite has already hidden a resource type
 that does not exist, an `undefined` passed where the property is optional, and a dead
 import — vitest strips types, it does not check them. The config is deliberately strict

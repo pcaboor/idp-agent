@@ -9,7 +9,16 @@
  */
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,6 +29,21 @@ const BIN = path.join(ROOT, 'dist/cli/bin.js')
 // Deliberately not the repository root: the binary must find the fixture SI
 // from its own location, not from wherever the user happens to stand.
 const ELSEWHERE = mkdtempSync(path.join(tmpdir(), 'idp-agent-smoke-'))
+
+/**
+ * Removed at the end of the run, and on the way out of one that threw: a smoke
+ * run used to leave its directory behind every time, and those piled up with
+ * the suite's until a disk filled. On that second path the error that ended
+ * the run is the report; a failed removal is said alongside it, never instead.
+ */
+const removeElsewhere = () => rmSync(ELSEWHERE, { recursive: true, force: true })
+process.on('exit', () => {
+  try {
+    removeElsewhere()
+  } catch (error) {
+    console.error(`could not remove ${ELSEWHERE}: ${error.message}`)
+  }
+})
 
 /**
  * Whatever the contributor has exported, the binary must behave the same here
@@ -259,6 +283,15 @@ for (const required of ['templates/iac-repo/witness.yml', 'templates/iac-repo/gi
     `the tarball does not carry ${required}`,
   )
 }
+
+// Counted like any other check: the directory is gone before the verdict, not
+// merely scheduled to go.
+removeElsewhere()
+assert(
+  'the run left nothing in the temp directory',
+  !existsSync(ELSEWHERE),
+  `${ELSEWHERE} is still there after the run`,
+)
 
 if (failures.length > 0) {
   console.error(`\n${failures.length} smoke failure(s):`)
