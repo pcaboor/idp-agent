@@ -28,6 +28,15 @@ describe('every tool an agent hands the client', () => {
     }
   })
 
+  it('offers the overview as one more value of the answer, with no field of its own', async () => {
+    const answer = (await offeredTools()).find((spec) => spec.name === 'answer')
+    expect(answer).toBeDefined()
+    if (answer === undefined) return
+    const advertised = await asSchema(toTools([answer])['answer']?.inputSchema).jsonSchema
+    expect(advertised.properties.outcome.enum).toContain('overview')
+    expect(Object.keys(advertised.properties).sort()).toEqual(['outcome', 'reason', 'refs'])
+  })
+
   it('is still validated by its own Zod schema, not by what is advertised', async () => {
     // The advertised shape of `answer` accepts {outcome: "entities"} with no
     // refs — a flat object cannot say "required in this branch". The union
@@ -43,5 +52,15 @@ describe('every tool an agent hands the client', () => {
       success: true,
       value: { outcome: 'nothing' },
     })
+    // The overview is a member of the flattened union too, and still the one
+    // member with no field at all: the flat object offers `reason` beside it,
+    // and the union refuses it there.
+    expect(await schema.validate?.({ outcome: 'overview' })).toEqual({
+      success: true,
+      value: { outcome: 'overview' },
+    })
+    expect(
+      await schema.validate?.({ outcome: 'overview', reason: 'a summary the model wrote' }),
+    ).toMatchObject({ success: false })
   })
 })

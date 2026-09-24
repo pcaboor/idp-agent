@@ -15,6 +15,11 @@ and return a `CommandResult` — `text` plus `found`. No I/O and no process, so
 
 **Rendering.** `renderTable(headers, rows)` and `renderEntityDetail(graph, entity)` take
 data and return a string. Pure functions, asserted directly in `tests/unit/render.test.ts`.
+`renderOverview(overview, source)` is the text of `ask`'s `overview` answer: the model
+chose it, and every word of it is written here from `context/graph/overview.ts`'s figures —
+a headline naming the demo SI or the `--repo` as given, then short sections, each list cut
+at five with the remainder counted (`tests/unit/render-overview.test.ts`). `runAsk` gets the
+source and what the reader set aside and rejected from `main`, which already has them.
 
 **Exit codes.** `EXIT.ok` is 0, `EXIT.notFound` is 1 (the answer is negative: a filter that
 matches nothing, an ambiguous name, or a repository that does not conform), `EXIT.badUsage` is 2 (the arguments were

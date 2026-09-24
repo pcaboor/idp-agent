@@ -29,6 +29,7 @@ const ask = async (turns: GenerateResult[], intent = 'which databases are in pro
     graph: await load(),
     client: scripted(turns),
     intent,
+    source: { ignored: [], rejected: 0 },
     emit: (event) => void events.push(event),
     err: (chunk) => void errors.push(chunk),
   })

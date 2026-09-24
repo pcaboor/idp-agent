@@ -25,6 +25,14 @@ and reports nothing for what it could not ingest — and a tool that inherits th
 it exists to prevent is worth nothing.
 `EntityGraph.danglingReferences()` obeys the same rule: reported, never pruned.
 
+`graph/overview.ts`'s `overviewOf(graph, unread)` is the data behind `ask`'s `overview`
+answer, computed here and rendered in `cli/`: exact counts by kind, type, environment
+(undeclared, or blank, counted apart) and owner, the rights and the level each states, the
+objects by the services and then the rights reaching them — walked as `consumersOf` walks,
+since a declarations repository's grants name services declared elsewhere — every dangling
+reference, and what the reader set aside and rejected. Exact where `summary.ts` buckets — that one is a prompt, this is read
+by a person — and every list sorted count first, then name.
+
 `EntityGraph.from(entities)` indexes them by `refOf(entity)` (`kind:default/name`) and answers
 read-only questions: `get`, `search` over `SearchCriteria` (env read from `ENV_ANNOTATION`), and
 three dependency queries. An edge counts whichever side declared it — `spec.dependsOn` on the

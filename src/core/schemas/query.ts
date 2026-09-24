@@ -34,6 +34,13 @@ export const getDependenciesInputSchema = z.object({
  * the union, not a parse failure: the model has a legal way to say "I cannot",
  * so it never has to approximate in order to stay in schema. `refs` carries
  * identifiers the engine itself returned; it authorises nothing.
+ *
+ * `overview` is a request for the catalogue described as a whole, and the
+ * model only CHOOSES it: the engine computes and writes the description from
+ * the graph (ADR-0007). It carries no field, and is strict so that it stays
+ * that way — a `summary` riding along would be refused and handed back rather
+ * than stripped in silence, so a model is never led to think it has a place
+ * to write one.
  */
 export const answerSchema = z.discriminatedUnion('outcome', [
   z.object({
@@ -41,6 +48,7 @@ export const answerSchema = z.discriminatedUnion('outcome', [
     refs: z.array(entityRefSchema).min(1).max(QUERY_LIMITS.maxRows),
   }),
   z.object({ outcome: z.literal('nothing') }),
+  z.strictObject({ outcome: z.literal('overview') }),
   z.object({
     outcome: z.literal('unanswerable'),
     reason: z.string().min(1).max(QUERY_LIMITS.maxReason),

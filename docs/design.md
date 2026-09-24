@@ -138,7 +138,9 @@ Reviewer, the repository re-check — exists to refuse it.
 The **`Answer`** crosses when the AI side reports a read (stage 2, ADR-0007). It
 authorises nothing and names no value: it carries only identifiers the engine itself
 returned, and the engine re-reads every one of them from the graph before printing. An
-identifier the tools never produced is refused and named.
+identifier the tools never produced is refused and named. One member, `overview`, carries
+nothing at all: the model chooses it for a request to describe the catalogue as a whole,
+and the engine writes the description from the graph.
 
 The carve-out has a limit, and it does not travel: the witness check is a read-side
 guarantee. `propose()` needed its own, because a `Plan` proposes values that were never in

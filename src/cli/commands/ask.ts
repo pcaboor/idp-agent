@@ -4,12 +4,21 @@ import { formatSummary } from '../../agents/summary.js'
 import { buildTools } from '../../agents/tools/graph-tools.js'
 import { summariseGraph } from '../../context/graph/summary.js'
 import { ENV_ANNOTATION, type EntityGraph } from '../../context/graph/entity-graph.js'
+import { overviewOf, type Unread } from '../../context/graph/overview.js'
 import type { Entity } from '../../core/schemas/entity.js'
 import type { EventSink } from '../../agents/events.js'
 import type { LlmClient } from '../../llm/client.js'
 import { renderEntityDetail } from '../render/entity.js'
+import { renderOverview, type OverviewSource } from '../render/overview.js'
 import { renderTable } from '../render/table.js'
 import type { CommandResult } from './result.js'
+
+/**
+ * Where the graph was read from, and what the reader could not turn into it.
+ * Only the overview prints these; `main` has them, so it hands them over
+ * rather than this command reading anything a second time.
+ */
+export interface AskSource extends OverviewSource, Unread {}
 
 /**
  * The model chooses which question to ask the graph; the engine answers it and
@@ -20,10 +29,11 @@ export async function runAsk(options: {
   graph: EntityGraph
   client: LlmClient
   intent: string
+  source: AskSource
   emit: EventSink
   err: (chunk: string) => void
 }): Promise<CommandResult> {
-  const { graph, client, intent, emit, err } = options
+  const { graph, client, intent, source, emit, err } = options
   const { summary, vocabulary } = summariseGraph(graph)
   const summaryText = formatSummary(summary, vocabulary)
 
@@ -50,19 +60,35 @@ export async function runAsk(options: {
     emit,
   )
 
-  if (answer.outcome === 'unanswerable') {
-    err(`cannot answer: ${answer.reason}\n`)
-    return { text: '', found: false, unsupported: true }
+  switch (answer.outcome) {
+    case 'unanswerable':
+      err(`cannot answer: ${answer.reason}\n`)
+      return { text: '', found: false, unsupported: true }
+    case 'nothing':
+      return { text: 'No entity matches that question.', found: false }
+    case 'overview':
+      // Chosen by the model, written by the engine: every figure comes from
+      // the graph and the reader, and nothing from the conversation. Whatever
+      // the search cut on the way is not part of it, so no truncation line.
+      return { text: renderOverview(overviewOf(graph, source), source), found: true }
+    case 'entities':
+      return renderEntities(graph, answer.refs, truncated)
+    default: {
+      const exhaustive: never = answer
+      return exhaustive
+    }
   }
+}
 
-  if (answer.outcome === 'nothing') {
-    return { text: 'No entity matches that question.', found: false }
-  }
-
+function renderEntities(
+  graph: EntityGraph,
+  refs: readonly string[],
+  truncated: number,
+): CommandResult {
   // Re-read from the graph and sorted: the model's ordering is not one anybody
   // verified, and the entity it named is not the entity we print unless the
   // graph still holds it.
-  const found = [...answer.refs]
+  const found = [...refs]
     .sort()
     .map((ref) => graph.get(ref))
     .filter((entity): entity is Entity => entity !== undefined)

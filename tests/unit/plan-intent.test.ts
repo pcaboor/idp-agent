@@ -626,7 +626,9 @@ describe('what a run looks like on a terminal', () => {
     )
     // The questions and the answer ARE what the command prints, on stdout. A
     // stderr copy would state one fact twice.
-    expect(renderEvent({ type: 'answer:ready', refs: ['resource:default/x'] })).toBeUndefined()
+    expect(
+      renderEvent({ type: 'answer:ready', outcome: 'entities', refs: ['resource:default/x'] }),
+    ).toBeUndefined()
     expect(
       renderEvent({ type: 'ask', question: { path: 'operations.0', question: 'which?' } }),
     ).toBeUndefined()

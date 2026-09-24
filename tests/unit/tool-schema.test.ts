@@ -24,7 +24,7 @@ describe('objectRooted', () => {
       $schema: 'http://json-schema.org/draft-07/schema#',
       type: 'object',
       properties: {
-        outcome: { type: 'string', enum: ['entities', 'nothing', 'unanswerable'] },
+        outcome: { type: 'string', enum: ['entities', 'nothing', 'overview', 'unanswerable'] },
         refs: {
           minItems: 1,
           maxItems: 25,
