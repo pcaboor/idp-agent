@@ -915,6 +915,70 @@ describe('the one free-text field a model controls', () => {
   })
 })
 
+describe('gate [4] judges what the plan does, not the repository it lands in', () => {
+  // Every error in the repository used to fail the attempt and go back to the
+  // Architect as the repair report — three paid attempts at a fault no plan
+  // can fix, then a stop. A real repository is rarely spotless.
+  const LEGACY = 'catalog/databases/legacy.yml'
+  const standingError: RepositoryFile = {
+    path: LEGACY,
+    entities: [],
+    rejections: ['spec: Invalid input: expected object, received undefined'],
+    documents: 1,
+  }
+  const untidy: RepositorySnapshot = { ...SNAPSHOT, files: [...SNAPSHOT.files, standingError] }
+
+  it('passes a plan beside an error it does not touch, and asks the Architect nothing', async () => {
+    const architect = drafting(PLAN)
+    const { events, emit } = collect()
+
+    const outcome = planned(
+      await repair(inputs({ draft: architect.draft, snapshot: untidy, contents: bytesOf(untidy) }), emit),
+    )
+
+    expect(outcome.attempts).toHaveLength(1)
+    expect(outcome.attempts[0]?.gates).toEqual(ORDER)
+    expect(architect.reports).toEqual([undefined])
+    expect(eventsOfType(events, 'repair')).toEqual([])
+    expect(outcome.recheck.violations).toEqual([])
+    expect(outcome.recheck.standing.map((violation) => violation.file)).toEqual([LEGACY])
+  })
+
+  it('still fails an attempt on an error the plan introduces, and reports only that', async () => {
+    const elsewhere: Entity = {
+      ...DECLARED_ACCESS,
+      metadata: {
+        ...DECLARED_ACCESS.metadata,
+        annotations: {
+          ...DECLARED_ACCESS.metadata.annotations,
+          [SOURCE_FILE_ANNOTATION]: 'dependencies/access/legacy-grant.yml',
+        },
+      },
+    }
+    const overtaken: RepositorySnapshot = {
+      ...untidy,
+      files: [...untidy.files, fileHolding('dependencies/access/legacy-grant.yml', elsewhere)],
+    }
+    const architect = drafting(PLAN)
+    const { emit } = collect()
+
+    const outcome = stopped(
+      await repair(
+        inputs({ draft: architect.draft, snapshot: overtaken, contents: bytesOf(overtaken) }),
+        emit,
+      ),
+    )
+
+    expect(outcome.gate).toBe('recheck')
+    const reports = architect.reports.filter((report): report is string => report !== undefined)
+    expect(reports.length).toBeGreaterThan(0)
+    for (const report of reports) {
+      expect(report).toContain('duplicate-name')
+      expect(report).not.toContain(LEGACY)
+    }
+  })
+})
+
 describe('the free gate runs before the paid one', () => {
   it('pays for no review of a plan the re-check refuses', async () => {
     // The bill this reordering settles. A plan the repository has overtaken is

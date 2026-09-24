@@ -429,6 +429,11 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
     // Errors only. A dangling reference is a warning: it is surfaced, never
     // pruned (§4.4), and refusing a plan over one would push people to delete
     // the declaration instead — the one thing that rule forbids.
+    //
+    // And the PLAN's errors only. `recheck.standing` — what was already wrong
+    // in files this plan leaves alone — never reaches the report: no draft can
+    // fix it, so handing it back bought three paid attempts and a stop over a
+    // repository the Architect was never asked to change.
     const errors = recheck.violations.filter((violation) => violation.severity === 'error')
     if (errors.length > 0) {
       fail(

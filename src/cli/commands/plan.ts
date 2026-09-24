@@ -281,6 +281,38 @@ function contextsOf(
 const errorsIn = (recheck: Recheck): Violation[] =>
   recheck.violations.filter((violation) => violation.severity === 'error')
 
+/**
+ * `text` as one shell word. The standing line promises a command that runs as
+ * printed, and a repository under "my decls" would otherwise be two arguments.
+ * Single quotes, because inside them a POSIX shell expands nothing.
+ */
+const shellWord = (text: string): string =>
+  /^[\w@%+=:,./-]+$/.test(text) ? text : `'${text.replaceAll("'", `'\\''`)}'`
+
+/**
+ * One line for what was wrong with the repository before this plan, and stays
+ * wrong in files it does not touch — or nothing, when there is none.
+ *
+ * One line and never the list: the list is `validate`'s, a real repository can
+ * hold hundreds, and printed above a diff they read as the plan's. Silence would
+ * be the other mistake — a person about to open a merge request should know CI
+ * may already be red — so it is counted, errors and warnings apart, and names
+ * the command that lists them.
+ */
+const standingLines = (recheck: Recheck | undefined, repo: string | undefined): string[] => {
+  if (recheck === undefined || recheck.standing.length === 0) return []
+  const errors = recheck.standing.filter((violation) => violation.severity === 'error').length
+  const warnings = recheck.standing.length - errors
+  const counted = [
+    ...(errors > 0 ? [plural(errors, 'error', 'errors')] : []),
+    ...(warnings > 0 ? [plural(warnings, 'warning', 'warnings')] : []),
+  ].join(' and ')
+  return [
+    `${counted} already in the repository, in files this plan does not touch — ` +
+      `idp-agent validate ${repo === undefined ? '<repo>' : shellWord(repo)} lists them`,
+  ]
+}
+
 const violationLine = (violation: Violation): string =>
   `${violation.severity.padEnd(7)} ${violation.file}: ${violation.message}`
 
@@ -364,7 +396,11 @@ const reportOf = (
   policies,
   recheck: {
     outcomes: Object.fromEntries(recheck.outcomes),
+    // The plan's, which is what `found` is decided on; `standing` is what was
+    // already wrong elsewhere, stated so a machine does not have to re-run
+    // `validate` to learn that CI may be red for another reason.
     violations: recheck.violations,
+    standing: recheck.standing,
   },
   files: changed.map((edit) => edit.path),
   // An operation that produced no bytes is stated, never omitted: "this plan
@@ -406,15 +442,20 @@ const droppedLines = (dropped: readonly DroppedOperation[]): string[] =>
  * operation is dropped). With no re-check there are no warnings to report and
  * nothing that could have been 'already-declared', which is exactly what
  * `settled` falls back to.
+ *
+ * `repo` is the declarations repository as the user named it, so the line
+ * about standing violations names a command they can run as printed.
  */
 export function renderPreview(preview: {
   readonly signed: SignedPlan
   readonly edits: readonly FileEdit[]
   readonly dropped: readonly DroppedOperation[]
   readonly recheck?: Recheck | undefined
+  readonly repo?: string
   readonly colour?: boolean
 }): CommandResult {
   const { signed, edits, dropped, recheck } = preview
+  const standing = standingLines(recheck, preview.repo)
   const changed = edits.filter((edit) => edit.before !== edit.after)
   const diff = renderUnifiedDiff(edits)
 
@@ -428,6 +469,7 @@ export function renderPreview(preview: {
             : settled(signed, recheck)
           : ['this plan changes nothing, and the repository does not already say it:']),
         ...droppedLines(dropped),
+        ...(standing.length > 0 ? ['', ...standing] : []),
         '',
         '0 files · nothing written',
         CLOSING,
@@ -443,15 +485,20 @@ export function renderPreview(preview: {
 
   // A warning is reported and never turns the answer negative: a dangling
   // reference is surfaced, never pruned (§4.4), and refusing a preview over one
-  // would push people to delete the declaration instead.
+  // would push people to delete the declaration instead. The plan's only; the
+  // rest of the repository's are counted in `standing`.
   const warnings =
     recheck?.violations.filter((violation) => violation.severity === 'warning') ?? []
 
   return {
     text: [
       ...warnings.map(violationLine),
+      // Apart from the warnings, which are the plan's: run on, the count read
+      // as one more entry of that list.
+      ...(warnings.length > 0 && standing.length > 0 ? [''] : []),
+      ...standing,
       ...droppedLines(dropped),
-      ...(warnings.length > 0 || dropped.length > 0 ? [''] : []),
+      ...(warnings.length > 0 || standing.length > 0 || dropped.length > 0 ? [''] : []),
       paintDiff(diff, preview.colour === true).trimEnd(),
       '',
       `${plural(changed.length, 'file', 'files')} · nothing written`,
@@ -778,7 +825,7 @@ function previewPlan(
   contexts: Contexts,
   snapshot: RepositorySnapshot,
   contents: ReadonlyMap<string, string>,
-  options: { readonly json?: boolean; readonly colour?: boolean },
+  options: { readonly repo: string; readonly json?: boolean; readonly colour?: boolean },
 ): CommandResult {
   const policies = checkPolicies(signed, contexts.policy)
   // The edits come first, and the re-check reads them: what CI would say is
@@ -819,12 +866,17 @@ function previewPlan(
   }
 
   if (errors.length > 0) {
+    // Only what the plan introduces or leaves in a file it edits: a fault that
+    // was already elsewhere is no reason to refuse THIS plan, and listing it
+    // here would ask the user to fix it before anything else can land.
+    const standing = standingLines(recheck, options.repo)
     return {
       text: [
         ...errors.map(violationLine),
+        ...(standing.length > 0 ? ['', ...standing] : []),
         '',
-        `${plural(errors.length, 'violation', 'violations')} in the repository this plan would ` +
-          'leave behind. No diff.',
+        `${plural(errors.length, 'violation', 'violations')} this plan introduces, or leaves in ` +
+          'a file it edits. No diff.',
       ].join('\n'),
       found: false,
     }
@@ -835,6 +887,7 @@ function previewPlan(
     edits,
     dropped,
     recheck,
+    repo: options.repo,
     ...(options.colour !== undefined ? { colour: options.colour } : {}),
   })
 }
@@ -1030,7 +1083,7 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
  */
 function renderOutcome(
   outcome: RepairOutcome,
-  options: { readonly json?: boolean; readonly colour?: boolean },
+  options: { readonly repo: string; readonly json?: boolean; readonly colour?: boolean },
 ): CommandResult {
   if (outcome.outcome === 'planned') {
     const changed = outcome.edits.filter((edit) => edit.before !== edit.after)
@@ -1054,6 +1107,7 @@ function renderOutcome(
       edits: outcome.edits,
       dropped: outcome.dropped,
       recheck: outcome.recheck,
+      repo: options.repo,
       ...(options.colour !== undefined ? { colour: options.colour } : {}),
     })
   }

@@ -53,7 +53,7 @@ async function walk(root: string, directory: string, found: Walked): Promise<voi
     // did not say for far longer than it looks. `.idp-agent.yml` is §7.0's
     // configuration — this tool's own file, at the root every repository puts
     // it — and it was read as a catalogue entry, rejected as `invalid-entity`,
-    // and `recheckPlan` refuses a whole plan on one of those. So `plan` could
+    // and `recheckPlan` then refused a whole plan on one of those. So `plan` could
     // not land in a CONFIGURED repository at all, while every fixture that had
     // no config passed. `.witness.yml` needed no rule of its
     // own once this one existed, and its named skip went with it.

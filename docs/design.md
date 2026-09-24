@@ -469,6 +469,16 @@ minutes (§4.4): what was true when the plan was drafted may not be true now, so
 may have appeared, or appeared somewhere else. (It was gate [5] until the reordering above,
 and this paragraph said so for one commit longer than the diagram did.)
 
+It refuses a plan for what **the plan** does to the repository, never for the repository as
+it was. The rules run twice, over the snapshot and over the result, and a violation of the
+result is the plan's when it is new — a duplicate that gains a file counts, because its
+message changes — or when it sits in a file the plan changes (for the folder rule, in a
+folder it writes into; for a duplicate, when one of its files is), since a merge request
+carrying a file CI refuses has to say so whoever broke it. Everything else is *standing*:
+counted in one line with the preview, listed by `validate`, and never part of a repair
+report. Refusing on the whole list blocked every plan on a real repository over one fault
+anywhere in it, and sent that fault to the Architect three paid times as something to fix.
+
 **Gate [5] is told what it is judging.** The Reviewer is given the request in the user's
 words, the operations, and three sets of facts the *engine* established: the owners
 `deriveOwners` computed, what the repository already declares about every entity an

@@ -551,3 +551,142 @@ describe('plan --from, over a repository it cannot read whole', () => {
     expect(await hashTree(root)).toBe(before)
   })
 })
+
+describe('plan --from, over a repository that was already wrong', () => {
+  // The re-check ran the six rules over the whole repository the plan would
+  // leave behind and refused on any error in it — so one fault anywhere, a
+  // document the reader rejects or a file somebody misfiled, blocked every plan
+  // on that repository although the plan touched none of it.
+  const LEGACY = 'catalog/databases/legacy.yml'
+  const INVALID = ['---', 'apiVersion: backstage.io/v1alpha1', 'kind: Resource', 'metadata:', '  name: legacy', ''].join('\n')
+
+  it('previews a plan beside an error it does not touch, and says the error is there', async () => {
+    const root = await scaffoldedRepository()
+    await declare(root, LEGACY, INVALID)
+    const from = await planFile(root, CREATE_PLAN)
+    const before = await hashTree(root)
+
+    const { code, out } = await run(['plan', '--from', from, '--repo', root], answering('read'))
+
+    expect(code).toBe(0)
+    expect(out).toContain(`+++ b/${DATABASE_PATH}`)
+    // One line, never the list: the list is `validate`'s, and the preview is
+    // about the plan.
+    expect(out).toContain(
+      `1 error already in the repository, in files this plan does not touch — ` +
+        `idp-agent validate ${root} lists them`,
+    )
+    expect(out).not.toContain(LEGACY)
+    expect(out.trimEnd().endsWith(CLOSING)).toBe(true)
+    expect(await hashTree(root)).toBe(before)
+  })
+
+  it('keeps the count apart from the plan’s own warnings', async () => {
+    // The scaffold declares no billing-api, so the grant the plan writes names
+    // a consumer nothing declares: a warning that IS the plan's. Run on, the
+    // count read as one more entry of that list.
+    const root = await scaffoldedRepository()
+    await declare(root, LEGACY, INVALID)
+    const from = await planFile(root, CREATE_PLAN)
+
+    const { code, out } = await run(['plan', '--from', from, '--repo', root], answering('read'))
+
+    expect(code).toBe(0)
+    const lines = out.split('\n')
+    const count = lines.findIndex((line) => line.startsWith('1 error already in the repository'))
+    expect(lines.slice(0, count).some((line) => line.startsWith('warning'))).toBe(true)
+    expect(lines[count - 1]).toBe('')
+  })
+
+  it('names a validate command that runs as printed when the path has a space', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'idp-plan-'))
+    const repo = path.join(root, 'my decls')
+    await runInitPlatform({ root: repo, owner: '@acme/platform', version: '0.0.0-test' })
+    await declare(repo, LEGACY, INVALID)
+    const from = await planFile(repo, CREATE_PLAN)
+
+    const { code, out } = await run(['plan', '--from', from, '--repo', repo], answering('read'))
+
+    expect(code).toBe(0)
+    expect(out).toContain(`idp-agent validate '${repo}' lists them`)
+  })
+
+  it('says the error is there when the repository already says what the plan says', async () => {
+    // The "nothing to change" branch, which a person reaches most often on a
+    // real repository — and where CI being red for another reason is news.
+    const root = await scaffoldedRepository()
+    await declare(root, LEGACY, INVALID)
+    await declare(root, DATABASE_PATH, entityDocument('orders-db-prod', 'database', 'prod'))
+    await declare(
+      root,
+      ACCESS_PATH,
+      entityDocument('billing-api-orders-db-prod', 'database-access', 'prod', [
+        '  access: read',
+        '  dependsOn:',
+        '    - resource:default/orders-db-prod',
+        '  dependencyOf:',
+        '    - component:default/billing-api',
+      ]),
+    )
+    const from = await planFile(root, CREATE_PLAN)
+    const before = await hashTree(root)
+
+    const { code, out } = await run(['plan', '--from', from, '--repo', root], answering('read'))
+
+    expect(code).toBe(0)
+    expect(out).toContain('already declares')
+    expect(out).not.toContain('@@')
+    const standing = out.split('\n').filter((line) => line.includes('already in the repository'))
+    // The scaffold declares no billing-api either, so the grant already in the
+    // repository dangles: standing too, and counted apart from the error.
+    expect(standing).toEqual([
+      `1 error and 1 warning already in the repository, in files this plan does not touch — ` +
+        `idp-agent validate ${root} lists them`,
+    ])
+    expect(out).not.toContain(LEGACY)
+    expect(await hashTree(root)).toBe(before)
+  })
+
+  it('reports the standing violations apart from the plan’s, for a machine', async () => {
+    const root = await scaffoldedRepository()
+    await declare(root, LEGACY, INVALID)
+    const from = await planFile(root, CREATE_PLAN)
+
+    const { code, out } = await run(['plan', '--from', from, '--repo', root, '--json'], answering('read'))
+
+    expect(code).toBe(0)
+    const report = JSON.parse(out) as {
+      recheck: { violations: { rule: string; file: string }[]; standing: { rule: string; file: string }[] }
+    }
+    expect(report.recheck.violations.map((violation) => violation.file)).not.toContain(LEGACY)
+    expect(report.recheck.standing.map((violation) => [violation.rule, violation.file])).toEqual([
+      ['invalid-entity', LEGACY],
+    ])
+  })
+
+  it('still refuses a plan that introduces an error, and says it is the plan’s', async () => {
+    // The database already declared in a file of its own: creating it at the
+    // computed path makes a duplicate, which is the plan's doing.
+    const root = await scaffoldedRepository()
+    await declare(root, LEGACY, INVALID)
+    await declare(
+      root,
+      'catalog/databases/orders-db-legacy.yml',
+      entityDocument('orders-db-prod', 'database', 'prod'),
+    )
+    const from = await planFile(root, CREATE_PLAN)
+    const before = await hashTree(root)
+
+    const { code, out } = await run(['plan', '--from', from, '--repo', root], answering('read'))
+
+    expect(code).toBe(1)
+    expect(out).toContain('resource:default/orders-db-prod is declared in')
+    expect(out).toContain('this plan introduces')
+    // The invalid file stays out of the refusal: it is not what the plan did.
+    // It is counted, though — fixing the plan's fault would not make CI green.
+    expect(out).not.toContain(`${LEGACY}:`)
+    expect(out).toContain('1 error already in the repository, in files this plan does not touch')
+    expect(out).not.toContain('@@')
+    expect(await hashTree(root)).toBe(before)
+  })
+})
