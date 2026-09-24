@@ -1,0 +1,30 @@
+# MLflow for reading traces of idp-agent runs
+# (docs/superpowers/specs/2026-09-24-mlflow-tracing-design.md). Never part of
+# CI, and never needed by `pnpm test`.
+#
+# 127.0.0.1 only: a trace carries full prompts (SECURITY.md). Port 5055, not
+# MLflow's 5000, because macOS's AirPlay receiver holds 5000. The tag is pinned
+# because tests/contract/otlp/accepted.json was verified against it; after
+# moving it, run `pnpm mlflow:contract`.
+name: idp-agent-mlflow
+services:
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.16.1
+    command:
+      - mlflow
+      - server
+      - --host=0.0.0.0
+      - --port=5000
+      - --backend-store-uri=sqlite:////mlflow/mlflow.db
+      - --artifacts-destination=/mlflow/artifacts
+    ports:
+      - 127.0.0.1:5055:5000
+    volumes:
+      - mlflow-data:/mlflow
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health')"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+volumes:
+  mlflow-data:

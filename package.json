@@ -43,7 +43,10 @@
     "typecheck": "tsc -p tsconfig.json",
     "build": "tsc -p tsconfig.build.json",
     "smoke": "node scripts/smoke.mjs",
-    "demo": "bash scripts/demo.sh"
+    "demo": "bash scripts/demo.sh",
+    "mlflow:up": "docker compose -f tools/mlflow/compose.yml up -d --wait",
+    "mlflow:down": "docker compose -f tools/mlflow/compose.yml down",
+    "mlflow:contract": "node scripts/mlflow-contract.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.58",

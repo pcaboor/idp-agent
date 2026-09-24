@@ -1,0 +1,203 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {"key":"service.name","value":{"stringValue":"idp-agent"}},
+          {"key":"service.version","value":{"stringValue":"0.0.0-contract"}}
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {"name":"idp-agent","version":"0.0.0-contract"},
+          "spans": [
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000001",
+              "name": "idp-agent ask",
+              "kind": 1,
+              "startTimeUnixNano": "1727000000000000000",
+              "endTimeUnixNano": "1727000000090000000",
+              "attributes": [
+                {"key":"mlflow.spanType","value":{"stringValue":"\"CHAIN\""}},
+                {
+                  "key": "mlflow.spanInputs",
+                  "value": {
+                    "stringValue": "{\"command\":\"ask\",\"intent\":\"which databases are in prod?\"}"
+                  }
+                },
+                {
+                  "key": "mlflow.spanOutputs",
+                  "value": {"stringValue":"{\"exitCode\":0,\"text\":\"billing-db-prod\"}"}
+                },
+                {"key":"idp.mode","value":{"stringValue":"replay"}},
+                {"key":"idp.exit_code","value":{"intValue":"0"}}
+              ],
+              "events": [],
+              "status": {"code":1}
+            },
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000002",
+              "parentSpanId": "0000000000000001",
+              "name": "supervisor",
+              "kind": 1,
+              "startTimeUnixNano": "1727000000001000000",
+              "endTimeUnixNano": "1727000000020000000",
+              "attributes": [{"key":"mlflow.spanType","value":{"stringValue":"\"AGENT\""}}],
+              "events": [
+                {
+                  "timeUnixNano": "1727000000019000000",
+                  "name": "classified",
+                  "attributes": [{"key":"classification","value":{"stringValue":"QUESTION"}}]
+                }
+              ],
+              "status": {"code":1}
+            },
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000003",
+              "parentSpanId": "0000000000000002",
+              "name": "supervisor call 0",
+              "kind": 1,
+              "startTimeUnixNano": "1727000000002000000",
+              "endTimeUnixNano": "1727000000018000000",
+              "attributes": [
+                {"key":"mlflow.spanType","value":{"stringValue":"\"CHAT_MODEL\""}},
+                {
+                  "key": "mlflow.spanInputs",
+                  "value": {
+                    "stringValue": "{\"system\":\"You classify a request.\",\"transcript\":[{\"role\":\"user\",\"text\":\"request: which databases are in prod?\"}],\"tools\":[],\"toolChoice\":\"none\"}"
+                  }
+                },
+                {
+                  "key": "mlflow.spanOutputs",
+                  "value": {
+                    "stringValue": "{\"text\":\"QUESTION\",\"toolCalls\":[],\"finishReason\":\"stop\"}"
+                  }
+                },
+                {
+                  "key": "mlflow.chat.tokenUsage",
+                  "value": {"stringValue":"{\"input_tokens\":120,\"output_tokens\":3,\"total_tokens\":123}"}
+                }
+              ],
+              "events": [],
+              "status": {"code":1}
+            },
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000004",
+              "parentSpanId": "0000000000000001",
+              "name": "analyst",
+              "kind": 1,
+              "startTimeUnixNano": "1727000000021000000",
+              "endTimeUnixNano": "1727000000080000000",
+              "attributes": [{"key":"mlflow.spanType","value":{"stringValue":"\"AGENT\""}}],
+              "events": [
+                {
+                  "timeUnixNano": "1727000000050000000",
+                  "name": "retry",
+                  "attributes": [
+                    {"key":"agent","value":{"stringValue":"analyst"}},
+                    {"key":"reason","value":{"stringValue":"answer: invalid outcome"}}
+                  ]
+                }
+              ],
+              "status": {"code":1}
+            },
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000006",
+              "parentSpanId": "0000000000000004",
+              "name": "analyst call 0",
+              "kind": 1,
+              "startTimeUnixNano": "1727000000022000000",
+              "endTimeUnixNano": "1727000000029000000",
+              "attributes": [
+                {"key":"mlflow.spanType","value":{"stringValue":"\"CHAT_MODEL\""}},
+                {
+                  "key": "mlflow.spanInputs",
+                  "value": {
+                    "stringValue": "{\"system\":\"You answer questions.\",\"transcript\":[{\"role\":\"user\",\"text\":\"question: which databases are in prod?\"}],\"tools\":[{\"name\":\"search_entities\",\"description\":\"find entities\"}],\"toolChoice\":\"auto\"}"
+                  }
+                },
+                {
+                  "key": "mlflow.spanOutputs",
+                  "value": {
+                    "stringValue": "{\"text\":\"\",\"toolCalls\":[{\"id\":\"c1\",\"name\":\"search_entities\",\"args\":{\"type\":\"database\",\"env\":\"prod\"}}],\"finishReason\":\"tool-calls\"}"
+                  }
+                },
+                {"key":"idp.usage","value":{"stringValue":"absent"}}
+              ],
+              "events": [],
+              "status": {"code":1}
+            },
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000005",
+              "parentSpanId": "0000000000000004",
+              "name": "search_entities",
+              "kind": 1,
+              "startTimeUnixNano": "1727000000030000000",
+              "endTimeUnixNano": "1727000000031000000",
+              "attributes": [
+                {"key":"mlflow.spanType","value":{"stringValue":"\"TOOL\""}},
+                {
+                  "key": "mlflow.spanInputs",
+                  "value": {
+                    "stringValue": "{\"id\":\"c1\",\"name\":\"search_entities\",\"args\":{\"type\":\"database\",\"env\":\"prod\"}}"
+                  }
+                },
+                {"key":"mlflow.spanOutputs","value":{"stringValue":"{\"rows\":1,\"truncated\":0}"}}
+              ],
+              "events": [],
+              "status": {"code":1}
+            },
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000007",
+              "parentSpanId": "0000000000000001",
+              "name": "attempt 1",
+              "kind": 1,
+              "startTimeUnixNano": "1727000000081000000",
+              "endTimeUnixNano": "1727000000089000000",
+              "attributes": [{"key":"mlflow.spanType","value":{"stringValue":"\"CHAIN\""}}],
+              "events": [],
+              "status": {"code":2,"message":"refused at the policy gate"}
+            },
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000008",
+              "parentSpanId": "0000000000000007",
+              "name": "gate zod",
+              "kind": 1,
+              "startTimeUnixNano": "1727000000082000000",
+              "endTimeUnixNano": "1727000000082000000",
+              "attributes": [
+                {"key":"mlflow.spanType","value":{"stringValue":"\"CHAIN\""}},
+                {"key":"idp.attempt","value":{"intValue":"1"}}
+              ],
+              "events": [],
+              "status": {"code":1}
+            },
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000009",
+              "parentSpanId": "0000000000000007",
+              "name": "gate policy",
+              "kind": 1,
+              "startTimeUnixNano": "1727000000083000000",
+              "endTimeUnixNano": "1727000000083000000",
+              "attributes": [
+                {"key":"mlflow.spanType","value":{"stringValue":"\"CHAIN\""}},
+                {"key":"idp.attempt","value":{"intValue":"1"}}
+              ],
+              "events": [],
+              "status": {"code":2,"message":"environment-mismatch at operations.0"}
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
