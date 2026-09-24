@@ -3,6 +3,8 @@ import { createInterface } from 'node:readline/promises'
 import { parseArgs } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { FixtureProvider } from '../context/fixtures/index.js'
+import { IacFsProvider } from '../context/iac-fs/provider.js'
+import type { ContextProvider } from '../context/provider.js'
 import { PLAN_LIMITS } from '../core/schemas/plan.js'
 import { NoModelConfiguredError, chooseModel } from '../llm/providers.js'
 import { openRecording, resolveMode } from '../llm/recording.js'
@@ -23,6 +25,7 @@ import { VERSION } from '../core/index.js'
 import type { LlmClient } from '../llm/client.js'
 import type { CommandResult } from './commands/result.js'
 import { plain } from './render/plain.js'
+import { RepositoryArgumentError, declarationsRoot, type DeclarationsCommand } from './repository.js'
 
 /**
  * Where a Plan comes from, and it is a union rather than two optional fields so
@@ -32,10 +35,15 @@ import { plain } from './render/plain.js'
  */
 export type PlanSource = { from: string } | { intent: string }
 
+/**
+ * The three read commands take the same optional `repo`: the declarations
+ * repository, as `plan --repo` means it. Absent is the demo SI — an absence
+ * rather than a value, which is what exactOptionalPropertyTypes keeps it.
+ */
 export type Command =
-  | { name: 'graph'; options: GraphOptions }
-  | { name: 'show'; query: string }
-  | { name: 'ask'; intent: string }
+  | { name: 'graph'; options: GraphOptions; repo?: string }
+  | { name: 'show'; query: string; repo?: string }
+  | { name: 'ask'; intent: string; repo?: string }
   | { name: 'validate'; directory: string }
   | { name: 'plan'; source: PlanSource; repo: string; json: boolean }
   | { name: 'init-platform'; directory: string; owner: string }
@@ -46,15 +54,17 @@ export type Command =
 
 const HELP = `idp-agent - turn an intent into reviewed infrastructure declarations
 
-  idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource]
-  idp-agent show <name-or-reference>
-  idp-agent ask "<question>"     needs IDP_PROVIDER and IDP_MODEL
+  idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource] [--repo <directory>]
+  idp-agent show <name-or-reference> [--repo <directory>]
+  idp-agent ask "<question>" [--repo <directory>]     needs IDP_PROVIDER and IDP_MODEL
   idp-agent validate <directory>
   idp-agent plan "<intent>" --repo <directory> [--json]
   idp-agent plan --from <plan.json> --repo <directory> [--json]
   idp-agent init [--repo <directory>]
   idp-agent init platform <directory> --owner @org/team
 
+  graph, show and ask read the fictional demo SI unless --repo names your
+  declarations repository, the one plan --repo names.
   plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL. Both write nothing.
 `
 
@@ -172,18 +182,52 @@ export function parseArguments(argv: string[]): Command {
   }
 
   if (commandName === 'ask') {
-    const intent = rest.join(' ').trim()
-    if (intent === '') return { name: 'error', message: 'ask needs a question' }
-    if (intent.length > PLAN_LIMITS.maxIntentLength) {
-      return { name: 'error', message: `a question is limited to ${PLAN_LIMITS.maxIntentLength} characters` }
+    try {
+      // Strict, where every argument used to be the question: an option this
+      // command does not know would otherwise reach a third party as words of
+      // the sentence it was asked. A question that really starts with a dash
+      // goes after `--`, which parseArgs' own refusal says.
+      const { values, positionals } = parseArgs({
+        args: rest,
+        options: { repo: { type: 'string' } },
+        allowPositionals: true,
+        strict: true,
+      })
+      // Joined, for the same reason as `plan`'s intent: a shell that lost the
+      // quotes hands the words over one at a time.
+      const intent = positionals.join(' ').trim()
+      if (intent === '') return { name: 'error', message: 'ask needs a question' }
+      if (intent.length > PLAN_LIMITS.maxIntentLength) {
+        return { name: 'error', message: `a question is limited to ${PLAN_LIMITS.maxIntentLength} characters` }
+      }
+      return { name: 'ask', intent, ...repoOf(values.repo) }
+    } catch (error) {
+      return { name: 'error', message: (error as Error).message }
     }
-    return { name: 'ask', intent }
   }
 
   if (commandName === 'show') {
-    const query = rest[0]
-    if (query === undefined) return { name: 'error', message: 'show needs a name or a reference' }
-    return { name: 'show', query }
+    try {
+      const { values, positionals } = parseArgs({
+        args: rest,
+        options: { repo: { type: 'string' } },
+        allowPositionals: true,
+        strict: true,
+      })
+      const query = positionals[0]
+      if (query === undefined) return { name: 'error', message: 'show needs a name or a reference' }
+      // Refused rather than reading the first: which of two names was meant is
+      // not something to guess, and the second was silently dropped before.
+      if (positionals.length > 1) {
+        return {
+          name: 'error',
+          message: `show takes one name or reference, not ${positionals.length}: ${positionals.join(', ')}`,
+        }
+      }
+      return { name: 'show', query, ...repoOf(values.repo) }
+    } catch (error) {
+      return { name: 'error', message: (error as Error).message }
+    }
   }
 
   if (commandName === 'graph') {
@@ -194,6 +238,7 @@ export function parseArguments(argv: string[]): Command {
           env: { type: 'string' },
           type: { type: 'string' },
           kind: { type: 'string' },
+          repo: { type: 'string' },
         },
         strict: true,
       })
@@ -208,6 +253,7 @@ export function parseArguments(argv: string[]): Command {
           ...(values.type !== undefined ? { type: values.type } : {}),
           ...(kind !== undefined ? { kind } : {}),
         },
+        ...repoOf(values.repo),
       }
     } catch (error) {
       return { name: 'error', message: (error as Error).message }
@@ -216,6 +262,10 @@ export function parseArguments(argv: string[]): Command {
 
   return { name: 'error', message: `unknown command "${commandName}"` }
 }
+
+/** Omitted rather than undefined: no `--repo` is the demo SI, an absence. */
+const repoOf = (repo: string | undefined): { repo?: string } =>
+  repo !== undefined ? { repo } : {}
 
 /**
  * What main writes to and reads from. Injected so the command is tested without
@@ -442,11 +492,32 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     )
   }
 
-  const { entities, rejected } = await new FixtureProvider(deps.root ?? DEFAULT_ROOT).load()
+  // The one decision the read commands make about where the SI comes from;
+  // everything after the provider is the same for both.
+  let provider: ContextProvider
+  try {
+    provider = await providerOf(command.name, command.repo, deps, err)
+  } catch (error) {
+    return failed(error, err)
+  }
+
+  const { entities, rejected } = await provider.load()
   // Reported, never dropped in silence: that silent drop is the catalogue
   // behaviour this tool exists to compensate for (design 4.4).
   for (const rejection of rejected) {
     err(`skipped ${rejection.source}: ${rejection.reason}\n`)
+  }
+  // A repository that declares nothing answers every question with a miss —
+  // "No entity named", "No entity matches" — which reads as a fact about the
+  // name or the filter. The likeliest cause is the other one: `--repo` pointed
+  // at an application repository, which is what `init --repo` names. Said on
+  // stderr so stdout stays the command's own answer, and not an error, because
+  // an empty declarations repository is a real, freshly scaffolded state.
+  // Not when something was rejected: those files were entity declarations
+  // that did not parse, the `skipped` lines above say which, and blaming the
+  // flag would send the user to look for another repository.
+  if (command.repo !== undefined && entities.length === 0 && rejected.length === 0) {
+    err(`${command.repo} declares no entity; --repo names the declarations repository\n`)
   }
 
   const graph = EntityGraph.from(entities)
@@ -467,6 +538,32 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     command.name === 'graph' ? runGraph(graph, command.options) : runShow(graph, command.query)
   return report(result, out)
 }
+
+/**
+ * Where a read command's SI comes from.
+ *
+ * With `--repo`, the declarations repository through `iac-fs` — the reader
+ * `plan` and `validate` use, behind the guard `plan` uses, resolved against
+ * the working directory a relative path was typed in. Without it, the demo SI,
+ * and a line on stderr saying so before anything else: an answer about an
+ * invented company that does not say it is invented is read as an answer about
+ * the user's own. stderr, because stdout is the answer and gets piped.
+ */
+async function providerOf(
+  command: Exclude<DeclarationsCommand, 'plan'>,
+  repo: string | undefined,
+  deps: MainDeps,
+  err: (chunk: string) => void,
+): Promise<ContextProvider> {
+  if (repo !== undefined) {
+    return new IacFsProvider(await declarationsRoot(command, repo, deps.cwd ?? process.cwd()))
+  }
+  err(`${DEMO_NOTICE}\n`)
+  return new FixtureProvider(deps.root ?? DEFAULT_ROOT)
+}
+
+const DEMO_NOTICE =
+  'reading the demo SI, a fictional company; pass --repo <directory> to read your own declarations repository'
 
 /**
  * Colour belongs to a terminal, and only main knows whether it holds one: an
@@ -552,6 +649,7 @@ function report(result: CommandResult, out: (chunk: string) => void): number {
 function failed(error: unknown, err: (chunk: string) => void): number {
   if (
     error instanceof PlanInputError ||
+    error instanceof RepositoryArgumentError ||
     error instanceof ConfigError ||
     error instanceof NoModelConfiguredError
   ) {

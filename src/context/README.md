@@ -3,8 +3,11 @@
 `ContextProvider` (`provider.ts`) is the only seam between this tool and wherever the SI is
 described: `readonly name`, and `load(): Promise<LoadResult>`. It exists because that source
 changes on a schedule the rest of the code must not feel — fixtures in stages 1-2, `iac-fs` from
-stage 4, `backstage-http` at MVP (design.md § 3). `FixtureProvider`, the only implementation
-today, reads a directory laid out exactly like an IaC repository, so it already has stage 4's shape.
+stage 4, `backstage-http` at MVP (design.md § 3). Two implementations exist. `FixtureProvider`
+reads the demo SI, a directory laid out exactly like an IaC repository. `IacFsProvider`
+(`iac-fs/provider.ts`) reads a user's declarations repository through `readRepository`, so
+`ask`, `graph` and `show` given `--repo` see the files `plan` and `validate` see, and a rejection's
+`source` is the file's repository-relative path.
 
 `LoadResult` pairs `entities` with `rejected: Rejection[]` — one `{ source, reason }` for every
 document `entitySchema` refused, or the parser faulted (a duplicate key or an unclosed bracket,

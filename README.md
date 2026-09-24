@@ -8,7 +8,7 @@ reviewed, then merged.
 
 ```bash
 git clone https://github.com/pcaboor/idp-agent && cd idp-agent
-pnpm install && pnpm test     # 895 tests, no API key, no network, no cost
+pnpm install && pnpm test     # 934 tests, no API key, no network, no cost
 ```
 
 That is the whole setup. The suite never reaches a model, and it never will: that is a
@@ -57,9 +57,9 @@ That last section answers *which services are connected to the billing database*
 walking access declarations, with no model involved.
 
 ```bash
-idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource]
-idp-agent show <name-or-reference>
-idp-agent ask "<question>"                       # needs IDP_PROVIDER and IDP_MODEL
+idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource] [--repo <dir>]
+idp-agent show <name-or-reference> [--repo <dir>]
+idp-agent ask "<question>" [--repo <dir>]        # needs IDP_PROVIDER and IDP_MODEL
 idp-agent validate <directory>                   # what the generated CI runs
 idp-agent init platform <dir> --owner @org/team  # the only command that writes
 idp-agent plan --from <plan.json> --repo <dir>   # no model, and none is possible
@@ -82,7 +82,8 @@ re-check against the repository. Three attempts, then a clean stop.
 
 The two `--repo` flags are two different repositories: `plan --repo` is the declarations
 repository the preview is decided against, `init --repo` the application repository being
-declared.
+declared. `graph`, `show` and `ask` take the first kind: `--repo` names a declarations
+repository to read. Without it they read the fictional demo SI, and say so on stderr.
 
 A value nobody can vouch for is **asked about, never guessed** — that is exit 3, and it is
 the most common thing to see on a repository that holds no entities yet.

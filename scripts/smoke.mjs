@@ -7,9 +7,9 @@
  *
  * Run after `pnpm build`. No network, no API key, no Docker.
  */
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, readdirSync, readFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -36,30 +36,35 @@ const failures = []
 // thing this script may not do.
 let checks = 0
 
-/** @param {{args: string[], code: number, stdout?: RegExp, stderr?: RegExp}} expected */
-function check({ args, code, stdout, stderr }) {
+/**
+ * `absentFromStdout` / `absentFromStderr` say where something must NOT be: a
+ * line meant for a person has to stay out of the stream that gets piped.
+ *
+ * @param {{args: string[], code: number, stdout?: RegExp, stderr?: RegExp,
+ *   absentFromStdout?: RegExp, absentFromStderr?: RegExp}} expected
+ */
+function check({ args, code, stdout, stderr, absentFromStdout, absentFromStderr }) {
   checks += 1
   const label = `idp-agent ${args.join(' ')}`
-  let out = ''
-  let err = ''
-  let actual = 0
-  try {
-    out = execFileSync(process.execPath, [BIN, ...args], {
-      cwd: ELSEWHERE,
-      env: CLEAN_ENV,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-  } catch (error) {
-    actual = error.status ?? -1
-    out = error.stdout ?? ''
-    err = error.stderr ?? ''
-  }
+  // spawnSync, not execFileSync: the latter hands back stderr only when the
+  // process fails, and a check on what a SUCCESSFUL run says on stderr — or
+  // keeps off it — then passes or fails on an empty string.
+  const run = spawnSync(process.execPath, [BIN, ...args], {
+    cwd: ELSEWHERE,
+    env: CLEAN_ENV,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  const actual = run.status ?? -1
+  const out = run.stdout ?? ''
+  const err = run.stderr ?? ''
 
   const before = failures.length
   if (actual !== code) failures.push(`${label}: expected exit ${code}, got ${actual}`)
   if (stdout !== undefined && !stdout.test(out)) failures.push(`${label}: stdout ${stdout}`)
   if (stderr !== undefined && !stderr.test(err)) failures.push(`${label}: stderr ${stderr}`)
+  if (absentFromStdout?.test(out)) failures.push(`${label}: stdout carries ${absentFromStdout}`)
+  if (absentFromStderr?.test(err)) failures.push(`${label}: stderr carries ${absentFromStderr}`)
   console.log(`  ${failures.length === before ? 'ok  ' : 'FAIL'} ${label}`)
 }
 
@@ -183,6 +188,22 @@ assert(
   hashTree(ELSEWHERE) === cwdUntouched,
   'plan --from wrote into the directory it ran in; stage 4 writes nothing anywhere',
 )
+
+// The read commands over a declarations repository of the user's own, and the
+// line that says when they are NOT reading one. A copy of the demo SI, so the
+// answer is known; placed after the hashes above, which cover ELSEWHERE.
+const DEMO = /demo SI/
+cpSync(path.join(ROOT, 'fixtures/si-demo'), path.join(ELSEWHERE, 'declarations'), {
+  recursive: true,
+})
+check({ args: ['graph', '--env', 'prod'], code: 0, stderr: DEMO, absentFromStdout: DEMO })
+check({
+  args: ['show', 'billing-db-prod', '--repo', 'declarations'],
+  code: 0,
+  stdout: /reached by services/,
+  absentFromStderr: DEMO,
+})
+check({ args: ['graph', '--repo', 'missing'], code: 2, stderr: /missing is not a directory/ })
 
 // The one check that can catch "green tests, broken package": the templates
 // live outside dist/, so nothing in the suite notices if they are missing from

@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 895 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 934 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -96,7 +96,10 @@ trust, and `pnpm smoke` makes the same assertion about the built binary.
 The two `--repo` flags name different repositories, which is the first thing that trips
 someone up. `plan --repo` is the **declarations** repository the preview is decided
 against; `init --repo` is the **application** repository being declared. For
-`plan "<intent>"` the Inspector reads the directory the user is standing in.
+`plan "<intent>"` the Inspector reads the directory the user is standing in. `graph`,
+`show` and `ask` take `--repo` in `plan`'s sense, through the same guard; without it they
+read the fictional `fixtures/si-demo/` and say so in one line on stderr, because an answer
+about an invented company that does not say so is read as one about the user's own.
 
 ## Layering
 
@@ -114,7 +117,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 | Folder | Responsibility |
 |---|---|
 | `core/` | schemas (Zod), the six validation rules, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, and `core/plan/` — everything between a proposal and a diff |
-| `context/` | `ContextProvider` (one implementation: `fixtures`), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries |
+| `context/` | `ContextProvider` (two implementations: `fixtures`, and `iac-fs` behind `--repo`), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries |
 | `cli/` | argument parsing, commands, rendering, `.idp-agent.yml` — the only layer that writes to stdout |
 | `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |
 | `agents/` | the five agents, the bounded turn, the repair loop, the tool registries — reaches no disk, transitively |

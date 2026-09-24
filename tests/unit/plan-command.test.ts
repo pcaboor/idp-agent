@@ -382,6 +382,18 @@ describe('plan --from', () => {
     expect(err).toMatch(/JSON/i)
   })
 
+  it('refuses an empty --repo rather than previewing against the working directory', async () => {
+    // `stat('')` failed, so this was refused before the guard was shared;
+    // resolving first would turn it into the directory the run stands in.
+    const root = await scaffoldedRepository()
+    const from = await planFile(root, CREATE_PLAN)
+
+    const { code, err } = await run(['plan', '--from', from, '--repo='])
+
+    expect(code).toBe(2)
+    expect(err).toContain('plan --repo names the declarations repository')
+  })
+
   it('refuses a --repo that is not a directory', async () => {
     const root = await scaffoldedRepository()
     const from = await planFile(root, CREATE_PLAN)
@@ -390,6 +402,8 @@ describe('plan --from', () => {
 
     expect(code).toBe(2)
     expect(err).toContain('nowhere')
+    // The guard `ask`, `graph` and `show` share, in the same words.
+    expect(err).toContain('plan --repo names the declarations repository')
   })
 
   it('needs something to preview: an intent, or a plan in a file', async () => {
