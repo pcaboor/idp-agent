@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -40,6 +40,31 @@ describe('validate', () => {
     expect(code).toBe(0)
     expect(out).toMatch(/33 entities/)
     expect(out).toMatch(/0 violations/)
+  })
+
+  it('passes a repository that is also a Backstage catalogue, warning about what it leaves alone', async () => {
+    // A Group and a mkdocs.yml are not this tool's to judge. Each was an
+    // invalid-entity error, so a real catalogue could not get its CI green.
+    const root = await mkdtemp(path.join(tmpdir(), 'idp-validate-'))
+    await cp(FIXTURES, root, { recursive: true })
+    await mkdir(path.join(root, 'org'), { recursive: true })
+    await writeFile(
+      path.join(root, 'org/tiger.yml'),
+      '---\napiVersion: backstage.io/v1alpha1\nkind: Group\nmetadata:\n  name: tiger\nspec:\n  type: team\n  children: []\n',
+    )
+    await writeFile(path.join(root, 'mkdocs.yml'), 'site_name: Declarations\n')
+
+    const { code, out } = await run(root)
+
+    expect(code).toBe(0)
+    const warnings = out.split('\n').filter((line) => line.startsWith('warning'))
+    expect(warnings).toEqual([
+      'warning mkdocs.yml: not a catalogue entity: no apiVersion or kind',
+      'warning org/tiger.yml: kind Group is not modelled by this tool; group tiger left as is',
+    ])
+    expect(out).not.toMatch(/^error/m)
+    // Still 33: a Group is not an entity this tool counts. The files are.
+    expect(out).toMatch(/33 entities in 35 files, 0 violations/)
   })
 
   it('refuses a duplicate and names both files', async () => {

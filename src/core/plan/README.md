@@ -124,7 +124,7 @@ operation whose bytes do not is dropped with a reason naming the file. The surge
 produced the bytes finds documents by reading lines; it can be wrong, and an unchanged file
 is the one mistake that would otherwise read as "already done". `recheckPlan` applies the
 plan **virtually** — a new snapshot, never a mutation of the one it was handed — and runs
-`checkRepository` over the result, so the re-check is the six rules CI already runs asked
+`checkRepository` over the result, so the re-check is the seven rules CI already runs asked
 about a repository that does not exist yet, rather than a second set of rules to keep in
 agreement with the first.
 
@@ -137,5 +137,5 @@ the Architect as its fault.
 
 And `planEdits` does not judge. Whether the entity already lives in another file is
 `recheckPlan`'s `moved` verdict, whether the folder was ever declared is a policy, and
-whether the result satisfies the six rules is `checkRepository`. This folder computes text
+whether the result satisfies the seven rules is `checkRepository`. This folder computes text
 and verdicts; only `cli/` decides whether that text is ever shown.

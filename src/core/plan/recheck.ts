@@ -101,6 +101,7 @@ const anchoredIn = (violation: Violation, written: Written): boolean => {
     case 'multiple-entities':
     case 'misplaced-entity':
     case 'dangling-reference':
+    case 'not-modelled':
       return written.files.has(violation.file)
     default: {
       const _exhaustive: never = violation.rule

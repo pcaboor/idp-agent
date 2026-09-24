@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { checkRepository } from '../../src/core/validate/rules.js'
 import type { RepositoryFile, RepositorySnapshot } from '../../src/core/validate/rules.js'
 import type { Entity } from '../../src/core/schemas/entity.js'
+import { parseDocuments } from '../../src/core/yaml/serialize.js'
 
 const database = (name: string, spec: Record<string, unknown> = {}): Entity => ({
   apiVersion: 'backstage.io/v1alpha1',
@@ -21,6 +22,7 @@ const file = (path: string, entities: Entity[], over: Partial<RepositoryFile> = 
   path,
   entities,
   rejections: [],
+  ignored: [],
   documents: entities.length,
   ...over,
 })
@@ -173,5 +175,90 @@ describe('checkRepository', () => {
       }),
     )
     expect(violations.map((violation) => violation.severity)).toEqual(['error', 'warning'])
+  })
+
+  describe('over a repository that is also a Backstage catalogue', () => {
+    /** A file as the one reader reads it, so these hold for real bytes. */
+    const read = (path: string, ...documents: string[]): RepositoryFile => ({
+      path,
+      ...parseDocuments(documents.map((body) => `---\n${body}\n`).join('\n')),
+    })
+    const group = (name: string): string =>
+      `apiVersion: backstage.io/v1alpha1\nkind: Group\nmetadata:\n  name: ${name}\nspec:\n  type: team\n  children: []`
+    const api = 'apiVersion: backstage.io/v1alpha1\nkind: API\nmetadata:\n  name: billing-events'
+    const billing =
+      'apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: billing-api\n' +
+      'spec:\n  type: service\n  lifecycle: production\n  owner: group:default/tiger'
+
+    it('warns once per document it does not model, anchored on the file', () => {
+      const violations = checkRepository(
+        snapshot({ folders: ['org'], witnesses: [], files: [read('org/teams.yml', group('a'), group('b'))] }),
+      )
+      expect(violations).toEqual([
+        {
+          rule: 'not-modelled',
+          file: 'org/teams.yml',
+          severity: 'warning',
+          message: 'kind Group is not modelled by this tool; group a left as is',
+        },
+        {
+          rule: 'not-modelled',
+          file: 'org/teams.yml',
+          severity: 'warning',
+          message: 'kind Group is not modelled by this tool; group b left as is',
+        },
+      ])
+    })
+
+    it('does not count a set-aside document as a second entity in its file', () => {
+      // catalog-info.yaml holding a Component and the API it provides is the
+      // most common shape there is. One of the two is this tool's entity.
+      const violations = checkRepository(
+        snapshot({
+          folders: ['components'],
+          witnesses: ['components'],
+          files: [read('components/catalog-info.yaml', billing, api)],
+        }),
+      )
+      expect(violations.map((violation) => violation.rule)).toEqual(['not-modelled'])
+    })
+
+    it('demands no witness from a folder holding only documents it does not model', () => {
+      const violations = checkRepository(
+        snapshot({ folders: ['org'], witnesses: [], files: [read('org/tiger.yml', group('tiger'))] }),
+      )
+      expect(violations.map((violation) => violation.rule)).toEqual(['not-modelled'])
+    })
+
+    it('does not call a reference dangling when the repository declares its target', () => {
+      // The API is read and set aside, not absent: "nothing declares" beside a
+      // warning naming that very API would contradict it.
+      const consumer = billing + '\n  dependsOn:\n    - api:default/billing-events\n    - api:default/ghost'
+      const violations = checkRepository(
+        snapshot({
+          folders: ['components'],
+          witnesses: ['components'],
+          files: [read('components/catalog-info.yaml', consumer, api)],
+        }),
+      )
+      expect(violations.map((violation) => [violation.rule, violation.message])).toEqual([
+        ['not-modelled', 'kind API is not modelled by this tool; api billing-events left as is'],
+        ['dangling-reference', 'component:default/billing-api names api:default/ghost, which nothing declares'],
+      ])
+    })
+
+    it('does not read a set-aside document as a duplicate of an entity of the same name', () => {
+      const violations = checkRepository(
+        snapshot({
+          folders: ['components', 'apis'],
+          witnesses: ['components'],
+          files: [
+            read('components/billing-api.yml', billing),
+            read('apis/billing-api.yml', api.replace('billing-events', 'billing-api')),
+          ],
+        }),
+      )
+      expect(violations.map((violation) => violation.rule)).toEqual(['not-modelled'])
+    })
   })
 })

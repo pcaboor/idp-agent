@@ -73,6 +73,7 @@ const fileHolding = (
     },
   ],
   rejections: [],
+  ignored: [],
   documents: 1,
 })
 
@@ -91,6 +92,7 @@ const snapshot = (files: RepositoryFile[] = []): RepositorySnapshot => ({
         },
       ],
       rejections: [],
+      ignored: [],
       documents: 1,
     },
     {
@@ -107,6 +109,7 @@ const snapshot = (files: RepositoryFile[] = []): RepositorySnapshot => ({
         },
       ],
       rejections: [],
+      ignored: [],
       documents: 1,
     },
     ...files,
@@ -311,6 +314,7 @@ describe('recheckPlan attributes each violation', () => {
     path,
     entities: [],
     rejections: ['spec: Invalid input: expected object, received undefined'],
+    ignored: [],
     documents: 1,
   })
 
@@ -375,6 +379,7 @@ describe('recheckPlan attributes each violation', () => {
         },
       ],
       rejections: [],
+      ignored: [],
       documents: 1,
     }
 

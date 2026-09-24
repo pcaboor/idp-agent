@@ -38,7 +38,7 @@ import type { SignedPlan } from './sign.js'
  *
  * What this does NOT do is judge. Whether the entity already lives in some
  * other file is `recheckPlan`'s 'moved' verdict, whether the folder was ever
- * declared is a policy, and whether the result satisfies the six rules is
+ * declared is a policy, and whether the result satisfies the seven rules is
  * `checkRepository`. This function computes text; the gates upstream decide
  * whether that text is ever offered.
  */

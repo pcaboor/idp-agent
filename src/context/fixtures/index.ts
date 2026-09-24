@@ -2,7 +2,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Entity } from '../../core/schemas/entity.js'
 import { parseDocuments } from '../../core/yaml/serialize.js'
-import type { ContextProvider, LoadResult, Rejection } from '../provider.js'
+import type { ContextProvider, Ignored, LoadResult, Rejection } from '../provider.js'
 
 
 const YAML_EXTENSIONS = new Set(['.yml', '.yaml'])
@@ -36,6 +36,7 @@ export class FixtureProvider implements ContextProvider {
   async load(): Promise<LoadResult> {
     const entities: Entity[] = []
     const rejected: Rejection[] = []
+    const ignored: Ignored[] = []
 
     for (const file of await yamlFiles(this.rootDir)) {
       const source = path.relative(this.rootDir, file)
@@ -46,8 +47,9 @@ export class FixtureProvider implements ContextProvider {
       const read = parseDocuments(content)
       entities.push(...read.entities)
       rejected.push(...read.rejections.map((reason) => ({ source, reason })))
+      ignored.push(...read.ignored.map((document) => ({ source, ...document })))
     }
 
-    return { entities, rejected }
+    return { entities, rejected, ignored }
   }
 }

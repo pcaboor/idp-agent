@@ -23,7 +23,10 @@ export class EntityGraph {
   private readonly dependants: Map<string, Set<string>>
   private readonly derived: Map<string, Set<string>>
 
-  private constructor(private readonly entities: Entity[]) {
+  private constructor(
+    private readonly entities: Entity[],
+    private readonly aside: ReadonlySet<string>,
+  ) {
     this.byRef = new Map(entities.map((entity) => [refOf(entity), entity]))
     this.dependants = new Map()
     this.derived = new Map()
@@ -57,8 +60,13 @@ export class EntityGraph {
       .filter((found): found is Entity => found !== undefined)
   }
 
-  static from(entities: Entity[]): EntityGraph {
-    return new EntityGraph(entities)
+  /**
+   * `aside` holds the references of documents read and not modelled — an API,
+   * a Group. They are no entity of this graph, but a reference to one is not
+   * dangling: the repository declares it.
+   */
+  static from(entities: Entity[], aside: Iterable<string> = []): EntityGraph {
+    return new EntityGraph(entities, new Set(aside))
   }
 
   get size(): number {
@@ -153,7 +161,7 @@ export class EntityGraph {
         ...(entity.kind === 'Resource' ? (entity.spec.dependencyOf ?? []) : []),
       ]
       for (const to of targets) {
-        if (!this.byRef.has(to)) dangling.push({ from, to })
+        if (!this.byRef.has(to) && !this.aside.has(to)) dangling.push({ from, to })
       }
     }
     return dangling

@@ -49,11 +49,13 @@ export type UnknownValue = z.infer<typeof unknownSchema>
  * A proposal is stricter than an entity read from disk, and the asymmetry is
  * the point.
  *
- * `entitySchema` READS a real Backstage repository, whose files legitimately
- * carry fields this tool does not model — making it strict would break
- * `readRepository` on any real catalogue. A PROPOSAL is the other direction:
- * an unmodelled field there is either an invention or a field that will be
- * dropped in silence when `ordered()` serialises it. Both are unacceptable.
+ * `entitySchema` READS the Components and Resources of a real Backstage
+ * repository, whose files legitimately carry fields this tool does not model —
+ * making it strict would break `readRepository` on any real catalogue, whose
+ * other kinds never reach the schema: `parseDocuments` sets them aside. A
+ * PROPOSAL is the other direction: an unmodelled field there is either an
+ * invention or a field that will be dropped in silence when `ordered()`
+ * serialises it. Both are unacceptable.
  *
  * Three things are deliberately absent, and each absence is a guarantee:
  *

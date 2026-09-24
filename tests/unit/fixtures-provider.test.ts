@@ -8,9 +8,33 @@ const ROOT = path.resolve(import.meta.dirname, '../../fixtures/si-demo')
 
 describe('FixtureProvider', () => {
   it('loads every entity in the fixture SI', async () => {
-    const { entities, rejected } = await new FixtureProvider(ROOT).load()
+    const { entities, rejected, ignored } = await new FixtureProvider(ROOT).load()
     expect(rejected).toEqual([])
+    expect(ignored).toEqual([])
     expect(entities.length).toBeGreaterThanOrEqual(28)
+  })
+
+  it('sets aside a document it does not model rather than refusing it', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'fixture-foreign-'))
+    await writeFile(path.join(root, 'mkdocs.yml'), 'site_name: Demo\n')
+    await writeFile(
+      path.join(root, 'billing.yml'),
+      'apiVersion: backstage.io/v1alpha1\nkind: API\nmetadata:\n  name: billing-events\n',
+    )
+
+    const { entities, rejected, ignored } = await new FixtureProvider(root).load()
+
+    expect(entities).toEqual([])
+    expect(rejected).toEqual([])
+    expect(ignored).toEqual([
+      {
+        source: 'billing.yml',
+        kind: 'API',
+        ref: 'api:default/billing-events',
+        reason: 'kind API is not modelled by this tool; api billing-events left as is',
+      },
+      { source: 'mkdocs.yml', reason: 'not a catalogue entity: no apiVersion or kind' },
+    ])
   })
 
   it('reports an invalid entity instead of dropping it silently', async () => {

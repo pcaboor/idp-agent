@@ -168,6 +168,7 @@ const fileHolding = (path: string, entity: Entity): RepositoryFile => ({
   path,
   entities: [entity],
   rejections: [],
+  ignored: [],
   documents: 1,
 })
 
@@ -924,6 +925,7 @@ describe('gate [4] judges what the plan does, not the repository it lands in', (
     path: LEGACY,
     entities: [],
     rejections: ['spec: Invalid input: expected object, received undefined'],
+    ignored: [],
     documents: 1,
   }
   const untidy: RepositorySnapshot = { ...SNAPSHOT, files: [...SNAPSHOT.files, standingError] }

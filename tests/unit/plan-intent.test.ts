@@ -260,6 +260,51 @@ describe('plan "<intent>"', () => {
     expect(client.seen.filter((request) => request.agent === 'architect')).toHaveLength(1)
   })
 
+  it('does not tell the Architect a reference to a set-aside document is dangling', async () => {
+    // An API the repository declares is read and not modelled: it exists.
+    // Counted as dangling, the summary the Architect reads called the
+    // repository broken where `validate` does not.
+    const repo = await scaffoldedRepository()
+    await mkdir(path.join(repo, 'catalog', 'apis'), { recursive: true })
+    await writeFile(
+      path.join(repo, 'catalog', 'apis', 'billing-events.yml'),
+      '---\napiVersion: backstage.io/v1alpha1\nkind: API\nmetadata:\n  name: billing-events\n',
+      'utf8',
+    )
+    await writeFile(
+      path.join(repo, 'catalog', 'databases', 'events-db-prod.yml'),
+      [
+        '---',
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: Resource',
+        'metadata:',
+        '  name: events-db-prod',
+        '  annotations:',
+        '    company.fr/env: prod',
+        'spec:',
+        '  type: database',
+        '  owner: group:default/tiger',
+        '  dependsOn:',
+        '    - api:default/billing-events',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+    const client = converging([CREATE_DATABASE, CREATE_ACCESS])
+
+    await runIntent({
+      ask: answering('read'),
+      intent: INTENT,
+      repo,
+      project: await application(),
+      client,
+      emit: collect().emit,
+    })
+
+    const opening = openingOf(client.seen.find((request) => request.agent === 'architect'))
+    expect(opening).toContain('dangling references: 0')
+  })
+
   it('hands the Reviewer the original request, and nothing the Architect saw', async () => {
     // `reviewer.ts` makes this the whole point of its input list: the Architect
     // and the Reviewer are the same weights behind the same provider, so a

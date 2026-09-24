@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 955 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 998 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -53,7 +53,9 @@ refuses a plan once.
 
 A `validate` warning does not fail the build: a dangling reference is reported and exits 0,
 because a red build there pushes people to delete the declaration, which is what §4.4
-forbids.
+forbids. A document of a kind this tool does not model is also a warning, and exits 0: a
+declarations repository that is also the company's catalogue holds Groups and APIs, and
+they are not ours to refuse.
 
 ## Current state — 2026-09-22
 
@@ -77,7 +79,7 @@ The order is imposed by the doctrine: read first, validate before the first writ
 preview before the merge request. Writing arrives only at stage 5.
 
 Shipped and working: `graph` and `show` over a fixture SI of 33 entities; `ask`, answered
-by the Supervisor and the Analyst against recordings with no API key; `validate`, six
+by the Supervisor and the Analyst against recordings with no API key; `validate`, seven
 rules over an IaC repository; `init platform`, which writes twelve files and clobbers
 nothing; and stage 4's two previews, which write nothing at all:
 
@@ -116,7 +118,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 
 | Folder | Responsibility |
 |---|---|
-| `core/` | schemas (Zod), the six validation rules, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, and `core/plan/` — everything between a proposal and a diff |
+| `core/` | schemas (Zod), the seven validation rules, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, and `core/plan/` — everything between a proposal and a diff |
 | `context/` | `ContextProvider` (two implementations: `fixtures`, and `iac-fs` behind `--repo`), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries |
 | `cli/` | argument parsing, commands, rendering, `.idp-agent.yml` — the only layer that writes to stdout |
 | `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |
@@ -151,6 +153,9 @@ changing that section first.
   plausible value. A dangling reference is surfaced, never pruned.
 - **Never ignore in silence.** An entity that fails validation is reported, never
   dropped — that silent drop is the catalogue behaviour this tool exists to compensate.
+  A document this tool does not model — a Group, an API, a `mkdocs.yml` — is not refused
+  either, and not dropped: it is set aside and *said* to be, a `not-modelled` warning in
+  `validate`, one summary line in `graph`, `show` and `ask`.
 
 **Authorisation**
 - **The merge is the act of authorisation.** The CLI opens a merge request; it never

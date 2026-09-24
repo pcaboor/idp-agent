@@ -74,7 +74,13 @@ async function readOne(root: string, absolute: string): Promise<RepositoryFile> 
     // files; it is a rejection for this path instead, the same shape as a
     // document the schema refused, and `invalid-entity` reports it.
     const why = (error as NodeJS.ErrnoException).code ?? String(error)
-    return { path: where, entities: [], rejections: [`could not be read: ${why}`], documents: 0 }
+    return {
+      path: where,
+      entities: [],
+      rejections: [`could not be read: ${why}`],
+      ignored: [],
+      documents: 0,
+    }
   }
 
   // The same reader `core/` uses on the bytes a plan would write, so a file
