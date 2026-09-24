@@ -5,6 +5,8 @@ import { EntityGraph } from '../../src/context/graph/entity-graph.js'
 import { runAsk } from '../../src/cli/commands/ask.js'
 import type { AgentEvent } from '../../src/agents/events.js'
 import type { GenerateResult, LlmClient } from '../../src/llm/client.js'
+import type { Entity } from '../../src/core/schemas/entity.js'
+import { QUERY_LIMITS } from '../../src/core/schemas/query.js'
 
 const ROOT = path.resolve(import.meta.dirname, '../../fixtures/si-demo')
 const load = async (): Promise<EntityGraph> =>
@@ -160,5 +162,67 @@ describe('runAsk when the model will not classify', () => {
     const { result, errors } = await ask([saying('PERHAPS')])
     expect(result.unsupported).toBe(true)
     expect(errors).toContain('PERHAPS')
+  })
+})
+
+describe('runAsk, on what it hands a terminal', () => {
+  /** Everything a terminal obeys, and a line break a stream would read as two. */
+  // eslint-disable-next-line no-control-regex -- asserting their absence
+  const CONTROLS = /[\u0000-\u001F\u007F-\u009F]/
+
+  it("cleans the model's reason for not answering, and keeps it to one bounded line", async () => {
+    // A reason is the model's own prose (review finding security-4): a
+    // clear-screen and a fake closing line would print on stderr as though
+    // this tool had written them.
+    const reason =
+      'no cost data\u001B[2J\u001B[H\nexit 0: 3 grants mer\u009Bged\u001B]52;c;ZXZpbA==\u0007' +
+      ' and more'.repeat(25)
+    expect(reason.length).toBeLessThanOrEqual(QUERY_LIMITS.maxReason)
+    const { result, errors } = await ask([
+      saying('QUESTION'),
+      calling('answer', { outcome: 'unanswerable', reason }),
+    ])
+    expect(result.unsupported).toBe(true)
+    // Cleaned and flattened, and not cut: the schema already bounds a reason,
+    // and an honest one is printed whole.
+    expect(errors).toBe(
+      `cannot answer: no cost data exit 0: 3 grants merged${' and more'.repeat(25)}\n`,
+    )
+    expect(errors.slice(0, -1)).not.toMatch(CONTROLS)
+  })
+
+  it("cleans the Supervisor's excerpt when it will not classify", async () => {
+    const { errors } = await ask([saying('PER\u001B[2JHAPS\u001B]52;c;eA==\u0007\rx')])
+    expect(errors).toContain('PERHAPS')
+    expect(errors.slice(0, -1)).not.toMatch(CONTROLS)
+  })
+
+  it('cleans every cell of a table of entities, free-text types and environments included', async () => {
+    const hostile = (name: string): Entity => ({
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Component',
+      metadata: { name, annotations: { 'company.fr/env': 'prod\u001B[2J\nfake' } },
+      spec: { type: 'web\u001B]52;c;eA==\u0007site', lifecycle: 'production', owner: 'group:default/tiger' },
+    })
+    const graph = EntityGraph.from([hostile('artist-web'), hostile('artist-api')])
+    const result = await runAsk({
+      graph,
+      client: scripted([
+        saying('QUESTION'),
+        calling('search_entities', { kind: 'Component' }),
+        calling('answer', {
+          outcome: 'entities',
+          refs: ['component:default/artist-api', 'component:default/artist-web'],
+        }),
+      ]),
+      intent: 'which websites are there?',
+      source: { ignored: [], rejected: 0 },
+      emit: () => {},
+      err: () => {},
+    })
+    expect(result.text.split('\n')).toHaveLength(3)
+    // One row per entity, so a newline is the only control left, and only between rows.
+    for (const line of result.text.split('\n')) expect(line).not.toMatch(CONTROLS)
+    expect(result.text).toMatch(/artist-api\s+Component\s+website\s+prod fake\s+group:default\/tiger/)
   })
 })

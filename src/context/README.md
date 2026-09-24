@@ -30,7 +30,8 @@ it exists to prevent is worth nothing.
 
 `graph/overview.ts`'s `overviewOf(graph, unread)` is the data behind `ask`'s `overview`
 answer, computed here and rendered in `cli/`: exact counts by kind, type, environment
-(undeclared, or blank, counted apart) and owner, the rights and the level each states, the
+(undeclared, or blank, counted apart), owner, system (none counted apart) and tag, every entity
+that describes itself with its description as the file wrote it, the rights and the level each states, the
 objects by the services and then the rights reaching them — walked as `consumersOf` walks,
 since a declarations repository's grants name services declared elsewhere — every dangling
 reference, and what the reader set aside and rejected. Exact where `summary.ts` buckets — that one is a prompt, this is read

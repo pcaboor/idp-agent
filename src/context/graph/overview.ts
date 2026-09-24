@@ -35,6 +35,21 @@ export interface Overview {
   environments: { declared: Tally[]; undeclared: number }
   owners: Tally[]
   /**
+   * Entities by the system they declare, and those declaring none apart —
+   * counted, never named, for the reason an undeclared environment is.
+   */
+  systems: { declared: Tally[]; none: number }
+  /** Each tag, counted once per entity carrying it. */
+  tags: Tally[]
+  /**
+   * Every entity that describes itself, sorted by reference, with the
+   * description as its file wrote it. The one place the overview carries
+   * prose, and none of it is the model's: it is what the repository says its
+   * entities are. Unbounded and unflattened here, like every list — the
+   * renderer cleans and cuts it. A blank description describes nothing.
+   */
+  described: Array<{ ref: string; description: string }>
+  /**
    * Every right, and the level each states. `undeclared` is a levelled right
    * that states none — never read as readwrite (design 4.1); `unlevelled` is a
    * right of a type that has no level to state, a network flow or a route.
@@ -126,6 +141,15 @@ export function overviewOf(graph: EntityGraph, unread: Unread): Overview {
   }
 
   const kinded = unread.ignored.flatMap(({ kind }) => (kind === undefined ? [] : [kind]))
+  const systems = entities.flatMap((entity) => entity.spec.system ?? [])
+  const described = entities
+    .flatMap((entity) => {
+      const { description } = entity.metadata
+      return description === undefined || description.trim() === ''
+        ? []
+        : [{ ref: refOf(entity), description }]
+    })
+    .sort((left, right) => compare(left.ref, right.ref))
 
   return {
     entities: entities.length,
@@ -133,6 +157,9 @@ export function overviewOf(graph: EntityGraph, unread: Unread): Overview {
     types: tally(entities.map((entity) => entity.spec.type)),
     environments: { declared: tally(declared), undeclared: entities.length - declared.length },
     owners: tally(entities.map((entity) => entity.spec.owner)),
+    systems: { declared: tally(systems), none: entities.length - systems.length },
+    tags: tally(entities.flatMap((entity) => [...new Set(entity.metadata.tags ?? [])])),
+    described,
     rights,
     reached: reached.sort(
       (left, right) =>

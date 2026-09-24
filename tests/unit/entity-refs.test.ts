@@ -6,41 +6,13 @@ import { main } from '../../src/cli/index.js'
 import { entitySchema } from '../../src/core/schemas/entity.js'
 import { planSchema } from '../../src/core/schemas/plan.js'
 import { parseDocuments } from '../../src/core/yaml/serialize.js'
+import { ARTIST_WEB } from '../support/artist-web.js'
 
 /**
  * A reference as a real Backstage catalogue writes it: `[<kind>:][<namespace>/]<name>`,
  * the omitted parts filled in the way Backstage fills them. The reader accepts
  * that and yields the full form; a proposal does not.
  */
-
-/**
- * Backstage's own example entity, verbatim as the owner's repository held it
- * when it loaded empty: `spec.owner` names a group the way nearly every real
- * catalogue does, with neither kind nor namespace.
- */
-const ARTIST_WEB = `apiVersion: backstage.io/v1alpha1
-kind: Component
-metadata:
-  name: artist-web
-  description: The place to be, for great artists
-  labels:
-    example.com/custom: custom_label_value
-  annotations:
-    example.com/service-discovery: artistweb
-    circleci.com/project-slug: github/example-org/artist-website
-  tags:
-    - java
-  links:
-    - url: https://admin.example-org.com
-      title: Admin Dashboard
-      icon: dashboard
-      type: admin-dashboard
-spec:
-  type: website
-  lifecycle: production
-  owner: artist-relations-team
-  system: public-websites
-`
 
 const component = (spec: Record<string, unknown>, metadata: Record<string, unknown> = {}) => ({
   apiVersion: 'backstage.io/v1alpha1',
@@ -126,6 +98,88 @@ describe('the reader, on a dependency', () => {
     expect(dependsOn).toMatch(/^spec\.dependsOn\.0: .*kind.*required/)
     const [dependencyOf] = refusal(grant({ dependencyOf: ['default/artist-web'] }))
     expect(dependencyOf).toMatch(/^spec\.dependencyOf\.0: .*kind.*required/)
+  })
+})
+
+describe('the reader, on what an entity is', () => {
+  it("keeps artist-web's description, tags, links and system instead of dropping them", () => {
+    const { entities, rejections } = parseDocuments(ARTIST_WEB)
+    expect(rejections).toEqual([])
+    const [entity] = entities
+    expect(entity?.metadata.description).toBe('The place to be, for great artists')
+    expect(entity?.metadata.tags).toEqual(['java'])
+    expect(entity?.metadata.links).toEqual([
+      {
+        url: 'https://admin.example-org.com',
+        title: 'Admin Dashboard',
+        icon: 'dashboard',
+        type: 'admin-dashboard',
+      },
+    ])
+    expect(entity?.spec.system).toBe('system:default/public-websites')
+  })
+
+  it.each([
+    ['public-websites', 'system:default/public-websites'],
+    ['System:public-websites', 'system:default/public-websites'],
+    ['web/public-websites', 'system:web/public-websites'],
+    ['system:default/public-websites', 'system:default/public-websites'],
+  ])('reads system %s as %s', (system, full) => {
+    expect(read(component({ system })).spec.system).toBe(full)
+    expect(read(grant({ system })).spec.system).toBe(full)
+  })
+
+  it("fills a system's omitted namespace from metadata.namespace, as an owner's", () => {
+    expect(read(component({ system: 'public-websites' }, { namespace: 'Web' })).spec.system).toBe(
+      'system:web/public-websites',
+    )
+  })
+
+  it.each([
+    // Another kind: Backstage defaults spec.system to System, and no more.
+    ['domain:artists', 'domain:default/artists'],
+    // Backstage allows upper case in a name and compares it caseless; the
+    // grammar here does not fold one, so the reference is kept as written.
+    ['Public-Websites', 'Public-Websites'],
+    ['system:default/Public_Websites!', 'system:default/Public_Websites!'],
+    ['   ', '   '],
+  ])('reads a system Backstage accepts, %j, as %j, and the entity with it', (system, shown) => {
+    // A system is only ever printed. A reference this grammar cannot read is
+    // still one Backstage ingests, and refusing the entity over it would take
+    // it out of show, graph and ask, and turn validate red (review finding).
+    expect(read(component({ system })).spec.system).toBe(shown)
+    expect(read(grant({ system })).spec.system).toBe(shown)
+  })
+
+  it('keeps a short system as written when metadata.namespace cannot complete it', () => {
+    // An owner there is refused: the graph keys on it. A system is not a key.
+    expect(read(component({ system: 'public-websites' }, { namespace: '' })).spec.system).toBe(
+      'public-websites',
+    )
+  })
+
+  it.each([[''], [42], [{ name: 'public-websites' }], [['public-websites']]])(
+    'refuses a system that is not a non-empty string, %j, as the catalogue does',
+    (system) => {
+      // Backstage's own schema: `system: { type: string, minLength: 1 }`. The
+      // catalogue drops that entity without a word, which is what validate is for.
+      expect(refusal(component({ system }))[0]).toMatch(/^spec\.system: /)
+    },
+  )
+
+  it('reads an entity with none of them exactly as before', () => {
+    const bare = read(component({}))
+    expect(bare.spec).not.toHaveProperty('system')
+    expect(bare.metadata).not.toHaveProperty('links')
+  })
+
+  it('reads a link with a url alone, and refuses one without a url', () => {
+    expect(read(component({}, { links: [{ url: 'https://x.example' }] })).metadata.links).toEqual([
+      { url: 'https://x.example' },
+    ])
+    expect(refusal(component({}, { links: [{ title: 'Admin' }] }))[0]).toMatch(
+      /^metadata\.links\.0\.url: /,
+    )
   })
 })
 
@@ -230,17 +284,49 @@ describe('a proposal', () => {
       false,
     )
   })
+
+  it('cannot name a system or carry a link, in any form', () => {
+    // The reader keeps both so `show` can say what an entity is; a model has
+    // no business choosing either. A system is a claim about somebody's
+    // architecture and a link is a URL a reviewer would click.
+    expect(planSchema.safeParse(proposal({ system: 'system:default/public-websites' })).success)
+      .toBe(false)
+    expect(planSchema.safeParse(proposal({ system: 'public-websites' })).success).toBe(false)
+
+    const linked = proposal({})
+    const entity = linked.operations[0]!.entity as { metadata: Record<string, unknown> }
+    entity.metadata = { ...entity.metadata, links: [{ url: 'https://admin.example-org.com' }] }
+    expect(planSchema.safeParse(linked).success).toBe(false)
+
+    const component = (spec: Record<string, unknown>) => ({
+      intent: 'declare artist-web',
+      operations: [
+        {
+          op: 'create-entity',
+          entity: {
+            kind: 'Component',
+            metadata: { name: 'artist-web' },
+            spec: { type: 'website', lifecycle: 'production', owner: 'group:default/team-a', ...spec },
+          },
+        },
+      ],
+    })
+    expect(planSchema.safeParse(component({})).success).toBe(true)
+    expect(
+      planSchema.safeParse(component({ system: 'system:default/public-websites' })).success,
+    ).toBe(false)
+  })
 })
 
 describe('the commands, over a catalogue written in short form', () => {
   const FIXTURES = path.resolve(import.meta.dirname, '../../fixtures/si-demo')
 
-  const repository = async (): Promise<string> => {
+  const repository = async (document = ARTIST_WEB): Promise<string> => {
     const root = await mkdtemp(path.join(tmpdir(), 'idp-short-refs-'))
     await cp(FIXTURES, root, { recursive: true })
     await mkdir(path.join(root, 'catalog/apis'), { recursive: true })
     await writeFile(path.join(root, 'catalog/apis/.witness.yml'), '# Declares nothing.\n')
-    await writeFile(path.join(root, 'catalog/apis/api-1.yml'), ARTIST_WEB)
+    await writeFile(path.join(root, 'catalog/apis/api-1.yml'), document)
     return root
   }
 
@@ -259,6 +345,27 @@ describe('the commands, over a catalogue written in short form', () => {
     expect(out).toMatch(/34 entities in \d+ files, 0 violations/)
     expect(code).toBe(0)
   })
+
+  it.each(['Payments', 'domain:payments'])(
+    'reads and validates artist-web whose system is %s, which Backstage accepts',
+    async (system) => {
+      // Before spec.system was read, zod stripped it and the entity read. A
+      // field that is only printed must not now take the entity out of every
+      // command and turn a scaffolded CI red (review finding).
+      const root = await repository(
+        ARTIST_WEB.replace('system: public-websites', `system: ${system}`),
+      )
+
+      const validate = await run(['validate', root])
+      expect(validate.out).toMatch(/34 entities in \d+ files, 0 violations/)
+      expect(validate.code).toBe(0)
+
+      const show = await run(['show', 'artist-web', '--repo', root])
+      expect(show.err).not.toContain('skipped')
+      expect(show.out).toMatch(/^ {2}system {7}\S*payments$/im)
+      expect(show.code).toBe(0)
+    },
+  )
 
   it('graph and show find artist-web, owned by its group', async () => {
     const root = await repository()

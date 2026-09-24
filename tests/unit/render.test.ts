@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { paintDiff } from '../../src/cli/render/diff.js'
 import { renderTable } from '../../src/cli/render/table.js'
-import { renderEntityDetail } from '../../src/cli/render/entity.js'
+import { ENTITY_LIMITS, renderEntityDetail } from '../../src/cli/render/entity.js'
 import { EntityGraph } from '../../src/context/graph/entity-graph.js'
 import type { Entity } from '../../src/core/schemas/entity.js'
 
@@ -104,6 +104,201 @@ describe('renderEntityDetail', () => {
     expect(listed).toHaveLength(2)
     expect(listed[0]?.endsWith('dev')).toBe(true)
     expect(listed[1]?.endsWith('prod')).toBe(true)
+  })
+})
+
+describe('renderEntityDetail, on what an entity is', () => {
+  const artistWeb: Entity = {
+    apiVersion: 'backstage.io/v1alpha1',
+    kind: 'Component',
+    metadata: {
+      name: 'artist-web',
+      description: 'The place to be, for great artists',
+      annotations: {},
+      tags: ['java'],
+      links: [
+        {
+          url: 'https://admin.example-org.com',
+          title: 'Admin Dashboard',
+          icon: 'dashboard',
+          type: 'admin-dashboard',
+        },
+      ],
+    },
+    spec: {
+      type: 'website',
+      lifecycle: 'production',
+      owner: 'group:default/artist-relations-team',
+      system: 'system:default/public-websites',
+    },
+  }
+  const card = (entity: Entity): string => renderEntityDetail(EntityGraph.from([entity]), entity)
+
+  it('says what it is: its description, its system, its tags and its links', () => {
+    expect(card(artistWeb)).toBe(
+      [
+        'component:default/artist-web',
+        '',
+        '  kind         Component',
+        '  type         website',
+        '  owner        group:default/artist-relations-team',
+        '  environment  (undeclared)',
+        '  description  The place to be, for great artists',
+        '  system       system:default/public-websites',
+        '  tags         java',
+        '',
+        'links',
+        '  Admin Dashboard — https://admin.example-org.com',
+        '',
+        'depends on',
+        '  none',
+        '',
+        'used by',
+        '  none',
+      ].join('\n'),
+    )
+  })
+
+  it('omits each line an entity has nothing for, rather than printing it empty', () => {
+    const bare: Entity = {
+      ...artistWeb,
+      metadata: { name: 'artist-web', annotations: {}, tags: [], links: [] },
+      spec: { type: 'website', lifecycle: 'production', owner: 'group:default/tiger' },
+    }
+    const text = card(bare)
+    expect(text).not.toMatch(/description|system|tags|links/)
+    expect(text.split('\n').slice(0, 7)).toEqual([
+      'component:default/artist-web',
+      '',
+      '  kind         Component',
+      '  type         website',
+      '  owner        group:default/tiger',
+      '  environment  (undeclared)',
+      '',
+    ])
+  })
+
+  it('prints a link with no title as its url alone', () => {
+    const untitled: Entity = {
+      ...artistWeb,
+      metadata: { ...artistWeb.metadata, links: [{ url: 'https://x.example' }] },
+    }
+    expect(card(untitled)).toContain('\nlinks\n  https://x.example\n')
+  })
+
+  it('bounds the description to one line, the tags and the links to a few', () => {
+    const long: Entity = {
+      ...artistWeb,
+      metadata: {
+        ...artistWeb.metadata,
+        description: `first line\nsecond line ${'word '.repeat(200)}`,
+        tags: Array.from({ length: 14 }, (_, index) => `tag-${String(index)}`),
+        links: Array.from({ length: 8 }, (_, index) => ({
+          url: `https://example.org/${String(index)}`,
+          title: `Link ${String(index)}`,
+        })),
+      },
+    }
+    const lines = card(long).split('\n')
+    const description = lines.find((line) => line.startsWith('  description'))
+    expect(description).toMatch(/^ {2}description {2}first line second line word/)
+    expect(description?.endsWith('…')).toBe(true)
+    expect(description!.length).toBeLessThanOrEqual(15 + ENTITY_LIMITS.text + 1)
+
+    const tags = lines.find((line) => line.startsWith('  tags'))
+    expect(tags).toBe(
+      `  tags         ${Array.from({ length: ENTITY_LIMITS.tags }, (_, index) => `tag-${String(index)}`).join(', ')}, +${String(14 - ENTITY_LIMITS.tags)} more`,
+    )
+
+    const links = lines.slice(lines.indexOf('links') + 1, lines.indexOf('depends on') - 1)
+    expect(links).toHaveLength(ENTITY_LIMITS.links + 1)
+    expect(links.at(-1)).toBe(`  +${String(8 - ENTITY_LIMITS.links)} more`)
+  })
+
+  it('leaves out a tag, a system or a link that is nothing once cleaned', () => {
+    // Checked after cleaning, not before: a tag that is only a clear-screen is
+    // no tag, and printing it would leave a bare separator and a trailing space.
+    const blank: Entity = {
+      ...artistWeb,
+      metadata: {
+        ...artistWeb.metadata,
+        tags: ['\u001B[2J', 'a,b', '', '   '],
+        links: [
+          { url: '\u001B[2J', title: 't0' },
+          { url: '   ', title: 't1' },
+          { url: 'https://x.example' },
+        ],
+      },
+      spec: { ...artistWeb.spec, system: '  \u001B[2J ' },
+    }
+    const text = card(blank)
+    expect(text).toContain('  tags         a,b\n')
+    expect(text).toContain('\nlinks\n  https://x.example\n\n')
+    expect(text).not.toMatch(/t0|t1|system/)
+    expect(text.split('\n').every((line) => line === line.trimEnd())).toBe(true)
+
+    const nothing: Entity = {
+      ...blank,
+      metadata: { ...blank.metadata, tags: ['', '\u0007'], links: [{ url: '\u009B' }] },
+    }
+    expect(card(nothing)).not.toMatch(/tags|links/)
+  })
+
+  it('prints a link whole, never a shortened address, and says when one is too long to print', () => {
+    // A cut URL is a different URL, and a terminal that makes it a link
+    // follows the wrong one.
+    const long = `https://example.org/${'a'.repeat(400)}`
+    const huge = `https://example.org/${'b'.repeat(ENTITY_LIMITS.url)}`
+    const linked: Entity = {
+      ...artistWeb,
+      metadata: {
+        ...artistWeb.metadata,
+        links: [
+          { url: long, title: 'Long' },
+          { url: huge, title: 'Huge' },
+        ],
+      },
+    }
+    const text = card(linked)
+    expect(text).toContain(`\n  Long — ${long}\n`)
+    expect(text).toContain(
+      `\n  Huge — (a URL of ${String([...huge].length)} characters, too long to print)\n`,
+    )
+    expect(text).not.toContain('bbbb')
+  })
+
+  it('removes everything a terminal would obey from what the file wrote', () => {
+    // Every string on the card came from a repository file, and a terminal
+    // obeys what is in it: a clear-screen, a clipboard write (OSC 52), an
+    // 8-bit CSI, a carriage return over the line already printed.
+    const hostile: Entity = {
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Component',
+      metadata: {
+        name: 'artist-web',
+        description: 'great\u001B[2J\u001B[H+++ b/fake.yml\r0 violations',
+        annotations: { 'company.fr/env': 'prod\u001B[31m' },
+        tags: ['java\u001B]52;c;ZXZpbA==\u0007', 're\u009Bd'],
+        links: [
+          { url: 'https://x.example/\u001B]8;;https://evil.example\u0007', title: 'Ad\u0085min\u001B[1m' },
+        ],
+      },
+      spec: {
+        type: 'web\u001B[2Jsite',
+        lifecycle: 'production',
+        owner: 'group:default/tiger',
+        system: 'system:default/public-websites',
+      },
+    }
+    const text = card(hostile)
+    // eslint-disable-next-line no-control-regex -- asserting their absence
+    expect(text).not.toMatch(/[\u0000-\u0009\u000B-\u001F\u007F-\u009F]/)
+    expect(text).toContain('  type         website')
+    expect(text).toContain('  environment  prod')
+    expect(text).toContain('  description  great+++ b/fake.yml0 violations')
+    expect(text).toContain('  tags         java, red')
+    expect(text).toContain('  Admin — https://x.example/')
+    expect(text.split('\n').every((line) => line === line.trimEnd())).toBe(true)
   })
 })
 

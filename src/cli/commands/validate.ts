@@ -1,6 +1,7 @@
 import { checkRepository, type Violation } from '../../core/validate/rules.js'
 import { readRepository } from '../../context/iac-fs/snapshot.js'
 import type { RepositorySnapshot } from '../../core/validate/rules.js'
+import { oneLine } from '../render/plain.js'
 import type { CommandResult } from './result.js'
 
 /**
@@ -22,8 +23,12 @@ export async function runValidate(
   const entities = snapshot.files.reduce((total, file) => total + file.entities.length, 0)
   const errors = violations.filter((violation) => violation.severity === 'error')
 
+  // A path and a message both carry what a file wrote — its name, a key the
+  // schema faulted — and a CI log is a terminal too. Cleaned and flattened,
+  // never cut: the line is what somebody fixes the file from.
+  const whole = (text: string): string => oneLine(text, Number.POSITIVE_INFINITY)
   const line = (violation: Violation): string =>
-    `${violation.severity.padEnd(7)} ${violation.file}: ${violation.message}`
+    `${violation.severity.padEnd(7)} ${whole(violation.file)}: ${whole(violation.message)}`
 
   const summary = `${entities} entities in ${snapshot.files.length} files, ${errors.length} violations`
 

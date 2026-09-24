@@ -14,12 +14,21 @@ and nothing here can be steered by what it validates. Hence the property tests r
   is closed, so what is unmodelled cannot be requested, and an `{ unknown }` is never filled in.
   `entitySchema` reads Backstage's short references (`owner: team-a`) and yields the full
   `kind:namespace/name`, filling in only Backstage's own defaults; a proposal takes the full
-  form only.
+  form only. It also keeps what an entity says it is — `metadata.links` and `spec.system`
+  beside the description and tags — so `show` can print them; no proposal schema has a field
+  for either. A system is refused only where Backstage refuses it (not a non-empty string):
+  one these rules read is written in full (`system:<namespace>/<name>`, System the default
+  kind), and one they cannot — an upper-case name, a namespace that cannot complete it — is
+  kept as written, because a field that is only printed must not take its entity out of
+  every command. Before it was read, zod stripped it, so a system that is not a string now
+  rejects an entity that read before: one the catalogue itself would refuse.
 - **Entity paths** — `computeEntityPath`, `resolveEntityPath`, `assertInsideRepo`,
   `PathEscapeError`. The engine, not the model, decides where a file lands, and containment is
   re-checked here rather than trusted to whichever caller eventually writes.
 - **The serialiser** — `serializeEntity`, `parseEntity`. The one place a structure becomes YAML,
   so `no` or `123` survive as strings for the YAML 1.1 readers that also read the repository.
+  It writes links and a system when an entity read from a file carries them, so that entity
+  round-trips; the engine's own writes never do.
   `parseDocuments` is the matching one place YAML becomes entities, for `context/`'s readers
   and for the bytes a plan would write: a document the parser faults is a rejection, never
   the value `toJS()` would have guessed. It sorts before it judges: a Component or Resource

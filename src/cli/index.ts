@@ -25,7 +25,7 @@ import { isForgeHandle } from '../scaffold/codeowners.js'
 import { VERSION } from '../core/index.js'
 import type { LlmClient } from '../llm/client.js'
 import type { CommandResult } from './commands/result.js'
-import { plain } from './render/plain.js'
+import { oneLine, plain } from './render/plain.js'
 import { RepositoryArgumentError, declarationsRoot, type DeclarationsCommand } from './repository.js'
 
 /**
@@ -402,18 +402,8 @@ export function renderEvent(event: AgentEvent): string | undefined {
   }
 }
 
-/** Bounded and flattened: one event is one line, and a reason is model-authored. */
-/**
- * One line of a reason, for a stream a terminal reads.
- *
- * `plain` first, then the flatten: stripping after truncating would leave the
- * front half of a sequence whose final byte the 200-character cut removed, and
- * a half-written CSI is still a CSI to whatever renders the line next.
- */
-const oneLine = (reason: string): string => {
-  const flat = plain(reason).replace(/\s+/g, ' ').trim()
-  return flat.length > 200 ? `${flat.slice(0, 200)}…` : flat
-}
+/** One line with nothing a terminal obeys, and nothing cut. */
+const whole = (text: string): string => oneLine(text, Number.POSITIVE_INFINITY)
 
 const progress =
   (err: (chunk: string) => void) =>
@@ -548,8 +538,11 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   const { entities, rejected, ignored } = await provider.load()
   // Reported, never dropped in silence: that silent drop is the catalogue
   // behaviour this tool exists to compensate for (design 4.4).
+  // Both halves are the file's own words: a path is a name somebody chose, and
+  // a reason quotes the key it faults. Flattened and cleaned, never cut — the
+  // line is how the user finds the file and what to fix in it.
   for (const rejection of rejected) {
-    err(`skipped ${rejection.source}: ${rejection.reason}\n`)
+    err(`skipped ${whole(rejection.source)}: ${whole(rejection.reason)}\n`)
   }
   if (ignored.length > 0) err(`${notLoaded(ignored)}\n`)
   // A repository that declares nothing answers every question with a miss —

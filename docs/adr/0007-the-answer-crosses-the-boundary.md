@@ -46,6 +46,14 @@ consequence above still holds word for word, because no model-authored text reac
 What the model could still get wrong is the choice — an overview for a question that wanted
 entities — and that prints a true description of the wrong thing, never a false one.
 
+The overview also prints prose, and none of it is the model's: the descriptions a few
+entities give of themselves, as their repository files wrote them (`metadata.description`),
+beside the systems and tags those files declare. They are the repository's words, cleaned of
+anything a terminal obeys and cut to one bounded line each (`cli/render/overview.ts`), so the
+consequence still holds as stated — no model-authored text reaches stdout. A description can
+be wrong, as any declaration can; it is printed as what the file says, never as what the tool
+concluded.
+
 ### Amended — 2026-09-24: extra fields are discarded, not refused
 
 The overview was first a `strictObject`, so an overview arriving with a `summary` was refused

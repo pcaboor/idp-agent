@@ -161,6 +161,13 @@ describe('overviewOf over the demo SI', () => {
     expect(reached.every(({ services, rights }) => services + rights > 0)).toBe(true)
   })
 
+  it('counts every entity under no system, and describes none: the demo SI writes neither', async () => {
+    const overview = await demo()
+    expect(overview.systems).toEqual({ declared: [], none: RAW.length })
+    expect(overview.tags).toEqual([])
+    expect(overview.described).toEqual([])
+  })
+
   it('reports no dangling reference, nothing set aside and nothing rejected', async () => {
     const overview = await demo()
     expect(overview.dangling).toEqual([])
@@ -194,6 +201,9 @@ describe('overviewOf at the edges', () => {
       types: [],
       environments: { declared: [], undeclared: 0 },
       owners: [],
+      systems: { declared: [], none: 0 },
+      tags: [],
+      described: [],
       rights: { total: 0, read: 0, readwrite: 0, undeclared: 0, unlevelled: 0 },
       reached: [],
       dangling: [],
@@ -275,6 +285,72 @@ describe('overviewOf at the edges', () => {
       unkinded: 1,
     })
     expect(overview.rejected).toBe(2)
+  })
+
+  it('counts entities by system, and the ones in none apart', () => {
+    const inSystem = (name: string, system?: string): Entity => {
+      const base = resource(name, 'database')
+      return system === undefined ? base : { ...base, spec: { ...base.spec, system } } as Entity
+    }
+    const overview = overviewOf(
+      EntityGraph.from([
+        inSystem('a', 'system:default/billing'),
+        inSystem('b', 'system:default/web'),
+        inSystem('c', 'system:default/web'),
+        inSystem('d'),
+      ]),
+      { ignored: [], rejected: 0 },
+    )
+    expect(overview.systems).toEqual({
+      declared: [
+        { name: 'system:default/web', count: 2 },
+        { name: 'system:default/billing', count: 1 },
+      ],
+      none: 1,
+    })
+  })
+
+  it('counts each tag once per entity that carries it', () => {
+    const tagged = (name: string, tags: string[]): Entity => ({
+      ...resource(name, 'database'),
+      metadata: { name, annotations: {}, tags },
+    })
+    const overview = overviewOf(
+      EntityGraph.from([
+        tagged('a', ['java', 'java', 'web']),
+        tagged('b', ['java']),
+        tagged('c', []),
+      ]),
+      { ignored: [], rejected: 0 },
+    )
+    expect(overview.tags).toEqual([
+      { name: 'java', count: 2 },
+      { name: 'web', count: 1 },
+    ])
+  })
+
+  it('lists every entity that describes itself, by reference, in its own words', () => {
+    const described = (name: string, description?: string): Entity => ({
+      ...resource(name, 'database'),
+      metadata: {
+        name,
+        annotations: {},
+        ...(description === undefined ? {} : { description }),
+      },
+    })
+    const graph = [
+      described('zeta-db', 'The ledger'),
+      described('alpha-db', 'Orders, by customer'),
+      described('blank-db', '   '),
+      described('silent-db'),
+    ]
+    const left = overviewOf(EntityGraph.from(graph), { ignored: [], rejected: 0 })
+    const right = overviewOf(EntityGraph.from([...graph].reverse()), { ignored: [], rejected: 0 })
+    expect(left.described).toEqual([
+      { ref: 'resource:default/alpha-db', description: 'Orders, by customer' },
+      { ref: 'resource:default/zeta-db', description: 'The ledger' },
+    ])
+    expect(right.described).toEqual(left.described)
   })
 
   it('breaks a tie by name, so the same graph always reads the same', () => {
