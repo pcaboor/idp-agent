@@ -79,6 +79,56 @@ describe('serializeEntity', () => {
     expect(serializeEntity(unlevelled)).not.toContain('  access:')
   })
 
+  it("writes an entity's links and system where Backstage's examples put them", () => {
+    // Only an entity READ from a repository carries them — a proposal cannot —
+    // so the engine's own writes never do. Written, they round-trip.
+    const described: Entity = {
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Component',
+      metadata: {
+        name: 'artist-web',
+        description: 'The place to be, for great artists',
+        annotations: {},
+        tags: ['java'],
+        links: [{ url: 'https://admin.example-org.com', title: 'Admin Dashboard' }],
+      },
+      spec: {
+        type: 'website',
+        lifecycle: 'production',
+        owner: 'group:default/artist-relations-team',
+        system: 'system:default/public-websites',
+      },
+    }
+    expect(serializeEntity(described)).toBe(
+      [
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: Component',
+        'metadata:',
+        '  name: artist-web',
+        '  description: The place to be, for great artists',
+        '  tags:',
+        '    - java',
+        '  links:',
+        '    - url: https://admin.example-org.com',
+        '      title: Admin Dashboard',
+        'spec:',
+        '  type: website',
+        '  lifecycle: production',
+        '  owner: group:default/artist-relations-team',
+        '  system: system:default/public-websites',
+        '',
+      ].join('\n'),
+    )
+    expect(parseEntity(serializeEntity(described))).toEqual(described)
+
+    const resource: Entity = { ...grant, spec: { ...grant.spec, system: 'system:default/billing' } }
+    const lines = serializeEntity(resource).split('\n')
+    expect(lines.indexOf('  system: system:default/billing')).toBe(
+      lines.indexOf('  owner: group:default/tiger') + 1,
+    )
+    expect(parseEntity(serializeEntity(resource))).toEqual(resource)
+  })
+
   it('never folds a long value across lines, which would ruin the diff', () => {
     const long = withAnnotations({ note: 'word '.repeat(60).trim() })
     const valueLines = serializeEntity(long)

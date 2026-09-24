@@ -15,11 +15,31 @@ and return a `CommandResult` — `text` plus `found`. No I/O and no process, so
 
 **Rendering.** `renderTable(headers, rows)` and `renderEntityDetail(graph, entity)` take
 data and return a string. Pure functions, asserted directly in `tests/unit/render.test.ts`.
+`show`'s card says what an entity is as well as how it is typed and owned: a one-line
+description, its system, its tags and a short `links` section, each omitted when the entity
+has none or nothing is left of it once cleaned. A description is cut at `ENTITY_LIMITS.text`
+and ends in `…` when it is; a tag is cut at Backstage's 63 (`TAG_LENGTH`); the tags and the
+links stop at a count, and what was left out is counted. A URL is never cut — a shortened
+address is a wrong one — and one longer than `ENTITY_LIMITS.url` is replaced by a line saying so.
 `renderOverview(overview, source)` is the text of `ask`'s `overview` answer: the model
 chose it, and every word of it is written here from `context/graph/overview.ts`'s figures —
 a headline naming the demo SI or the repository by its folder, then short sections, each list cut
-at five with the remainder counted (`tests/unit/render-overview.test.ts`). `runAsk` gets the
+at five with the remainder counted (`tests/unit/render-overview.test.ts`). Among them,
+systems, tags, and up to five entities with their description on one line each — what the
+catalogue contains in the words its repository wrote. `runAsk` gets the
 source and what the reader set aside and rejected from `main`, which already has them.
+
+**What reaches a terminal.** On `show`, `graph`, `ask` and `validate`, every string a
+repository file or a model wrote goes through `render/plain.ts` before it is printed: `plain`
+removes what a terminal obeys, and `oneLine` also flattens it to one line, cut at the bound it
+is given. That covers every field on `show`'s card, every cell of `renderTable` (flattened,
+never cut: a value shortened there would be wrong), every label and description in the
+overview, the `skipped <file>: <reason>` lines on stderr and `validate`'s violation lines —
+a reason quotes the key it faults, and a file name is somebody's choice — the event stream,
+and `ask`'s two model-authored lines on stderr: `cannot answer: <reason>` and the
+Supervisor's refusal to classify, which quotes what it said. `plan` and `init` clean what a
+model wrote (`render/plain.ts` says where); what they print from a repository file is not
+covered by this paragraph.
 
 **Exit codes.** `EXIT.ok` is 0, `EXIT.notFound` is 1 (the answer is negative: a filter that
 matches nothing, an ambiguous name, or a repository that does not conform), `EXIT.badUsage` is 2 (the arguments were

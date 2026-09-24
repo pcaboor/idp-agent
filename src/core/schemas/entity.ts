@@ -43,10 +43,11 @@ export const ownerRefSchema = z
  * is `[<kind>:][<namespace>/]<name>`. An omitted namespace is the REFERRING
  * entity's own `metadata.namespace`, itself `default` when absent. An omitted
  * kind defaults per field — Group for `spec.owner` (which may also name a
- * `user:`), none at all for `spec.dependsOn` and `spec.dependencyOf`, where a
- * reference must carry its kind. Kinds and namespaces compare
- * case-insensitively, so both are lower-cased; a NAME is not folded, and one
- * outside the grammar below is refused as it always was.
+ * `user:`), System for `spec.system`, none at all for `spec.dependsOn` and
+ * `spec.dependencyOf`, where a reference must carry its kind. Kinds and
+ * namespaces compare case-insensitively, so both are lower-cased; a NAME is
+ * not folded, and one outside the grammar below is refused as it always was —
+ * except in `spec.system`, which is kept as written (readSystemRefSchema).
  *
  * The character sets are the strict schemas' own, kept as they were, with
  * upper case added to kind and namespace. They may be narrower than
@@ -82,6 +83,18 @@ const readOwnerRefSchema = z
     'expected group:... or user:...',
   )
 
+/**
+ * `spec.system`, which Backstage defaults to the System kind. Backstage's own
+ * schema asks only for a non-empty string, and this tool only prints the
+ * field — it keys nothing and relates nothing on it. So a system is refused
+ * where the catalogue would refuse it and nowhere else: a reference this
+ * grammar reads is written in full (`qualifiedSpec`), and one it does not — an
+ * upper-case name, which Backstage allows and this grammar does not fold — is
+ * kept as the file wrote it. Refusing that would take the entity out of every
+ * command, and turn `validate` red, over a line on `show`'s card.
+ */
+const readSystemRefSchema = z.string().min(1, 'expected a system reference')
+
 /** A reference that would be well-formed, had it named its kind. */
 const kindless = (input: unknown): boolean => {
   const parts = typeof input === 'string' ? SHORT_REF.exec(input) : null
@@ -100,6 +113,7 @@ const readDependencyRefSchema = z
 
 interface RefFields {
   owner: string
+  system?: string | undefined
   dependsOn?: string[] | undefined
   dependencyOf?: string[] | undefined
 }
@@ -143,9 +157,17 @@ function qualifiedSpec<S extends RefFields>(
     }
     return `${kind.toLowerCase()}:${stated.toLowerCase()}/${name}`
   }
+  // In full when it can be, as written when it cannot: see readSystemRefSchema.
+  const system = (ref: string): string => {
+    const [, kind = 'system', stated = own, name] = SHORT_REF.exec(ref) ?? []
+    return name === undefined || stated === undefined
+      ? ref
+      : `${kind.toLowerCase()}:${stated.toLowerCase()}/${name}`
+  }
   return {
     ...spec,
     owner: read(spec.owner, 'group', ['owner']),
+    ...(spec.system !== undefined && { system: system(spec.system) }),
     ...(spec.dependsOn !== undefined && {
       dependsOn: spec.dependsOn.map((ref, at) => read(ref, undefined, ['dependsOn', at])),
     }),
@@ -169,11 +191,24 @@ function qualify<A, M extends { namespace?: unknown }, K, S extends RefFields>(
   }
 }
 
+/**
+ * Backstage's `metadata.links`: where to go to see or run the entity. Read so
+ * `show` can print them, never proposed — a URL is what a reviewer clicks, and
+ * a model has no business choosing one (plan.ts has no field for it).
+ */
+const linkSchema = z.object({
+  url: z.string().min(1),
+  title: z.string().optional(),
+  icon: z.string().optional(),
+  type: z.string().optional(),
+})
+
 export const metadataSchema = z.object({
   name: z.string().regex(NAME_PATTERN, 'invalid Backstage name'),
   description: z.string().optional(),
   annotations: z.record(z.string(), z.string()).default({}),
   tags: z.array(z.string()).optional(),
+  links: z.array(linkSchema).optional(),
 })
 
 const baseFields = {
@@ -194,6 +229,8 @@ export const componentSchema = z
       type: z.string().min(1),
       lifecycle: z.enum(['experimental', 'production', 'deprecated']),
       owner: readOwnerRefSchema,
+      /** Read side only, like the links: no proposal names a system. */
+      system: readSystemRefSchema.optional(),
       dependsOn: z.array(readDependencyRefSchema).optional(),
     }),
   })
@@ -206,6 +243,7 @@ export const resourceSchema = z
     spec: z.object({
       type: z.enum(RESOURCE_TYPE_NAMES),
       owner: readOwnerRefSchema,
+      system: readSystemRefSchema.optional(),
       dependsOn: z.array(readDependencyRefSchema).optional(),
       /** An access carries its consumers; a resource does not (design 4.1). */
       dependencyOf: z.array(readDependencyRefSchema).optional(),

@@ -6,10 +6,12 @@ import { summariseGraph } from '../../context/graph/summary.js'
 import { ENV_ANNOTATION, type EntityGraph } from '../../context/graph/entity-graph.js'
 import { overviewOf, type Unread } from '../../context/graph/overview.js'
 import type { Entity } from '../../core/schemas/entity.js'
+import { QUERY_LIMITS } from '../../core/schemas/query.js'
 import type { EventSink } from '../../agents/events.js'
 import type { LlmClient } from '../../llm/client.js'
 import { renderEntityDetail } from '../render/entity.js'
 import { renderOverview, type OverviewSource } from '../render/overview.js'
+import { oneLine } from '../render/plain.js'
 import { renderTable } from '../render/table.js'
 import type { CommandResult } from './result.js'
 
@@ -22,8 +24,9 @@ export interface AskSource extends OverviewSource, Unread {}
 
 /**
  * The model chooses which question to ask the graph; the engine answers it and
- * prints it. Nothing the model wrote reaches stdout — the one exception, an
- * `unanswerable` reason, goes to stderr (design § 5.2, ADR-0007).
+ * prints it. Nothing the model wrote reaches stdout — the two exceptions, an
+ * `unanswerable` reason and the Supervisor's refusal to classify, go to stderr
+ * as one cleaned, bounded line each (design § 5.2, ADR-0007).
  */
 export async function runAsk(options: {
   graph: EntityGraph
@@ -42,7 +45,8 @@ export async function runAsk(options: {
     classification = await classify(client, { intent, summary: summaryText }, emit)
   } catch (error) {
     if (!(error instanceof ClassificationError)) throw error
-    err(`${error.message}\n`)
+    // It quotes what the Supervisor said instead of a word: the model's text.
+    err(`${oneLine(error.message)}\n`)
     return { text: '', found: false, unsupported: true }
   }
 
@@ -62,7 +66,10 @@ export async function runAsk(options: {
 
   switch (answer.outcome) {
     case 'unanswerable':
-      err(`cannot answer: ${answer.reason}\n`)
+      // The model's own prose (review finding security-4): cleaned, and kept
+      // to the one line a reason is, so it cannot draw anything under it. The
+      // bound is the schema's, so an honest reason is never cut here.
+      err(`cannot answer: ${oneLine(answer.reason, QUERY_LIMITS.maxReason)}\n`)
       return { text: '', found: false, unsupported: true }
     case 'nothing':
       return { text: 'No entity matches that question.', found: false }

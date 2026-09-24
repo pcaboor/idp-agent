@@ -14,8 +14,13 @@
  * reading, which is the whole basis on which they decide to merge.
  *
  * So every string a model wrote passes through here before it reaches a
- * terminal. Four call sites: `renderQuestions` and `renderStopped` on stdout,
- * `oneLine` on the event stream, `promptOnTerminal` on the prompt itself.
+ * terminal: `renderQuestions` and `renderStopped` on stdout, `oneLine` on the
+ * event stream and on `ask`'s stderr, `promptOnTerminal` on the prompt itself.
+ * So does every string a repository file wrote, wherever `show`, `ask`,
+ * `graph` and `validate` print one — the card, a table cell, the overview, a
+ * `skipped` line, a violation: a description, a tag, a link, a file name and
+ * a key a reason quotes are as much a file's words as a free-text type is.
+ * `plan` and `init` are not in that list.
  *
  * What this does NOT cover, and is worth knowing:
  *
@@ -70,4 +75,19 @@ const CONTROL =
 
 export function plain(text: string): string {
   return text.replace(SEQUENCE, '').replace(CONTROL, '')
+}
+
+/**
+ * Text this tool did not write, as one line of at most `max` characters: an
+ * event on the stream, a model's reason on stderr, a description on `show`.
+ *
+ * `plain` first, then the flatten: stripping after truncating would leave the
+ * front half of a sequence whose final byte the cut removed, and a
+ * half-written CSI is still a CSI to whatever renders the line next. A cut
+ * says so with an ellipsis — a line that stops without saying so is read as
+ * complete. Counted in code points, so a cut never splits a surrogate pair.
+ */
+export function oneLine(text: string, max = 200): string {
+  const flat = [...plain(text).replace(/\s+/g, ' ').trim()]
+  return flat.length > max ? `${flat.slice(0, max).join('')}…` : flat.join('')
 }

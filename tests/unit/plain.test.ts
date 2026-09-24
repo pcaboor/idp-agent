@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { plain } from '../../src/cli/render/plain.js'
+import { oneLine, plain } from '../../src/cli/render/plain.js'
 
 /**
  * Written as escapes throughout, never as literal control bytes: a file
@@ -62,5 +62,26 @@ describe('plain', () => {
   it('is idempotent, so applying it twice is never a bug', () => {
     const once = plain(`${ESC}[2Jx`)
     expect(plain(once)).toBe(once)
+  })
+})
+
+describe('oneLine', () => {
+  it('flattens every run of whitespace to one space, and trims the ends', () => {
+    expect(oneLine('  The place to be,\n\tfor great   artists \n')).toBe(
+      'The place to be, for great artists',
+    )
+  })
+
+  it('removes what a terminal obeys before it cuts, so no half sequence survives', () => {
+    const text = `${'a'.repeat(9)}${ESC}[31mred`
+    expect(oneLine(text, 10)).toBe('aaaaaaaaar…')
+    expect(oneLine(`${ESC}]52;c;ZXZpbA==\u0007copied`)).toBe('copied')
+  })
+
+  it('cuts at the bound it is given, 200 by default, and says it cut', () => {
+    expect(oneLine('x'.repeat(200))).toBe('x'.repeat(200))
+    expect(oneLine('x'.repeat(201))).toBe(`${'x'.repeat(200)}…`)
+    expect(oneLine('abcdef', 3)).toBe('abc…')
+    expect(oneLine('abc', 3)).toBe('abc')
   })
 })

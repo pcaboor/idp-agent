@@ -39,6 +39,12 @@ const STRINGIFY_OPTIONS = {
  * Key order is fixed by insertion order, not by sorting: a reader expects
  * apiVersion, kind, metadata, spec, and a stable order keeps diffs to the lines
  * that actually changed.
+ *
+ * `links` and `system` are written where Backstage's own examples put them,
+ * after the tags and after the owner, so an entity read from a repository
+ * round-trips. The engine's own writes never carry either — a proposal has no
+ * field for them (plan.ts) — so nothing this tool writes changed when they
+ * were added.
  */
 function ordered(entity: Entity): Record<string, unknown> {
   const metadata: Record<string, unknown> = { name: entity.metadata.name }
@@ -49,6 +55,16 @@ function ordered(entity: Entity): Record<string, unknown> {
     metadata.annotations = entity.metadata.annotations
   }
   if (entity.metadata.tags !== undefined) metadata.tags = entity.metadata.tags
+  if (entity.metadata.links !== undefined) {
+    // Rebuilt rather than passed through, so the order is this function's and
+    // an absent title writes no key.
+    metadata.links = entity.metadata.links.map(({ url, title, icon, type }) => ({
+      url,
+      ...(title !== undefined && { title }),
+      ...(icon !== undefined && { icon }),
+      ...(type !== undefined && { type }),
+    }))
+  }
 
   const spec: Record<string, unknown> = { type: entity.spec.type }
   if (entity.kind === 'Component') spec.lifecycle = entity.spec.lifecycle
@@ -60,6 +76,7 @@ function ordered(entity: Entity): Record<string, unknown> {
     spec.access = entity.spec.access
   }
   spec.owner = entity.spec.owner
+  if (entity.spec.system !== undefined) spec.system = entity.spec.system
   if (entity.spec.dependsOn !== undefined) spec.dependsOn = entity.spec.dependsOn
   if (entity.kind === 'Resource' && entity.spec.dependencyOf !== undefined) {
     spec.dependencyOf = entity.spec.dependencyOf

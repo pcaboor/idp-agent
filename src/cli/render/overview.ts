@@ -1,5 +1,6 @@
 import type { Overview, Tally } from '../../context/graph/overview.js'
-import { plain } from './plain.js'
+import { TAG_LENGTH } from './entity.js'
+import { oneLine } from './plain.js'
 
 /**
  * The `overview` answer, as a reader sees it. The model chose it; every word
@@ -10,9 +11,12 @@ import { plain } from './plain.js'
  * the remainder counted — a list that stops without saying so is read as
  * complete. Names come from files, so each is flattened like any other text
  * this tool did not write: a Component's `spec.type` and a set-aside kind are
- * free strings, and a terminal obeys what is in them.
+ * free strings, and a terminal obeys what is in them. A label is cut at
+ * `label` — one long name would otherwise pad every row of its section to its
+ * width — and a tag at Backstage's own 63, as `show` cuts it; either cut ends
+ * in `…`.
  */
-export const OVERVIEW_LIMITS = { rows: 5 } as const
+export const OVERVIEW_LIMITS = { rows: 5, label: 100, description: 80 } as const
 
 /**
  * Where the overview was read from. `repo` is the repository's name — its
@@ -28,13 +32,25 @@ type Entry = readonly [label: string, value: string, unit?: string]
 
 const INDENT = '  '
 
-const cell = (text: string): string => plain(text).replace(/\s+/g, ' ').trim()
+/** Flattened and cleaned, not cut: a headline's path and a reference are read whole. */
+const cell = (text: string): string => oneLine(text, Number.POSITIVE_INFINITY)
+
+/** A row's label: cleaned, and cut at `max`. */
+const label = (text: string, max: number = OVERVIEW_LIMITS.label): string => oneLine(text, max)
 
 const plural = (count: number, one: string, many: string): string =>
   `${String(count)} ${count === 1 ? one : many}`
 
-const tallied = (tallies: readonly Tally[]): Entry[] =>
-  tallies.map(({ name, count }) => [name, String(count)] as const)
+const tallied = (tallies: readonly Tally[], max: number = OVERVIEW_LIMITS.label): Entry[] =>
+  tallies.map(({ name, count }) => [label(name, max), String(count)] as const)
+
+/**
+ * A tag or a system that is nothing once cleaned — blank, or only what a
+ * terminal obeys — names nothing, and a row for it would be an empty label.
+ * Judged after cleaning, as `show` judges it.
+ */
+const named = (tallies: readonly Tally[]): Tally[] =>
+  tallies.filter(({ name }) => label(name) !== '')
 
 /**
  * Aligned `label  value` lines: the first few entries, then how many were cut,
@@ -45,14 +61,14 @@ const tallied = (tallies: readonly Tally[]): Entry[] =>
 function rows(entries: readonly Entry[], pinned?: Entry): string[] {
   const shown = entries
     .slice(0, OVERVIEW_LIMITS.rows)
-    .map(([label, value, unit]): Entry =>
-      unit === undefined ? [cell(label), value] : [cell(label), value, unit],
+    .map(([name, value, unit]): Entry =>
+      unit === undefined ? [label(name), value] : [label(name), value, unit],
     )
   const measured = pinned === undefined ? shown : [...shown, pinned]
-  const labels = Math.max(...measured.map(([label]) => label.length))
+  const labels = Math.max(...measured.map(([name]) => name.length))
   const values = Math.max(...measured.map(([, value]) => value.length))
-  const line = ([label, value, unit]: Entry): string =>
-    `${INDENT}${label.padEnd(labels)}  ${value.padStart(values)}${unit === undefined ? '' : ` ${unit}`}`
+  const line = ([name, value, unit]: Entry): string =>
+    `${INDENT}${name.padEnd(labels)}  ${value.padStart(values)}${unit === undefined ? '' : ` ${unit}`}`
 
   const lines = shown.map(line)
   const hidden = entries.length - shown.length
@@ -62,12 +78,12 @@ function rows(entries: readonly Entry[], pinned?: Entry): string[] {
 }
 
 export function renderOverview(overview: Overview, source: OverviewSource): string {
-  const label =
+  const from =
     source.repo === undefined
       ? 'the demo SI, a fictional company'
       : `the repository ${cell(source.repo)}`
   const blocks: string[][] = [
-    [`Overview of ${label}: ${plural(overview.entities, 'entity', 'entities')}`],
+    [`Overview of ${from}: ${plural(overview.entities, 'entity', 'entities')}`],
   ]
 
   if (overview.entities === 0) {
@@ -85,6 +101,9 @@ export function renderOverview(overview: Overview, source: OverviewSource): stri
         ),
       ],
       ['owners', ...rows(tallied(overview.owners))],
+      systems(overview.systems),
+      tagged(named(overview.tags)),
+      described(overview.described, overview.entities),
       rights(overview.rights),
       reached(overview.reached),
       dangling(overview.dangling),
@@ -111,6 +130,50 @@ export function renderOverview(overview: Overview, source: OverviewSource): stri
   }
 
   return blocks.map((block) => block.join('\n')).join('\n\n')
+}
+
+/**
+ * `(none)` pinned like `(undeclared)` is under environments: the entities in
+ * no system are a fact about the catalogue, not one more system competing for
+ * a place. When no entity declares one, one line says so rather than a list
+ * whose only row is the absence.
+ */
+function systems({ declared, none }: Overview['systems']): string[] {
+  const shown = named(declared)
+  // An entity whose system names nothing once cleaned is in none a reader can see.
+  const total = (tallies: readonly Tally[]): number =>
+    tallies.reduce((sum, { count }) => sum + count, 0)
+  const outside = none + total(declared) - total(shown)
+  if (shown.length === 0) return ['systems  none declared']
+  return ['systems', ...rows(tallied(shown), outside > 0 ? ['(none)', String(outside)] : undefined)]
+}
+
+/** Cut at Backstage's 63, as `show` cuts a tag. */
+function tagged(tags: readonly Tally[]): string[] {
+  if (tags.length === 0) return ['tags  none']
+  return ['tags', ...rows(tallied(tags, TAG_LENGTH))]
+}
+
+/**
+ * What a few entities are, in the words their own files wrote — the one part
+ * of the overview that is prose, and not the model's. One line each, cut at
+ * `OVERVIEW_LIMITS.description`, and the remainder counted.
+ */
+function described(all: Overview['described'], total: number): string[] {
+  // Judged once cleaned: a description that is only a clear-screen describes
+  // nothing, and counting it would claim an entity says what it is.
+  const entries = all.flatMap(({ ref, description }) => {
+    const text = oneLine(description, OVERVIEW_LIMITS.description)
+    return text === '' ? [] : [[cell(ref), text] as const]
+  })
+  if (entries.length === 0) return ['entities  none carries a description']
+  const shown = entries.slice(0, OVERVIEW_LIMITS.rows)
+  const width = Math.max(...shown.map(([ref]) => ref.length))
+  const lines = shown.map(([ref, text]) => `${INDENT}${ref.padEnd(width)}  ${text}`)
+  const hidden = entries.length - shown.length
+  if (hidden > 0) lines.push(`${INDENT}+${String(hidden)} more`)
+  const verb = entries.length === 1 ? 'carries' : 'carry'
+  return [`entities  ${String(entries.length)} of ${String(total)} ${verb} a description`, ...lines]
 }
 
 function rights(counts: Overview['rights']): string[] {
