@@ -262,6 +262,7 @@ describe('a refused read, on the terminal', () => {
     expect(
       renderEvent({
         type: 'tool:result',
+        id: 'c1',
         name: 'search_entities',
         rows: 0,
         truncated: 0,
@@ -273,6 +274,7 @@ describe('a refused read, on the terminal', () => {
   it('keeps it to one plain, bounded line: the value in it is the model\'s', () => {
     const line = renderEvent({
       type: 'tool:result',
+      id: 'c1',
       name: 'search_entities',
       rows: 0,
       truncated: 0,
@@ -286,7 +288,7 @@ describe('a refused read, on the terminal', () => {
   })
 
   it('still prints the row count for a read that answered, empty or not', () => {
-    expect(renderEvent({ type: 'tool:result', name: 'search_entities', rows: 0, truncated: 0 })).toBe(
+    expect(renderEvent({ type: 'tool:result', id: 'c1', name: 'search_entities', rows: 0, truncated: 0 })).toBe(
       '  ← 0 row(s)',
     )
   })

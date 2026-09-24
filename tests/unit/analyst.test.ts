@@ -299,7 +299,22 @@ describe('answerQuestion', () => {
       'tool:call',
       'tool:result',
       'answer:ready',
+      'agent:end',
     ])
+  })
+
+  it('pairs a tool call with its result by the id the model gave the call', async () => {
+    const client = scripted([
+      turnCalling('search_entities', { type: 'database' }),
+      turnCalling('answer', { outcome: 'entities', refs: [A] }),
+    ])
+    const { events, emit } = collect()
+    await answerQuestion(client, fakeTools([A]), INPUT, emit)
+    const ids = events.flatMap((event) =>
+      event.type === 'tool:call' || event.type === 'tool:result' ? [event.id] : [],
+    )
+    // `turnCalling` gives every call the id c1.
+    expect(ids).toEqual(['c1', 'c1'])
   })
 
   it('emits a refusal when it rejects an invented reference', async () => {

@@ -3,6 +3,7 @@ import { reasonOf } from '../core/schemas/reject.js'
 import type { LlmClient, ModelToolCall, ModelToolSpec, Transcript } from '../llm/client.js'
 import type { EventSink } from './events.js'
 import { MAX_REPAIRS, takeTurn } from './forced-turn.js'
+import { asAgent } from './lifetime.js'
 import type { ToolOutcome } from './tools/graph-tools.js'
 import type { ProjectFacts } from './tools/project-tools.js'
 import { PROPOSE_TOOL, buildProposeTool } from './tools/propose-tool.js'
@@ -147,8 +148,19 @@ export async function draftPlan(
   input: { intent: string; facts: ArchitectFacts; summary: string; vocabulary: string },
   emit: EventSink,
 ): Promise<ArchitectOutcome> {
-  emit({ type: 'agent:start', agent: 'architect' })
+  return asAgent('architect', emit, () => draftFromIntent(client, tools, input, emit))
+}
 
+async function draftFromIntent(
+  client: LlmClient,
+  tools: {
+    specs: ModelToolSpec[]
+    run(call: ModelToolCall): ToolOutcome
+    witnessed: ReadonlySet<string>
+  },
+  input: { intent: string; facts: ArchitectFacts; summary: string; vocabulary: string },
+  emit: EventSink,
+): Promise<ArchitectOutcome> {
   // Built here and not handed in: `taken()` is the only way the plan comes back,
   // and a propose tool the caller also holds is a second reader of a buffer that
   // is supposed to cross the boundary once.
@@ -251,7 +263,7 @@ export async function draftPlan(
       // The proposal is the terminal channel, not a read: it ends the draft or
       // is refused, never one more tool call in the stream.
       const reads = call.name !== PROPOSE_TOOL
-      if (reads) emit({ type: 'tool:call', name: call.name, args: call.args })
+      if (reads) emit({ type: 'tool:call', id: call.id, name: call.name, args: call.args })
       // Routed, not merged into one bag: the read tools witness what the engine
       // returned and the propose tool witnesses nothing, and a single `run` that
       // could do either would be one edit away from blurring that.
@@ -273,6 +285,7 @@ export async function draftPlan(
       if (reads) {
         emit({
           type: 'tool:result',
+          id: call.id,
           name: call.name,
           rows: outcome.rows,
           truncated: outcome.truncated,

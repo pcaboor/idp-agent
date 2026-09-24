@@ -552,13 +552,15 @@ describe('draftPlan', () => {
         'tool:result',
       ]).flat(),
       'refused',
+      'agent:end',
     ])
     expect(events.at(0)).toEqual({ type: 'agent:start', agent: 'architect' })
-    expect(events.at(-1)).toEqual({
+    expect(events.at(-2)).toEqual({
       type: 'refused',
       agent: 'architect',
       reason: expect.any(String),
     })
+    expect(events.at(-1)).toEqual({ type: 'agent:end', agent: 'architect', threw: false })
   })
 
   it('gives up early when the reads keep returning nothing', async () => {
@@ -605,6 +607,7 @@ describe('draftPlan', () => {
       'tool:call',
       'tool:result',
       'plan:ready',
+      'agent:end',
     ])
     const ready = events.find((event) => event.type === 'plan:ready')
     expect(ready).toEqual({ type: 'plan:ready', operations: 1 })
@@ -782,7 +785,8 @@ describe('a run that stops is a run that says it stopped', () => {
 
     await expect(draftPlan(exploding, readTools(), INPUT, emit)).rejects.toThrow('502')
 
-    expect(events.map((event) => event.type)).toEqual(['agent:start', 'stopped'])
+    expect(events.map((event) => event.type)).toEqual(['agent:start', 'stopped', 'agent:end'])
+    expect(events.at(-1)).toEqual({ type: 'agent:end', agent: 'architect', threw: true })
     const stop = events.find((event) => event.type === 'stopped')
     expect(stop && 'reason' in stop ? stop.reason : '').toContain('502')
   })

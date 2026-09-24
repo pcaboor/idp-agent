@@ -1,5 +1,6 @@
 import type { LlmClient } from '../llm/client.js'
 import type { EventSink } from './events.js'
+import { asAgent } from './lifetime.js'
 
 export class ClassificationError extends Error {}
 
@@ -23,8 +24,14 @@ export async function classify(
   input: { intent: string; summary: string },
   emit: EventSink,
 ): Promise<Classification> {
-  emit({ type: 'agent:start', agent: 'supervisor' })
+  return asAgent('supervisor', emit, () => classifyRequest(client, input, emit))
+}
 
+async function classifyRequest(
+  client: LlmClient,
+  input: { intent: string; summary: string },
+  emit: EventSink,
+): Promise<Classification> {
   const result = await client.generate({
     agent: 'supervisor',
     system: SYSTEM,

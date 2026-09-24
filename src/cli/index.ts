@@ -609,6 +609,14 @@ export function renderEvent(event: AgentEvent): string | undefined {
     case 'ask':
     case 'answer:ready':
       return undefined
+    case 'agent:end':
+    case 'attempt:start':
+    case 'attempt:end':
+    case 'gate:passed':
+      // Structure, not news. They bound what the lines above already say — an
+      // agent's `·`, an attempt's `!` — and a trace needs them to draw spans;
+      // a reader of stderr does not need four more lines per attempt.
+      return undefined
     default: {
       // A new event with no line is a compile error rather than a silent gap.
       const exhaustive: never = event

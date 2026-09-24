@@ -14,14 +14,25 @@ import type { Gate } from './repair.js'
  */
 export type AgentEvent =
   | { type: 'agent:start'; agent: AgentName }
+  /**
+   * The agent returned or threw. Emitted by `asAgent` on every path out, so
+   * an agent that began always ends on the stream; `threw` says which path.
+   * A trace closes the agent's span on it (src/trace/, ADR-0009) rather than
+   * on whatever event happens to come next.
+   */
+  | { type: 'agent:end'; agent: AgentName; threw: boolean }
   | { type: 'classified'; classification: 'MUTATION' | 'QUESTION' }
-  | { type: 'tool:call'; name: string; args: unknown }
+  /**
+   * `id` is the model's own id for the call, and the result carries the same
+   * one: a call and its result are paired by identity, never by order.
+   */
+  | { type: 'tool:call'; id: string; name: string; args: unknown }
   /**
    * `error` is there when the tool refused the call or answered with an error:
    * a refused call reads no rows, and a renderer given only the count would
    * draw it as a search that ran and found nothing.
    */
-  | { type: 'tool:result'; name: string; rows: number; truncated: number; error?: string }
+  | { type: 'tool:result'; id: string; name: string; rows: number; truncated: number; error?: string }
   /**
    * The Analyst's answer, signed. `outcome` is there because `refs` alone
    * cannot tell an overview from an empty result — both carry none — and a
@@ -34,10 +45,10 @@ export type AgentEvent =
    * out, the provider failed — and the error goes on to the caller.
    *
    * Not `refused`: nothing was judged, and a line saying the Inspector refused
-   * is read as the Inspector having an opinion. It closes `agent:start` all the
-   * same, and carries the error's message for a consumer that shows no more
-   * than the stream. The CLI prints that error itself as the run's last line,
-   * which is why its renderer leaves the reason out.
+   * is read as the Inspector having an opinion. `agent:end` is what closes
+   * it, and `stopped` says why: it carries the error's message for a consumer
+   * that shows no more than the stream. The CLI prints that error itself as
+   * the run's last line, which is why its renderer leaves the reason out.
    */
   | { type: 'stopped'; agent: AgentName; reason: string }
   /**
@@ -61,6 +72,16 @@ export type AgentEvent =
    * attached.
    */
   | { type: 'repair'; attempt: 1 | 2 | 3; gate: Gate; reason: string }
+  /**
+   * The bounds of one attempt of the repair loop, and every gate it passed.
+   * `repair()` alone emits them, beside the `repair` event that already
+   * reports a refusal — a `gate` event carrying `passed: false` would have
+   * stated that one fact twice. An attempt that passes every gate used to
+   * leave nothing on the stream at all.
+   */
+  | { type: 'attempt:start'; attempt: 1 | 2 | 3 }
+  | { type: 'attempt:end'; attempt: 1 | 2 | 3 }
+  | { type: 'gate:passed'; attempt: 1 | 2 | 3; gate: Gate }
   /**
    * An agent handing its own malformed terminal call back to the model.
    *

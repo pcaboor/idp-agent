@@ -566,17 +566,24 @@ The harness renders nothing. It emits:
 type AgentName = 'supervisor' | 'analyst' | 'inspector' | 'architect' | 'reviewer'
 
 type AgentEvent =
-  | { type: 'agent:start';  agent: AgentName }
-  | { type: 'classified';   classification: 'MUTATION' | 'QUESTION' }
-  | { type: 'tool:call';    name: string; args: unknown }
-  | { type: 'tool:result';  name: string; rows: number; truncated: number; error?: string }
-  | { type: 'answer:ready'; refs: string[] }
-  | { type: 'refused';      agent: AgentName; reason: string }
-  | { type: 'stopped';      agent: AgentName; reason: string }
-  | { type: 'repair';       attempt: 1 | 2 | 3; gate: Gate; reason: string }
-  | { type: 'retry';        agent: AgentName; reason: string }
-  | { type: 'plan:ready';   operations: number }
-  | { type: 'ask';          question: Question }
+  | { type: 'agent:start';   agent: AgentName }
+  | { type: 'agent:end';     agent: AgentName; threw: boolean }
+  | { type: 'classified';    classification: 'MUTATION' | 'QUESTION' }
+  | { type: 'tool:call';     id: string; name: string; args: unknown }
+  | { type: 'tool:result';   id: string; name: string; rows: number; truncated: number; error?: string }
+  | { type: 'answer:ready';  outcome: Answer['outcome']; refs: string[] }
+  | { type: 'refused';       agent: AgentName; reason: string }
+  | { type: 'stopped';       agent: AgentName; reason: string }
+  | { type: 'repair';        attempt: 1 | 2 | 3; gate: Gate; reason: string }
+  | { type: 'attempt:start'; attempt: 1 | 2 | 3 }
+  | { type: 'attempt:end';   attempt: 1 | 2 | 3 }
+  | { type: 'gate:passed';   attempt: 1 | 2 | 3; gate: Gate }
+  | { type: 'retry';         agent: AgentName; reason: string }
+  | { type: 'plan:ready';    operations: number }
+  | { type: 'derived';       path: string; owner: string; from: readonly string[] }
+  | { type: 'overridden';    path: string; owner: string; determined: string; from: readonly string[] }
+  | { type: 'reapplied';     path: string; value: string; entity: string; answeredAt: string; replaced?: string }
+  | { type: 'ask';           question: Question }
 ```
 
 Three details in that list were learned rather than designed.
@@ -593,10 +600,10 @@ would invent it. Sharing a field put two counters under one name, one restarting
 every attempt of the other, and the rendered sequence went backwards within a run.
 
 `stopped` and `refused` are two facts for the same reason. `refused` is an agent judging;
-`stopped` closes an agent whose model call threw — a timeout, a provider failure — and the
-error goes on to the caller, which prints it. So `cli/index.ts` renders `stopped` without
-its reason: with it, the one line a failed call ends on was printed twice, the first time
-as the agent refusing.
+`stopped` says why an agent whose model call threw — a timeout, a provider failure — ended,
+and `agent:end` is what closes it. The error goes on to the caller, which prints it. So
+`cli/index.ts` renders `stopped` without its reason: with it, the one line a failed call
+ends on was printed twice, the first time as the agent refusing.
 
 Ink consumes the stream at stage 7; tests consume the same stream and assert the sequence,
 and `cli/index.ts` renders one line per event on **stderr** until then — stdout carries

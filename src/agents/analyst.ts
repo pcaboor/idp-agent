@@ -2,6 +2,7 @@ import { QUERY_LIMITS, answerSchema, type Answer } from '../core/schemas/query.j
 import type { LlmClient, Transcript } from '../llm/client.js'
 import type { EventSink } from './events.js'
 import { MAX_REPAIRS, takeTurn } from './forced-turn.js'
+import { asAgent } from './lifetime.js'
 import type { buildTools } from './tools/graph-tools.js'
 
 /**
@@ -75,8 +76,15 @@ export async function answerQuestion(
   input: { intent: string; summary: string; vocabulary: string },
   emit: EventSink,
 ): Promise<AnalystOutcome> {
-  emit({ type: 'agent:start', agent: 'analyst' })
+  return asAgent('analyst', emit, () => answerFromCatalogue(client, tools, input, emit))
+}
 
+async function answerFromCatalogue(
+  client: LlmClient,
+  tools: ReturnType<typeof buildTools>,
+  input: { intent: string; summary: string; vocabulary: string },
+  emit: EventSink,
+): Promise<AnalystOutcome> {
   const transcript: Transcript[] = [
     {
       role: 'user',
@@ -154,7 +162,7 @@ export async function answerQuestion(
       // `answer` is the terminal channel, not a read: it is reported by
       // answer:ready or refused, never as one more tool call in the stream.
       const reads = call.name !== 'answer'
-      if (reads) emit({ type: 'tool:call', name: call.name, args: call.args })
+      if (reads) emit({ type: 'tool:call', id: call.id, name: call.name, args: call.args })
       const outcome = tools.run(call)
       truncated += outcome.truncated
       read += outcome.rows
@@ -165,6 +173,7 @@ export async function answerQuestion(
       if (reads) {
         emit({
           type: 'tool:result',
+          id: call.id,
           name: call.name,
           rows: outcome.rows,
           truncated: outcome.truncated,
