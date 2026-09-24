@@ -111,7 +111,7 @@ doctrine forbids. Each is emitted where the fact happens:
 
 | event | emitted by | why |
 |---|---|---|
-| `{ type: 'agent:end'; agent }` | each agent, on every return path | an agent's end is never emitted today |
+| `{ type: 'agent:end'; agent; threw }` | `asAgent`, around each agent, on every path out | an agent's end is never emitted today; `threw` says whether it returned |
 | `{ type: 'attempt:start'; attempt }` | `repair()`, at the top of the loop | an attempt that passes emits nothing today |
 | `{ type: 'attempt:end'; attempt }` | `repair()`, on every exit from an iteration | closes the attempt span |
 | `{ type: 'gate:passed'; attempt; gate }` | `repair()`, after each gate that passes | a refusal is already `repair { attempt, gate, reason }` |
@@ -138,9 +138,10 @@ stated one fact twice. That is the same reasoning that split `repair` from `retr
 interface TraceSink { name: string; export(trace: Trace): Promise<void> }
 ```
 
-- **`mlflowSink({ trackingUri, experimentId, fetch })`** — `POST {trackingUri}/v1/traces` with
-  `content-type: application/json` and `x-mlflow-experiment-id`, bounded by
-  `AbortSignal.timeout(3000)`.
+- **`mlflowSink({ trackingUri, experimentId, fetch, timeoutMs? })`** — `POST
+  {trackingUri}/v1/traces` with `content-type: application/json` and `x-mlflow-experiment-id`,
+  bounded by `AbortSignal.timeout(timeoutMs ?? 3000)`. The spike posted 24 MB in 1.2 s to a local
+  server; a real trace is about the size of its recording, 200 KB at most today.
 - **`fileSink({ dir })`** — writes `<dir>/<traceId>.json`, the same OTLP/JSON body.
 - **`pnpm trace:push <dir>` (`scripts/trace-push.mjs`)** — posts every file in a directory to the
   configured server. It is how a replayed scenario reaches MLflow without the suite ever touching
@@ -148,13 +149,19 @@ interface TraceSink { name: string; export(trace: Trace): Promise<void> }
 
 ### 5.5 Wiring — `src/cli/index.ts`
 
-- `openSession` builds the builder and wraps the client, whichever client it is, when at least
-  one sink is configured. When none is, nothing is built and the client is today's.
+- `agentBacked` builds the builder and wraps the client, whichever client the session opened,
+  when at least one sink is configured. When none is, nothing is built and the client is
+  today's.
+- The trace starts once the session is open. A run refused for want of a model, or for a bad
+  `IDP_RECORDING`, has no run to trace.
 - `agentBacked` finishes the trace on **both** paths, the result and the catch, records the exit
   code on the root, exports to each sink, then returns the same code it returns today.
+- `openSession` hands the root its attributes: `idp.mode`, plus `idp.scenario`, `idp.provider`
+  and `idp.model` when it knows them.
 - When tracing is on, stderr gains one line, `· trace <id>`, so a run can be found in the UI.
-- `MainDeps` gains `traceSinks?: TraceSink[]` (replaces what the environment configures, for
-  tests) and `fetch?: typeof fetch` (for the MLflow sink).
+- `MainDeps` gains `traceSinks?: readonly TraceSink[]` and `fetch?: typeof fetch`. The sinks are
+  **added to** those the environment configures, so a scenario test reads its trace from memory
+  while `IDP_TRACE_DIR` still writes the same run to a file.
 
 ## 6. Configuration
 
@@ -164,7 +171,7 @@ Environment only, like `IDP_PROVIDER`. `.idp-agent.yml` gains no field.
 |---|---|
 | `MLFLOW_TRACKING_URI` | present → export to that server |
 | `MLFLOW_EXPERIMENT_ID` | the experiment; `0`, MLflow's Default experiment, when unset |
-| `IDP_TRACE_DIR` | present → write one OTLP/JSON file per run there |
+| `IDP_TRACE_DIR` | present → write one OTLP/JSON file per run there, resolved against the shell's working directory, never against `--repo` |
 
 Both sinks can be on at once. The scenario tests already pass `env: process.env` to `main`,
 so `IDP_TRACE_DIR=.traces pnpm vitest run tests/scenarios` writes one trace per recorded
@@ -213,10 +220,16 @@ is relied on. AGENTS.md's "Thirteen" becomes "Fourteen" in the same commit.
      exactly one root.
 3. **The decorator.** It relays the result unchanged and rethrows the same error. A missing
    `usage` stays missing.
-4. **End to end on a real recording.** `main(['plan', …], { scenario: 'repair-malformed-owner',
-   traceSinks: [memory] })`. The trace's skeleton — names, types, statuses, nesting — agrees with
-   the run's own `repair` events: every refused gate is an `ERROR` marker under the right attempt.
-   The test compares a projection, never a raw snapshot, because prompts run to hundreds of
+4. **End to end, on every recorded plan scenario.** The shared `run()` in
+   `tests/scenarios/plan-mode.test.ts` passes `traceSinks: [memory]`, and each run's trace must
+   agree with its own event stream:
+   - every span was closed by an event of its own;
+   - every model call sits inside an agent;
+   - there is one AGENT span per `agent:start`;
+   - every gate verdict, passed or refused, is a marker with the same verdict under its attempt,
+     in the same order.
+
+   The test compares that projection, never a raw snapshot, because prompts run to hundreds of
    kilobytes and would change on every re-recording.
 5. **The sinks.**
    - Failure: `MLFLOW_TRACKING_URI` set with no injected `fetch` meets `offline.ts`'s thrower.
@@ -234,17 +247,19 @@ AGENTS.md's test count is re-measured and corrected in each commit that changes 
 
 `tools/mlflow/compose.yml`:
 
-- Image `ghcr.io/mlflow/mlflow`, **pinned** to the version the spike validates (at least 3.6,
-  the first release with OTLP ingestion).
-- `mlflow server --host 0.0.0.0` inside the container, published on `127.0.0.1:5000` only.
+- Image `ghcr.io/mlflow/mlflow:v3.16.1`, **pinned**: the spike validated it, and 3.6 is the first
+  release with OTLP ingestion.
+- `mlflow server --host 0.0.0.0` inside the container, published on `127.0.0.1:5055` only.
+  Port 5000 is MLflow's default, but macOS's AirPlay receiver holds it.
 - sqlite and artifacts in a named volume, so traces survive a `down`.
-- `pnpm mlflow:up` and `pnpm mlflow:down`.
+- `pnpm mlflow:up` and `pnpm mlflow:down`. `mlflow:up` waits for a healthcheck on `/health`;
+  the spike measured about 5 s.
 
 Docker is never required by `test`, `typecheck`, `build` or `smoke`, and CI is unchanged.
 
 ```bash
 pnpm mlflow:up
-export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5055
 idp-agent plan "<intent>" --repo <iac>                                              # a live run
 IDP_TRACE_DIR=.traces pnpm vitest run tests/scenarios && pnpm trace:push .traces    # the tapes, no key
 ```
@@ -274,15 +289,27 @@ The work happens in a worktree under `~/Documents/idp-agent-worktrees`, based on
 It is independent of stage 5. The likely point of friction is `src/cli/index.ts`, which stage 5
 also touches.
 
-## 12. Settled by the spike, not by this document
+## 12. Settled by the spike, 2026-09-24
 
-- The span type for a gate marker: `CHAIN`, or `UNKNOWN` if `CHAIN` renders misleadingly.
-- The exact encoding MLflow expects for `mlflow.spanInputs`, `mlflow.spanOutputs`,
-  `mlflow.spanType` and `mlflow.chat.tokenUsage` on ingested OTLP spans: JSON-encoded strings or
-  plain strings.
-- Whether MLflow aggregates token usage onto the trace from the model spans, or it has to be
-  written onto the root.
-- The pinned image tag.
+The spike ran against `ghcr.io/mlflow/mlflow:v3.16.1`. The body was posted to `/v1/traces` and
+read back through MLflow's own Python client inside the container.
 
-Each answer is written into this section when the spike lands, so the document stays a record
-of what was decided and on what evidence.
+- **Gate markers are `CHAIN`.** The type renders as sent, and an `ERROR` status keeps its message.
+- **Encoding.** `mlflow.spanType` was read identically as a JSON-encoded string (`"\"CHAIN\""`)
+  and as a plain one (`"CHAIN"`). The JSON form is kept: it is MLflow's own convention, and
+  `mlflow.spanInputs`, `mlflow.spanOutputs` and `mlflow.chat.tokenUsage` must be JSON anyway.
+  Project attributes (`idp.*`) keep typed OTLP values; an `intValue` reads back as a number.
+- **Token usage.** `mlflow.chat.tokenUsage` on a `CHAT_MODEL` span, with keys `input_tokens`,
+  `output_tokens` and `total_tokens`, is summed by MLflow into `trace.info.token_usage`. Nothing
+  is written on the root. A tampered key (`prompt_tokens`) is not summed, which is how the
+  contract check was shown to fail.
+- **What the root drives.** The trace's state follows the root's status: an `ERROR` root is an
+  `ERROR` trace, and `OK` children under it do not change that. `request_preview` and
+  `response_preview` are the root's inputs and outputs. The trace id is `tr-` plus the OTLP
+  `traceId` in hexadecimal.
+- **Span events** come back with their name and attributes.
+- **Size.** Bodies of 2, 8 and 24 MB were accepted in 0.2, 0.4 and 1.2 s.
+- **The pinned tag** is `v3.16.1`.
+
+`tests/contract/otlp/accepted.json` and `scripts/mlflow-contract.mjs` freeze these findings, and
+`pnpm mlflow:contract` re-checks them against a live server.
