@@ -36,10 +36,19 @@ export interface GenerateRequest {
   toolChoice: 'auto' | 'none' | { tool: string }
 }
 
+/** What a provider reported about one call. A count it did not report is absent, never 0. */
+export interface TokenUsage {
+  readonly inputTokens?: number
+  readonly outputTokens?: number
+  readonly totalTokens?: number
+}
+
 export interface GenerateResult {
   text: string
   toolCalls: ModelToolCall[]
   finishReason: string
+  /** Absent when the provider reported none — and on every recording made before it was stored. */
+  usage?: TokenUsage
 }
 
 export interface LlmClient {

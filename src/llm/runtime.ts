@@ -18,6 +18,7 @@ import type {
   GenerateResult,
   LlmClient,
   ModelToolCall,
+  TokenUsage,
   Transcript,
 } from './client.js'
 import type { OpenRecording, TurnRecord } from './recording.js'
@@ -75,9 +76,38 @@ function readContent(content: unknown[]): { text: string; toolCalls: ModelToolCa
   }
 }
 
+/**
+ * The token counts a provider reported, and only those. A count it did not
+ * report stays absent rather than becoming 0, and a result with no count at
+ * all has no usage: an old recording, or a provider that says nothing.
+ */
+export function usageOf(raw: unknown): TokenUsage | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined
+  const read = (key: string): number | undefined => {
+    const value = (raw as Record<string, unknown>)[key]
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+  }
+  const inputTokens = read('inputTokens')
+  const outputTokens = read('outputTokens')
+  const totalTokens = read('totalTokens')
+  if (inputTokens === undefined && outputTokens === undefined && totalTokens === undefined) {
+    return undefined
+  }
+  return {
+    ...(inputTokens !== undefined ? { inputTokens } : {}),
+    ...(outputTokens !== undefined ? { outputTokens } : {}),
+    ...(totalTokens !== undefined ? { totalTokens } : {}),
+  }
+}
+
+/** Omitted rather than set to undefined: exactOptionalPropertyTypes draws the distinction. */
+const withUsage = (usage: TokenUsage | undefined): { usage?: TokenUsage } =>
+  usage === undefined ? {} : { usage }
+
 const fromRecord = (record: TurnRecord): GenerateResult => ({
   ...readContent(record.result.content),
   finishReason: record.result.finishReason,
+  ...withUsage(usageOf(record.result.usage)),
 })
 
 function toMessages(transcript: Transcript[]): ModelMessage[] {
@@ -397,10 +427,15 @@ export function createClient(options: {
       })
 
       spend()
+      const usage = usageOf(response.usage)
 
       if (options.mode === 'live') {
         return usable(
-          { ...readContent(response.content), finishReason: response.finishReason },
+          {
+            ...readContent(response.content),
+            finishReason: response.finishReason,
+            ...withUsage(usage),
+          },
           choice,
         )
       }
@@ -412,13 +447,21 @@ export function createClient(options: {
         digest: digestOf(request),
         recordedAt: response.response.timestamp.toISOString(),
         call: { system: request.system, transcript: request.transcript },
-        result: { content: response.content, finishReason: response.finishReason },
+        result: {
+          content: response.content,
+          finishReason: response.finishReason,
+          ...withUsage(usage),
+        },
       })
       // Recorded, then judged like a live turn. A run that fails here never
       // saves its tape — the command writes it only after a run that succeeded
       // — and replay judges every turn again, so a tape holding one fails too.
       return usable(
-        { ...readContent(response.content), finishReason: response.finishReason },
+        {
+          ...readContent(response.content),
+          finishReason: response.finishReason,
+          ...withUsage(usage),
+        },
         choice,
       )
     },

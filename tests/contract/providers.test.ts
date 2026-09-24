@@ -247,7 +247,12 @@ describe.each(Object.keys(WIRES) as ProviderName[])('the %s wire', (provider) =>
           expect(schema, `${name} is sent with ${key} at its root`).not.toHaveProperty(key)
         }
       }
-      expect(result).toEqual({ text: 'done', toolCalls: [], finishReason: 'stop' })
+      expect(result).toEqual({
+        text: 'done',
+        toolCalls: [],
+        finishReason: 'stop',
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      })
     }
   })
 
