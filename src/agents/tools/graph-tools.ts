@@ -135,8 +135,10 @@ export function buildTools(graph: EntityGraph): {
       name: 'answer',
       description:
         'End the search. Give outcome "entities" with the references you actually read, ' +
-        '"nothing" if no entity matches, or "unanswerable" with a reason if the question ' +
-        'cannot be answered from this catalogue. You must call this to finish.',
+        '"nothing" if no entity matches, "overview" when asked to describe or summarise ' +
+        'the catalogue as a whole (the engine writes it; never "unanswerable" for that), ' +
+        'or "unanswerable" with a reason if the question cannot be answered from this ' +
+        'catalogue. You must call this to finish.',
       parameters: answerSchema,
     },
   ]

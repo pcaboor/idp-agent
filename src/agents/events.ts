@@ -1,4 +1,5 @@
 import type { Question } from '../core/plan/clarify.js'
+import type { Answer } from '../core/schemas/query.js'
 import type { AgentName } from '../llm/client.js'
 import type { Gate } from './repair.js'
 
@@ -16,7 +17,12 @@ export type AgentEvent =
   | { type: 'classified'; classification: 'MUTATION' | 'QUESTION' }
   | { type: 'tool:call'; name: string; args: unknown }
   | { type: 'tool:result'; name: string; rows: number; truncated: number }
-  | { type: 'answer:ready'; refs: string[] }
+  /**
+   * The Analyst's answer, signed. `outcome` is there because `refs` alone
+   * cannot tell an overview from an empty result — both carry none — and a
+   * renderer reading the stream must not have to guess which it is drawing.
+   */
+  | { type: 'answer:ready'; outcome: Answer['outcome']; refs: string[] }
   | { type: 'refused'; agent: AgentName; reason: string }
   /**
    * A proposal was refused and handed back for correction, with the reason.

@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 1051 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 1083 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -189,8 +189,10 @@ ends today.
 
 One object crosses **per direction of authority** (design §5.1, ADR-0007). The **`Plan`**
 crosses when the AI side asks for a change. The **`Answer`** crosses when it reports a
-read — a union of `entities` / `nothing` / `unanswerable` that authorises nothing and
-carries only references the engine's own tools returned, each re-read before printing.
+read — a union of `entities` / `nothing` / `overview` / `unanswerable` that authorises
+nothing and carries only references the engine's own tools returned, each re-read before
+printing. An `overview` carries nothing at all: the model chooses it, and the engine
+writes the description of the catalogue from the graph.
 That witness check is a **read-side** guarantee and does not transfer to `propose()`,
 which is why the write side has a signature of its own.
 

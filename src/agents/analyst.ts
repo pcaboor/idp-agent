@@ -40,6 +40,10 @@ every reference you give must have come back from a tool in this conversation.
 Finish by calling "answer":
   entities      with the references you read, when they answer the question
   nothing       when no entity matches
+  overview      when asked to describe, summarise or give an overview of the
+                catalogue, SI, repository or project as a whole. The engine
+                writes the description; call it straight away, and never answer
+                "unanswerable" for such a request
   unanswerable  with a reason, when the catalogue cannot answer this question
 
 Refusing is a valid outcome. Do not approximate to produce one.
@@ -182,8 +186,11 @@ export async function answerQuestion(
   if (signed.outcome === 'unanswerable' && answer?.outcome !== 'unanswerable') {
     emit({ type: 'refused', agent: 'analyst', reason: signed.reason })
   } else {
+    // The outcome travels with the event: an overview and an empty result
+    // both carry no reference, and a renderer must not have to guess which.
     emit({
       type: 'answer:ready',
+      outcome: signed.outcome,
       refs: signed.outcome === 'entities' ? signed.refs : [],
     })
   }
@@ -225,5 +232,8 @@ function sign(answer: Answer | undefined, witnessed: ReadonlySet<string>, said: 
     )
   }
 
+  // An overview passes as chosen, whatever was read on the way: it carries no
+  // reference and no sentence, so there is nothing in it to witness. The
+  // engine writes it from the graph.
   return answer
 }

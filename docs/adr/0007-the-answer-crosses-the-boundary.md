@@ -32,3 +32,17 @@ state something the graph never produced. The cost is that § 5.1 is no longer o
 the carve-out invites being stretched — so its limit is written into both: **the witness check does
 not transfer to `propose()`**, which proposes values that were never in the catalogue and will need
 a guarantee of its own.
+
+## Addendum — 2026-09-24: the overview
+
+`ask "Talk about this project"` ended on `cannot answer`, exit 3, on a real repository: the
+union had no member for a request to describe the catalogue as a whole, so the model's only
+legal answer was a refusal. The union gains `overview`, and it carries **no field** — it is a
+`strictObject`, so an overview arriving with a `summary` is refused and handed back rather
+than stripped. The model only chooses it; the engine writes it, every figure computed from
+the graph and from what the reader set aside (`context/graph/overview.ts`, rendered by
+`cli/render/overview.ts`). There is nothing in it to witness, which is what lets it cross
+under this decision rather than beside it: the consequence above still holds word for word,
+because no model-authored text reaches stdout. What the model could still get wrong is the
+choice — an overview for a question that wanted entities — and that prints a true
+description of the wrong thing, never a false one.

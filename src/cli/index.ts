@@ -543,6 +543,10 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
         graph,
         client,
         intent: command.intent,
+        // An overview names what it read and counts what it could not: the
+        // same facts as the lines above, for the answer that describes the
+        // whole catalogue.
+        source: { ...repoOf(command.repo), ignored, rejected: rejected.length },
         emit: deps.events ?? progress(err),
         err,
       }),

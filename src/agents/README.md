@@ -26,7 +26,7 @@ Two consequences that look odd until you know why:
 | file | what it is |
 |---|---|
 | `supervisor.ts` | `MUTATION` or `QUESTION`, no tools, no third answer |
-| `analyst.ts` | a question against the graph, terminating in `answer` |
+| `analyst.ts` | a question against the graph, terminating in `answer`: `entities`, `nothing`, `overview` (chosen, never written — the engine describes the catalogue) or `unanswerable` |
 | `inspector.ts` | an application repository read into `ProjectFacts`, terminating in `report_facts` |
 | `architect.ts` | a draft into a typed buffer, terminating in `propose` |
 | `reviewer.ts` | substance, not shape: `ok` or a reason, terminating in `verdict` |
