@@ -1,4 +1,4 @@
-import { parse, parseAllDocuments, stringify, type YAMLError } from 'yaml'
+import { Document, Scalar, parse, parseAllDocuments, visit, type YAMLError } from 'yaml'
 import { entitySchema, type Entity } from '../schemas/entity.js'
 import { reasonOf } from '../schemas/reject.js'
 
@@ -20,6 +20,12 @@ import { reasonOf } from '../schemas/reject.js'
  * booleans. The IaC repository is read by more than this tool, so the output is
  * quoted conservatively enough for those readers as well. Measured: six of nine
  * ambiguous strings came back wrong before this.
+ *
+ * Quoting for 1.1 is not quoting for 1.2, though: each version reads a few
+ * strings as numbers the other does not. `0o17` is octal only in 1.2, and so is
+ * `1e3` a float — 1.1 wants a decimal point. So a string is quoted when either
+ * reader would take it for something else (`quotedFor12` adds the 1.2 half);
+ * 1.2 is what this library, and Backstage, read the repository with.
  */
 const STRINGIFY_OPTIONS = {
   indent: 2,
@@ -62,9 +68,38 @@ function ordered(entity: Entity): Record<string, unknown> {
   return { apiVersion: entity.apiVersion, kind: entity.kind, metadata, spec }
 }
 
+/**
+ * Whether a YAML 1.2 reader would take `text`, written bare, for something other
+ * than a string. The type is what is asked, not the value: a string that would
+ * come back as a different string — spacing, a line break — is the emitter's
+ * syntax to get right, and it does, in either version.
+ */
+const readsAsOtherThanString = (text: string): boolean => {
+  try {
+    return typeof parse(text, { version: '1.2', logLevel: 'silent' }) !== 'string'
+  } catch {
+    // Not even a scalar on its own — an alias to nothing, a stray indicator.
+    // Quoting is always a faithful way to write a string.
+    return true
+  }
+}
+
+/** Quotes every string value a YAML 1.2 reader would not read back as one. */
+function quotedFor12(document: Document): void {
+  visit(document, {
+    Scalar(_, node) {
+      if (typeof node.value === 'string' && readsAsOtherThanString(node.value)) {
+        node.type = Scalar.QUOTE_SINGLE
+      }
+    },
+  })
+}
+
 /** One entity, one document. No leading `---`: that belongs to the surgery layer. */
 export function serializeEntity(entity: Entity): string {
-  const text = stringify(ordered(entity), STRINGIFY_OPTIONS)
+  const document = new Document(ordered(entity), STRINGIFY_OPTIONS)
+  quotedFor12(document)
+  const text = document.toString(STRINGIFY_OPTIONS)
   return text.endsWith('\n') ? text : `${text}\n`
 }
 

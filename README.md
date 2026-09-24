@@ -46,7 +46,7 @@ idp-agent sits between the two:
   your request or to what your repository already holds. Anything else becomes a question.
 - ✂️ **Minimal diffs.** It edits the text surgically and never reformats a file, so a
   reviewer sees one added line, not a reshuffled file.
-- 🧪 **Reproducible without an API key.** 998 tests run offline from recordings: no
+- 🧪 **Reproducible without an API key.** 999 tests run offline from recordings: no
   network, no cost, no flaky model.
 
 > Platform GitOps is the use case. The real subject is **how to build a reliable
