@@ -13,8 +13,9 @@ model SDK*, and *`agents/` imports `llm/client.js` and nothing else from `llm/`*
 | `providers.ts` | the three adapters, `chooseModel(env)`, `NoModelConfiguredError` |
 | `recording.ts` | the tape, over an abstract `RecordingStore`; `resolveMode`, `RecordingMissError` |
 | `runtime.ts` | the one file that calls a model — `generateText`, the tool plumbing, and the live / record / replay switch |
+| `tool-schema.ts` | `objectRooted` — the object-rooted JSON Schema a tool is advertised in. Pure; imports nothing from the SDK |
 
-**Two of those four import the SDK**, not one: `providers.ts` names the three `@ai-sdk/*`
+**Two of those five import the SDK**, not one: `providers.ts` names the three `@ai-sdk/*`
 adapters and `runtime.ts` calls `ai`. This page claimed for a while that `runtime.ts` was
 the only one, which is the drift the architecture rule is written to survive — the rule is
 about the *folder*, and the folder is what the test checks.
@@ -29,6 +30,24 @@ states there is no code path from an agent to a file.
 So: `client.ts` is types only, `recording.ts` takes an abstract `RecordingStore` and
 touches nothing, the filesystem implementation lives in `cli/recording-fs.ts`, and only
 `runtime.ts` and `providers.ts` name the SDK at all.
+
+## A tool is advertised object-rooted, and accepted on its union
+
+Anthropic refuses a tool whose schema has no `type: "object"` root, which is what the
+`answer` and `verdict` unions convert to, so `toTools` advertises every tool through
+`objectRooted`: the discriminator becomes a required `enum`, a field that only some branches
+have, or only some require, says which in its description, and a field the branches give
+different schemas is offered as an `anyOf` of them. The flat object is looser than the
+union, and the client does not close that gap: the SDK validates against the union but
+hands an invalid call back unchanged. The gate is on the other side — every tool's handler
+in `agents/` parses the call against its own Zod schema, and the Analyst and the Reviewer
+hand a failed `answer` or `verdict` back for repair. It lives here and not in the agents'
+schemas because this is the single crossing point, and because `spec.parameters` is inside
+the recording digest, where reshaping it would stale every tape. The digest does **not**
+cover the advertised JSON Schema: the existing tapes were recorded against the union shape
+and replay without a warning, which is sound only because the argument shape is identical,
+and the next re-record captures the new one. `tests/contract/providers.test.ts` checks the
+bytes each adapter actually sends, which no tape can — replay never builds an adapter.
 
 ## No default model, on purpose
 

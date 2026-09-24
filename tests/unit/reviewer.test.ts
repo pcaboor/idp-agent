@@ -450,6 +450,8 @@ describe('reviewPlan', () => {
   })
 
   it('hands a malformed verdict back for repair rather than failing the review', async () => {
+    // Valid against the flat advertisement, where `reason` is optional
+    // (llm/tool-schema.ts); the client passes it through, so this is the gate.
     const client = scripted([
       turnCalling(VERDICT_TOOL, { verdict: 'reject' }),
       turnCalling(VERDICT_TOOL, { verdict: 'ok' }),
