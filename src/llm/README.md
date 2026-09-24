@@ -1,9 +1,11 @@
 # `llm/` — the single crossing point
 
 Everything that reaches a model goes through this folder, and nothing else in the
-repository imports the model SDK. Two of the thirteen rules in
+repository imports the model SDK. Two of the fourteen rules in
 `tests/architecture/dependencies.test.ts` hold that line: *only `src/llm/` imports the
-model SDK*, and *`agents/` imports `llm/client.js` and nothing else from `llm/`*.
+model SDK*, and *`agents/` imports `llm/client.js` and nothing else from `llm/`*. A third,
+*trace/ reaches nothing but types, and only cli/ reaches it*, keeps this folder from
+importing `trace/`: `traced` wraps whichever client `cli/` opened, from the outside.
 
 ## What lives here
 

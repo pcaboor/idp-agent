@@ -205,24 +205,48 @@ describe('architecture', () => {
 
   it('trace/ reaches nothing but types, and only cli/ reaches it', async () => {
     // A trace is built from what the harness emits, and it leaves the process
-    // through cli/, which owns every way out (ADR-0009). `fetch` needs no
-    // import, so trace/'s source is read for the name too — the limit
-    // SECURITY.md states for the rules above.
+    // through cli/, which owns every way out (ADR-0009). Outside its own
+    // folder trace/ may name types and nothing else: `import type` is erased,
+    // so no module it names is ever loaded, whichever layer or package that
+    // is — a list of forbidden folders would pass the one nobody listed.
+    // `fetch` needs no import, so trace/'s source is read for the name too —
+    // the limit SECURITY.md states for the rules above.
+    //
+    // Not PATTERNS: its static pattern reads on to the next quote, which is
+    // harmless for a rule that tests a specifier against a list and a false
+    // offence for this one, which refuses every specifier but its own. And a
+    // dynamic import is refused whatever its argument, not only a literal.
+    const statement =
+      /^\s*(?:import|export)(\s+type)?\b[\w\s{},*$]*?\bfrom\s*['"]([^'"]+)['"]|^\s*import\s*['"]([^'"]+)['"]/gm
+    const dynamic = /\b(?:import|require)\s*\(([^)]*)\)/g
+    // `./../core` starts with `./` and leaves the folder all the same.
+    const local = (specifier: string): boolean =>
+      specifier.startsWith('./') && !specifier.split('/').includes('..')
     const offending: string[] = []
     for (const file of await sourceFiles(path.join(SOURCE_ROOT, 'trace'))) {
       const name = path.relative(SOURCE_ROOT, file)
       const code = (await readFile(file, 'utf8'))
         .replace(/\/\*[\s\S]*?\*\//g, '')
         .replace(/\/\/.*$/gm, '')
-      for (const match of code.matchAll(/^\s*(?:import|export)(\s+type)?\b[^'"]*['"]([^'"]+)['"]/gm)) {
+      for (const match of code.matchAll(statement)) {
         const typeOnly = match[1] !== undefined
-        const specifier = match[2] ?? ''
-        if (DISK.test(specifier) || NETWORK.test(specifier) || MODEL_SDK.test(specifier)) {
+        const specifier = match[2] ?? match[3] ?? ''
+        if (
+          DISK.test(specifier) ||
+          NETWORK.test(specifier) ||
+          MODEL_SDK.test(specifier) ||
+          /(^|\/)cli\//.test(specifier)
+        ) {
           offending.push(`${name} imports ${specifier}`)
-        }
-        if (/(^|\/)cli\//.test(specifier)) offending.push(`${name} imports ${specifier}`)
-        if (/(^|\/)(agents|llm)\//.test(specifier) && !typeOnly) {
+        } else if (!typeOnly && !local(specifier)) {
           offending.push(`${name} imports values from ${specifier}`)
+        }
+      }
+      for (const match of code.matchAll(dynamic)) {
+        const argument = (match[1] ?? '').trim()
+        const literal = /^(['"])([^'"]*)\1$/.exec(argument)
+        if (literal?.[2] === undefined || !local(literal[2])) {
+          offending.push(`${name} loads ${argument} at run time`)
         }
       }
       if (/\bfetch\b/.test(code)) offending.push(`${name} names fetch`)

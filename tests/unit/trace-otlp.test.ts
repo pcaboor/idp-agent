@@ -69,4 +69,33 @@ describe('toOtlpJson', () => {
       { key: 'idp.flag', value: { boolValue: true } },
     ])
   })
+
+  it('sends an integer only where int64 holds it exactly, and a number JSON cannot carry as text', () => {
+    // 1e21 is an integer to JavaScript and `"1e+21"` to int64, which is no
+    // integer at all; NaN and Infinity have no JSON number to travel as.
+    const attributes = attributesOf(
+      toOtlpJson(
+        rootWith({
+          inputs: undefined,
+          outputs: undefined,
+          attributes: {
+            'idp.safe': Number.MAX_SAFE_INTEGER,
+            'idp.huge': 1e21,
+            'idp.nan': Number.NaN,
+            'idp.up': Number.POSITIVE_INFINITY,
+            'idp.down': Number.NEGATIVE_INFINITY,
+          },
+        }),
+        { serviceVersion: 'x' },
+      ),
+    )
+    expect(attributes).toEqual([
+      { key: 'mlflow.spanType', value: { stringValue: '"CHAIN"' } },
+      { key: 'idp.safe', value: { intValue: '9007199254740991' } },
+      { key: 'idp.huge', value: { doubleValue: 1e21 } },
+      { key: 'idp.nan', value: { stringValue: 'NaN' } },
+      { key: 'idp.up', value: { stringValue: 'Infinity' } },
+      { key: 'idp.down', value: { stringValue: '-Infinity' } },
+    ])
+  })
 })

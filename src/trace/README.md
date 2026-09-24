@@ -16,17 +16,21 @@ with the gates it passed and the one that refused it (ADR-0009).
 ## What may not
 
 Nothing here reaches the disk or the network, names `fetch`, imports the model SDK or
-imports `cli/`; from `agents/` and `llm/` it imports types only, and only `cli/` imports it.
-`cli/trace-sink.ts` owns both ways a trace leaves the process. The rule is
-`tests/architecture/dependencies.test.ts`, *trace/ reaches nothing but types, and only cli/
+imports `cli/`. Outside this folder it imports types only — `import type`, which is erased —
+from whichever layer or package, never loads a module through `import()` or `require()`, and
+only `cli/` imports it. `cli/trace-sink.ts` owns both ways a trace leaves the process. The rule
+is `tests/architecture/dependencies.test.ts`, *trace/ reaches nothing but types, and only cli/
 reaches it*.
 
 ## Two rules the builder keeps
 
 - **Nothing is guessed.** A span is closed by the event that ends it. One that nothing
-  closed is closed at `finish` as an error that says so; an event that matches no open span
-  becomes an `unbalanced event` span — never a throw and never a silent drop.
-  `tests/invariants/trace.test.ts` holds that over any sequence of events.
+  closed is closed — at `finish`, or when the span around it ends — as an error that says so
+  and keeps any reason it had already failed for; an event that matches no open span becomes
+  an `unbalanced event` span — never a throw and never a silent drop. A tool call is a leaf,
+  so one that never gets a result does not swallow what follows it.
+  `tests/invariants/trace.test.ts` holds that over any sequence of events, and holds a
+  well-formed run to closing every span by its own event.
 - **Absent is not zero.** A model call whose provider reported no usage — every recording
   made before usage was stored — carries `idp.usage: absent`, not a count of 0.
 
