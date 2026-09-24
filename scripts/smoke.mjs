@@ -9,7 +9,7 @@
  */
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { cpSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -204,6 +204,23 @@ check({
   absentFromStderr: DEMO,
 })
 check({ args: ['graph', '--repo', 'missing'], code: 2, stderr: /missing is not a directory/ })
+
+// A repository that was already wrong before the plan, as a real one usually
+// is: one document the reader rejects, in a file the plan never touches. The
+// re-check refused every plan over it; it is counted in one line now, and the
+// plan is previewed. The scaffolded repository rather than the demo SI, which
+// already declares orders-db-prod and would leave no diff to look for.
+cpSync(PREVIEWED, path.join(ELSEWHERE, 'untidy'), { recursive: true })
+writeFileSync(
+  path.join(ELSEWHERE, 'untidy/catalog/databases/legacy.yml'),
+  '---\napiVersion: backstage.io/v1alpha1\nkind: Resource\nmetadata:\n  name: legacy\n',
+)
+check({
+  args: ['plan', '--from', path.join(ROOT, 'examples/declare-database.json'), '--repo', 'untidy'],
+  code: 0,
+  stdout:
+    /1 error already in the repository, in files this plan does not touch[\s\S]*\+\+\+ b\/catalog\/databases\/orders-db-prod\.yml/,
+})
 
 // The one check that can catch "green tests, broken package": the templates
 // live outside dist/, so nothing in the suite notices if they are missing from

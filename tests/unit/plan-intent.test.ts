@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -225,6 +225,39 @@ describe('plan "<intent>"', () => {
     expect(result.text).toContain(`+++ b/${ACCESS_PATH}`)
     expect(result.text).toContain('+  name: orders-db-prod')
     expect(result.text.trimEnd().endsWith(CLOSING)).toBe(true)
+  })
+
+  it('counts what was already wrong elsewhere, names the repository, and asks nobody to fix it', async () => {
+    // The intent road renders through the same preview, and has to hand it the
+    // repository as the user named it, or the line names a command nobody can run.
+    const repo = await scaffoldedRepository()
+    const legacy = 'catalog/databases/legacy.yml'
+    await mkdir(path.join(repo, 'catalog', 'databases'), { recursive: true })
+    await writeFile(
+      path.join(repo, ...legacy.split('/')),
+      '---\napiVersion: backstage.io/v1alpha1\nkind: Resource\nmetadata:\n  name: legacy\n',
+      'utf8',
+    )
+    const project = await application()
+    const client = converging([CREATE_DATABASE, CREATE_ACCESS])
+
+    const result = await runIntent({
+      ask: answering('read'),
+      intent: INTENT,
+      repo,
+      project,
+      client,
+      emit: collect().emit,
+    })
+
+    expect(result.found).toBe(true)
+    expect(result.text).toContain(`+++ b/${DATABASE_PATH}`)
+    expect(result.text).toContain(
+      `1 error already in the repository, in files this plan does not touch — ` +
+        `idp-agent validate ${repo} lists them`,
+    )
+    // One Architect turn: the standing error failed no attempt.
+    expect(client.seen.filter((request) => request.agent === 'architect')).toHaveLength(1)
   })
 
   it('hands the Reviewer the original request, and nothing the Architect saw', async () => {

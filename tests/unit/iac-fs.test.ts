@@ -39,7 +39,7 @@ describe('readRepository', () => {
     // it covered both, which it did not. `.idp-agent.yml` is §7.0's own
     // configuration and sits at the root of every repository that has been
     // configured: read as an entity it fails `entitySchema`, and one
-    // `invalid-entity` makes `recheckPlan` refuse the whole plan. So `plan`
+    // `invalid-entity` made `recheckPlan` refuse the whole plan. So `plan`
     // could not land in a configured repository, and every fixture without a
     // config passed.
     const repo = await mkdtemp(path.join(tmpdir(), 'iac-hidden-'))

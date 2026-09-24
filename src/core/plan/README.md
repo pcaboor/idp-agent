@@ -128,6 +128,13 @@ plan **virtually** — a new snapshot, never a mutation of the one it was handed
 about a repository that does not exist yet, rather than a second set of rules to keep in
 agreement with the first.
 
+It asks them about the snapshot too, and that difference is what it reports as the plan's
+`violations`: what the plan introduces, and what sits in a file it changes — for a
+duplicate, what names one. The rest is `standing` — already there, word for word, in files
+the plan leaves alone — and no gate refuses on it. Refusing on the whole repository made one
+misfiled document anywhere block every plan, and made the repair loop hand that document to
+the Architect as its fault.
+
 And `planEdits` does not judge. Whether the entity already lives in another file is
 `recheckPlan`'s `moved` verdict, whether the folder was ever declared is a policy, and
 whether the result satisfies the six rules is `checkRepository`. This folder computes text

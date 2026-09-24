@@ -4,7 +4,7 @@ import { recheckPlan } from '../../src/core/plan/recheck.js'
 import { signPlan } from '../../src/core/plan/sign.js'
 import type { SignatureContext, SignedPlan } from '../../src/core/plan/sign.js'
 import { planSchema } from '../../src/core/schemas/plan.js'
-import { serializeEntity } from '../../src/core/yaml/serialize.js'
+import { parseDocuments, serializeEntity } from '../../src/core/yaml/serialize.js'
 import { ENV_ANNOTATION } from '../../src/core/schemas/vocabulary.js'
 import type { RepositoryFile, RepositorySnapshot } from '../../src/core/validate/rules.js'
 
@@ -295,5 +295,267 @@ describe('recheckPlan', () => {
     expect(
       violations.some((violation) => violation.message.includes('ghost-service')),
     ).toBe(true)
+  })
+})
+
+/**
+ * Whose violation it is. The six rules run over the whole repository the plan
+ * would leave behind, and that repository includes everything that was already
+ * wrong with it — so reporting all of them as the plan's refused every plan on a
+ * real repository over a fault it never touched, and handed the Architect a
+ * repair report it could do nothing about.
+ */
+describe('recheckPlan attributes each violation', () => {
+  /** A document the schema refused, the way the reader reports one. */
+  const rejected = (path: string): RepositoryFile => ({
+    path,
+    entities: [],
+    rejections: ['spec: Invalid input: expected object, received undefined'],
+    documents: 1,
+  })
+
+  /** A grant filed where convention would not put it: misplaced before any plan. */
+  const legacyGrant = fileHolding(
+    'dependencies/access/legacy-grant.yml',
+    'billing-api-orders-db-prod',
+  )
+
+  /** An update of the grant, which edits whichever file declares it at its computed path. */
+  const updateGrant = (): SignedPlan => {
+    const parsed = planSchema.parse({
+      intent: 'let billing-api consume the legacy grant',
+      operations: [
+        {
+          op: 'update-entity',
+          entityRef: 'resource:default/billing-api-orders-db-prod',
+          patch: { patch: 'add-dependency-of', consumer: 'component:default/orders-api' },
+        },
+      ],
+    })
+    const signed = signPlan(
+      parsed,
+      signature({
+        witnessed: new Set([
+          'component:default/orders-api',
+          'resource:default/billing-api-orders-db-prod',
+        ]),
+      }),
+    )
+    if ('outcome' in signed) throw new Error('refused')
+    return signed
+  }
+
+  it('leaves an error elsewhere in the repository standing, not the plan’s', () => {
+    const snap = snapshot([rejected('catalog/databases/legacy.yml')])
+
+    const { violations, standing } = recheck(sign(), snap)
+
+    expect(violations).toEqual([])
+    expect(standing.map((violation) => [violation.rule, violation.file])).toEqual([
+      ['invalid-entity', 'catalog/databases/legacy.yml'],
+    ])
+  })
+
+  it('leaves a warning elsewhere standing too', () => {
+    // A dangling reference somewhere else in the repository is reported by
+    // `validate`, and was never this plan's to print above its diff.
+    const dangling: RepositoryFile = {
+      path: 'dependencies/access/other-grant-prod.yml',
+      entities: [
+        {
+          apiVersion: 'backstage.io/v1alpha1',
+          kind: 'Resource',
+          metadata: { name: 'other-grant-prod', annotations: { [ENV_ANNOTATION]: 'prod' } },
+          spec: {
+            type: 'database-access',
+            owner: 'group:default/tiger',
+            dependsOn: ['resource:default/nowhere'],
+            dependencyOf: ['component:default/billing-api'],
+          },
+        },
+      ],
+      rejections: [],
+      documents: 1,
+    }
+
+    const { violations, standing } = recheck(sign(), snapshot([dangling]))
+
+    expect(violations).toEqual([])
+    expect(standing.map((violation) => violation.rule)).toEqual(['dangling-reference'])
+  })
+
+  it('makes an introduced duplicate the plan’s', () => {
+    const elsewhere = fileHolding(
+      'systems/billing/billing-api-orders-db-prod.yml',
+      'billing-api-orders-db-prod',
+    )
+
+    const { violations, standing } = recheck(sign(), snapshot([elsewhere]))
+
+    expect(violations.map((violation) => violation.rule)).toEqual(['duplicate-name'])
+    // systems/billing holds an entity and no witness, before the plan and
+    // after it, and the plan writes nothing there.
+    expect(standing.map((violation) => [violation.rule, violation.file])).toEqual([
+      ['missing-witness', 'systems/billing'],
+    ])
+  })
+
+  it('makes an introduced duplicate anchored in a file the plan leaves alone the plan’s', () => {
+    // The rule anchors a duplicate on its first file in sort order, and here
+    // that is the old copy, which the plan never opens. Being new is what makes
+    // it the plan's.
+    const earlier = 'catalog/aaa/billing-api-orders-db-prod.yml'
+
+    const { violations, standing } = recheck(
+      sign(),
+      snapshot([fileHolding(earlier, 'billing-api-orders-db-prod')]),
+    )
+
+    expect(violations.map((violation) => [violation.rule, violation.file])).toEqual([
+      ['duplicate-name', earlier],
+    ])
+    expect(standing.map((violation) => violation.rule)).not.toContain('duplicate-name')
+  })
+
+  it('makes a duplicate the plan makes worse the plan’s', () => {
+    // Two files already declare it; the plan adds a third. Both old copies sort
+    // before the plan's file, so the duplicate is anchored, before and after,
+    // on a file the plan leaves alone: what changed is that it now names one
+    // more file, and making an existing fault worse is the plan's doing.
+    const first = 'catalog/aaa/billing-api-orders-db-prod.yml'
+    const second = 'catalog/bbb/billing-api-orders-db-prod.yml'
+
+    const { violations, standing } = recheck(
+      sign(),
+      snapshot([
+        fileHolding(first, 'billing-api-orders-db-prod'),
+        fileHolding(second, 'billing-api-orders-db-prod'),
+      ]),
+    )
+
+    const duplicate = violations.find((violation) => violation.rule === 'duplicate-name')
+    expect(duplicate?.file).toBe(first)
+    expect(duplicate?.message).toContain('dependencies/access/billing-api-orders-db-prod.yml')
+    expect(standing.map((violation) => violation.rule)).not.toContain('duplicate-name')
+  })
+
+  it('makes a standing duplicate the plan’s when the plan edits a copy other than its anchor', () => {
+    // Declared twice, and the plan updates the copy at the computed path, which
+    // sorts second. The fault reads the same before and after, and its anchor
+    // is a file the plan leaves alone — yet the merge request carries one of
+    // the two files CI refuses, and Backstage lets the first source win (§4.4),
+    // so the update may never take effect.
+    const anchor = 'catalog/aaa/grant.yml'
+    const snap = snapshot([
+      fileHolding('dependencies/access/billing-api-orders-db-prod.yml', 'billing-api-orders-db-prod'),
+      fileHolding(anchor, 'billing-api-orders-db-prod'),
+    ])
+
+    const { violations, standing } = recheck(updateGrant(), snap)
+
+    expect(violations.map((violation) => [violation.rule, violation.file])).toContainEqual([
+      'duplicate-name',
+      anchor,
+    ])
+    expect(standing.map((violation) => violation.rule)).not.toContain('duplicate-name')
+  })
+
+  it('makes an introduced misplaced entity the plan’s', () => {
+    // No signed plan files an entity away from its computed path, so the edit
+    // is written by hand: what is under test is the attribution, and it has to
+    // hold whatever bytes the plan carries.
+    const misfiled = {
+      path: 'catalog/databases/billing-api-orders-db-prod.yml',
+      before: undefined,
+      after: textOf(fileHolding('x', 'billing-api-orders-db-prod')),
+    }
+
+    const { violations } = recheckPlan(sign(), snapshot(), [misfiled])
+
+    expect(violations.map((violation) => [violation.rule, violation.file])).toEqual([
+      ['misplaced-entity', 'catalog/databases/billing-api-orders-db-prod.yml'],
+    ])
+  })
+
+  it('makes a fault the plan causes in a file it leaves alone the plan’s', () => {
+    // No operation takes a declaration away today, so the edit is written by
+    // hand: bytes that stop declaring the database leave the grant in another
+    // file pointing at nothing. Only being new makes that warning the plan's —
+    // nothing the plan writes is where the rule anchors it.
+    const database = 'catalog/databases/orders-db-prod.yml'
+    const grant = 'dependencies/access/billing-api-orders-db-prod.yml'
+    const snap = snapshot([fileHolding(grant, 'billing-api-orders-db-prod')])
+    const emptied = { path: database, before: bytesOf(snap).get(database), after: '' }
+
+    const { violations, standing } = recheckPlan(sign(), snap, [emptied])
+
+    expect(violations.map((violation) => [violation.rule, violation.file])).toEqual([
+      ['dangling-reference', grant],
+    ])
+    expect(standing).toEqual([])
+  })
+
+  it('makes a pre-existing error in a file the plan edits the plan’s', () => {
+    // The fault predates the plan, but the merge request carries the file, and
+    // a merge request carrying a file CI refuses has to say so.
+    const { violations } = recheck(updateGrant(), snapshot([legacyGrant]))
+
+    expect(violations.map((violation) => [violation.rule, violation.file])).toContainEqual([
+      'misplaced-entity',
+      'dependencies/access/legacy-grant.yml',
+    ])
+  })
+
+  it('does not count a file the plan leaves byte-identical as edited', () => {
+    // `already-declared` still hands the re-check an edit, whose two sides are
+    // equal. The merge request carries no such file, so a fault in it stands.
+    const path = 'dependencies/access/billing-api-orders-db-prod.yml'
+    // Bytes first, then parsed, so the snapshot and the bytes the edit starts
+    // from agree about the document the schema refuses.
+    const bytes = `${textOf(fileHolding(path, 'billing-api-orders-db-prod'))}\n---\nkind: Resource\n`
+    const snap = snapshot([{ path, ...parseDocuments(bytes) }])
+    const contents = new Map([...bytesOf(snap), [path, bytes]])
+
+    const { outcomes, violations, standing } = recheckPlan(
+      sign(),
+      snap,
+      planEdits(sign(), contents).edits,
+    )
+
+    expect(outcomes.get(0)).toBe('already-declared')
+    expect(violations).toEqual([])
+    expect(standing.map((violation) => violation.rule)).toEqual(['invalid-entity'])
+  })
+
+  it('makes a missing witness the plan’s when it writes into that folder', () => {
+    // The folder rule anchors on the folder, so "a file the plan edits" means a
+    // file the plan edits in it.
+    const unwitnessed: RepositorySnapshot = {
+      ...snapshot([
+        fileHolding('dependencies/access/other-grant-prod.yml', 'other-grant-prod'),
+      ]),
+      witnesses: ['catalog/databases', 'systems'],
+    }
+
+    const { violations, standing } = recheck(sign(), unwitnessed)
+
+    expect(violations.map((violation) => [violation.rule, violation.file])).toEqual([
+      ['missing-witness', 'dependencies/access'],
+    ])
+    expect(standing).toEqual([])
+  })
+
+  it('leaves a missing witness standing in a folder the plan does not write into', () => {
+    const unwitnessed: RepositorySnapshot = {
+      ...snapshot(),
+      witnesses: ['catalog/databases', 'dependencies/access'],
+    }
+
+    const { violations, standing } = recheck(sign(), unwitnessed)
+
+    expect(violations).toEqual([])
+    expect(standing.map((violation) => [violation.rule, violation.file])).toEqual([
+      ['missing-witness', 'systems'],
+    ])
   })
 })
