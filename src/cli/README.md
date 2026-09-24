@@ -5,7 +5,9 @@ Three layers — parsing, then commands, then rendering — each testable on its
 **Parsing.** `parseArguments(argv)` in `index.ts` turns an argv array into a resolved
 `Command`: `graph` with its `GraphOptions`, `show` with a query, `help`, or `error` with a
 message. It reads nothing and writes nothing, so `tests/unit/cli-args.test.ts` drives it
-with plain arrays and asserts on the returned object.
+with plain arrays and asserts on the returned object. `graph`, `show` and `ask` parse
+strictly: an option `ask` does not know is refused, never sent to the model as a word of the
+question.
 
 **Commands.** `runGraph(graph, options)` and `runShow(graph, query)` take an `EntityGraph`
 and return a `CommandResult` — `text` plus `found`. No I/O and no process, so
@@ -22,8 +24,14 @@ states the fact and stays free of the process — and `bin.ts` assigns it to
 `process.exitCode`.
 
 **stdout.** `cli/` is the only layer that writes to it. `main(argv, deps)` takes injectable `MainDeps` —
-`root`, `out`, `err` — so `tests/unit/main.test.ts` captures output into arrays and runs against
-`tests/golden/broken-si`. Entities `FixtureProvider` rejected go to `err`, never dropped in silence.
+`root`, `cwd`, `out`, `err` — so `tests/unit/main.test.ts` captures output into arrays and runs against
+`tests/golden/broken-si`. Entities the provider rejected go to `err`, never dropped in silence.
+
+**Where the SI comes from.** `graph`, `show` and `ask` pick a `ContextProvider` and nothing
+after it knows which: `IacFsProvider` over the declarations repository `--repo` names,
+resolved against `cwd` and refused with exit 2 by `repository.ts`'s `declarationsRoot` —
+the guard `plan` uses too — or `FixtureProvider` over the demo SI, which then says so in one
+line on `err`. `tests/unit/read-repo.test.ts` holds both roads.
 
 **Asking (§7.5).** A plan holding an `{unknown}` is a question, and `plan` puts it to the
 user rather than printing it and leaving. `MainDeps.ask` is the seam — `(question) =>

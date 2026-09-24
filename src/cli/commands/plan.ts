@@ -1,4 +1,4 @@
-import { readFile, stat } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { draftPlan } from '../../agents/architect.js'
 import type { EventSink } from '../../agents/events.js'
@@ -28,6 +28,7 @@ import { readConfig, seededVocabulary, type RepositoryConfig } from '../config.j
 import { paintDiff } from '../render/diff.js'
 import type { CommandResult } from './result.js'
 import { plain } from '../render/plain.js'
+import { declarationsRoot } from '../repository.js'
 
 /**
  * Steps 3 to 7 of §7.4, wired end to end and stopping one step short of the
@@ -135,20 +136,6 @@ async function loadPlan(from: string): Promise<Plan> {
     throw new PlanInputError(`${from} is not a plan — ${reasonOf(parsed.error.issues)}`)
   }
   return parsed.data
-}
-
-/**
- * `readRepository` swallows a failed `readdir` and returns an empty snapshot,
- * which is right for a repository holding an empty folder and wrong for a path
- * that is not there: a preview against nothing would look like a clean creation
- * of everything.
- */
-async function repositoryRoot(repo: string): Promise<string> {
-  const stats = await stat(repo).catch(() => undefined)
-  if (stats === undefined || !stats.isDirectory()) {
-    throw new PlanInputError(`${repo} is not a directory; plan needs the declarations repository`)
-  }
-  return path.resolve(repo)
 }
 
 /**
@@ -705,7 +692,7 @@ export function renderStopped(
 }
 
 export async function runPlan(options: PlanOptions): Promise<CommandResult> {
-  const root = await repositoryRoot(options.repo)
+  const root = await declarationsRoot('plan', options.repo)
   const snapshot = await readRepository(root)
   const loaded = await loadPlan(options.from)
 
@@ -885,7 +872,7 @@ export interface IntentOptions {
  * decision in it is about what must NOT reach where.
  */
 export async function runIntent(options: IntentOptions): Promise<CommandResult> {
-  const root = await repositoryRoot(options.repo)
+  const root = await declarationsRoot('plan', options.repo)
   // Read before a single agent runs, and before the project is walked. A
   // committed file that does not parse is not a repository that declared
   // nothing: falling back would answer a typo with a run that silently asks
