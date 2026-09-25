@@ -192,6 +192,16 @@ describe('the suite never reads the developer’s own configuration', () => {
     expect(existsSync(file ?? '/')).toBe(false)
   })
 
+  it('sends no trace anywhere: the MLflow variables are gone, whatever the shell exported', () => {
+    // Every `main` that reads `process.env` — the scenarios do — would otherwise
+    // post each replayed run's full prompts to the developer's MLflow.
+    // IDP_TRACE_DIR stays: it writes files on this machine, and it is how the
+    // tapes are traced on purpose (`IDP_TRACE_DIR=.traces pnpm vitest run
+    // tests/scenarios`).
+    expect(process.env['IDP_MLFLOW_TRACKING_URI']).toBeUndefined()
+    expect(process.env['IDP_MLFLOW_EXPERIMENT_ID']).toBeUndefined()
+  })
+
   it('hands the same to a process a test starts, such as the CLI', () => {
     const child = spawnSync(
       process.execPath,

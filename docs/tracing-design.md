@@ -234,8 +234,9 @@ interface TraceSink { name: string; export(trace: Trace): Promise<void> }
   `IDP_RECORDING`, has no run to trace.
 - `agentBacked` finishes the trace on **both** paths, the result and the catch, records the exit
   code on the root as `idp.exit_code`, exports to each sink, then returns the same code it
-  returns today. The root's outputs are `{ exitCode, text }`, with the text as a terminal would
-  not show it — no escape sequences, so MLflow's preview reads — or `{ exitCode, error }`.
+  returns today. The root's outputs are `{ exitCode, text }`, the text without its escape
+  sequences — a diff may be coloured, and MLflow's preview prints them as they are — or
+  `{ exitCode, error }`.
 - `openSession` hands the root its attributes: `idp.mode`, plus `idp.scenario`, `idp.provider`
   and `idp.model` when it knows them.
 - The root's `inputs` carry the resolved repositories: `plan`'s `repo` and `project`, and

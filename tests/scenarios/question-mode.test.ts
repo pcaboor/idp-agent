@@ -5,6 +5,7 @@ import { FixtureProvider } from '../../src/context/fixtures/index.js'
 import { EntityGraph } from '../../src/context/graph/entity-graph.js'
 import { runGraph } from '../../src/cli/commands/graph.js'
 import type { AgentEvent } from '../../src/agents/events.js'
+import { disagreements, memorySink, onlyTrace } from '../support/trace.js'
 
 /**
  * Replay is instant; recording talks to a provider and takes seconds per turn,
@@ -29,7 +30,9 @@ const run = async (
   const out: string[] = []
   const err: string[] = []
   const events: AgentEvent[] = []
+  const sink = memorySink()
   const code = await main(['ask', intent], {
+    traceSinks: [sink],
     root: FIXTURES,
     recordingDir: RECORDINGS,
     scenario,
@@ -38,6 +41,11 @@ const run = async (
     err: (chunk) => void err.push(chunk),
     events: (event) => void events.push(event),
   })
+  // The trace a replayed question produces tells the run the way its own
+  // stream did, as a replayed plan's does (plan-mode.test.ts).
+  const trace = onlyTrace(sink)
+  expect(disagreements(trace, events), `${scenario}: the trace and the stream disagree`).toEqual([])
+  expect(trace.spans[0]?.attributes).toMatchObject({ 'idp.mode': 'replay', 'idp.scenario': scenario })
   return { code, out: out.join(''), err: err.join(''), events }
 }
 

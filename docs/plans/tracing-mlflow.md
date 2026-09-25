@@ -3548,7 +3548,7 @@ export function onlyTrace(sink: { readonly traces: readonly Trace[] }): Trace
 export function disagreements(trace: Trace, events: readonly AgentEvent[]): string[]
 ```
 
-- [ ] **Step 1: Write the failing sink tests**
+- [x] **Step 1: Write the failing sink tests** — *since changed:* the variables are `IDP_MLFLOW_TRACKING_URI` and `IDP_MLFLOW_EXPERIMENT_ID`, and a test holds that MLflow's own `MLFLOW_*` configures nothing; the file sink writes `0600`; a `2xx` whose OTLP `partialSuccess` rejected spans is a failure.
 
 `tests/unit/trace-sink.test.ts`:
 
@@ -3717,7 +3717,7 @@ describe('exportTrace', () => {
 Run: `pnpm vitest run tests/unit/trace-sink.test.ts`
 Expected: FAIL — cannot load `../../src/cli/trace-sink.js`.
 
-- [ ] **Step 2: Implement the sinks**
+- [x] **Step 2: Implement the sinks**
 
 `src/cli/trace-sink.ts`:
 
@@ -3841,7 +3841,7 @@ Expected: PASS, 10 tests.
 
 Before relying on `plain`, check its export: run `grep -n "export" src/cli/render/plain.ts` and confirm it exports `plain(text: string): string`. `cli/index.ts` already imports it as `import { plain } from './render/plain.js'`.
 
-- [ ] **Step 3: Extend the test support**
+- [x] **Step 3: Extend the test support** — *since changed:* `disagreements()` no longer allows an unanswered tool call: the Architect answers the call it refuses, so any forced close is a disagreement.
 
 Append to `tests/support/trace.ts`, and add these imports at the top of the file:
 
@@ -3907,7 +3907,7 @@ export function disagreements(trace: Trace, events: readonly AgentEvent[]): stri
 }
 ```
 
-- [ ] **Step 4: Write the failing wiring tests**
+- [x] **Step 4: Write the failing wiring tests** — *since changed:* the wiring tests also cover `idpa "<phrase>"` (`idp-agent entry`), `plan`'s resolved `repo` and skipped Inspector, `MLFLOW_TRACKING_URI` alone, the root's plain text, and `· trace tr-<hex>`.
 
 `tests/unit/trace-wiring.test.ts`:
 
@@ -4066,7 +4066,7 @@ describe('tracing an agent-backed run', () => {
 Run: `pnpm vitest run tests/unit/trace-wiring.test.ts`
 Expected: FAIL. `MainDeps` has no `traceSinks` (typecheck), and at runtime no sink is ever called: `onlyTrace` throws `expected one trace, got 0`.
 
-- [ ] **Step 5: Wire tracing into `cli/index.ts`**
+- [x] **Step 5: Wire tracing into `cli/index.ts`** — *since changed:* see the notes under the `plan` and `ask` call sites below; stderr says `· trace tr-<hex>`, MLflow's own id, and the root's `outputs.text` has no escape sequences.
 
 Add these imports beside the existing ones. `EventSink` joins the existing `import type { AgentEvent }` from `'../agents/events.js'`:
 
@@ -4317,6 +4317,8 @@ with
 
 and, inside that same `runIntent({ … })` call, replace `emit: deps.events ?? progress(err),` with `emit,`. Leave the `plan --from` road above it unchanged: it involves no model and is not traced.
 
+> *Since changed:* upstream now resolves both repositories before any model is chosen (`applicationRoot`), so `inputs` carries `repo: roots.repo` rather than `command.repo`, which may be `undefined` now, and `project` only when the Inspector runs; a skipped Inspector is `idp.inspector: 'skipped'` and `idp.inspector.reason` on the root.
+
 For `ask`, replace
 
 ```ts
@@ -4338,10 +4340,12 @@ with
 
 and, inside that `runAsk({ … })` call, replace `emit: deps.events ?? progress(err),` with `emit,`.
 
+> *Since changed:* upstream's `runAsk` also takes the `source` it read, which the call keeps. Upstream's `idpa "<phrase>"` (the `entry` command) goes through `agentBacked` the same way, as `{ command: 'entry', scenario: 'entry', inputs: { command: 'entry', phrase, repo?, project? } }`, its two roads sharing the tee'd `emit`.
+
 Run: `pnpm typecheck && pnpm vitest run tests/unit/trace-wiring.test.ts tests/unit/trace-sink.test.ts tests/unit/main.test.ts tests/unit/plan-intent.test.ts tests/unit/init-command.test.ts tests/unit/ask.test.ts`
 Expected: typecheck clean; all PASS. `main.test.ts`, `plan-intent.test.ts`, `init-command.test.ts` and `ask.test.ts` must pass unchanged: none of them configures a sink.
 
-- [ ] **Step 6: Make every replayed plan scenario check its trace**
+- [x] **Step 6: Make every replayed plan scenario check its trace** — *since changed:* the question-mode scenarios check their traces the same way.
 
 In `tests/scenarios/plan-mode.test.ts`, add the import:
 
@@ -4377,7 +4381,7 @@ and, right after the existing `expect(stderr, \`${scenario}: the recording is st
 Run: `pnpm vitest run tests/scenarios/plan-mode.test.ts`
 Expected: PASS for every recorded plan scenario. Any disagreement is a defect in `builder.ts` or in where an event is emitted — never a reason to loosen `disagreements`.
 
-- [ ] **Step 7: The push script, the scripts, the ignore file, and the smoke environment**
+- [x] **Step 7: The push script, the scripts, the ignore file, and the smoke environment** — *since changed:* `trace-push.mjs` reads `IDP_MLFLOW_*` and a `partialSuccess`; `scripts/smoke.mjs` is upstream's again, since it already strips every `IDP_*` and nothing reads `MLFLOW_*`; `tests/setup/personal.ts` removes `IDP_MLFLOW_*` from the suite and leaves `IDP_TRACE_DIR`.
 
 `scripts/trace-push.mjs`:
 
@@ -4464,7 +4468,7 @@ const CLEAN_ENV = Object.fromEntries(
 
 and extend the comment above it with one sentence: `An MLFLOW_TRACKING_URI left there would send the smoke run's traces to whatever server it names.`
 
-- [ ] **Step 8: Check the replay road end to end, against a live MLflow**
+- [x] **Step 8: Check the replay road end to end, against a live MLflow** — *since changed:* the push reads `IDP_MLFLOW_TRACKING_URI`; the posts go to the same server either way.
 
 This is manual, and never part of CI.
 
@@ -4477,7 +4481,7 @@ MLFLOW_TRACKING_URI=http://127.0.0.1:5055 pnpm trace:push .traces
 
 Expected: `N of N trace(s) sent to experiment 0 at http://127.0.0.1:5055`. Open `http://127.0.0.1:5055`, go to the Default experiment, then Traces. The `repair-malformed-owner` run shows supervisor, inspector, `attempt 1…` with its gate markers, and the architect and reviewer model calls with their prompts. Then `rm -rf .traces && pnpm mlflow:down`.
 
-- [ ] **Step 9: Document it**
+- [x] **Step 9: Document it** — *since changed:* AGENTS.md, SECURITY.md and `src/cli/README.md` name `IDP_MLFLOW_*`; SECURITY.md also says trace files are `0600` and `IDP_TRACE_DIR` belongs outside the application repository, or hidden.
 
 `SECURITY.md`: add this section right before `## Designed, not yet built`:
 
@@ -4525,12 +4529,12 @@ pnpm mlflow:down
 where they go.
 ````
 
-- [ ] **Step 10: Run the CI commands and correct the count**
+- [x] **Step 10: Run the CI commands and correct the count**
 
 Run: `df -h / && pnpm test && pnpm typecheck && pnpm build && pnpm smoke`
 Expected: all green. Write the measured test count into AGENTS.md.
 
-- [ ] **Step 11: Commit** (after a go-ahead)
+- [x] **Step 11: Commit** (after a go-ahead)
 
 ```bash
 git add src/cli/trace-sink.ts src/cli/index.ts src/cli/README.md scripts/trace-push.mjs scripts/smoke.mjs \
@@ -4550,7 +4554,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 EOF
 ```
 
-- [ ] **Step 12: Open the PR against `feat/tracing-4-trace`** (after a go-ahead)
+- [ ] **Step 12: Open the PR against `feat/tracing-4-trace`** (after a go-ahead) — *not yet:* nothing is pushed until the owner says so.
 
 ---
 
