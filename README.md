@@ -10,7 +10,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 1307, no API key" src="https://img.shields.io/badge/tests-1307%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 1372, no API key" src="https://img.shields.io/badge/tests-1372%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -46,7 +46,7 @@ idp-agent sits between the two:
   your request or to what your repository already holds. Anything else becomes a question.
 - ✂️ **Minimal diffs.** It edits the text surgically and never reformats a file, so a
   reviewer sees one added line, not a reshuffled file.
-- 🧪 **Reproducible without an API key.** 1307 tests run offline from recordings: no
+- 🧪 **Reproducible without an API key.** 1372 tests run offline from recordings: no
   network, no cost, no flaky model.
 
 > Platform GitOps is the use case. The real subject is **how to build a reliable
@@ -190,11 +190,11 @@ output limit or a content filter before answering.
 idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource] [--repo <dir> | --demo]
 idp-agent show <name-or-reference> [--repo <dir> | --demo]
 idp-agent ask "<question>" [--repo <dir> | --demo]  # needs IDP_PROVIDER, IDP_MODEL and its key
-idp-agent validate <directory>                   # what the generated CI runs
-idp-agent init platform <dir> --owner @org/team  # the only command that writes
-idp-agent plan --from <plan.json> --repo <dir>   # no model, and none is possible
-idp-agent plan "<intent>" --repo <dir> [--json]  # needs IDP_PROVIDER, IDP_MODEL and its key
-idp-agent init [--repo <dir>]                    # the catalog-info.yml it would write
+idp-agent validate <directory>                     # what the generated CI runs
+idp-agent init platform <dir> --owner @org/team    # the only command that writes
+idp-agent plan --from <plan.json> [--repo <dir>]   # no model, and none is possible
+idp-agent plan "<intent>" [--repo <dir>] [--json]  # needs IDP_PROVIDER, IDP_MODEL and its key
+idp-agent init [--repo <dir>]                      # the catalog-info.yml it would write
 ```
 
 | Command | What it does |
@@ -209,13 +209,45 @@ idp-agent init [--repo <dir>]                    # the catalog-info.yml it would
 **application** repository being declared. `graph`, `show` and `ask` take the first kind;
 without `--repo` they read the directory you are standing in when it is a declarations
 repository (a folder under `catalog/` or `dependencies/` holding a `.witness.yml`, as
-`init platform` writes them), and the fictional demo SI otherwise, or with `--demo`. Either way
-they say which on stderr, and name a repository by its folder.
+`init platform` writes them), then the one you configured (below), and the fictional demo
+SI otherwise, or with `--demo`. Either way they say which on stderr, and name a repository
+by its folder.
 
 **Exit codes:** `0` success · `1` negative answer (nothing matched, the repository doesn't
 conform, or a gate refused the plan), or a model call that failed · `2` bad arguments, or no
 model, no key or no usable `IDP_TIMEOUT` configured · `3` understood but not acted on,
 including a value nobody can vouch for. An ambiguous name resolves to nothing rather than to the first candidate.
+
+### Use it from anywhere
+
+`init platform` creates your declarations repository once; after that, name it once too,
+and `graph`, `show`, `ask` and `plan` read it from any directory without `--repo`. Either
+set `IDP_REPO`, or write a personal configuration file — never committed, and holding no
+credential — at `$XDG_CONFIG_HOME/idp-agent/config.yml`, else
+`~/.config/idp-agent/config.yml` (`%APPDATA%\idp-agent\config.yml` on Windows):
+
+```yaml
+repo: ~/work/IaC    # ~ is expanded; a relative path is relative to this file
+```
+
+`IDP_REPO` must be absolute or start with `~`: a relative one would name a different
+repository in every directory, and is refused. In the file, a bare `~` is YAML's null —
+write `repo: "~"` for the home directory itself.
+
+`graph`, `show` and `ask` take the first of: `--repo` or `--demo` · the directory you
+stand in, when it is a declarations repository · `IDP_REPO` · `repo` in that file · the
+demo SI. `plan` takes `--repo`, then `IDP_REPO`, then the file — never the directory you
+stand in, which for `plan` is the service being declared. Whatever was not typed is said
+in one line on stderr, naming the folder and where it came from:
+
+```
+reading the declarations repository IaC (~/.config/idp-agent/config.yml); --repo <directory> reads another, --demo the fictional SI
+```
+
+A misspelt key, a file that is not YAML, or a configured path that is not a directory is
+exit 2, naming the variable or the file — never a quiet fall back to the demo SI. This is
+also where a Backstage catalogue will be configured as a source, once that provider
+exists; its token will come from the environment, never from this file.
 
 ## Design principles
 

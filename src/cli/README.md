@@ -56,15 +56,37 @@ states the fact and stays free of the process — and `bin.ts` assigns it to
 one `skipped` line each; documents it set aside as a kind this tool does not model go there
 too, as one `not loaded:` line counting them by kind.
 
-**Where the SI comes from.** `graph`, `show` and `ask` pick a `ContextProvider` and nothing
-after it knows which: `IacFsProvider` over the declarations repository `--repo` names,
-resolved against `cwd` and refused with exit 2 by `repository.ts`'s `declarationsRoot` —
-the guard `plan` uses too; with no `--repo`, `IacFsProvider` over `cwd` itself when
-`isDeclarationsRepository` says it is one; otherwise, or with `--demo`, `FixtureProvider`
-over the demo SI. The demo SI, `--demo` or not, and the working directory each say so in one
-line on `err` — only `--repo` is silent — and `--demo` with `--repo` is a parse error. A
-repository is named by its folder's basename, whichever road reached it.
-`tests/unit/read-repo.test.ts` holds all three.
+**Where the SI comes from.** `source.ts`'s `sourceOf` decides it once, for `graph`, `show`,
+`ask` and `plan`, and returns a value — `{ kind: 'repo', root, label, origin }` or
+`{ kind: 'demo', label, origin }` — that `providerOf` turns into a `ContextProvider` and
+nothing after it knows which. The read commands take, first match wins: `--repo`, resolved
+against `cwd` and refused with exit 2 by `repository.ts`'s `declarationsRoot` — the guard
+`plan` uses too — or `--demo`; `cwd` itself when `isDeclarationsRepository` says it is one;
+`IDP_REPO`, absolute or under `~` — a relative one is exit 2, since it would name another
+repository in every directory; `repo` in the personal configuration; the demo SI. `plan`
+takes `--repo`, `IDP_REPO`, the file, never `cwd` — that is the service it declares — and
+without any of them is refused with exit 2, naming all three. What is not reached is not
+read: a malformed file cannot refuse a run `IDP_REPO` already answered. A configured path
+that is not a directory is exit 2 naming the variable or the file, never the demo SI; a
+directory with no markers is read all the same, as `--repo` reads one. Every road but
+`--repo` is said in one line on `err`, naming the folder and its `origin`, and `--demo`
+with `--repo` is a parse error. A repository is named by its folder's basename, whichever
+road reached it. A Backstage source is one more `kind`, and the exhaustive switches over
+`Source` — in `source.ts` and `providerOf` — are the only places that learn about it; what
+`main` needs of a source goes through them (`overviewName`, `blameOf`), never through a
+bare `kind === 'repo'`. Refusals quote a variable or a file in one flattened line, as the
+notices do. `tests/unit/read-repo.test.ts` and `tests/unit/configured-source.test.ts` hold
+the roads.
+
+**The personal configuration.** `personal.ts` reads `$XDG_CONFIG_HOME/idp-agent/config.yml`,
+else `~/.config/idp-agent/config.yml` (`%APPDATA%\idp-agent\config.yml` on Windows when no
+XDG_CONFIG_HOME is set). It is one person's and never committed, where `.idp-agent.yml`
+(`config.ts`) is a team's and is. The schema is `{ repo? }`, strict, so a misspelt key — or
+a `token:` — is exit 2 naming it; `~` is expanded against the home the environment names,
+and a relative path against the file's own directory. A bare `~` is YAML's null, and is
+refused with a message saying to quote it. Absent is nothing configured; unreadable or not
+YAML is exit 2, naming the file. It is located from `MainDeps.env` alone, never
+`os.homedir()`, so a test that injects an environment cannot reach the developer's file.
 
 **Asking (§7.5).** A plan holding an `{unknown}` is a question, and `plan` puts it to the
 user rather than printing it and leaving. `MainDeps.ask` is the seam — `(question) =>

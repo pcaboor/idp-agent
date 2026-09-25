@@ -36,6 +36,14 @@ describe('parseArguments', () => {
     expect(parseArguments(['graph', '--kind', 'Banana']).name).toBe('error')
   })
 
+  it('reads plan without --repo: whether one is configured is decided in main, not here', () => {
+    expect(parseArguments(['plan', '--from', 'plan.json'])).toStrictEqual({
+      name: 'plan',
+      source: { from: 'plan.json' },
+      json: false,
+    })
+  })
+
   it('refuses ask with --repo and no question, rather than asking an empty one', () => {
     expect(parseArguments(['ask', '--repo', 'iac']).name).toBe('error')
   })

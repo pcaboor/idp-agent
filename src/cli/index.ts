@@ -4,7 +4,6 @@ import { parseArgs } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { FixtureProvider } from '../context/fixtures/index.js'
 import { IacFsProvider } from '../context/iac-fs/provider.js'
-import { isDeclarationsRepository } from '../context/iac-fs/snapshot.js'
 import type { ContextProvider, Ignored } from '../context/provider.js'
 import { PLAN_LIMITS } from '../core/schemas/plan.js'
 import { ModelCallError } from '../llm/failures.js'
@@ -32,7 +31,17 @@ import { VERSION } from '../core/index.js'
 import type { LlmClient } from '../llm/client.js'
 import type { CommandResult } from './commands/result.js'
 import { oneLine, plain } from './render/plain.js'
-import { RepositoryArgumentError, declarationsRoot, type DeclarationsCommand } from './repository.js'
+import { RepositoryArgumentError, type DeclarationsCommand } from './repository.js'
+import {
+  blameOf,
+  overviewName,
+  planNeedsRepository,
+  sourceNotice,
+  sourceOf,
+  type RepositorySource,
+  type Source,
+  type SourceContext,
+} from './source.js'
 
 /**
  * Where a Plan comes from, and it is a union rather than two optional fields so
@@ -57,7 +66,8 @@ export type Command =
   | ({ name: 'show'; query: string } & ReadFrom)
   | ({ name: 'ask'; intent: string } & ReadFrom)
   | { name: 'validate'; directory: string }
-  | { name: 'plan'; source: PlanSource; repo: string; json: boolean }
+  /** Absent `repo` means the one configured, and a refusal when none is (`source.ts`). */
+  | { name: 'plan'; source: PlanSource; repo?: string; json: boolean }
   | { name: 'init-platform'; directory: string; owner: string }
   /** Absent `repo` means the repository the user is standing in (§7.3). */
   | { name: 'init'; repo?: string }
@@ -70,14 +80,17 @@ const HELP = `idp-agent - turn an intent into reviewed infrastructure declaratio
   idp-agent show <name-or-reference> [--repo <directory> | --demo]
   idp-agent ask "<question>" [--repo <directory> | --demo]     needs IDP_PROVIDER and IDP_MODEL
   idp-agent validate <directory>
-  idp-agent plan "<intent>" --repo <directory> [--json]
-  idp-agent plan --from <plan.json> --repo <directory> [--json]
+  idp-agent plan "<intent>" [--repo <directory>] [--json]
+  idp-agent plan --from <plan.json> [--repo <directory>] [--json]
   idp-agent init [--repo <directory>]
   idp-agent init platform <directory> --owner @org/team
 
   graph, show and ask read the declarations repository --repo names, the one
-  plan --repo names; without it, the current directory when it is one, and
-  the fictional demo SI otherwise or with --demo.
+  plan --repo names; without it, the current directory when it is one, then
+  IDP_REPO, then repo in the personal config.yml ($XDG_CONFIG_HOME/idp-agent/,
+  else ~/.config/idp-agent/), and the fictional demo SI otherwise or with
+  --demo. plan takes --repo, IDP_REPO or that file, and never the current
+  directory, which is the service it declares.
   plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL. Both write nothing.
   Every model-backed command also needs that provider's key (ANTHROPIC_API_KEY,
   MISTRAL_API_KEY or OPENAI_API_KEY); IDP_TIMEOUT bounds each model call, in
@@ -178,18 +191,13 @@ export function parseArguments(argv: string[]): Command {
           message: `an intent is limited to ${PLAN_LIMITS.maxIntentLength} characters`,
         }
       }
+      // No --repo is not refused here: IDP_REPO or the personal configuration
+      // may name one, and parsing reads neither (`sourceOf`, in main).
       const repo = values.repo
-      if (repo === undefined) {
-        return {
-          name: 'error',
-          message:
-            'plan needs --repo <directory>: a write preview is decided against the repository, never against the catalogue',
-        }
-      }
       return {
         name: 'plan',
         source: from !== undefined ? { from } : { intent },
-        repo,
+        ...(repo !== undefined ? { repo } : {}),
         json: values.json === true,
       }
     } catch (error) {
@@ -493,6 +501,28 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   // through the fixture load below: a write preview is decided against the
   // repository, never against the catalogue (§4.4).
   if (command.name === 'plan') {
+    // The declarations repository: --repo, IDP_REPO or the personal file, in
+    // that order, and never the working directory — that is the service.
+    const context = sourceContextOf(deps)
+    let declarations: RepositorySource | undefined
+    try {
+      declarations = await sourceOf({ command: 'plan', repo: command.repo }, context)
+    } catch (error) {
+      return failed(error, err)
+    }
+    if (declarations === undefined) {
+      err(`${planNeedsRepository(context)}\n\n${HELP}`)
+      return EXIT.badUsage
+    }
+    const notice = sourceNotice('plan', declarations, context)
+    if (notice !== undefined) err(`${notice}\n`)
+    // As typed when typed, so every line that quotes it back is unchanged;
+    // the resolved directory when it was configured. A typed relative path is
+    // therefore resolved twice: `sourceOf` checked it against `deps.cwd`, and
+    // runPlan / runIntent resolve it again against `process.cwd()`. The two are
+    // the same directory in every real run; a test that injects `cwd` for plan
+    // passes an absolute --repo, or none.
+    const repo = command.repo ?? declarations.root
     const colour = colourOf(deps)
     const source = command.source
     // Both roads, because both end on the same outcome: a question is a question
@@ -505,7 +535,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
       try {
         result = await runPlan({
           from: source.from,
-          repo: command.repo,
+          repo,
           json: command.json,
           colour,
           // Omitted rather than passed as undefined: exactOptionalPropertyTypes
@@ -522,7 +552,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     return agentBacked(deps, err, out, 'plan', async (client) =>
       runIntent({
         intent: source.intent,
-        repo: command.repo,
+        repo,
         ...(ask !== undefined ? { ask } : {}),
         // §7.4 step 3: the Inspector reads "the local repository", which is the
         // one the user is standing in. `--repo` names the declarations
@@ -545,8 +575,8 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   } catch (error) {
     return failed(error, err)
   }
-  const { provider } = read
-  const repository = read.road === 'demo' ? undefined : read.repository
+  const { provider, source } = read
+  const repository = overviewName(source)
 
   const { entities, rejected, ignored } = await provider.load()
   // Reported, never dropped in silence: that silent drop is the catalogue
@@ -571,11 +601,14 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   // catalogue, only not of anything this tool models. A mkdocs.yml alone is
   // what an application repository looks like, so that still gets the line.
   const catalogue = ignored.some((document) => document.kind !== undefined)
-  // Only for `--repo`: a working directory is read because its witnesses say
-  // it is a declarations repository, so an empty one is the freshly scaffolded
-  // state and there is no flag to blame.
-  if (read.road === 'repo' && entities.length === 0 && rejected.length === 0 && !catalogue) {
-    err(`${oneLine(read.repository)} declares no entity; --repo names the declarations repository\n`)
+  // Only for a repository something named — `--repo`, IDP_REPO, the personal
+  // file — and naming that something, which is what the user goes and fixes.
+  // A working directory is read because its witnesses say it is a declarations
+  // repository, so an empty one is the freshly scaffolded state and there is
+  // nothing to blame.
+  const blamed = blameOf(source)
+  if (blamed !== undefined && entities.length === 0 && rejected.length === 0 && !catalogue) {
+    err(`${oneLine(source.label)} declares no entity; ${oneLine(blamed)} names the declarations repository\n`)
   }
 
   const graph = EntityGraph.from(
@@ -608,70 +641,52 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   return report(result, out)
 }
 
-/**
- * What a read command reads, the road that reached it — `--repo`, the working
- * directory it stands in, or the demo SI — and the name of the repository it is
- * when it is one: its folder's, never the path as typed — `--repo .` named
- * nothing, and an overview headed "the repository ." said so.
- */
-type Read =
-  | { road: 'repo' | 'standing'; provider: ContextProvider; repository: string }
-  | { road: 'demo'; provider: ContextProvider }
+/** What a read command reads, and where that came from (`source.ts`). */
+interface Read {
+  source: Source
+  provider: ContextProvider
+}
 
 /**
- * Where a read command's SI comes from, in this order.
- *
- * `--repo`: the declarations repository through `iac-fs` — the reader `plan`
- * and `validate` use, behind the guard `plan` uses, resolved against the
- * working directory a relative path was typed in. `--demo`: the demo SI.
- * Neither: the working directory when its markers say it is a declarations
- * repository (`isDeclarationsRepository`, which never walks), so nobody types
- * `--repo .` from inside their own; the demo SI otherwise.
- *
- * The demo SI, and a repository read from the working directory, are each said
- * on stderr in one line, before anything else — only `--repo` is silent: an
- * answer about an invented company that does not say it is invented is read
- * as an answer about the user's own, `--demo` or not, and an answer about the
- * directory someone happens to stand in, as an answer about the demo they
- * expected. stderr, because stdout is the answer and gets piped.
- *
- * The working directory is asked for only on the roads that need it: a shell
- * can stand in a directory since removed, where `process.cwd()` throws, and the
- * demo SI needs none — so that is a directory that is not a declarations
- * repository, not a failure.
+ * The provider for a read command's source. The decision — `--repo`, `--demo`,
+ * the working directory, IDP_REPO, the personal file, the demo SI — is
+ * `sourceOf`'s, shared with `plan`; this turns it into a reader and says, in one
+ * line on stderr before anything else, what is being read. Only `--repo` is
+ * silent. stderr, because stdout is the answer and gets piped.
  */
 async function providerOf(
   command: { name: Exclude<DeclarationsCommand, 'plan'> } & ReadFrom,
   deps: MainDeps,
   err: (chunk: string) => void,
 ): Promise<Read> {
-  if (command.repo !== undefined) {
-    const root = await declarationsRoot(command.name, command.repo, deps.cwd ?? process.cwd())
-    return { road: 'repo', provider: new IacFsProvider(root), repository: folderOf(root) }
-  }
-  if (command.demo !== true) {
-    const root = standingIn(deps)
-    if (root !== undefined && (await isDeclarationsRepository(root))) {
-      const repository = folderOf(root)
-      err(`${standingNotice(repository)}\n`)
-      return { road: 'standing', provider: new IacFsProvider(root), repository }
+  const context = sourceContextOf(deps)
+  const source = await sourceOf(
+    { command: command.name, repo: command.repo, demo: command.demo },
+    context,
+  )
+  const notice = sourceNotice(command.name, source, context)
+  if (notice !== undefined) err(`${notice}\n`)
+  switch (source.kind) {
+    case 'repo':
+      return { source, provider: new IacFsProvider(source.root) }
+    case 'demo':
+      return { source, provider: new FixtureProvider(deps.root ?? DEFAULT_ROOT) }
+    default: {
+      const exhaustive: never = source
+      return exhaustive
     }
   }
-  err(`${DEMO_NOTICE}\n`)
-  return { road: 'demo', provider: new FixtureProvider(deps.root ?? DEFAULT_ROOT) }
 }
 
-/** The working directory, or none when it has been removed from under the shell. */
-function standingIn(deps: MainDeps): string | undefined {
-  try {
-    return path.resolve(deps.cwd ?? process.cwd())
-  } catch {
-    return undefined
-  }
-}
-
-/** A repository's name: its folder's. The root of the filesystem has none, so it is its path. */
-const folderOf = (root: string): string => path.basename(root) || root
+/**
+ * The working directory and the environment a source is resolved in: the
+ * injected ones in a test, the process's otherwise. The directory is asked for
+ * lazily, because `process.cwd()` throws in a directory since removed.
+ */
+const sourceContextOf = (deps: MainDeps): SourceContext => ({
+  cwd: () => deps.cwd ?? process.cwd(),
+  env: deps.env ?? process.env,
+})
 
 /**
  * Everything the read commands set aside, as ONE line. A real catalogue holds
@@ -698,14 +713,6 @@ function notLoaded(ignored: readonly Ignored[]): string {
   const documents = ignored.length === 1 ? 'document' : 'documents'
   return `not loaded: ${String(ignored.length)} ${documents} this tool does not model (${counts.join(', ')})`
 }
-
-const DEMO_NOTICE =
-  'reading the demo SI, a fictional company; pass --repo <directory> to read your own declarations repository'
-
-/** Flattened: a folder's name is whatever someone called it, escape sequences included. */
-const standingNotice = (repository: string): string =>
-  `reading the declarations repository in the current directory (${oneLine(repository)}); ` +
-  '--repo <directory> reads another, --demo the fictional SI'
 
 /**
  * Colour belongs to a terminal, and only main knows whether it holds one: an
