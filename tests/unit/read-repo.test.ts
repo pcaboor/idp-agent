@@ -134,6 +134,18 @@ describe('graph and show with --repo', () => {
     expect(out).toContain('billing-db-prod')
   })
 
+  it('spells out an override in the name of a file it skips', async () => {
+    // U+202E is what makes `lmy.evil` read `live.yml`: the name is how the
+    // user finds the file, and it must read as the file is called.
+    const name = 'catalog/databases/broken\u202Elmy.yml'
+    const cwd = await workspace({
+      [name]: 'apiVersion: backstage.io/v1alpha1\nkind: Resource\nmetadata:\n  name: broken\n',
+    })
+    const { err } = await run(['graph', '--env', 'prod', '--repo', 'iac'], { cwd })
+    expect(err).not.toContain('\u202E')
+    expect(err).toMatch(/^skipped catalog\/databases\/broken\\u202elmy\.yml: /m)
+  })
+
   it.each([
     ['a path that is not there', async (cwd: string) => void cwd, 'nowhere'],
     [

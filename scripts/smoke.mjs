@@ -173,9 +173,15 @@ check({ args: ['ask', 'which databases are in prod?'], code: 2, stderr: /no mode
 check({ args: ['ask'], code: 2, stderr: /needs a question/ })
 // `init` and `plan "<intent>"` both reach a model now, so with nothing
 // configured they must refuse for want of one — not for want of a recording,
-// and not by walking a repository first.
+// and not by walking a repository first. `--repo` names the demo SI rather than
+// `.`: the directory `plan` inspects is the one it stands in, and one directory
+// as both repositories is refused before the model is (see further down).
 check({ args: ['init'], code: 2, stderr: /no model configured/ })
-check({ args: ['plan', 'give billing-api access to orders-db', '--repo', '.'], code: 2, stderr: /no model configured/ })
+check({
+  args: ['plan', 'give billing-api access to orders-db', '--repo', path.join(ROOT, 'fixtures/si-demo')],
+  code: 2,
+  stderr: /no model configured/,
+})
 check({ args: ['plan', '--repo', '.'], code: 2, stderr: /needs an intent/ })
 check({ args: ['init', 'platform', 'repo'], code: 2, stderr: /--owner/ })
 check({ args: ['init', 'platform', 'repo', '--owner', '@acme/platform'], code: 0, stdout: /wrote 12/ })
@@ -310,6 +316,17 @@ check({
   args: ['plan', '--from', path.join(ROOT, 'examples/declare-database.json')],
   code: 2,
   stderr: /^plan needs --repo <directory>, or IDP_REPO or repo in .*config\.yml/,
+})
+// The owner's run: `plan "<intent>"` typed from inside his declarations
+// repository. The Inspector would read it as the service's, so it is refused —
+// and refused before the missing model is, because the directory is the
+// argument to fix whatever is configured, and it walks nothing to find that out.
+check({
+  args: ['plan', 'give billing-api read access to the orders database in prod', '--repo', '.'],
+  cwd: STANDING,
+  code: 2,
+  stderr: /IaC is a declarations repository[\s\S]*--project <dir>/,
+  absentFromStderr: /no model configured/,
 })
 
 // A repository that was already wrong before the plan, as a real one usually

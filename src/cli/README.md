@@ -37,9 +37,19 @@ never cut: a value shortened there would be wrong), every label and description 
 overview, the `skipped <file>: <reason>` lines on stderr and `validate`'s violation lines —
 a reason quotes the key it faults, and a file name is somebody's choice — the event stream,
 and `ask`'s two model-authored lines on stderr: `cannot answer: <reason>` and the
-Supervisor's refusal to classify, which quotes what it said. `plan` and `init` clean what a
-model wrote (`render/plain.ts` says where); what they print from a repository file is not
-covered by this paragraph.
+Supervisor's refusal to classify, which quotes what it said. `plan` and `init` go further,
+through `inertLine`: every reason they print — a question, a refusal at the signature or a
+policy, a violation, a dropped operation, a refused answer, the stop and the Reviewer's words
+in it — is one line, cleaned, with the bidi overrides spelled out as `\u202e`, and bounded:
+at `REASON_LIMIT` on stdout, at 200 on the event stream, and a file name or a reference not
+at all, because a shortened one names another. Two outputs are escaped by `visible` rather than cleaned, because removing a byte
+would change what they say: the partial plan a stop shows, which stays JSON that parses back
+to the plan refused, and the diff, whose context lines are a repository file's own bytes. The
+`derived` and `overridden` lines clean every reference on them, as do the `skipped` lines
+every command prints, and every refusal `index.ts` prints on the way out (`failed`) goes
+through `inert` — through `inertLine`, whole, for a plan file's and a directory's, which are
+one sentence each and quote a file's bytes. `--json` is data and is
+left as it is.
 
 **Exit codes.** `EXIT.ok` is 0, `EXIT.notFound` is 1 (the answer is negative: a filter that
 matches nothing, an ambiguous name, or a repository that does not conform — and a model call
@@ -55,6 +65,20 @@ states the fact and stays free of the process — and `bin.ts` assigns it to
 `tests/golden/broken-si`. Entities the provider rejected go to `err`, never dropped in silence,
 one `skipped` line each; documents it set aside as a kind this tool does not model go there
 too, as one `not loaded:` line counting them by kind.
+
+**Which repository `plan` inspects.** `plan "<intent>"` reads two: the declarations
+repository the preview is decided against (`--repo`, `IDP_REPO` or the personal file), and
+the application repository the Inspector reads — the working directory, or `--project <dir>`
+resolved against it.
+`repository.ts`'s `applicationRoot` refuses, with exit 2 and before a model is chosen, a
+project that is not a directory, one that is a declarations repository by the markers
+`isDeclarationsRepository` looks for, one that is the `--repo` directory by real path, and
+one under that directory's `catalog/` or `dependencies/`. Before the model, because the
+directory is the argument to fix whatever is configured. It returns both roots resolved,
+and `runIntent` reads those, so the directory compared is the directory read; the working
+directory is asked for only when a path needs it.
+`--project` with `--from` is a parse error: that road has no Inspector.
+`tests/unit/plan-project.test.ts` holds all of it.
 
 **Where the SI comes from.** `source.ts`'s `sourceOf` decides it once, for `graph`, `show`,
 `ask` and `plan`, and returns a value — `{ kind: 'repo', root, label, origin }` or
