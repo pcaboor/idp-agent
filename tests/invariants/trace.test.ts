@@ -60,17 +60,24 @@ const event: fc.Arbitrary<AgentEvent> = fc.oneof(
   fc.record({ type: fc.constant('agent:start' as const), agent }),
   fc.record({ type: fc.constant('agent:end' as const), agent, threw: fc.boolean() }),
   fc.record({ type: fc.constant('attempt:start' as const), attempt }),
-  fc.record({ type: fc.constant('attempt:end' as const), attempt }),
+  fc.record(
+    { type: fc.constant('attempt:end' as const), attempt, stopped: words },
+    { requiredKeys: ['type', 'attempt'] },
+  ),
   fc.record({ type: fc.constant('gate:passed' as const), attempt, gate }),
   fc.record({ type: fc.constant('repair' as const), attempt, gate, reason: words }),
   fc.record({ type: fc.constant('tool:call' as const), id, name: words, args }),
-  fc.record({
-    type: fc.constant('tool:result' as const),
-    id,
-    name: words,
-    rows: fc.nat(),
-    truncated: fc.nat(),
-  }),
+  fc.record(
+    {
+      type: fc.constant('tool:result' as const),
+      id,
+      name: words,
+      rows: fc.nat(),
+      truncated: fc.nat(),
+      error: words,
+    },
+    { requiredKeys: ['type', 'id', 'name', 'rows', 'truncated'] },
+  ),
   fc.record({ type: fc.constant('refused' as const), agent, reason: words }),
   fc.record({ type: fc.constant('stopped' as const), agent, reason: words }),
   note,
@@ -98,13 +105,21 @@ type Block =
       readonly threw: boolean
       readonly body: readonly Block[]
     }
-  | { readonly kind: 'attempt'; readonly attempt: 1 | 2 | 3; readonly body: readonly Block[] }
+  | {
+      readonly kind: 'attempt'
+      readonly attempt: 1 | 2 | 3
+      /** Why it ended with no verdict — no opinion, no draft, a throw — when it did. */
+      readonly stopped: string | undefined
+      readonly body: readonly Block[]
+    }
   | {
       readonly kind: 'tool'
       readonly id: string
       readonly name: string
       readonly args: unknown
       readonly rows: number
+      /** The tool refused the call. */
+      readonly error: string | undefined
     }
   | { readonly kind: 'model'; readonly agent: AgentName; readonly fails: boolean }
   | { readonly kind: 'gate'; readonly attempt: 1 | 2 | 3; readonly gate: Gate }
@@ -115,6 +130,7 @@ type Block =
       readonly reason: string
     }
   | { readonly kind: 'refused'; readonly reason: string }
+  | { readonly kind: 'stopped'; readonly reason: string }
   | { readonly kind: 'note'; readonly event: AgentEvent }
 
 const { block } = fc.letrec<{ block: Block; body: readonly Block[] }>((tie) => ({
@@ -126,7 +142,15 @@ const { block } = fc.letrec<{ block: Block; body: readonly Block[] }>((tie) => (
     fc.record({ kind: fc.constant('gate' as const), attempt, gate }),
     fc.record({ kind: fc.constant('repair' as const), attempt, gate, reason: words }),
     fc.record({ kind: fc.constant('refused' as const), reason: words }),
-    fc.record({ kind: fc.constant('tool' as const), id, name: words, args, rows: fc.nat() }),
+    fc.record({ kind: fc.constant('stopped' as const), reason: words }),
+    fc.record({
+      kind: fc.constant('tool' as const),
+      id,
+      name: words,
+      args,
+      rows: fc.nat(),
+      error: fc.option(words, { nil: undefined }),
+    }),
     fc.record({ kind: fc.constant('model' as const), agent, fails: fc.boolean() }),
     {
       arbitrary: fc.record({
@@ -138,7 +162,12 @@ const { block } = fc.letrec<{ block: Block; body: readonly Block[] }>((tie) => (
       weight: 3,
     },
     {
-      arbitrary: fc.record({ kind: fc.constant('attempt' as const), attempt, body: tie('body') }),
+      arbitrary: fc.record({
+        kind: fc.constant('attempt' as const),
+        attempt,
+        stopped: fc.option(words, { nil: undefined }),
+        body: tie('body'),
+      }),
       weight: 3,
     },
   ),
@@ -147,9 +176,12 @@ const { block } = fc.letrec<{ block: Block; body: readonly Block[] }>((tie) => (
 /** About fifty steps on average, and three runs in four with an agent in them. */
 const run = fc.array(block, { maxLength: 10, size: 'max' })
 
-/** What an agent's span must say: its first refusal, else whether it threw. */
+/**
+ * What an agent's span must say: its first refusal or stop, else whether it
+ * threw.
+ */
 interface Verdict {
-  refusal: string | undefined
+  failure: string | undefined
   readonly threw: boolean
 }
 
@@ -158,15 +190,33 @@ interface OpenAgent {
   readonly verdict: Verdict
 }
 
+/** What an attempt's span must say: the gate that first refused it, else why it stopped. */
+interface AttemptVerdict {
+  failure: string | undefined
+}
+
+interface OpenAttempt {
+  readonly attempt: 1 | 2 | 3
+  readonly verdict: AttemptVerdict
+}
+
+/** What each span of a well-formed run must end on, each kind in the order it began. */
+interface Verdicts {
+  readonly agents: Verdict[]
+  readonly attempts: AttemptVerdict[]
+  /** A tool's own error, or undefined when it answered. */
+  readonly tools: (string | undefined)[]
+}
+
 /**
- * The steps a well-formed run emits, and the verdict each agent must end on,
- * in the order the agents began. A refusal names the innermost open agent and
- * a repair the innermost open attempt, as they do in the harness; one with
- * nothing open to name is emitted as the nearest event that needs nothing.
+ * The steps a well-formed run emits, and the verdict each span must end on.
+ * A refusal or a stop names the innermost open agent and a repair the
+ * innermost open attempt, as they do in the harness; one with nothing open to
+ * name is emitted as the nearest event that needs nothing.
  */
-function walk(body: readonly Block[]): { steps: Step[]; verdicts: Verdict[] } {
+function walk(body: readonly Block[]): { steps: Step[]; verdicts: Verdicts } {
   const steps: Step[] = []
-  const verdicts: Verdict[] = []
+  const verdicts: Verdicts = { agents: [], attempts: [], tools: [] }
   let calls = 0
   const emit = (one: AgentEvent): void => {
     steps.push({ kind: 'event', event: one })
@@ -174,26 +224,43 @@ function walk(body: readonly Block[]): { steps: Step[]; verdicts: Verdict[] } {
   const visit = (
     blocks: readonly Block[],
     agents: readonly OpenAgent[],
-    attempts: readonly (1 | 2 | 3)[],
+    attempts: readonly OpenAttempt[],
   ): void => {
     for (const block of blocks) {
       switch (block.kind) {
         case 'agent': {
-          const verdict: Verdict = { refusal: undefined, threw: block.threw }
-          verdicts.push(verdict)
+          const verdict: Verdict = { failure: undefined, threw: block.threw }
+          verdicts.agents.push(verdict)
           emit({ type: 'agent:start', agent: block.agent })
           visit(block.body, [...agents, { agent: block.agent, verdict }], attempts)
           emit({ type: 'agent:end', agent: block.agent, threw: block.threw })
           break
         }
-        case 'attempt':
+        case 'attempt': {
+          const verdict: AttemptVerdict = { failure: undefined }
+          verdicts.attempts.push(verdict)
           emit({ type: 'attempt:start', attempt: block.attempt })
-          visit(block.body, agents, [...attempts, block.attempt])
-          emit({ type: 'attempt:end', attempt: block.attempt })
+          visit(block.body, agents, [...attempts, { attempt: block.attempt, verdict }])
+          // The first failure stands: a gate that refused it outranks the stop.
+          if (block.stopped !== undefined) verdict.failure ??= block.stopped
+          emit({
+            type: 'attempt:end',
+            attempt: block.attempt,
+            ...(block.stopped === undefined ? {} : { stopped: block.stopped }),
+          })
           break
+        }
         case 'tool':
+          verdicts.tools.push(block.error)
           emit({ type: 'tool:call', id: block.id, name: block.name, args: block.args })
-          emit({ type: 'tool:result', id: block.id, name: block.name, rows: block.rows, truncated: 0 })
+          emit({
+            type: 'tool:result',
+            id: block.id,
+            name: block.name,
+            rows: block.rows,
+            truncated: 0,
+            ...(block.error === undefined ? {} : { error: block.error }),
+          })
           break
         case 'model':
           steps.push({ kind: 'call', agent: block.agent })
@@ -201,22 +268,27 @@ function walk(body: readonly Block[]): { steps: Step[]; verdicts: Verdict[] } {
           calls += 1
           break
         case 'gate':
-          emit({ type: 'gate:passed', attempt: attempts.at(-1) ?? block.attempt, gate: block.gate })
+          emit({ type: 'gate:passed', attempt: attempts.at(-1)?.attempt ?? block.attempt, gate: block.gate })
           break
         case 'repair': {
           const open = attempts.at(-1)
-          if (open === undefined) emit({ type: 'gate:passed', attempt: block.attempt, gate: block.gate })
-          else emit({ type: 'repair', attempt: open, gate: block.gate, reason: block.reason })
+          if (open === undefined) {
+            emit({ type: 'gate:passed', attempt: block.attempt, gate: block.gate })
+            break
+          }
+          open.verdict.failure ??= `refused at the ${block.gate} gate`
+          emit({ type: 'repair', attempt: open.attempt, gate: block.gate, reason: block.reason })
           break
         }
-        case 'refused': {
+        case 'refused':
+        case 'stopped': {
           const open = agents.at(-1)
           if (open === undefined) {
             emit({ type: 'retry', agent: 'architect', reason: block.reason })
             break
           }
-          open.verdict.refusal ??= block.reason
-          emit({ type: 'refused', agent: open.agent, reason: block.reason })
+          open.verdict.failure ??= block.reason
+          emit({ type: block.kind, agent: open.agent, reason: block.reason })
           break
         }
         case 'note':
@@ -310,7 +382,7 @@ describe('the trace builder, over any sequence of events', () => {
 })
 
 describe('the trace builder, over a run the harness could produce', () => {
-  it('closes every span by its own event, and fails an agent only for its refusal or its throw', () => {
+  it('closes every span by its own event, and fails a span only for a reason of its own', () => {
     fc.assert(
       fc.property(run, fc.boolean(), (body, threw) => {
         const { steps, verdicts } = walk(body)
@@ -322,16 +394,22 @@ describe('the trace builder, over a run the harness could produce', () => {
           (span) => span.status.code === 'ERROR' && span.status.message.includes('by no event of its own'),
         )
         expect(forced).toEqual([])
-        // In the order they began, which is the order the walk met them.
-        expect(trace.spans.filter((span) => span.type === 'AGENT').map((span) => span.status)).toEqual(
-          verdicts.map((verdict) =>
-            verdict.refusal !== undefined
-              ? { code: 'ERROR', message: verdict.refusal }
-              : verdict.threw
-                ? { code: 'ERROR', message: 'the agent threw' }
-                : { code: 'OK' },
+        // In the order they began, which is the order the walk met them. An
+        // agent: its first refusal or stop, else its throw. An attempt: the
+        // gate that first refused it, else why it stopped. A tool: its error.
+        const statuses = (test: (span: Span) => boolean): unknown[] =>
+          trace.spans.filter(test).map((span) => span.status)
+        const failedWith = (failure: string | undefined): unknown =>
+          failure === undefined ? { code: 'OK' } : { code: 'ERROR', message: failure }
+        expect(statuses((span) => span.type === 'AGENT')).toEqual(
+          verdicts.agents.map((verdict) =>
+            failedWith(verdict.failure ?? (verdict.threw ? 'the agent threw' : undefined)),
           ),
         )
+        expect(statuses((span) => span.type === 'CHAIN' && span.name.startsWith('attempt '))).toEqual(
+          verdicts.attempts.map((verdict) => failedWith(verdict.failure)),
+        )
+        expect(statuses((span) => span.type === 'TOOL')).toEqual(verdicts.tools.map(failedWith))
       }),
     )
   })

@@ -16,7 +16,7 @@ the `AgentEvent` stream (design §6.2), and `LlmClient.generate`, wrapped by a d
 `/v1/traces`, a file per run — and turns each on from the environment alone. Four events
 were added so that a span is bounded by what happened rather than by whatever came next —
 `agent:end`, `attempt:start`, `attempt:end`, `gate:passed` — and a tool call and its result
-carry the model's call id.
+carry the model's call id. The design is `docs/tracing-design.md`.
 
 ## Rejected alternatives
 
@@ -33,7 +33,10 @@ control.
 ## Consequences
 
 A replayed run is traced like a live one: the suite asserts the shape of a real trace
-offline, and a recording can be read in MLflow with no key. `agents/` gained no import. The
+offline, and a recording can be read in MLflow with no key. A span's status is the stream's
+own word for it — a refusal, a `stopped`, a refused gate, an attempt's `stopped`, a tool's
+`error` — and the root fails only when the run threw, so a plan the repair loop stopped is
+found by its failed attempts and `idp.exit_code`, not by a red root. `agents/` gained no import. The
 cost is an encoder of our own, held to a contract: `tests/contract/otlp/accepted.json` was
 read back through MLflow 3.16.1's client span by span, and `scripts/mlflow-contract.mjs`
 repeats that whenever the pinned image moves. A trace carries full prompts, which makes a

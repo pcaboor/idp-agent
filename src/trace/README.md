@@ -22,7 +22,7 @@ only `cli/` imports it. `cli/trace-sink.ts` owns both ways a trace leaves the pr
 is `tests/architecture/dependencies.test.ts`, *trace/ reaches nothing but types, and only cli/
 reaches it*.
 
-## Two rules the builder keeps
+## Three rules the builder keeps
 
 - **Nothing is guessed.** A span is closed by the event that ends it. One that nothing
   closed is closed — at `finish`, or when the span around it ends — as an error that says so
@@ -31,6 +31,13 @@ reaches it*.
   so one that never gets a result does not swallow what follows it.
   `tests/invariants/trace.test.ts` holds that over any sequence of events, and holds a
   well-formed run to closing every span by its own event.
+- **A span fails for a reason of its own, and the first one stands.** An agent fails for its
+  refusal, its `stopped` or its throw; an attempt for the gate that refused it, else for why
+  it ended with no verdict (`attempt:end.stopped`); a tool for its own `error`; a model call
+  for what the provider threw. The root fails only when the run threw: a plan stopped after
+  three attempts is an `OK` root over failed attempts, and `idp.exit_code` says how the run
+  ended (`docs/tracing-design.md` §4.1). The well-formed property holds every agent, attempt
+  and tool to exactly that status.
 - **Absent is not zero.** A model call whose provider reported no usage — every recording
   made before usage was stored — carries `idp.usage: absent`, not a count of 0.
 

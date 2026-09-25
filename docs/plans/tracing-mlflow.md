@@ -1825,7 +1825,7 @@ export function skeletonOf(trace: Trace): Skeleton
 export function spanNamed(trace: Trace, name: string): Span
 ```
 
-- [ ] **Step 1: Write the data model**
+- [x] **Step 1: Write the data model**
 
 `src/trace/model.ts`:
 
@@ -1880,7 +1880,7 @@ export interface Trace {
 }
 ```
 
-- [ ] **Step 2: Write the test support and the failing builder tests**
+- [x] **Step 2: Write the test support and the failing builder tests** — *since changed:* the review's fix pass (`fix(trace): record what each call was sent, and keep tools off the stack`) added tests for a copied transcript, TOOL spans as leaves, a failure that cannot be printed, forced closes that keep their reason, and refusals or repairs that name nothing open; the rebase added a stopped agent, a refused tool, and an attempt that stopped or threw.
 
 `tests/support/trace.ts`:
 
@@ -2382,12 +2382,12 @@ describe('finish', () => {
 })
 ```
 
-- [ ] **Step 3: Run them to see them fail**
+- [x] **Step 3: Run them to see them fail**
 
 Run: `pnpm vitest run tests/unit/trace-builder.test.ts`
 Expected: FAIL — cannot load `../../src/trace/builder.js`.
 
-- [ ] **Step 4: Implement the builder**
+- [x] **Step 4: Implement the builder** — *since changed:* TOOL spans are leaves paired by id, never on the stack; upstream's `stopped` fails its agent as `refused` does, and `reapplied` is a note; a `tool:result.error` fails its TOOL span and stays in its outputs; `attempt:end.stopped` fails the attempt, the first failure standing.
 
 `src/trace/builder.ts`:
 
@@ -2713,12 +2713,12 @@ export function createTraceBuilder(options: {
 }
 ```
 
-- [ ] **Step 5: Run the builder tests to see them pass**
+- [x] **Step 5: Run the builder tests to see them pass**
 
 Run: `pnpm vitest run tests/unit/trace-builder.test.ts && pnpm typecheck`
 Expected: PASS, and typecheck clean.
 
-- [ ] **Step 6: Write the property test**
+- [x] **Step 6: Write the property test** — *since changed:* the random property uses `size: 'max'` and every member of the union, `stopped`, `reapplied`, `tool:result.error` and `attempt:end.stopped` included; the well-formed property is generated as nested blocks and holds every agent, attempt and tool to its own status.
 
 `tests/invariants/trace.test.ts`:
 
@@ -2844,7 +2844,7 @@ describe('the trace builder, over any sequence of events', () => {
 Run: `pnpm vitest run tests/invariants/trace.test.ts`
 Expected: PASS. If fast-check reports a counterexample, it is a builder defect: fix `builder.ts`, never the property.
 
-- [ ] **Step 7: Write the failing decorator test**
+- [x] **Step 7: Write the failing decorator test**
 
 `tests/unit/trace-client.test.ts`:
 
@@ -2911,7 +2911,7 @@ describe('traced', () => {
 Run: `pnpm vitest run tests/unit/trace-client.test.ts`
 Expected: FAIL — cannot load `../../src/trace/client.js`.
 
-- [ ] **Step 8: Implement the decorator**
+- [x] **Step 8: Implement the decorator**
 
 `src/trace/client.ts`:
 
@@ -2952,7 +2952,7 @@ export function traced(
 Run: `pnpm vitest run tests/unit/trace-client.test.ts`
 Expected: PASS.
 
-- [ ] **Step 9: Write the contract trace and the failing encoder tests**
+- [x] **Step 9: Write the contract trace and the failing encoder tests**
 
 `tests/contract/otlp/contract-trace.ts`:
 
@@ -3172,7 +3172,7 @@ describe('toOtlpJson', () => {
 Run: `pnpm vitest run tests/unit/trace-otlp.test.ts`
 Expected: FAIL — cannot load `../../src/trace/otlp.js`.
 
-- [ ] **Step 10: Implement the encoder**
+- [x] **Step 10: Implement the encoder**
 
 `src/trace/otlp.ts`:
 
@@ -3286,7 +3286,7 @@ export function toOtlpJson(trace: Trace, resource: OtlpResource): unknown {
 Run: `pnpm vitest run tests/unit/trace-otlp.test.ts`
 Expected: PASS, 4 tests. If the contract test fails, diff the two objects; the fixture is the reference, since it is what MLflow read back.
 
-- [ ] **Step 11: Write the architecture rule, and prove it bites**
+- [x] **Step 11: Write the architecture rule, and prove it bites** — *since changed:* the rule also refuses a runtime `import()`/`require()` of anything but a local module, and a value import from any layer or package, not only `agents/` and `llm/`.
 
 In `tests/architecture/dependencies.test.ts`, add this `it` as the last test inside `describe('architecture'`:
 
@@ -3345,7 +3345,7 @@ Expected: FAIL, with three offending entries: `trace/otlp.ts imports values from
 
 Remove the three lines and run again: PASS. Check with `git diff src/trace/otlp.ts src/agents/supervisor.ts` that nothing of the probe is left.
 
-- [ ] **Step 12: Write the ADR, the folder README, and the design and AGENTS.md changes**
+- [x] **Step 12: Write the ADR, the folder README, and the design and AGENTS.md changes** — *since changed:* the README and the ADR also say how a span's status is decided, and the ADR names `docs/tracing-design.md`.
 
 `docs/adr/0009-tracing-renders-the-event-stream.md`:
 
@@ -3486,12 +3486,12 @@ In the Conventions bullet that begins `- **Thirteen** architecture rules`, write
 `trace/` reaches nothing but types — no disk, no network, no `fetch`, no SDK, nothing of `cli/` — and only `cli/` reaches it.
 ```
 
-- [ ] **Step 13: Run the CI commands and correct the counts**
+- [x] **Step 13: Run the CI commands and correct the counts**
 
 Run: `df -h / && pnpm test && pnpm typecheck && pnpm build && pnpm smoke`
 Expected: all green. Write the measured test count into AGENTS.md. The rule count was set in Step 12.
 
-- [ ] **Step 14: Commit** (after a go-ahead)
+- [x] **Step 14: Commit** (after a go-ahead)
 
 ```bash
 git add src/trace/model.ts src/trace/builder.ts src/trace/client.ts src/trace/otlp.ts src/trace/README.md \
@@ -3513,7 +3513,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 EOF
 ```
 
-- [ ] **Step 15: Open the PR against `feat/tracing-3-usage`** (after a go-ahead)
+- [ ] **Step 15: Open the PR against `feat/tracing-3-usage`** (after a go-ahead) — *not yet:* nothing is pushed until the owner says so.
 
 ---
 
