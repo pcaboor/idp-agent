@@ -641,13 +641,17 @@ consult only the personal side; `iacRepo` is a URL, nothing here clones it, and 
 a fall-back for `repo`.
 
 The project has two uses: `init platform` creates the declarations repository once, and
-then `graph`, `show` and `ask` question it from anywhere, not only from inside it. They
-read, first match wins: `--repo` or `--demo`; the working directory when it is a
-declarations repository; `IDP_REPO`; the file's `repo`; the fictional demo SI. `plan`
-takes `--repo`, then `IDP_REPO`, then the file, and never the working directory, which for
-`plan` is the service being declared. Every road but `--repo` is said on stderr in one
-line naming the folder and what named it. A configured path that is not a directory is
-exit 2, never a quiet fall back to the demo SI: the user asked for that repository.
+then `idpa "<phrase>"` (§ 7.4) — and `graph`, `show`, `ask` and `plan` — question it or
+change it from anywhere, not only from inside it. Every one of them reads, first match
+wins: `--repo` (or `--demo`, for a read); the working directory when it is a declarations
+repository; `IDP_REPO`; the file's `repo`. With none, a read takes the fictional demo SI
+and a change is refused, naming all four: a write preview is decided against a
+repository, never a demo (§ 4.4). `plan` used to skip the working directory, as the
+service it declares; it is taken on its markers only, which a service's repository does
+not carry, so `cd IaC && idpa "<intent>"` decides against IaC. Every road but `--repo` is
+said on stderr in one line naming the folder and what named it. A configured path that is
+not a directory is exit 2, never a quiet fall back to the demo SI: the user asked for that
+repository.
 
 This is also the slot the `backstage-http` provider (§ 3) plugs into: one decision,
 `cli/source.ts`'s `sourceOf`, returns `{ kind: 'repo' | 'demo', … }`, and a Backstage
@@ -743,10 +747,30 @@ says nothing about whether the inspection was right.
 8. branch + MR          an architect reviews -> merge = AUTHORISATION
 ```
 
-**Steps 3 to 7 ship at stage 4. Step 8 arrives with the forge, at stages 5 and 6.**
-`idp-agent plan "<intent>" --repo <dir>` runs the Inspector over the repository the user
-is standing in, the Architect over the declarations repository, the five gates of § 6.1,
-and renders the diff — then stops. There is no confirmation prompt at step 7 yet, because
+**Steps 2 to 7 are built — step 1 from a git repository, Backstage not yet, and step 7 is
+the diff alone. Step 8 arrives with the forge, at stages 5 and 6.** `idpa "<phrase>"` is
+the gesture, typed from any directory: step 1 finds the declarations repository as § 7.0
+says, step 2 classifies the phrase once, and a `QUESTION` goes to the Analyst exactly as
+`ask` would take it (§ 7.6) while a `MUTATION` runs steps 3 to 7 exactly as
+`plan "<intent>"` would. `ask` and `plan` remain, as the commands that force a road:
+`plan` previews without step 2, and `ask` runs step 2 but only answers — a change is
+declined, naming the gesture that previews it. A single word a slip away from a command
+name (`idpa grpah`), or a command typed after its options, is refused before step 2 and
+never classified.
+
+**Step 3 is optional.** The Inspector reads the application repository `--project` names,
+or the one the user is standing in when it is one — a `catalog-info.yaml` or a package
+manifest at its root, looked for there and never by walking, and never a declarations
+repository. Anywhere else — the declarations repository or any folder of it, `$HOME`, the
+filesystem root — the Inspector is skipped and the run says so in one line, and the
+Architect is told that no application repository was inspected rather than handed facts
+nobody established: it drafts from the request and the catalogue, and what neither states
+is `{ unknown }`, asked. A `--project` that names a declarations repository, or the one
+the change is decided against, is still refused before any model is chosen.
+
+`idp-agent plan "<intent>"` runs the Inspector when there is a service to read, the
+Architect over the declarations repository, the five gates of § 6.1, and renders the
+diff — then stops. There is no confirmation prompt at step 7 yet, because
 there is nothing on the other side of it to confirm: the branch is stage 5 and the merge
 request is stage 6. Until they exist, "diff + confirmation" is a diff and the closing line
 below, and the honest reading of "writes nothing" is that no code between the diff and a
@@ -754,9 +778,9 @@ write has been written.
 
 The two `--repo` flags on this page name two different repositories, and the difference is
 the whole reason the flag exists. `plan --repo` is the **declarations** repository, which
-the preview is decided against (§ 4.4), and `IDP_REPO` or the personal file (§ 7.0) can
-name it once instead. `init --repo` is the **application** repository, the one being
-declared.
+the preview is decided against (§ 4.4), and standing in it, `IDP_REPO` or the personal
+file (§ 7.0) can name it instead. `init --repo` is the **application** repository, the one
+being declared.
 
 Every run ends on the same line, so no one mistakes submission for permission:
 

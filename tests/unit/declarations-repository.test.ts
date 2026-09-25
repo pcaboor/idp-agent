@@ -4,6 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { runInitPlatform } from '../../src/cli/commands/init.js'
 import {
+  isApplicationRepository,
   isDeclarationsRepository,
   readRepository,
 } from '../../src/context/iac-fs/snapshot.js'
@@ -99,5 +100,62 @@ describe('isDeclarationsRepository', () => {
 
     expect(await isDeclarationsRepository(root)).toBe(false)
     expect((await readRepository(root)).witnesses).toEqual([])
+  })
+})
+
+/**
+ * Whether the directory the user is standing in is an application repository —
+ * the one thing `plan "<intent>"` inspects when no `--project` names one. A
+ * catalog-info file or a package manifest at its root, and not a declarations
+ * repository; anything else is skipped rather than handed to the Inspector.
+ */
+describe('isApplicationRepository', () => {
+  it.each([
+    'catalog-info.yaml',
+    'catalog-info.yml',
+    'package.json',
+    'go.mod',
+    'pom.xml',
+    'build.gradle',
+    'build.gradle.kts',
+    'pyproject.toml',
+    'requirements.txt',
+    'Cargo.toml',
+    'composer.json',
+    'Gemfile',
+    'Billing.Api.csproj',
+  ])('recognises one by its %s', async (marker) => {
+    const root = await temp()
+    await lay(root, [marker])
+    expect(await isApplicationRepository(root)).toBe(true)
+  })
+
+  it.each([
+    ['an empty directory', []],
+    ['a home directory of notes', ['notes.md', 'Documents/report.pdf']],
+    // Markers at the root only: a walk from $HOME would find a service in it.
+    ['a manifest one folder down', ['billing-api/package.json']],
+    ['a file named like a project with nothing before .csproj', ['.csproj']],
+  ])('does not take %s for one', async (_, files) => {
+    const root = await temp()
+    await lay(root, files)
+    expect(await isApplicationRepository(root)).toBe(false)
+  })
+
+  it('does not take a manifest that is a directory for one', async () => {
+    const root = await temp()
+    await mkdir(path.join(root, 'package.json'))
+    expect(await isApplicationRepository(root)).toBe(false)
+  })
+
+  it('does not take a declarations repository for one, whatever sits at its root', async () => {
+    const root = await temp()
+    await runInitPlatform({ root, owner: '@acme/platform', version: '0.0.0' })
+    await lay(root, ['package.json'])
+    expect(await isApplicationRepository(root)).toBe(false)
+  })
+
+  it('answers no, rather than throwing, for a path that is not there', async () => {
+    expect(await isApplicationRepository(path.join(await temp(), 'nowhere'))).toBe(false)
   })
 })

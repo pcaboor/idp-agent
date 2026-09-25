@@ -10,7 +10,10 @@ reads the demo SI, a directory laid out exactly like an IaC repository. `IacFsPr
 `source` is the file's repository-relative path. `isDeclarationsRepository` (beside it, in
 `iac-fs/snapshot.ts`) is how those three decide the working directory is one: a witnessed folder
 directly under `catalog/` or `dependencies/`, read at the root and never walked, and not through
-a symbolic link, which `readRepository` would not follow either.
+a symbolic link, which `readRepository` would not follow either. `isApplicationRepository`, beside it, is how
+a change decides the working directory is a service's to inspect: a `catalog-info.yaml`/`.yml`
+or a package manifest (`APPLICATION_MARKERS`, or a `*.csproj`) as a regular file at the root,
+and not a declarations repository.
 
 `LoadResult` pairs `entities` with `rejected: Rejection[]` — one `{ source, reason }` for every
 document `entitySchema` refused — a Component or Resource, or anything that looks like a failed

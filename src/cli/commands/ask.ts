@@ -1,5 +1,5 @@
 import { answerQuestion } from '../../agents/analyst.js'
-import { ClassificationError, classify } from '../../agents/supervisor.js'
+import { ClassificationError, classify, type Classification } from '../../agents/supervisor.js'
 import { formatSummary } from '../../agents/summary.js'
 import { buildTools } from '../../agents/tools/graph-tools.js'
 import { summariseGraph } from '../../context/graph/summary.js'
@@ -22,25 +22,50 @@ import type { CommandResult } from './result.js'
  */
 export interface AskSource extends OverviewSource, Unread {}
 
+/** What `ask` and the one gesture, `idpa "<phrase>"`, both hand over. */
+export interface AskOptions {
+  readonly graph: EntityGraph
+  readonly client: LlmClient
+  /** The request, in the user's own words. */
+  readonly intent: string
+  readonly source: AskSource
+  readonly emit: EventSink
+  readonly err: (chunk: string) => void
+}
+
 /**
  * The model chooses which question to ask the graph; the engine answers it and
  * prints it. Nothing the model wrote reaches stdout — the two exceptions, an
  * `unanswerable` reason and the Supervisor's refusal to classify, go to stderr
  * as one cleaned, bounded line each (design § 5.2, ADR-0007).
+ *
+ * `ask` is the command that forces the read road, so a change request is
+ * understood and declined here, pointing at the gesture that previews it.
  */
-export async function runAsk(options: {
-  graph: EntityGraph
-  client: LlmClient
-  intent: string
-  source: AskSource
-  emit: EventSink
-  err: (chunk: string) => void
-}): Promise<CommandResult> {
-  const { graph, client, intent, source, emit, err } = options
+export async function runAsk(options: AskOptions): Promise<CommandResult> {
+  return classified(options, async () => {
+    // Understood, and declined: `ask` only reads. Not a failed query.
+    options.err('that is a change request; run it as idpa "<phrase>" to preview the plan\n')
+    return { text: '', found: false, unsupported: true }
+  })
+}
+
+/**
+ * The Supervisor's one decision, taken once: a question is answered here, and
+ * a change is handed to `change` — `ask`'s refusal, or the entry's preview
+ * (`entry.ts`). One function for both, so the question road of `idpa
+ * "<phrase>"` is `ask`'s to the byte: the same summary, the same classifier
+ * turn, the same Analyst, the same exit codes.
+ */
+export async function classified(
+  options: AskOptions,
+  change: () => Promise<CommandResult>,
+): Promise<CommandResult> {
+  const { graph, client, intent, emit, err } = options
   const { summary, vocabulary } = summariseGraph(graph)
   const summaryText = formatSummary(summary, vocabulary)
 
-  let classification: 'MUTATION' | 'QUESTION'
+  let classification: Classification
   try {
     classification = await classify(client, { intent, summary: summaryText }, emit)
   } catch (error) {
@@ -50,12 +75,21 @@ export async function runAsk(options: {
     return { text: '', found: false, unsupported: true }
   }
 
-  if (classification === 'MUTATION') {
-    // Understood, and declined: writing arrives at stage 5. Not a failed query.
-    err('that is a change request; this build only reads (stage 5 writes)\n')
-    return { text: '', found: false, unsupported: true }
+  switch (classification) {
+    case 'MUTATION':
+      return change()
+    case 'QUESTION':
+      return answered(options, summaryText)
+    default: {
+      const exhaustive: never = classification
+      return exhaustive
+    }
   }
+}
 
+/** The Analyst over the graph, shown the summary the Supervisor was shown. */
+async function answered(options: AskOptions, summaryText: string): Promise<CommandResult> {
+  const { graph, client, intent, source, emit, err } = options
   const tools = buildTools(graph)
   const { answer, truncated } = await answerQuestion(
     client,

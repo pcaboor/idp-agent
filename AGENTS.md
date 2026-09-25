@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 1437 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 1515 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -39,11 +39,14 @@ answer is negative — nothing matched, a name was ambiguous, **the repository d
 conform**, a gate refused a plan, the repair loop stopped at three attempts, or something
 failed unexpectedly · `2` the arguments were refused — a bad flag, a plan file that is not
 a plan, a `--repo`, a `--project` or a configured repository that is not a directory, a
-`plan "<intent>"` that would inspect a declarations repository, a `.idp-agent.yml` or a
-personal `config.yml` that does not parse — or no model, no key or no usable
-`IDP_TIMEOUT` is configured · `3` the request was understood and this build will not act on it: a
-change request put to `ask`, a question the model refused, or a plan holding values nobody
-can vouch for, **asked rather than guessed**. A command returns
+`--project` that is a declarations repository or the one the change is decided against, a
+change with no declarations repository to decide against, a single word one slip away
+from a command name (`idpa grpah`), a command typed after its options, a `.idp-agent.yml`
+or a personal `config.yml` that does not parse — or no model, no key or no usable
+`IDP_TIMEOUT` is configured · `3` the request was understood and this build will not act
+on it: a change request put to `ask` (which names `idpa "<phrase>"` as the gesture that
+previews it), a question the model refused, or a plan holding values nobody can vouch
+for, **asked rather than guessed**. A command returns
 `{ text, found, unsupported? }`; only `cli/index.ts` turns that into a code.
 
 The one that is not obvious is a **stop**: three attempts, still refused, exit `1`. Not
@@ -80,12 +83,16 @@ commits. Stage 4 itself is a stack of branches, one per task of
 The order is imposed by the doctrine: read first, validate before the first write,
 preview before the merge request. Writing arrives only at stage 5.
 
-Shipped and working: `graph` and `show` over a fixture SI of 33 entities; `ask`, answered
-by the Supervisor and the Analyst against recordings with no API key; `validate`, seven
+Shipped and working: `idpa "<phrase>"`, the one gesture of §7.4, from any directory — the
+Supervisor classifies the phrase once, a question takes `ask`'s road and a change
+`plan "<intent>"`'s (`cli/commands/entry.ts`); `graph` and `show` over a fixture SI of 33
+entities; `ask`, answered by the Supervisor and the Analyst against recordings with no API
+key; `validate`, seven
 rules over an IaC repository; `init platform`, which writes twelve files and clobbers
 nothing; and stage 4's two previews, which write nothing at all:
 
 ```bash
+idpa "<phrase>" [--repo <dir> | --demo] [--project <dir>] [--json]  # question or change
 idp-agent plan --from <plan.json> --repo <dir>   # no model, and none is possible
 idp-agent plan "<intent>" --repo <dir> [--json]  # Inspector, Architect, five gates
 idp-agent init [--repo <dir>]                    # the catalog-info.yml it would write
@@ -99,26 +106,40 @@ trust, and `pnpm smoke` makes the same assertion about the built binary.
 
 The two `--repo` flags name different repositories, which is the first thing that trips
 someone up. `plan --repo` is the **declarations** repository the preview is decided
-against; `init --repo` is the **application** repository being declared. For
-`plan "<intent>"` the Inspector reads the application repository too: the directory the
-user is standing in, or the one `--project` names (`--project` with `--from` is refused —
-there is no Inspector to point). A project directory that is a declarations repository by
-its markers, is the `--repo` directory by real path, or lies under that directory's
-`catalog/` or `dependencies/`, is refused with exit 2 before a model is chosen —
-`cli/repository.ts`'s `applicationRoot`, which hands `runIntent` both roots resolved; the
-run that asked for it read the declarations repository as billing-api's and drafted from
-that. `graph`,
-`show` and `ask` take `--repo` in `plan`'s sense, through the same guard. Without it they
-read the working directory when its root carries the markers `init platform` writes — a
-witnessed folder under `catalog/` or `dependencies/`, looked for there and never by walking
-— then `IDP_REPO`, then `repo` in the personal `config.yml`, and otherwise, or with
-`--demo`, the fictional `fixtures/si-demo/`. `--demo` with `--repo` is refused. `plan`
-takes `--repo`, then `IDP_REPO`, then the file, and never the working directory, which is
-the service it declares; with none it is refused, naming all three. Every road but `--repo`
-is said in one line on stderr, naming the folder and what named it — because an answer
-about an invented company that does not say so is read as one about the user's own; a
-repository is named by its folder, never as the `.` it was typed as. One function decides
-all of it, `cli/source.ts`'s `sourceOf`, and a Backstage source is one more `kind` there.
+against; `init --repo` is the **application** repository being declared. `idpa
+"<phrase>"`, `graph`, `show`, `ask` and `plan` take `--repo` in `plan`'s sense, through
+the same guard, and find it the same way without it: the working directory when its root
+carries the markers `init platform` writes — a witnessed folder under `catalog/` or
+`dependencies/`, looked for there and never by walking — then `IDP_REPO`, then `repo` in
+the personal `config.yml`. With none of them the read commands and a question read the
+fictional `fixtures/si-demo/`, as `--demo` makes them (`--demo` with `--repo` is refused),
+and a change is refused, naming all four ways, because a write preview is never decided
+against a demo. So `cd IaC && idpa "<intent>"` decides against IaC. Every road but
+`--repo` is said in one line on stderr, naming the folder and what named it — because an
+answer about an invented company that does not say so is read as one about the user's
+own; a repository is named by its folder, never as the `.` it was typed as. One function
+decides all of it, `cli/source.ts`'s `sourceOf`, and a Backstage source is one more
+`kind` there.
+
+A change — `plan "<intent>"`, or a phrase the Supervisor calls a `MUTATION` — may read the
+application repository too, and the **Inspector is optional**: it reads the directory
+`--project` names, or the working directory when it is an application repository by its
+root (`context/iac-fs`'s `isApplicationRepository`: a `catalog-info.yaml`/`.yml` or a
+package manifest, never a walk, and never a declarations repository). Anywhere else —
+the declarations repository or any folder of it, `$HOME`, the filesystem root — it is
+skipped, said in one line on stderr, and the Architect is told that no application
+repository was inspected (`NOT_INSPECTED`) rather than handed facts nobody established.
+A `--project` that is not a directory, is a declarations repository by its markers, is the
+`--repo` directory by real path, or lies under that directory's `catalog/` or
+`dependencies/`, is refused with exit 2 before a model is chosen — `cli/repository.ts`'s
+`applicationRoot`, which hands `runIntent` both roots resolved; the run that asked for it
+read the declarations repository as billing-api's and drafted from that. A phrase checks
+its `--project` before the Supervisor, whichever road it then takes, and against the demo
+SI too, for what it is on its own (`projectRoot`). `--project` with `--from` is refused —
+there is no Inspector to point. `plan "<intent>"` with an
+application repository sends the agents exactly what it sent before the Inspector was
+optional; `architect.test.ts` pins the opening message's bytes, and the plan-mode tapes
+replay clean.
 
 Configuration is two files, and neither holds a secret. `.idp-agent.yml` is committed to
 an application repository and shared by its team; the personal one —

@@ -10,7 +10,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 1437, no API key" src="https://img.shields.io/badge/tests-1437%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 1515, no API key" src="https://img.shields.io/badge/tests-1515%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -20,12 +20,14 @@
 </p>
 
 ```text
-$ idp-agent plan "give billing-api read access to the orders database in prod"
+$ idpa "give billing-api read access to the orders database in prod"
+$ idpa "which services use billing-db?"
 ```
 
-**What you get:** a typed plan, checked by five gates, rendered as a unified diff of YAML
-declarations. If a value can't be traced to your request or your repository, it asks you
-instead of guessing.
+One gesture, from any directory: a sentence about your platform. A question is answered
+from your catalogue; a change is previewed. **What you get for a change:** a typed plan,
+checked by five gates, rendered as a unified diff of YAML declarations. If a value can't be
+traced to your request or your repository, it asks you instead of guessing.
 
 ---
 
@@ -46,7 +48,7 @@ idp-agent sits between the two:
   your request or to what your repository already holds. Anything else becomes a question.
 - ✂️ **Minimal diffs.** It edits the text surgically and never reformats a file, so a
   reviewer sees one added line, not a reshuffled file.
-- 🧪 **Reproducible without an API key.** 1437 tests run offline from recordings: no
+- 🧪 **Reproducible without an API key.** 1515 tests run offline from recordings: no
   network, no cost, no flaky model.
 
 > Platform GitOps is the use case. The real subject is **how to build a reliable
@@ -167,8 +169,8 @@ npm install -g idp-agent
 
 **Requirements:** Node ≥ 22, pnpm 10. No Docker, no database, no API key.
 
-The model-backed commands (`ask`, `plan "<intent>"`) need a provider. **None is configured
-by default**, and none is preferred:
+The model-backed commands (`idpa "<phrase>"`, `ask`, `plan "<intent>"`, `init`) need a
+provider. **None is configured by default**, and none is preferred:
 
 ```bash
 export IDP_PROVIDER=anthropic   # or mistral, openai
@@ -187,6 +189,23 @@ output limit or a content filter before answering.
 ## Commands
 
 ```bash
+idpa "<phrase>" [--repo <dir> | --demo] [--project <dir>] [--json]
+```
+
+The daily gesture, typed from anywhere. The Supervisor reads the phrase and decides: a
+**question** about the SI is answered as `ask` answers it, and an **intent** to change it
+is previewed as `plan "<intent>"` previews it. Quotes are optional (`idpa which services
+use billing-db` works) until the phrase holds `?`, `*`, `!`, a quote or a parenthesis,
+which the shell reads first: zsh refuses an unquoted `?` it cannot match, and bash
+replaces it with a file name. Any language the model reads will do. `idpa` is the short
+name of `idp-agent`. A single word one slip away from a command — `idpa grpah` — is taken
+for the typo it is and never sent to a model, and options go after a command
+(`idpa show billing-api --repo IaC`), never before it. `--project` and `--json` apply to a
+change only; a question with `--json` is answered as text, and stderr says so. `ask` and
+`plan` below force a road: `plan` previews without classifying, and `ask` classifies and
+only answers, declining a change.
+
+```bash
 idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource] [--repo <dir> | --demo]
 idp-agent show <name-or-reference> [--repo <dir> | --demo]
 idp-agent ask "<question>" [--repo <dir> | --demo]  # needs IDP_PROVIDER, IDP_MODEL and its key
@@ -201,6 +220,7 @@ idp-agent init [--repo <dir>]                      # the catalog-info.yml it wou
 | Command | What it does |
 |---|---|
 | `graph`, `show` | Walk the dependency graph: who depends on what, which services reach a database. `show` also says what an entity is — its description, system, tags and links, when its file declares them. No model. |
+| `idpa "<phrase>"` | A question is answered, a change is previewed; the classification is said on stderr (`· question`, `· mutation`). Needs a model. |
 | `ask` | Answers a question about your platform. The model picks the queries; the engine answers them. Asked about the catalogue as a whole — *talk about this project* — it prints an overview the engine writes: counts by kind, type, environment, owner, system and tag, a few entities in their own descriptions, rights and their levels, the most-reached resources, dangling references, and what it could not read. |
 | `init platform` | Scaffolds the declarations repository, its CI and a branch-protection checklist. |
 | `validate` | Checks a repository against the schemas. This is what the scaffolded CI runs. |
@@ -214,25 +234,29 @@ repository (a folder under `catalog/` or `dependencies/` holding a `.witness.yml
 SI otherwise, or with `--demo`. Either way they say which on stderr, and name a repository
 by its folder.
 
-`plan "<intent>"` reads two repositories, and they are never the same one. Run it from the
-**service's** repository — the one being declared, which the Inspector reads — or name
-that one with `--project <dir>`; `--repo` names the declarations repository the diff is
-decided against. Standing in a declarations repository or one of its `catalog/` and
-`dependencies/` folders, or pointing both at one directory, is refused with exit 2 before
-any model is called. `plan --from` inspects nothing and takes
-no `--project`.
+A change — `idpa "<intent>"` or `plan "<intent>"` — is decided against the declarations
+repository, and may also read the **service's** repository, which the Inspector reads: the
+one `--project <dir>` names, or the directory you stand in when it is an application
+repository (a `catalog-info.yaml` or a package manifest — `package.json`, `go.mod`,
+`pom.xml`, … — at its root). Anywhere else — the declarations repository or any folder of
+it, your home directory, the filesystem root — the Inspector is skipped, said in one line
+on stderr, and the plan is drafted from the catalogue alone. A `--project` that is not a
+directory, is a declarations repository, is the `--repo` directory or one of its
+`catalog/` and `dependencies/` folders is refused with exit 2 before any model is called.
+`plan --from` inspects nothing and takes no `--project`.
 
 **Exit codes:** `0` success · `1` negative answer (nothing matched, the repository doesn't
 conform, or a gate refused the plan), or a model call that failed · `2` bad arguments, or no
-model, no key or no usable `IDP_TIMEOUT` configured · `3` understood but not acted on,
-including a value nobody can vouch for. An ambiguous name resolves to nothing rather than to the first candidate.
+model, no key or no usable `IDP_TIMEOUT` configured · `3` understood but not acted on: a
+change request put to `ask`, a question the model refused, or a value nobody can vouch
+for. An ambiguous name resolves to nothing rather than to the first candidate.
 
 ### Use it from anywhere
 
 `init platform` creates your declarations repository once; after that, name it once too,
-and `graph`, `show`, `ask` and `plan` read it from any directory without `--repo`. Either
-set `IDP_REPO`, or write a personal configuration file — never committed, and holding no
-credential — at `$XDG_CONFIG_HOME/idp-agent/config.yml`, else
+and `idpa "<phrase>"`, `graph`, `show`, `ask` and `plan` read it from any directory
+without `--repo`. Either set `IDP_REPO`, or write a personal configuration file — never
+committed, and holding no credential — at `$XDG_CONFIG_HOME/idp-agent/config.yml`, else
 `~/.config/idp-agent/config.yml` (`%APPDATA%\idp-agent\config.yml` on Windows):
 
 ```yaml
@@ -243,10 +267,11 @@ repo: ~/work/IaC    # ~ is expanded; a relative path is relative to this file
 repository in every directory, and is refused. In the file, a bare `~` is YAML's null —
 write `repo: "~"` for the home directory itself.
 
-`graph`, `show` and `ask` take the first of: `--repo` or `--demo` · the directory you
-stand in, when it is a declarations repository · `IDP_REPO` · `repo` in that file · the
-demo SI. `plan` takes `--repo`, then `IDP_REPO`, then the file — never the directory you
-stand in, which for `plan` is the service being declared. Whatever was not typed is said
+Every command takes the first of: `--repo` (or `--demo`) · the directory you stand in,
+when it is a declarations repository · `IDP_REPO` · `repo` in that file. With none of them,
+`graph`, `show` and a question read the fictional demo SI; a change is refused, naming
+those four ways, because a write preview is decided against your repository, never a
+demo. So `cd IaC && idpa "<intent>"` decides against IaC. Whatever was not typed is said
 in one line on stderr, naming the folder and where it came from:
 
 ```

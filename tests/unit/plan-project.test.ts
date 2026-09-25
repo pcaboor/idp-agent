@@ -263,20 +263,51 @@ describe('plan "<intent>" --project', () => {
 
   it('asks for the working directory only when a path needs it', async () => {
     // A shell can stand in a directory since removed, where `process.cwd()`
-    // throws. Two absolute paths need none; an absent --project does.
+    // throws. Two absolute paths need none; an absent --project looks, and a
+    // directory that is gone holds no application repository to inspect.
     const repo = await scaffolded()
     const project = await application('billing-api.marker')
     const gone = (): string => {
       throw new Error('ENOENT: no such file or directory, uv_cwd')
     }
 
-    await expect(applicationRoot({ repo, project, cwd: gone })).resolves.toEqual({
+    const at = (repo: string, project: string | undefined) =>
+      applicationRoot({ who: 'plan', repo, project, cwd: gone, home: undefined })
+    await expect(at(repo, project)).resolves.toEqual({
       repo,
-      project,
+      project: { kind: 'project', root: project },
     })
-    const standing = applicationRoot({ repo, project: undefined, cwd: gone })
-    await expect(standing).rejects.toBeInstanceOf(RepositoryArgumentError)
-    await expect(standing).rejects.toThrow(/the working directory no longer exists.*--project <dir>/)
+    await expect(at(repo, undefined)).resolves.toEqual({
+      repo,
+      project: { kind: 'none', reason: 'it no longer exists' },
+    })
+    // A relative --repo still needs one, and says which to name instead.
+    const relative = at('IaC', undefined)
+    await expect(relative).rejects.toBeInstanceOf(RepositoryArgumentError)
+    await expect(relative).rejects.toThrow(/the working directory no longer exists.*--repo <dir>/)
+  })
+
+  it('never inspects the home directory or the filesystem root unless --project names it', async () => {
+    // Where a terminal opens, and where a stray package.json from an `npm i`
+    // run in ~ makes it look like a service's: its documents are not one.
+    const repo = await scaffolded()
+    const home = await application('taxes.marker')
+    const at = (cwd: string, project?: string) =>
+      applicationRoot({ who: 'plan', repo, project, cwd: () => cwd, home })
+
+    await expect(at(home)).resolves.toEqual({
+      repo,
+      project: { kind: 'none', reason: `${path.basename(home)} is your home directory` },
+    })
+    await expect(at(path.parse(home).root)).resolves.toEqual({
+      repo,
+      project: { kind: 'none', reason: `${path.parse(home).root} is the filesystem root` },
+    })
+    // Named, it is an argument: read.
+    await expect(at(await temp(), home)).resolves.toEqual({
+      repo,
+      project: { kind: 'project', root: home },
+    })
   })
 
   it('refuses --project with --from: there is no Inspector to point', async () => {
@@ -297,48 +328,175 @@ describe('plan "<intent>" --project', () => {
   })
 })
 
-describe('plan "<intent>" refuses to inspect the wrong repository', () => {
-  const DECLARATIONS =
-    'plan reads the application repository of the service you are declaring, and IaC ' +
-    'is a declarations repository.'
+/** The Architect and the Reviewer, and no Inspector turn at all. */
+const drafting = (): LlmClient & { seen: GenerateRequest[] } =>
+  scripted({
+    architect: [turnCalling(PROPOSE_TOOL, { operations: [CREATE_DATABASE, CREATE_ACCESS] })],
+    reviewer: [turnCalling(VERDICT_TOOL, { verdict: 'ok' })],
+  })
 
-  it('standing in a declarations repository, before a single model call', async () => {
-    // The owner's run, as he typed it.
+const inspected = (client: { seen: GenerateRequest[] }): boolean =>
+  client.seen.some((request) => request.agent === 'inspector')
+
+const skipped = (reason: string): string =>
+  `no application repository in the current directory (${reason}); drafting from the ` +
+  'catalogue alone — --project <dir> inspects a service'
+
+describe('plan "<intent>" inspects no directory that is not a service', () => {
+  it('standing in a declarations repository: decides against it, and inspects nothing', async () => {
+    // The owner's run, as he typed it. It used to be refused; the Inspector is
+    // optional now, and a declarations repository is never what it reads.
     const repo = await scaffolded()
     const before = await hashTree(repo)
-    const client = untouched()
+    const client = drafting()
 
-    const { code, out, err, events } = await run(['plan', INTENT, '--repo', '.'], {
+    const { code, out, err } = await run(['plan', INTENT, '--repo', '.'], {
       cwd: repo,
       client,
+      ask: answering('read'),
       env: {},
     })
 
-    expect(code).toBe(2)
-    expect(err).toContain(DECLARATIONS)
-    expect(err).toContain('--project <dir>')
-    expect(out).toBe('')
-    expect(client.seen).toEqual([])
-    expect(events).toEqual([])
+    expect(code).toBe(0)
+    expect(err).toContain(skipped('IaC is a declarations repository'))
+    expect(out).toContain('+++ b/catalog/databases/orders-db-prod.yml')
+    expect(inspected(client)).toBe(false)
     expect(await hashTree(repo)).toBe(before)
+  })
+
+  it('standing in one with nothing configured: takes it as the declarations repository', async () => {
+    const repo = await scaffolded()
+    const client = drafting()
+
+    const { code, out, err } = await run(['plan', INTENT], {
+      cwd: repo,
+      client,
+      ask: answering('read'),
+      env: {},
+    })
+
+    expect(code).toBe(0)
+    expect(err).toMatch(
+      /^reading the declarations repository IaC \(the current directory\); --repo <directory> decides against another$/m,
+    )
+    expect(err).toContain(skipped('IaC is a declarations repository'))
+    expect(out).toContain('+++ b/catalog/databases/orders-db-prod.yml')
+    expect(inspected(client)).toBe(false)
   })
 
   it('standing in one while --repo names another', async () => {
     const standing = await scaffolded()
     const repo = await scaffolded('declarations')
-    const client = untouched()
+    const client = drafting()
 
     const { code, err } = await run(['plan', INTENT, '--repo', repo], {
       cwd: standing,
       client,
+      ask: answering('read'),
       env: {},
     })
 
-    expect(code).toBe(2)
-    expect(err).toContain(DECLARATIONS)
-    expect(client.seen).toEqual([])
+    expect(code).toBe(0)
+    expect(err).toContain(skipped('IaC is a declarations repository'))
+    expect(inspected(client)).toBe(false)
   })
 
+  it('standing in a directory with no manifest at its root', async () => {
+    const repo = await scaffolded()
+    const standing = await temp()
+    await mkdir(path.join(standing, 'src'))
+    await writeFile(path.join(standing, 'src', 'package.json'), '{}\n', 'utf8')
+    const client = drafting()
+
+    const { code, err } = await run(['plan', INTENT, '--repo', repo], {
+      cwd: standing,
+      client,
+      ask: answering('read'),
+      env: {},
+    })
+
+    expect(code).toBe(0)
+    expect(err).toContain(
+      skipped(`${path.basename(standing)} holds no catalog-info.yaml or package manifest at its root`),
+    )
+    expect(inspected(client)).toBe(false)
+  })
+
+  it('standing in the --repo directory, which carries a manifest but no marker', async () => {
+    // A declarations repository nobody scaffolded, with a package.json of its
+    // own: the markers do not catch it, the comparison does.
+    const repo = await application('declarations.marker')
+    const client = drafting()
+
+    const { code, err } = await run(['plan', INTENT, '--repo', '.'], {
+      cwd: repo,
+      client,
+      ask: answering('read'),
+      env: {},
+    })
+
+    // Not refused, and not inspected. What the gates make of a repository
+    // that declares no folder is theirs to say, and not this test's.
+    expect(code).not.toBe(2)
+    expect(err).toContain(skipped(`${path.basename(repo)} is the declarations repository`))
+    expect(inspected(client)).toBe(false)
+  })
+
+  it('standing in one of its declaration folders, --repo naming the repository above', async () => {
+    // The owner's run, one `cd` deeper. `catalog/` and `dependencies/` are
+    // where a declarations repository keeps its declarations, and are never a
+    // service's repository.
+    const repo = await scaffolded()
+    for (const [standing, above] of [
+      ['catalog', '..'],
+      [path.join('catalog', 'databases'), path.join('..', '..')],
+    ] as const) {
+      const client = drafting()
+
+      const { code, err } = await run(['plan', INTENT, '--repo', above], {
+        cwd: path.join(repo, standing),
+        client,
+        ask: answering('read'),
+        env: {},
+      })
+
+      expect(code).toBe(0)
+      expect(err).toContain(
+        skipped(
+          `IaC/${standing.split(path.sep).join('/')} is where the declarations repository keeps ` +
+            'its declarations',
+        ),
+      )
+      expect(inspected(client)).toBe(false)
+    }
+  })
+
+  it('says it inspects nothing before it says no model is configured', async () => {
+    const repo = await scaffolded()
+
+    const { code, err } = await run(['plan', INTENT, '--repo', '.'], { cwd: repo, env: {} })
+
+    expect(code).toBe(2)
+    expect(err.indexOf(skipped('IaC is a declarations repository'))).toBeGreaterThanOrEqual(0)
+    expect(err.indexOf('no application repository')).toBeLessThan(
+      err.indexOf('no model configured'),
+    )
+  })
+
+  it('names the folder with nothing in it a terminal would obey', async () => {
+    const repo = await scaffolded(`IaC\u001B[2J${RLO}`)
+
+    const { code, err } = await run(['plan', INTENT, '--repo', '.'], { cwd: repo, env: {} })
+
+    expect(code).toBe(2)
+    expect(err).not.toContain('\u001B')
+    expect(err).not.toContain(RLO)
+    // The whole sequence goes, and the override is spelled out.
+    expect(err).toContain('IaC\\u202e is a declarations repository')
+  })
+})
+
+describe('plan "<intent>" --project refuses the wrong repository', () => {
   it('when --project itself names a declarations repository', async () => {
     const project = await scaffolded()
     const repo = await scaffolded('declarations')
@@ -375,33 +533,6 @@ describe('plan "<intent>" refuses to inspect the wrong repository', () => {
     expect(client.seen).toEqual([])
   })
 
-  it('standing in one of its declaration folders, --repo naming the repository above', async () => {
-    // The owner's run, one `cd` deeper. A monorepo's service folder may sit
-    // inside the declarations repository; `catalog/` and `dependencies/` are
-    // where it keeps its declarations, and are never a service's repository.
-    const repo = await scaffolded()
-    for (const [standing, above] of [
-      ['catalog', '..'],
-      [path.join('catalog', 'databases'), path.join('..', '..')],
-    ] as const) {
-      const client = untouched()
-
-      const { code, err } = await run(['plan', INTENT, '--repo', above], {
-        cwd: path.join(repo, standing),
-        client,
-        env: {},
-      })
-
-      expect(code).toBe(2)
-      expect(err).toContain(
-        `IaC/${standing.split(path.sep).join('/')} is where the declarations repository --repo ` +
-          'names keeps its declarations.',
-      )
-      expect(err).toContain('--project <dir>')
-      expect(client.seen).toEqual([])
-    }
-  })
-
   it('but reads a service folder the declarations repository holds elsewhere', async () => {
     // A monorepo: the declarations and the service in one repository. The
     // service's folder is not a declaration folder, so it is read.
@@ -427,34 +558,6 @@ describe('plan "<intent>" refuses to inspect the wrong repository', () => {
       client.seen.filter((request) => request.agent === 'inspector')[1]?.transcript,
     )
     expect(listed).toContain('billing-api.marker')
-  })
-
-  it('before it says no model is configured', async () => {
-    // Nothing is configured, and the directory is wrong. The directory is the
-    // mistake to fix first: configuring a model would only lead back here.
-    const repo = await scaffolded()
-
-    const { code, err } = await run(['plan', INTENT, '--repo', '.'], { cwd: repo, env: {} })
-
-    expect(code).toBe(2)
-    expect(err).toContain(DECLARATIONS)
-    expect(err).not.toContain('no model configured')
-  })
-
-  it('names the folder with nothing in it a terminal would obey', async () => {
-    const repo = await scaffolded(`IaC\u001B[2J${RLO}`)
-
-    const { code, err } = await run(['plan', INTENT, '--repo', '.'], {
-      cwd: repo,
-      client: untouched(),
-      env: {},
-    })
-
-    expect(code).toBe(2)
-    expect(err).not.toContain('\u001B')
-    expect(err).not.toContain(RLO)
-    // The whole sequence goes, and the override is spelled out.
-    expect(err).toContain('IaC\\u202e is a declarations repository')
   })
 })
 

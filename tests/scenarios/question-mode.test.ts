@@ -90,7 +90,7 @@ describe('question mode, end to end', () => {
         'give billing-api read access to orders-db in prod',
       )
       expect(code).toBe(3)
-      expect(err).toContain('this build only reads')
+      expect(err).toContain('run it as idpa "<phrase>" to preview the plan')
       expect(events.some((event) => event.type === 'tool:call')).toBe(false)
     },
     TIMEOUT,

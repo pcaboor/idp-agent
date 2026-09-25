@@ -17,6 +17,7 @@ import { openRecording, resolveMode } from '../llm/recording.js'
 import { createClient, type ClientMode } from '../llm/runtime.js'
 import { fileRecordingStore } from './recording-fs.js'
 import { runAsk } from './commands/ask.js'
+import { runEntry } from './commands/entry.js'
 import type { AgentEvent } from '../agents/events.js'
 import { EntityGraph } from '../context/graph/entity-graph.js'
 import { runGraph, type GraphOptions } from './commands/graph.js'
@@ -31,13 +32,18 @@ import { VERSION } from '../core/index.js'
 import type { LlmClient } from '../llm/client.js'
 import type { CommandResult } from './commands/result.js'
 import { inert, inertLine, oneLine } from './render/plain.js'
+import { homeOf } from './personal.js'
 import {
   RepositoryArgumentError,
   applicationRoot,
+  projectRoot,
+  skipNotice,
   type DeclarationsCommand,
+  type Inspection,
 } from './repository.js'
 import {
   blameOf,
+  declarationsOf,
   overviewName,
   planNeedsRepository,
   sourceNotice,
@@ -55,7 +61,8 @@ import {
  *
  * `project` belongs to the intent alone, which makes `--project` with `--from`
  * unrepresentable too: a plan in a file has no Inspector to point. Absent
- * means the directory the user is standing in.
+ * means the directory the user is standing in when it is a service's, and no
+ * inspection when it is not (`repository.ts`'s `applicationRoot`).
  */
 export type PlanSource = { from: string } | { intent: string; project?: string }
 
@@ -73,8 +80,18 @@ export type Command =
   | ({ name: 'graph'; options: GraphOptions } & ReadFrom)
   | ({ name: 'show'; query: string } & ReadFrom)
   | ({ name: 'ask'; intent: string } & ReadFrom)
+  /**
+   * `idpa "<phrase>"`: a first word that is no command. The Supervisor decides
+   * which road it takes (`commands/entry.ts`); `project` and `json` belong to
+   * the plan road and are carried whichever is taken — a bad `--project`
+   * refuses a question too, and `--json` on one is said to do nothing.
+   */
+  | ({ name: 'entry'; phrase: string; project?: string; json: boolean } & ReadFrom)
   | { name: 'validate'; directory: string }
-  /** Absent `repo` means the one configured, and a refusal when none is (`source.ts`). */
+  /**
+   * Absent `repo` means the working directory when it is a declarations
+   * repository, else the one configured, and a refusal when none is (`source.ts`).
+   */
   | { name: 'plan'; source: PlanSource; repo?: string; json: boolean }
   | { name: 'init-platform'; directory: string; owner: string }
   /** Absent `repo` means the repository the user is standing in (§7.3). */
@@ -82,29 +99,38 @@ export type Command =
   | { name: 'help' }
   | { name: 'error'; message: string }
 
-const HELP = `idp-agent - turn an intent into reviewed infrastructure declarations
+export const HELP = `idp-agent - turn an intent into reviewed infrastructure declarations
+
+  idpa "<phrase>" [--repo <directory> | --demo] [--project <directory>] [--json]
+
+  The one gesture, from anywhere: a question about the SI is answered, an
+  intent to change it is previewed as a plan, and the phrase need not say
+  which. Quote it when it holds ?, *, !, quotes or parentheses, which the
+  shell would read. --project and --json apply to a change only. ask and plan
+  force a road: plan previews without classifying, and ask classifies and
+  only answers, declining a change.
 
   idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource] [--repo <directory> | --demo]
   idp-agent show <name-or-reference> [--repo <directory> | --demo]
-  idp-agent ask "<question>" [--repo <directory> | --demo]     needs IDP_PROVIDER and IDP_MODEL
+  idp-agent ask "<question>" [--repo <directory> | --demo]
   idp-agent validate <directory>
   idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json]
   idp-agent plan --from <plan.json> [--repo <directory>] [--json]
   idp-agent init [--repo <directory>]
   idp-agent init platform <directory> --owner @org/team
 
-  graph, show and ask read the declarations repository --repo names, the one
-  plan --repo names; without it, the current directory when it is one, then
-  IDP_REPO, then repo in the personal config.yml ($XDG_CONFIG_HOME/idp-agent/,
-  else ~/.config/idp-agent/), and the fictional demo SI otherwise or with
-  --demo. plan takes --repo, IDP_REPO or that file, and never the current
-  directory, which is the service it declares: plan "<intent>" inspects that
-  service's repository, the current directory or --project, and refuses to
-  inspect a declarations repository.
-  plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL. Both write nothing.
-  Every model-backed command also needs that provider's key (ANTHROPIC_API_KEY,
-  MISTRAL_API_KEY or OPENAI_API_KEY); IDP_TIMEOUT bounds each model call, in
-  seconds, 120 by default.
+  idpa is idp-agent. Every command but init and validate finds the
+  declarations repository the same way: --repo, else the current directory
+  when it is one, else IDP_REPO, else repo in the personal config.yml
+  ($XDG_CONFIG_HOME/idp-agent/, else ~/.config/idp-agent/). With none, graph,
+  show and a question read the fictional demo SI, as --demo does, and a change
+  is refused. A change inspects the service --project names, or the current
+  directory when it is an application repository (a catalog-info.yaml or a
+  package manifest at its root), and otherwise drafts from the catalogue alone.
+  A phrase, ask, plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL, and
+  none of them writes. Every model-backed command also needs that provider's
+  key (ANTHROPIC_API_KEY, MISTRAL_API_KEY or OPENAI_API_KEY); IDP_TIMEOUT
+  bounds each model call, in seconds, 120 by default.
 `
 
 export function parseArguments(argv: string[]): Command {
@@ -314,7 +340,122 @@ export function parseArguments(argv: string[]): Command {
     }
   }
 
-  return { name: 'error', message: `unknown command "${commandName}"` }
+  return parsePhrase(argv)
+}
+
+/**
+ * Every first word that is a command, and so never the start of a phrase —
+ * `parseArguments`' if-chain, which `entry.test.ts` holds this list to, and to
+ * HELP's.
+ */
+export const COMMANDS = ['graph', 'show', 'ask', 'validate', 'plan', 'init', 'help'] as const
+
+const isCommand = (word: string): word is (typeof COMMANDS)[number] =>
+  COMMANDS.some((name) => name === word)
+
+/**
+ * `idpa "<phrase>"`: every argument that is not an option, joined — a shell
+ * that lost the quotes hands the words over one at a time, exactly as `ask`
+ * and `plan` take them — with the options both roads know. Strict, for the
+ * reason `ask` is: an option this does not know would otherwise reach a third
+ * party as a word of the phrase.
+ *
+ * Two things are refused, and only two, both before a model could see them:
+ *
+ *   - a command behind its options. `idpa --repo IaC show billing-api` is
+ *     `show`, typed in the wrong order, and would otherwise reach the
+ *     Supervisor as the phrase "show billing-api";
+ *   - a phrase of a single word a slip away from a command name. `idpa grpah`
+ *     is a typo, and sending it to a model would spend a round-trip to have a
+ *     mistyped command classified; a sentence is never a typo, and no other
+ *     phrase is judged here.
+ */
+function parsePhrase(argv: string[]): Command {
+  try {
+    const { values, positionals } = parseArgs({
+      args: argv,
+      options: { ...READ_OPTIONS, project: { type: 'string' }, json: { type: 'boolean' } },
+      allowPositionals: true,
+      strict: true,
+    })
+    // Only reached with an option first: a command in first place was
+    // dispatched above, and a phrase's first word, quoted, holds a space.
+    const first = positionals[0]
+    if (first !== undefined && isCommand(first)) {
+      const option = argv.find((argument) => argument.startsWith('-')) ?? ''
+      return { name: 'error', message: `options go after the command: idpa ${first} … ${option}` }
+    }
+    const phrase = positionals.join(' ').trim()
+    if (phrase === '') {
+      return { name: 'error', message: 'idpa needs a question or an intent: idpa "<phrase>"' }
+    }
+    if (!/\s/.test(phrase)) {
+      const meant = nearestCommand(phrase)
+      if (meant !== undefined) {
+        return {
+          name: 'error',
+          message: `unknown command "${phrase}"; did you mean ${meant}? To ask something, write a sentence`,
+        }
+      }
+    }
+    if (phrase.length > PLAN_LIMITS.maxIntentLength) {
+      return { name: 'error', message: `a phrase is limited to ${PLAN_LIMITS.maxIntentLength} characters` }
+    }
+    const from = readFrom('idpa', values)
+    if ('message' in from) return from
+    return {
+      name: 'entry',
+      phrase,
+      ...from,
+      ...(values.project !== undefined ? { project: values.project } : {}),
+      json: values.json === true,
+    }
+  } catch (error) {
+    return { name: 'error', message: (error as Error).message }
+  }
+}
+
+/**
+ * The command a word is a slip away from, or `undefined`. Case is not a slip.
+ *
+ * A slip is an edit — a letter added, dropped, changed, or two neighbours
+ * swapped — and it keeps the first letter: `who`, `now`, `edit`, `task` and
+ * `clean` are words, and each is told from a command by its first letter
+ * already. Keeping the length, a name of four letters or more tolerates two
+ * (`palm` is `plan`, `valdiate` is `validate`); changing it, one (`grap`,
+ * `helo`) — so `hello` is not `help`, nor `it` or `in` `init`. `ask`, three
+ * letters, tolerates one at its own length and none beside it, so `as` and
+ * `asks` are words too.
+ *
+ * No two commands share a first letter, so at most one name is a candidate
+ * and there is no nearest to choose.
+ */
+function nearestCommand(word: string): string | undefined {
+  const typed = word.toLowerCase()
+  return COMMANDS.find((name) => {
+    if (typed[0] !== name[0]) return false
+    const long = name.length >= 4
+    const tolerated = typed.length === name.length ? (long ? 2 : 1) : long ? 1 : 0
+    return edits(typed, name) <= tolerated
+  })
+}
+
+/** Edit distance with a swap of neighbours counted as one edit (optimal string alignment). */
+function edits(a: string, b: string): number {
+  const rows = Array.from({ length: a.length + 1 }, (_, i) =>
+    Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
+  )
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      let best = Math.min(rows[i - 1]![j]! + 1, rows[i]![j - 1]! + 1, rows[i - 1]![j - 1]! + cost)
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        best = Math.min(best, rows[i - 2]![j - 2]! + 1)
+      }
+      rows[i]![j] = best
+    }
+  }
+  return rows[a.length]![b.length]!
 }
 
 /** The two options that say where a read command's SI comes from. */
@@ -326,7 +467,7 @@ const READ_OPTIONS = { repo: { type: 'string' }, demo: { type: 'boolean' } } as 
  * and there is no answer to which one they meant.
  */
 function readFrom(
-  command: 'graph' | 'show' | 'ask',
+  command: 'graph' | 'show' | 'ask' | 'idpa',
   values: { repo?: string | undefined; demo?: boolean | undefined },
 ): ReadFrom | { name: 'error'; message: string } {
   if (values.demo === true && values.repo !== undefined) {
@@ -551,8 +692,9 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   // through the fixture load below: a write preview is decided against the
   // repository, never against the catalogue (§4.4).
   if (command.name === 'plan') {
-    // The declarations repository: --repo, IDP_REPO or the personal file, in
-    // that order, and never the working directory — that is the service.
+    // The declarations repository, found the way every command finds it:
+    // --repo, the working directory when it is one, IDP_REPO, the personal
+    // file — and never the demo SI.
     const context = sourceContextOf(deps)
     let declarations: RepositorySource | undefined
     try {
@@ -599,39 +741,43 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
       return report(result, out)
     }
 
-    // §7.4 step 3: the Inspector reads "the local repository" — the one the
-    // user is standing in, or the one `--project` names. `--repo` names the
-    // declarations repository the preview is decided against, and they are two
-    // different repositories; `applicationRoot` refuses the run that confuses
-    // them.
+    // §7.4 step 3: the Inspector reads "the local repository" — the one
+    // `--project` names, or the one the user is standing in when it is a
+    // service's. `--repo` names the declarations repository the preview is
+    // decided against, and they are two different repositories;
+    // `applicationRoot` refuses a `--project` that confuses them, and skips a
+    // working directory that is not a service's.
     //
     // Here, before `agentBacked` chooses a model, and not inside `runIntent`:
     // a directory is an argument, and an argument is refused before the
-    // configuration is. The other order told someone standing in their
-    // declarations repository with nothing configured to configure a model,
-    // which they would do, only to be refused for the directory next — and a
-    // refusal that is about the arguments whatever the configuration says
-    // should not wait on it. It walks nothing, so it costs a few `stat`s.
+    // configuration is. The other order told someone with a wrong --project
+    // and nothing configured to configure a model, which they would do, only
+    // to be refused for the directory next. It walks nothing, so it costs a
+    // few `stat`s — and the line saying the Inspector is skipped comes before
+    // anything a model is asked, for the same reason.
     //
     // Both roots come back resolved, and `runIntent` is handed those: the
     // directory compared with the project is the directory the preview reads.
-    let roots: { readonly repo: string; readonly project: string }
+    let roots: Roots
     try {
       roots = await applicationRoot({
+        who: 'plan',
         repo,
         project: source.project,
         cwd: () => deps.cwd ?? process.cwd(),
+        home: homeOf(deps.env ?? process.env),
       })
     } catch (error) {
       return failed(error, err)
     }
+    const project = inspected(roots.project, err)
 
     return agentBacked(deps, err, out, 'plan', async (client) =>
       runIntent({
         intent: source.intent,
         repo: roots.repo,
         ...(ask !== undefined ? { ask } : {}),
-        project: roots.project,
+        project,
         client,
         emit: deps.events ?? progress(err),
         json: command.json,
@@ -644,7 +790,11 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   // everything after the provider is the same for all three roads.
   let read: Read
   try {
-    read = await providerOf(command, deps, err)
+    // A phrase finds its SI as `ask` does, and says so in `ask`'s line: its
+    // question road IS `ask`'s, and a change is decided against the same
+    // repository, when one was found. Its refusals name `idpa`, which is what
+    // was typed.
+    read = await providerOf(command.name === 'entry' ? 'idpa' : command.name, command, deps, err)
   } catch (error) {
     return failed(error, err)
   }
@@ -689,6 +839,71 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     ignored.flatMap(({ ref }) => (ref === undefined ? [] : [ref])),
   )
 
+  if (command.name === 'entry') {
+    // What `ask` is handed, word for word, so the question road is `ask`'s.
+    const asked = {
+      graph,
+      intent: command.phrase,
+      source: {
+        ...(repository !== undefined ? { repo: repository } : {}),
+        ignored,
+        rejected: rejected.length,
+      },
+      emit: deps.events ?? progress(err),
+      err,
+    }
+    // The change road's repositories, decided before any model is chosen, for
+    // the reason `plan`'s are: a `--project` is an argument, and it is checked
+    // whichever road the Supervisor then takes. None for the demo SI, which a
+    // change is never previewed against — refused below, once the Supervisor
+    // has said it is a change — but a `--project` is still refused for what it
+    // is on its own, so the same argument meets the same refusal wherever the
+    // SI came from.
+    const declarations = declarationsOf(source)
+    const cwd = (): string => deps.cwd ?? process.cwd()
+    let roots: Roots | undefined
+    try {
+      if (declarations !== undefined) {
+        roots = await applicationRoot({
+          who: 'idpa',
+          repo: declarations.root,
+          project: command.project,
+          cwd,
+          home: homeOf(deps.env ?? process.env),
+        })
+      } else if (command.project !== undefined) {
+        await projectRoot('idpa', command.project, cwd)
+      }
+    } catch (error) {
+      return failed(error, err)
+    }
+    const ask = askOf(deps)
+    return agentBacked(deps, err, out, 'entry', async (client) =>
+      runEntry({
+        ...asked,
+        client,
+        json: command.json,
+        change: async () => {
+          if (roots === undefined) {
+            throw new RepositoryArgumentError(
+              planNeedsRepository(sourceContextOf(deps), 'that is a change request, and it'),
+            )
+          }
+          return runIntent({
+            intent: command.phrase,
+            repo: roots.repo,
+            ...(ask !== undefined ? { ask } : {}),
+            project: inspected(roots.project, err),
+            client,
+            emit: asked.emit,
+            json: command.json,
+            colour: colourOf(deps),
+          })
+        },
+      }),
+    )
+  }
+
   if (command.name === 'ask') {
     return agentBacked(deps, err, out, 'question', async (client) =>
       runAsk({
@@ -728,16 +943,14 @@ interface Read {
  * silent. stderr, because stdout is the answer and gets piped.
  */
 async function providerOf(
-  command: { name: Exclude<DeclarationsCommand, 'plan'> } & ReadFrom,
+  name: Exclude<DeclarationsCommand, 'plan'>,
+  from: ReadFrom,
   deps: MainDeps,
   err: (chunk: string) => void,
 ): Promise<Read> {
   const context = sourceContextOf(deps)
-  const source = await sourceOf(
-    { command: command.name, repo: command.repo, demo: command.demo },
-    context,
-  )
-  const notice = sourceNotice(command.name, source, context)
+  const source = await sourceOf({ command: name, repo: from.repo, demo: from.demo }, context)
+  const notice = sourceNotice(name, source, context)
   if (notice !== undefined) err(`${notice}\n`)
   switch (source.kind) {
     case 'repo':
@@ -746,6 +959,29 @@ async function providerOf(
       return { source, provider: new FixtureProvider(deps.root ?? DEFAULT_ROOT) }
     default: {
       const exhaustive: never = source
+      return exhaustive
+    }
+  }
+}
+
+/** The two repositories a change reads (`applicationRoot`). */
+type Roots = Awaited<ReturnType<typeof applicationRoot>>
+
+/**
+ * The application repository to hand the Inspector, or `undefined` for none —
+ * and then the one line on stderr that says the Inspector is skipped and why,
+ * cleaned whole: the reason names a folder, and a folder is called whatever
+ * someone called it.
+ */
+function inspected(inspection: Inspection, err: (chunk: string) => void): string | undefined {
+  switch (inspection.kind) {
+    case 'project':
+      return inspection.root
+    case 'none':
+      err(`${whole(skipNotice(inspection.reason))}\n`)
+      return undefined
+    default: {
+      const exhaustive: never = inspection
       return exhaustive
     }
   }

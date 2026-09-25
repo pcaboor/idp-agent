@@ -43,11 +43,11 @@ describe('main', () => {
     expect(io.out.join('')).toContain('billing-db-prod')
   })
 
-  it('refuses an unknown command with 2, the argument-error code', async () => {
+  it('refuses a mistyped command with 2, the argument-error code', async () => {
     const io = capture()
-    const code = await main(['wat'], { out: (s) => io.out.push(s), err: (s) => io.err.push(s) })
+    const code = await main(['shwo'], { out: (s) => io.out.push(s), err: (s) => io.err.push(s) })
     expect(code).toBe(2)
-    expect(io.err.join('')).toContain('unknown command')
+    expect(io.err.join('')).toContain('unknown command "shwo"; did you mean show?')
     expect(io.out).toEqual([])
   })
 
