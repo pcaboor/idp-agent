@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 1307 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 1372 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -38,8 +38,9 @@ number in the same commit as the change.
 answer is negative — nothing matched, a name was ambiguous, **the repository does not
 conform**, a gate refused a plan, the repair loop stopped at three attempts, or something
 failed unexpectedly · `2` the arguments were refused — a bad flag, a plan file that is not
-a plan, a `--repo` that is not a directory, a `.idp-agent.yml` that does not parse — or no
-model, no key or no usable `IDP_TIMEOUT` is configured · `3` the request was understood and this build will not act on it: a
+a plan, a `--repo` or a configured repository that is not a directory, a `.idp-agent.yml`
+or a personal `config.yml` that does not parse — or no model, no key or no usable
+`IDP_TIMEOUT` is configured · `3` the request was understood and this build will not act on it: a
 change request put to `ask`, a question the model refused, or a plan holding values nobody
 can vouch for, **asked rather than guessed**. A command returns
 `{ text, found, unsupported? }`; only `cli/index.ts` turns that into a code.
@@ -102,11 +103,23 @@ against; `init --repo` is the **application** repository being declared. For
 `show` and `ask` take `--repo` in `plan`'s sense, through the same guard. Without it they
 read the working directory when its root carries the markers `init platform` writes — a
 witnessed folder under `catalog/` or `dependencies/`, looked for there and never by walking
-— and otherwise, or with `--demo`, the fictional `fixtures/si-demo/`. `--demo` with `--repo`
-is refused. The demo SI, and a repository read from the working directory, are each said in
-one line on stderr — only `--repo` is silent — because an answer about an invented company
-that does not say so is read as one about the user's own; a repository is named by its
-folder, never as the `.` it was typed as.
+— then `IDP_REPO`, then `repo` in the personal `config.yml`, and otherwise, or with
+`--demo`, the fictional `fixtures/si-demo/`. `--demo` with `--repo` is refused. `plan`
+takes `--repo`, then `IDP_REPO`, then the file, and never the working directory, which is
+the service it declares; with none it is refused, naming all three. Every road but `--repo`
+is said in one line on stderr, naming the folder and what named it — because an answer
+about an invented company that does not say so is read as one about the user's own; a
+repository is named by its folder, never as the `.` it was typed as. One function decides
+all of it, `cli/source.ts`'s `sourceOf`, and a Backstage source is one more `kind` there.
+
+Configuration is two files, and neither holds a secret. `.idp-agent.yml` is committed to
+an application repository and shared by its team; the personal one —
+`$XDG_CONFIG_HOME/idp-agent/config.yml`, else `~/.config/idp-agent/config.yml`
+(`%APPDATA%\idp-agent\config.yml` on Windows) — is one person's and never committed.
+`cli/personal.ts` locates it from the environment `main` is handed (`MainDeps.env`), never
+`os.homedir()`, and `tests/setup/personal.ts` removes `IDP_REPO` and points
+`XDG_CONFIG_HOME` into the run directory, so no test — and, likewise, no `pnpm smoke`
+check — reads the developer's own. `IDP_REPO` must be absolute or start with `~`.
 
 ## Layering
 
@@ -125,7 +138,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 |---|---|
 | `core/` | schemas (Zod), the seven validation rules, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, and `core/plan/` — everything between a proposal and a diff |
 | `context/` | `ContextProvider` (two implementations: `fixtures`, and `iac-fs` behind `--repo`), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries |
-| `cli/` | argument parsing, commands, rendering, `.idp-agent.yml` — the only layer that writes to stdout |
+| `cli/` | argument parsing, commands, rendering, `.idp-agent.yml` and the personal `config.yml`, which source a command reads — the only layer that writes to stdout |
 | `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |
 | `agents/` | the five agents, the bounded turn, the repair loop, the tool registries — reaches no disk, transitively |
 | `scaffold/` | the `init platform` layout, the packaged templates, and the only writer we own |

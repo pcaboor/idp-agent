@@ -11,7 +11,8 @@ export default defineConfig({
     environment: 'node',
     // Removes the run's temp directory, with everything the tests left in it.
     globalSetup: ['tests/setup/tmp.ts'],
-    // The network is blocked for the whole suite, recording excepted.
-    setupFiles: ['tests/setup/offline.ts'],
+    // The network is blocked for the whole suite, recording excepted, and the
+    // developer's own IDP_REPO and personal configuration are out of reach.
+    setupFiles: ['tests/setup/offline.ts', 'tests/setup/personal.ts'],
   },
 })

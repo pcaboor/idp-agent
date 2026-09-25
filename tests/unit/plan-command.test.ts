@@ -416,6 +416,9 @@ describe('plan --from', () => {
     const { code, err } = await run(['plan', '--from', '/tmp/plan.json'])
     expect(code).toBe(2)
     expect(err).toContain('--repo')
+    // And the two ways of configuring one once, so it need not be typed again.
+    expect(err).toContain('IDP_REPO')
+    expect(err).toContain('idp-agent/config.yml')
   })
 
   it('refuses an intent AND a file, rather than picking one of them', async () => {

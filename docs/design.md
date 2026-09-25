@@ -46,7 +46,7 @@ harness more verifiable over the one that adds an integration.
 | v0.2 | Extract `core/` and `context/` as publishable packages + GitLab |
 | Name | `idp-agent` on npm, short command alias `idpa` |
 | Commands | `init platform` · `init` · bare intent |
-| Configuration | `.idp-agent.yml` committed per app; credentials never in the repo |
+| Configuration | `.idp-agent.yml` committed per app; a personal `config.yml` per machine; credentials never in either |
 | Language | English throughout — code, docs, commits, CLI output |
 | Licence | Apache-2.0 |
 
@@ -613,6 +613,49 @@ is a repository that never declared one, and the run proceeds on what the entiti
 Present and unparseable is refused, naming the field, because falling back there would
 answer a typo with a run that silently asks about everything.
 
+**The personal file.** Beside the shared file there is one person's, on one machine, and
+it never enters a repository: `$XDG_CONFIG_HOME/idp-agent/config.yml`, else
+`~/.config/idp-agent/config.yml` — on Windows, with no XDG_CONFIG_HOME, under
+`%APPDATA%\idp-agent\`. `.idp-agent.yml` says what a team agreed about an application;
+this file says where *this* user keeps the SI they question.
+
+```yaml
+repo: ~/work/IaC        # the local declarations repository
+```
+
+That is the whole schema today, and `cli/personal.ts` reads it by the same rules: strict,
+so `repos:` is refused by name; absent is nothing configured; present and unparseable is
+exit 2, naming the file. `~` is expanded — a bare `~` is YAML's null, so the home
+directory itself is written `"~"` — and a relative path is resolved against the file's own
+directory, so it names the same repository wherever the command is run. `IDP_REPO` in the
+environment overrides it, and must be absolute or start with `~`: relative to the working
+directory it would name another repository in each, and `IDP_REPO=.` would make the service
+`plan` declares its own declarations repository, so it is refused.
+
+The two files answer different questions and neither reads the other. `iacRepo` and
+`backstage` in `.idp-agent.yml` are what a team agreed for one application: which remote
+its declarations live in, which catalogue it is registered with. `repo` in the personal
+file — and, later, a Backstage URL beside it — is where this person reads the SI from: a
+local checkout on this machine. The read commands and `plan`'s declarations repository
+consult only the personal side; `iacRepo` is a URL, nothing here clones it, and it is not
+a fall-back for `repo`.
+
+The project has two uses: `init platform` creates the declarations repository once, and
+then `graph`, `show` and `ask` question it from anywhere, not only from inside it. They
+read, first match wins: `--repo` or `--demo`; the working directory when it is a
+declarations repository; `IDP_REPO`; the file's `repo`; the fictional demo SI. `plan`
+takes `--repo`, then `IDP_REPO`, then the file, and never the working directory, which for
+`plan` is the service being declared. Every road but `--repo` is said on stderr in one
+line naming the folder and what named it. A configured path that is not a directory is
+exit 2, never a quiet fall back to the demo SI: the user asked for that repository.
+
+This is also the slot the `backstage-http` provider (§ 3) plugs into: one decision,
+`cli/source.ts`'s `sourceOf`, returns `{ kind: 'repo' | 'demo', … }`, and a Backstage
+source is one more kind and one more field here. Its token will come from an environment
+variable, never from this file: `config.yml` holds no credential, whatever other files —
+the `credentials.json` above — come to sit beside it in the same directory, and there is
+deliberately no field in it that could carry one.
+
 ### 7.1 First contact — no configuration
 
 ```
@@ -711,8 +754,9 @@ write has been written.
 
 The two `--repo` flags on this page name two different repositories, and the difference is
 the whole reason the flag exists. `plan --repo` is the **declarations** repository, which
-the preview is decided against (§ 4.4). `init --repo` is the **application** repository,
-the one being declared.
+the preview is decided against (§ 4.4), and `IDP_REPO` or the personal file (§ 7.0) can
+name it once instead. `init --repo` is the **application** repository, the one being
+declared.
 
 Every run ends on the same line, so no one mistakes submission for permission:
 

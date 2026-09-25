@@ -292,7 +292,7 @@ const scaffolded = async (): Promise<{ parent: string; repo: string }> => {
   return { parent, repo }
 }
 
-const STANDING = /^reading the declarations repository in the current directory \(IaC\)/
+const STANDING = /^reading the declarations repository IaC \(the current directory\)/
 
 describe('graph and show without --repo, standing in a declarations repository', () => {
   it.each([
@@ -403,7 +403,8 @@ describe('graph and show without --repo, standing in a declarations repository',
     await rename(repo, hostile)
     const { code, err } = await run(['show', 'ledger-db-prod'], { cwd: hostile })
     expect(code).toBe(0)
-    expect(err).toMatch(/^reading the declarations repository in the current directory \(IaC/)
+    expect(err).toMatch(/^reading the declarations repository IaC/)
+    expect(err).toContain('(the current directory)')
     expect(err).not.toContain('\u001b')
     expect(err.split('\n').filter((line) => line !== '')).toHaveLength(1)
   })

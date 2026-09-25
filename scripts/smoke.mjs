@@ -48,11 +48,19 @@ process.on('exit', () => {
 /**
  * Whatever the contributor has exported, the binary must behave the same here
  * as it does in CI. An IDP_PROVIDER left in a shell would silently flip the
- * "no model configured" checks from a refusal to a live API call.
+ * "no model configured" checks from a refusal to a live API call, and an
+ * IDP_REPO — dropped with the rest of IDP_ — or a personal
+ * `~/.config/idp-agent/config.yml` would make every check that expects the
+ * demo SI read the contributor's own repository instead. XDG_CONFIG_HOME is
+ * the first place the binary looks for that file, on every platform, so
+ * pointing it inside ELSEWHERE, where none is until a check below writes one,
+ * keeps HOME's out of reach.
  */
-const CLEAN_ENV = Object.fromEntries(
-  Object.entries(process.env).filter(([name]) => !name.startsWith('IDP_')),
-)
+const CONFIG_HOME = path.join(ELSEWHERE, 'config')
+const CLEAN_ENV = {
+  ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('IDP_'))),
+  XDG_CONFIG_HOME: CONFIG_HOME,
+}
 
 const failures = []
 // Counted, never written down. The total was a literal, it had drifted from the
@@ -65,20 +73,26 @@ let checks = 0
  * line meant for a person has to stay out of the stream that gets piped.
  *
  * `cwd` is where the binary runs, ELSEWHERE unless a check is about the
- * directory the user is standing in.
+ * directory the user is standing in. `env` is added to CLEAN_ENV, for a check
+ * about a configured declarations repository.
  *
  * @param {{args: string[], code: number, stdout?: RegExp, stderr?: RegExp,
- *   absentFromStdout?: RegExp, absentFromStderr?: RegExp, cwd?: string}} expected
+ *   absentFromStdout?: RegExp, absentFromStderr?: RegExp, cwd?: string,
+ *   env?: Record<string, string>}} expected
  */
-function check({ args, code, stdout, stderr, absentFromStdout, absentFromStderr, cwd }) {
+function check({ args, code, stdout, stderr, absentFromStdout, absentFromStderr, cwd, env }) {
   checks += 1
-  const label = `${cwd === undefined ? '' : `(in ${path.basename(cwd)}) `}idp-agent ${args.join(' ')}`
+  const where = cwd === undefined ? '' : `(in ${path.basename(cwd)}) `
+  const set = Object.keys(env ?? {})
+    .map((name) => `${name}=… `)
+    .join('')
+  const label = `${where}${set}idp-agent ${args.join(' ')}`
   // spawnSync, not execFileSync: the latter hands back stderr only when the
   // process fails, and a check on what a SUCCESSFUL run says on stderr — or
   // keeps off it — then passes or fails on an empty string.
   const run = spawnSync(process.execPath, [BIN, ...args], {
     cwd: cwd ?? ELSEWHERE,
-    env: CLEAN_ENV,
+    env: { ...CLEAN_ENV, ...env },
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -248,8 +262,54 @@ check({
   cwd: STANDING,
   code: 0,
   stdout: /resource:default\/ledger-db-prod/,
-  stderr: /^reading the declarations repository in the current directory \(IaC\)/,
+  stderr: /^reading the declarations repository IaC \(the current directory\)/,
   absentFromStderr: DEMO,
+})
+
+// The same repository from anywhere, configured once rather than stood in:
+// IDP_REPO, then `repo` in the personal configuration file. Each says so in
+// its one line, naming the folder and what named it; `plan` takes the same
+// default and no longer needs --repo.
+check({
+  args: ['show', 'ledger-db-prod'],
+  env: { IDP_REPO: STANDING },
+  code: 0,
+  stdout: /resource:default\/ledger-db-prod/,
+  stderr: /^reading the declarations repository IaC \(IDP_REPO\)/,
+  absentFromStderr: DEMO,
+})
+check({
+  args: ['graph'],
+  env: { IDP_REPO: path.join(ELSEWHERE, 'missing') },
+  code: 2,
+  stderr: /IDP_REPO=.*missing is not a directory/,
+})
+// Relative is refused: a default set once names one repository from everywhere.
+check({ args: ['graph'], env: { IDP_REPO: 'IaC' }, code: 2, stderr: /IDP_REPO=IaC is relative/ })
+// Relative to the file's own directory, ELSEWHERE/config/idp-agent: ../../IaC is
+// the repository above, wherever the binary runs.
+mkdirSync(path.join(CONFIG_HOME, 'idp-agent'), { recursive: true })
+writeFileSync(path.join(CONFIG_HOME, 'idp-agent', 'config.yml'), 'repo: ../../IaC\n')
+check({
+  args: ['show', 'ledger-db-prod'],
+  code: 0,
+  stdout: /resource:default\/ledger-db-prod/,
+  stderr: /^reading the declarations repository IaC \(.*config\.yml\)/,
+  absentFromStderr: DEMO,
+})
+check({
+  args: ['plan', '--from', path.join(ROOT, 'examples/declare-database.json')],
+  code: 0,
+  stdout: /\+\+\+ b\/catalog\/databases\/orders-db-prod\.yml/,
+  stderr: /^reading the declarations repository IaC \(.*config\.yml\)/,
+})
+// Removed again: every check below expects nothing configured.
+rmSync(CONFIG_HOME, { recursive: true, force: true })
+// And with nothing configured, plan says every way of naming one.
+check({
+  args: ['plan', '--from', path.join(ROOT, 'examples/declare-database.json')],
+  code: 2,
+  stderr: /^plan needs --repo <directory>, or IDP_REPO or repo in .*config\.yml/,
 })
 
 // A repository that was already wrong before the plan, as a real one usually
