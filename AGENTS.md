@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 1774 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 1792 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -27,6 +27,19 @@ pnpm smoke            # runs the built dist/cli/bin.js, which the suite never do
 
 CI runs exactly those five, on Node 22 and 24. A suite that demands a key is a
 regression, not a configuration problem.
+
+Tracing is optional, needs Docker, and is never part of CI (ADR-0009):
+
+```bash
+pnpm mlflow:up                                   # MLflow 3.16.1 on 127.0.0.1:5055
+MLFLOW_TRACKING_URI=http://127.0.0.1:5055 idp-agent plan "<intent>" --repo <dir>
+IDP_TRACE_DIR=.traces pnpm vitest run tests/scenarios && pnpm trace:push .traces   # the tapes, no key
+pnpm mlflow:contract                             # after moving the image tag
+pnpm mlflow:down
+```
+
+`MLFLOW_EXPERIMENT_ID` defaults to `0`. A trace carries full prompts; `SECURITY.md` says
+where they go.
 
 **Every number on this page is a measurement, and this page has drifted from all of them
 before** — a test count one short, an architecture-rule count several short, one module

@@ -198,3 +198,11 @@ user no longer sees, and what the draft said when the user's answer replaced it:
 `  = <path> is <value>, as answered for <entity>; the draft said <value>`. What it does
 not follow — a renamed entity, a moved consumer, an entity two operations amend — is asked
 again; `reapply.ts` lists it.
+
+**Tracing.** `trace-sink.ts` is the only way a trace leaves the process: `mlflowSink` posts
+OTLP/JSON to `MLFLOW_TRACKING_URI`'s `/v1/traces`, `fileSink` writes one file per run under
+`IDP_TRACE_DIR`, and a sink that fails is one `! trace not exported` line on stderr — never
+an exit code. `agentBacked` in `index.ts` builds the trace (`src/trace/`), wraps the client
+with `traced` and tees the event stream, for a phrase, `plan "<intent>"`, `ask` and `init`
+alone: the commands that involve no model have nothing to trace. `MainDeps.traceSinks` and
+`MainDeps.fetch` are the test seams (`tests/unit/trace-wiring.test.ts`).

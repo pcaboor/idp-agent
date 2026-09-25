@@ -65,6 +65,19 @@ The boundary that does contain something is `context/project-fs`: it decides wha
 a user's own repository for a third-party model, and it is enforced at runtime rather than
 at build time.
 
+## What a trace sends, and where
+
+Tracing is off unless the environment turns it on. With `MLFLOW_TRACKING_URI` set, each
+agent-backed run sends one trace to that server; with `IDP_TRACE_DIR` set, it writes one to
+that directory. A trace carries **the full prompts**: the SI summary, what the agents' tools
+read from the catalogue, and the snapshots `context/project-fs` takes of the application
+repository — with what project-fs already withholds from the model still withheld, and
+nothing further redacted. A tracking server is therefore one more place your repositories'
+content goes. The compose file this project ships (`tools/mlflow/compose.yml`) publishes it
+on `127.0.0.1` only. No provider credential enters a trace: the decorator sees
+`GenerateRequest` and `GenerateResult`, never the adapter. With neither variable set nothing
+is traced, which `tests/unit/trace-wiring.test.ts` asserts.
+
 ## Designed, not yet built
 
 Claimed by `docs/design.md`, not by the code. Do not rely on them today.

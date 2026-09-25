@@ -6,6 +6,7 @@ import { main } from '../../src/cli/index.js'
 import { runInitPlatform } from '../../src/cli/commands/init.js'
 import type { AgentEvent } from '../../src/agents/events.js'
 import { hashTree } from '../support/tree.js'
+import { disagreements, memorySink, onlyTrace } from '../support/trace.js'
 
 /**
  * The whole chain, against a recorded model: Inspector → Architect → the five
@@ -113,7 +114,9 @@ const run = async (
   const out: string[] = []
   const err: string[] = []
   const events: AgentEvent[] = []
+  const sink = memorySink()
   const code = await main(['plan', intent, '--repo', repo], {
+    traceSinks: [sink],
     cwd: project,
     recordingDir: RECORDINGS,
     scenario,
@@ -138,6 +141,10 @@ const run = async (
   expect(stderr, `${scenario}: the recording is stale — re-record it`).not.toMatch(
     /prompt changed since recording/,
   )
+  // Whatever the model chose, the trace a replay produces tells the run the
+  // way its own stream did: every span closed by an event, every model call
+  // inside an agent, every gate verdict under its attempt.
+  expect(disagreements(onlyTrace(sink), events), `${scenario}: the trace and the stream disagree`).toEqual([])
   return { code, out: out.join(''), err: stderr, events }
 }
 
