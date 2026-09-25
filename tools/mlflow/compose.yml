@@ -1,6 +1,5 @@
-# MLflow for reading traces of idp-agent runs
-# (docs/superpowers/specs/2026-09-24-mlflow-tracing-design.md). Never part of
-# CI, and never needed by `pnpm test`.
+# MLflow for reading traces of idp-agent runs (docs/tracing-design.md). Never
+# part of CI, and never needed by `pnpm test`.
 #
 # 127.0.0.1 only: a trace carries full prompts (SECURITY.md). Port 5055, not
 # MLflow's 5000, because macOS's AirPlay receiver holds 5000. The tag is pinned
