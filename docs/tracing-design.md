@@ -216,7 +216,10 @@ interface TraceSink { name: string; export(trace: Trace): Promise<void> }
   server; a real trace is about the size of its recording, 200 KB at most today. A `2xx` is not
   the end of it: the body is read, and an OTLP `partialSuccess` with `rejectedSpans > 0` is a
   failure, `<n> span(s) rejected: <errorMessage>` — a trace MLflow kept only part of is never
-  reported as sent.
+  reported as sent. That check reads JSON, which is what an OTLP server answers with; MLflow
+  3.16.1, the version this project pins, answers `200` with an empty `application/x-protobuf`
+  body, so the check never fires against it, and a partial rejection from that server would go
+  unreported.
 - **`fileSink({ dir })`** — writes `<dir>/<traceId>.json`, the same OTLP/JSON body, with mode
   `0600`, since it holds full prompts, and never over a file already there.
 - **`pnpm trace:push <dir>` (`scripts/trace-push.mjs`)** — posts every file in a directory to the
