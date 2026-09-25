@@ -128,4 +128,7 @@ if (failures.length > 0) {
   console.error(`MLflow at ${TRACKING_URI} reads the contract differently:\n  ${failures.join('\n  ')}`)
   process.exit(1)
 }
-console.log(`MLflow at ${TRACKING_URI} reads all ${sent.length} spans of the contract as sent (tr-${traceId})`)
+console.log(
+  `MLflow at ${TRACKING_URI} reads all ${sent.length} spans of the contract as sent (tr-${traceId}), ` +
+    `POST /v1/traces answered with content-type ${response.headers.get('content-type')}`,
+)

@@ -509,3 +509,90 @@ describe('what the root says a run printed', () => {
     expect(text).not.toContain('\u001b')
   })
 })
+
+/**
+ * A memory sink is a passive reader of the event stream (ADR-0009): asking one
+ * to look must change nothing that a person sees. One road per way a run can
+ * be driven — `ask`, `ask --quiet`, the bare phrase (`idpa` / entry), and
+ * `init` — each compared against itself, traced and untraced, and each
+ * checked with `disagreements()` against the very events that built the trace.
+ */
+describe('a memory sink changes nothing a person sees, on any road', () => {
+  const QUESTION = 'which databases are in prod?'
+
+  /** Supervisor classifies, Analyst answers "nothing" — but with commentary framing it. */
+  const askingWithCommentary = (): LlmClient => {
+    const turns = [
+      saying('QUESTION'),
+      answering({ outcome: 'nothing', intro: 'Nothing turned up.', conclusion: 'The search covered every environment.' }),
+    ]
+    let index = 0
+    return { generate: async () => turns[index++] ?? saying('') }
+  }
+
+  const COMPONENT = {
+    op: 'create-entity',
+    entity: {
+      kind: 'Component',
+      metadata: { name: 'billing-api' },
+      spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
+    },
+  }
+
+  /**
+   * The Architect asking for `answer` before proposing: refused, drawn as an
+   * ERROR TOOL span closed by its own `tool:result` — not a forced close, so
+   * `disagreements()` stays empty over it (architect.ts's own note: every
+   * other test here filtered `answer` out by hand, so this combination was
+   * never exercised until now).
+   */
+  const initClient = (): LlmClient =>
+    byAgent({
+      inspector: [calling(REPORT_TOOL, FACTS)],
+      architect: [calling('answer', { outcome: 'nothing' }), calling(PROPOSE_TOOL, { operations: [COMPONENT] })],
+    })
+
+  const ROADS: ReadonlyArray<[string, () => Promise<{ argv: string[]; deps: MainDeps }>]> = [
+    [
+      'ask, whose answer carries commentary',
+      async () => ({
+        argv: ['ask', QUESTION],
+        deps: { root: FIXTURES, env: {}, client: askingWithCommentary() },
+      }),
+    ],
+    [
+      'ask --quiet',
+      async () => ({
+        argv: ['ask', '--quiet', QUESTION],
+        deps: { root: FIXTURES, env: {}, client: askingWithCommentary() },
+      }),
+    ],
+    [
+      'idpa / entry, on a question whose answer carries commentary',
+      async () => ({
+        argv: [QUESTION],
+        deps: { env: {}, cwd: await scratch(), client: askingWithCommentary() },
+      }),
+    ],
+    [
+      'init',
+      async () => ({
+        argv: ['init', '--repo', await application()],
+        deps: { env: {}, client: initClient() },
+      }),
+    ],
+  ]
+
+  it.each(ROADS)('%s', async (_label, road) => {
+    const first = await road()
+    const untraced = await running(first.argv, first.deps)
+
+    const second = await road()
+    const sink = memorySink()
+    const traced = await running(second.argv, { ...second.deps, traceSinks: [sink] })
+
+    expect(traced.out).toBe(untraced.out)
+    expect(traced.code).toBe(untraced.code)
+    expect(disagreements(onlyTrace(sink), traced.events)).toEqual([])
+  })
+})

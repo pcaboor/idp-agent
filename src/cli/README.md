@@ -201,7 +201,9 @@ again; `reapply.ts` lists it.
 
 **Tracing.** `trace-sink.ts` is the only way a trace leaves the process: `mlflowSink` posts
 OTLP/JSON to `IDP_MLFLOW_TRACKING_URI`'s `/v1/traces` — never `MLFLOW_TRACKING_URI`'s, which
-other tools set — and reads the answer, so spans MLflow rejected are not reported as sent;
+other tools set — and reads the answer, so spans an OTLP server rejects are not reported as
+sent; that check reads JSON, and MLflow 3.16.1 answers `200` with an empty `application/x-protobuf`
+body, so it never fires there, and a partial rejection from that server would go unreported.
 `fileSink` writes one `0600` file per run under `IDP_TRACE_DIR`. A sink that fails is one
 `! trace not exported` line on stderr — never an exit code. `agentBacked` in `index.ts`
 builds the trace (`src/trace/`), wraps the client with `traced` and tees the event stream,
