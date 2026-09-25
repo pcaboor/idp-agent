@@ -73,9 +73,8 @@ export function onlyTrace(sink: { readonly traces: readonly Trace[] }): Trace {
  * What is checked:
  *   - every TOOL span the builder force-closed with "…by no event of its
  *     own" carries, in `(span.inputs as { id }).id`, exactly the id of a
- *     `tool:call` the stream left unanswered — matched as a multiset, so a
- *     repeated id pairs call by result in order, and the two id lists are
- *     compared sorted;
+ *     `tool:call` the stream left unanswered — ids counted as a multiset,
+ *     and the two id lists compared sorted;
  *   - a forced close on any span that is not a TOOL is a disagreement in its
  *     own right — nothing but an unanswered tool call may be forced closed;
  *   - every span named `unbalanced event` is a disagreement, named with its
@@ -147,9 +146,9 @@ export function disagreements(trace: Trace, events: readonly AgentEvent[]): stri
 
 /**
  * The ids of `tool:call` events the stream itself never paired with a
- * `tool:result` of the same id — ids taken as a multiset, so a repeated id
- * pairs the earliest unmatched call with the earliest unclaimed result,
- * call by result, in order, rather than by set membership alone.
+ * `tool:result` of the same id — ids counted as a multiset: each result of
+ * an id answers one call of that id, so which ids stay unanswered does not
+ * depend on the order they are paired in.
  */
 function unansweredToolCallIds(events: readonly AgentEvent[]): string[] {
   const resultsById = new Map<string, number>()

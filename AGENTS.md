@@ -114,9 +114,9 @@ idp-agent init [--repo <dir>]                    # the catalog-info.yml it would
 ```
 
 **`init platform` is still the only command that writes into a repository**, and only into
-the directory it was handed; with `IDP_TRACE_DIR` set, a phrase, `plan`, `ask` and `init`
-also write one trace file there, and nothing else. The two forms of `plan` and `init` read
-two repositories and produce a unified diff; `plan-command.test.ts` and
+the directory it was handed; with `IDP_TRACE_DIR` set, a phrase, `plan "<intent>"`, `ask`
+and `init` also write one trace file there, and nothing else. The two forms of `plan` and
+`init` read two repositories and produce a unified diff; `plan-command.test.ts` and
 `plan-intent.test.ts` hash every path, every byte and every directory of both repositories
 either side of a full run rather than taking that on trust, and `pnpm smoke` makes the same
 assertion about the built binary.
