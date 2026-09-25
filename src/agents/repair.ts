@@ -260,7 +260,12 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
     // tests/unit/repair.test.ts holds the two to agreeing.
     emit({ type: 'attempt:start', attempt })
     const passed = (gate: Gate): void => emit({ type: 'gate:passed', attempt, gate })
-    const ended = (): void => emit({ type: 'attempt:end', attempt })
+    /**
+     * Why this attempt ended with no verdict, when it did: set by the two
+     * exits that stop the loop with nothing judged, and by a throw. Read once,
+     * by the `finally` below.
+     */
+    let stopped: string | undefined
 
     const fail = (gate: Gate, findings: readonly string[]): void => {
       // One list of findings, two renderings: the report the model reads and
@@ -271,284 +276,295 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       refusal = { gate, reason }
       attempts.push({ attempt, gates: [...gates], failed: gate, report })
       emit({ type: 'repair', attempt, gate, reason })
-      ended()
     }
 
-    const drafted = await input.draft(report)
-    // Carried, not read and dropped. The Architect counts these for its caller:
-    // rows the tools cut off, and proposals its own schema refused. A plan
-    // drafted on a partial view of the catalogue looks exactly like one drafted
-    // on all of it, and this seam was where that signal died.
-    truncated += drafted.truncated
-    rejections += drafted.rejections
+    try {
+      const drafted = await input.draft(report)
+      // Carried, not read and dropped. The Architect counts these for its caller:
+      // rows the tools cut off, and proposals its own schema refused. A plan
+      // drafted on a partial view of the catalogue looks exactly like one drafted
+      // on all of it, and this seam was where that signal died.
+      truncated += drafted.truncated
+      rejections += drafted.rejections
 
-    if (drafted.plan === undefined) {
-      // Not a repair, and not an attempt worth paying for again. The Architect
-      // has already spent its own forced turn and its granted-back ones, and it
-      // has already emitted `refused` on this same sink — a `repair` event here
-      // would report that failure a second time under a name that promises a
-      // correction, and the report we could hand back would say nothing the
-      // model does not already know.
-      attempts.push({ attempt, gates, failed: undefined, report: undefined })
-      ended()
-      // The refusal an earlier attempt recorded is kept, not overwritten. A
-      // second attempt that produced no draft at all does not un-refuse the
-      // first one, and `plan` still carries the partial plan a gate judged —
-      // returning "there was nothing to judge" beside it said two things that
-      // could not both be true.
-      const earlier = [...attempts].reverse().find((one) => one.failed !== undefined)
-      return {
-        outcome: 'stopped',
-        plan: partial,
-        gate: earlier?.failed,
-        reason:
-          earlier === undefined
-            ? 'the draft ended with no proposal, so there was nothing for a gate to judge'
-            : `the draft ended with no proposal; the last one was refused at the ${earlier.failed} gate: ${earlier.report ?? ''}`,
-        attempts,
-        truncated,
-        rejections,
+      if (drafted.plan === undefined) {
+        // Not a repair, and not an attempt worth paying for again. The Architect
+        // has already spent its own forced turn and its granted-back ones, and it
+        // has already emitted `refused` on this same sink — a `repair` event here
+        // would report that failure a second time under a name that promises a
+        // correction, and the report we could hand back would say nothing the
+        // model does not already know.
+        attempts.push({ attempt, gates, failed: undefined, report: undefined })
+        stopped = 'the draft ended with no proposal'
+        // The refusal an earlier attempt recorded is kept, not overwritten. A
+        // second attempt that produced no draft at all does not un-refuse the
+        // first one, and `plan` still carries the partial plan a gate judged —
+        // returning "there was nothing to judge" beside it said two things that
+        // could not both be true.
+        const earlier = [...attempts].reverse().find((one) => one.failed !== undefined)
+        return {
+          outcome: 'stopped',
+          plan: partial,
+          gate: earlier?.failed,
+          reason:
+            earlier === undefined
+              ? 'the draft ended with no proposal, so there was nothing for a gate to judge'
+              : `the draft ended with no proposal; the last one was refused at the ${earlier.failed} gate: ${earlier.report ?? ''}`,
+          attempts,
+          truncated,
+          rejections,
+        }
       }
-    }
 
-    // [1] Zod. Free, and first — which is what makes the gate after it total:
-    // every name the engine could not turn into a path is a name `proposedName`
-    // has already refused, so the signer is never asked to file one.
-    //
-    // `draftPlan` parses too, and that is not this parse. Its parse happens
-    // inside its own loop so the MODEL gets a turn to fix the field; this one
-    // is the boundary of a function that is handed a plan by a callback it does
-    // not own. A different drafter — a recording, a fixture, next year's agent
-    // — meets the same gate.
-    gates.push('zod')
-    const parsed = planSchema.safeParse(drafted.plan)
-    if (!parsed.success) {
-      fail('zod', [reasonOf(parsed.error)])
-      continue
-    }
-    passed('zod')
-    // Between [1] and [2], and **not a gate**.
-    //
-    // After the parse because it needs a Plan — it reads `spec.type` and
-    // `spec.dependencyOf`, and gate [1] is what makes those mean anything.
-    // Before the signature because the signature is what the derived value has
-    // to satisfy: run afterwards, it would be writing a value into a plan that
-    // had already been classified, and the classification would describe a
-    // field that no longer exists. Every later gate — the policies, the
-    // Reviewer, the re-check — then judges the plan with the owner in it,
-    // which is the plan the user would be shown.
-    //
-    // It is not in `Gate`, and that is a decision rather than an omission.
-    // `Gate` is read by two things: the list of gates an attempt RAN, and the
-    // `repair` event that names the one that refused. Derivation can only ever
-    // add information — it has no refusal and no report to hand back — so a
-    // member there could never appear in `failed`, and the event would name a
-    // gate that never fails. The five gates of §6.1 stay five.
-    //
-    // The caller's provenance, never the draft's. The derivation keeps an
-    // owner the user stated (F2), so a drafter whose own `intent` counted
-    // could write the sentence that protects the owner it wanted; the gates
-    // read the caller's provenance and no gate reads `plan.intent`. The caller's
-    // request is imposed on the plan all the same, so the plan the later gates
-    // judge and a clean stop shows carries what the user asked for.
-    //
-    // First, what the user already answered goes back in, wherever this draft
-    // put the entity it is about. Also not a gate, and before the derivation
-    // for the derivation's own reason: an owner the user answered is one it
-    // must keep, so it has to be in the field, and vouched for at the path it
-    // now sits at, before the consumers are read. Without it a redraft after
-    // the Reviewer refused a filled plan put `{unknown}` back where the user
-    // had answered, and the same question was asked a second time.
-    const reapplication = reapplyAnswers(parsed.data, input.answers)
-    const provenance: Provenance = {
-      ...input.provenance,
-      answers: new Map([...input.provenance.answers, ...reapplication.answers]),
-    }
-    for (const one of reapplication.reapplied) {
-      // Once per path and value, like a derivation: the same answer goes back
-      // into the same field on every attempt that leaves it open.
-      const key = `reapplied ${one.path} ${one.value} ${one.replaced ?? ''}`
-      if (announced.has(key)) continue
-      announced.add(key)
-      emit({ type: 'reapplied', ...one })
-    }
-    const derivation = deriveOwners(
-      { ...reapplication.plan, intent: input.provenance.intent },
-      input.owners,
-      provenance,
-    )
-    // Stated, never silent. The engine is overwriting a model's explicit "I do
-    // not know" with a value the model never wrote; the same rule that makes a
-    // truncated tool result audible makes this one.
-    for (const one of derivation.derived) {
-      // Once per path, not once per attempt. The same owner follows from the
-      // same consumer every time the loop comes round, and emitting it again
-      // rendered as three identical lines with nothing to tell them apart —
-      // the defect `events.ts` documents for `retry` and fixes there.
-      if (announced.has(one.path)) continue
-      announced.add(one.path)
-      emit({ type: 'derived', path: one.path, owner: one.owner, from: [...one.from] })
-    }
-    // An owner the user stated, kept over the one its consumers determine:
-    // a decision about two facts that disagree, said once per path for the
-    // same reason. Keyed apart from `derived`, since one path can be derived
-    // on one attempt and overridden on the next.
-    for (const one of derivation.overridden) {
-      const key = `overridden ${one.path}`
-      if (announced.has(key)) continue
-      announced.add(key)
-      emit({ type: 'overridden', ...one, from: [...one.from] })
-    }
-    // `derivation.contested` is deliberately not emitted. A contested owner is
-    // still a question, and it already leaves as an `ask`; a stderr line beside
-    // it would state one stop twice and read as two things having happened —
-    // the reason `events.ts` gives for `ask` rendering nothing itself. It is
-    // returned rather than dropped so whoever renders the questions can name
-    // the two teams that disagreed, which is a job for the form stage 7 draws
-    // and not for a progress line.
-
-    // The plan the gates judge, and the one a clean stop shows. Not
-    // `parsed.data`: showing the pre-derivation draft would show the user a
-    // plan no gate ever saw.
-    partial = derivation.plan
-
-    // [2] The signature. Free. It vouches for where every value came from, and
-    // turns the ones nobody can vouch for into questions rather than refusing
-    // them — "declare, never infer" means asking (see `signPlan`).
-    gates.push('signature')
-    // The caller's provenance, never the draft's. See RepairInput.provenance.
-    const signed = signPlan(derivation.plan, input.signature, provenance)
-    if ('outcome' in signed) {
-      fail(
-        'signature',
-        signed.refusals.map((one) => `${one.path}: ${one.reason}`),
+      // [1] Zod. Free, and first — which is what makes the gate after it total:
+      // every name the engine could not turn into a path is a name `proposedName`
+      // has already refused, so the signer is never asked to file one.
+      //
+      // `draftPlan` parses too, and that is not this parse. Its parse happens
+      // inside its own loop so the MODEL gets a turn to fix the field; this one
+      // is the boundary of a function that is handed a plan by a callback it does
+      // not own. A different drafter — a recording, a fixture, next year's agent
+      // — meets the same gate.
+      gates.push('zod')
+      const parsed = planSchema.safeParse(drafted.plan)
+      if (!parsed.success) {
+        fail('zod', [reasonOf(parsed.error)])
+        continue
+      }
+      passed('zod')
+      // Between [1] and [2], and **not a gate**.
+      //
+      // After the parse because it needs a Plan — it reads `spec.type` and
+      // `spec.dependencyOf`, and gate [1] is what makes those mean anything.
+      // Before the signature because the signature is what the derived value has
+      // to satisfy: run afterwards, it would be writing a value into a plan that
+      // had already been classified, and the classification would describe a
+      // field that no longer exists. Every later gate — the policies, the
+      // Reviewer, the re-check — then judges the plan with the owner in it,
+      // which is the plan the user would be shown.
+      //
+      // It is not in `Gate`, and that is a decision rather than an omission.
+      // `Gate` is read by two things: the list of gates an attempt RAN, and the
+      // `repair` event that names the one that refused. Derivation can only ever
+      // add information — it has no refusal and no report to hand back — so a
+      // member there could never appear in `failed`, and the event would name a
+      // gate that never fails. The five gates of §6.1 stay five.
+      //
+      // The caller's provenance, never the draft's. The derivation keeps an
+      // owner the user stated (F2), so a drafter whose own `intent` counted
+      // could write the sentence that protects the owner it wanted; the gates
+      // read the caller's provenance and no gate reads `plan.intent`. The caller's
+      // request is imposed on the plan all the same, so the plan the later gates
+      // judge and a clean stop shows carries what the user asked for.
+      //
+      // First, what the user already answered goes back in, wherever this draft
+      // put the entity it is about. Also not a gate, and before the derivation
+      // for the derivation's own reason: an owner the user answered is one it
+      // must keep, so it has to be in the field, and vouched for at the path it
+      // now sits at, before the consumers are read. Without it a redraft after
+      // the Reviewer refused a filled plan put `{unknown}` back where the user
+      // had answered, and the same question was asked a second time.
+      const reapplication = reapplyAnswers(parsed.data, input.answers)
+      const provenance: Provenance = {
+        ...input.provenance,
+        answers: new Map([...input.provenance.answers, ...reapplication.answers]),
+      }
+      for (const one of reapplication.reapplied) {
+        // Once per path and value, like a derivation: the same answer goes back
+        // into the same field on every attempt that leaves it open.
+        const key = `reapplied ${one.path} ${one.value} ${one.replaced ?? ''}`
+        if (announced.has(key)) continue
+        announced.add(key)
+        emit({ type: 'reapplied', ...one })
+      }
+      const derivation = deriveOwners(
+        { ...reapplication.plan, intent: input.provenance.intent },
+        input.owners,
+        provenance,
       )
-      continue
-    }
-    passed('signature')
+      // Stated, never silent. The engine is overwriting a model's explicit "I do
+      // not know" with a value the model never wrote; the same rule that makes a
+      // truncated tool result audible makes this one.
+      for (const one of derivation.derived) {
+        // Once per path, not once per attempt. The same owner follows from the
+        // same consumer every time the loop comes round, and emitting it again
+        // rendered as three identical lines with nothing to tell them apart —
+        // the defect `events.ts` documents for `retry` and fixes there.
+        if (announced.has(one.path)) continue
+        announced.add(one.path)
+        emit({ type: 'derived', path: one.path, owner: one.owner, from: [...one.from] })
+      }
+      // An owner the user stated, kept over the one its consumers determine:
+      // a decision about two facts that disagree, said once per path for the
+      // same reason. Keyed apart from `derived`, since one path can be derived
+      // on one attempt and overridden on the next.
+      for (const one of derivation.overridden) {
+        const key = `overridden ${one.path}`
+        if (announced.has(key)) continue
+        announced.add(key)
+        emit({ type: 'overridden', ...one, from: [...one.from] })
+      }
+      // `derivation.contested` is deliberately not emitted. A contested owner is
+      // still a question, and it already leaves as an `ask`; a stderr line beside
+      // it would state one stop twice and read as two things having happened —
+      // the reason `events.ts` gives for `ask` rendering nothing itself. It is
+      // returned rather than dropped so whoever renders the questions can name
+      // the two teams that disagreed, which is a job for the form stage 7 draws
+      // and not for a progress line.
 
-    // A question is NOT a failed gate, and this is where it leaves the loop.
-    //
-    // It exits here, after the signature and before anything that costs: the
-    // signer is what INSERTS most of these, so asking earlier would put half
-    // the questions to the user and keep the rest for the next run. And it
-    // exits rather than repairs because no model can fix it — the value is one
-    // only the user holds. Handing it back would spend three paid attempts
-    // asking the Architect to invent exactly what design 4.1 forbids it to
-    // invent, and the third would end in a clean stop over a plan that was
-    // never wrong. Design 7.5: the CLI asks.
-    const questions = questionsOf(signed.plan)
+      // The plan the gates judge, and the one a clean stop shows. Not
+      // `parsed.data`: showing the pre-derivation draft would show the user a
+      // plan no gate ever saw.
+      partial = derivation.plan
 
-    // [3] Policies. Free, deterministic, and every violation at once: a caller
-    // fixing them one round-trip at a time is this loop's worst case.
-    //
-    // It runs BEFORE the questions leave, even though a question ends the run:
-    // a policy costs nothing, and the alternative was putting a question to
-    // the user about a plan this gate would have refused outright. Worse, it
-    // was an escape — an Architect failing a hard gate could turn a refusal
-    // into a question by emitting one `{unknown}` anywhere in the plan, and
-    // the loop would stop asking it to try again.
-    gates.push('policy')
-    const violations = checkPolicies(signed, input.policy, provenance)
-    if (violations.length > 0) {
-      fail(
-        'policy',
-        violations.map((one) => `${one.policy} at ${one.path}: ${one.message}`),
-      )
-      continue
-    }
-    passed('policy')
+      // [2] The signature. Free. It vouches for where every value came from, and
+      // turns the ones nobody can vouch for into questions rather than refusing
+      // them — "declare, never infer" means asking (see `signPlan`).
+      gates.push('signature')
+      // The caller's provenance, never the draft's. See RepairInput.provenance.
+      const signed = signPlan(derivation.plan, input.signature, provenance)
+      if ('outcome' in signed) {
+        fail(
+          'signature',
+          signed.refusals.map((one) => `${one.path}: ${one.reason}`),
+        )
+        continue
+      }
+      passed('signature')
 
-    // A question is NOT a failed gate, and this is where it leaves the loop.
-    //
-    // After the free gates and before anything that costs. It exits rather
-    // than repairs because no model can fix it — the value is one only the
-    // user holds. Handing it back would spend three paid attempts asking the
-    // Architect to invent exactly what design 4.1 forbids it to invent, and
-    // the third would end in a clean stop over a plan that was never wrong.
-    // Design 7.5: the CLI asks.
-    if (questions.length > 0) {
-      // Audible, not merely returned. A consumer reading the stream has to see
-      // why a run stopped; the outcome is for the caller, the events are for
-      // whoever is watching (design §6.2).
-      for (const question of questions) emit({ type: 'ask', question })
+      // A question is NOT a failed gate, and this is where it leaves the loop.
+      //
+      // It exits here, after the signature and before anything that costs: the
+      // signer is what INSERTS most of these, so asking earlier would put half
+      // the questions to the user and keep the rest for the next run. And it
+      // exits rather than repairs because no model can fix it — the value is one
+      // only the user holds. Handing it back would spend three paid attempts
+      // asking the Architect to invent exactly what design 4.1 forbids it to
+      // invent, and the third would end in a clean stop over a plan that was
+      // never wrong. Design 7.5: the CLI asks.
+      const questions = questionsOf(signed.plan)
+
+      // [3] Policies. Free, deterministic, and every violation at once: a caller
+      // fixing them one round-trip at a time is this loop's worst case.
+      //
+      // It runs BEFORE the questions leave, even though a question ends the run:
+      // a policy costs nothing, and the alternative was putting a question to
+      // the user about a plan this gate would have refused outright. Worse, it
+      // was an escape — an Architect failing a hard gate could turn a refusal
+      // into a question by emitting one `{unknown}` anywhere in the plan, and
+      // the loop would stop asking it to try again.
+      gates.push('policy')
+      const violations = checkPolicies(signed, input.policy, provenance)
+      if (violations.length > 0) {
+        fail(
+          'policy',
+          violations.map((one) => `${one.policy} at ${one.path}: ${one.message}`),
+        )
+        continue
+      }
+      passed('policy')
+
+      // A question is NOT a failed gate, and this is where it leaves the loop.
+      //
+      // After the free gates and before anything that costs. It exits rather
+      // than repairs because no model can fix it — the value is one only the
+      // user holds. Handing it back would spend three paid attempts asking the
+      // Architect to invent exactly what design 4.1 forbids it to invent, and
+      // the third would end in a clean stop over a plan that was never wrong.
+      // Design 7.5: the CLI asks.
+      if (questions.length > 0) {
+        // Audible, not merely returned. A consumer reading the stream has to see
+        // why a run stopped; the outcome is for the caller, the events are for
+        // whoever is watching (design §6.2).
+        for (const question of questions) emit({ type: 'ask', question })
+        attempts.push({ attempt, gates: [...gates], failed: undefined, report: undefined })
+        return { outcome: 'questions', plan: signed.plan, questions, attempts, truncated, rejections }
+      }
+
+      // [4] The re-check. Free, and it runs BEFORE the one that is not.
+      //
+      // It used to be last, on the grounds that it is the only gate whose answer
+      // can go stale. Inside one `repair` call nothing goes stale: the snapshot
+      // and the bytes are read once, before the Inspector runs, and never
+      // re-read — so the reason held for a loop this one is not. What it cost
+      // was visible in a recorded tape: `link-already-declared` paid three
+      // Reviewer round-trips for three approvals and three re-check refusals.
+      //
+      // Computing the preview for a plan the Reviewer might reject is the price,
+      // and it is bytes in memory against a paid round-trip. It also buys
+      // something: the Reviewer now judges a plan that WOULD land, and the edits
+      // are there to hand it when it should see them.
+      gates.push('recheck')
+      const { edits, dropped } = planEdits(signed, input.contents)
+      const recheck = recheckPlan(signed, input.snapshot, edits)
+      // Errors only. A dangling reference is a warning: it is surfaced, never
+      // pruned (§4.4), and refusing a plan over one would push people to delete
+      // the declaration instead — the one thing that rule forbids.
+      //
+      // And the PLAN's errors only. `recheck.standing` — what was already wrong
+      // in files this plan leaves alone — never reaches the report: no draft can
+      // fix it, so handing it back bought three paid attempts and a stop over a
+      // repository the Architect was never asked to change.
+      const errors = recheck.violations.filter((violation) => violation.severity === 'error')
+      if (errors.length > 0) {
+        fail(
+          'recheck',
+          errors.map((one) => `${one.rule} at ${one.file}: ${one.message}`),
+        )
+        continue
+      }
+      passed('recheck')
+
+      // [5] The Reviewer. The only gate that costs anything, and it is last for
+      // that reason: FOUR free gates have refused everything they can, so a
+      // round-trip is only ever paid for a plan that is expressible, vouched
+      // for, determined, policy-clean and would land in the repository as it
+      // stands. The question it answers is the one none of them can ask — is
+      // this what was asked for.
+      gates.push('reviewer')
+      const verdict = await input.review(signed.plan, {
+        derived: derivation.derived,
+        targets: targetsOf(signed.plan, input.snapshot),
+        effects: effectsOf(signed.plan, dropped, recheck),
+      })
+      if (verdict.verdict === 'no-opinion') {
+        // No opinion is not a rejection, and repairing is not the answer to it.
+        // Nobody found fault with this plan — nobody read it — so handing the
+        // Architect a report saying "fix this" would spend the remaining paid
+        // attempts on a defect that does not exist, and end by telling the user
+        // their plan was refused. It stops here, saying what actually happened.
+        stopped = verdict.reason
+        return {
+          outcome: 'stopped',
+          plan: signed.plan,
+          gate: 'reviewer',
+          reason: verdict.reason,
+          attempts,
+          truncated,
+          rejections,
+        }
+      }
+      if (verdict.verdict === 'reject') {
+        fail('reviewer', [verdict.reason])
+        continue
+      }
+      passed('reviewer')
+
       attempts.push({ attempt, gates: [...gates], failed: undefined, report: undefined })
-      ended()
-      return { outcome: 'questions', plan: signed.plan, questions, attempts, truncated, rejections }
+      return { outcome: 'planned', signed, edits, dropped, recheck, attempts, truncated, rejections }
+    } catch (error) {
+      // Not absorbed: a provider that failed under the Architect or the
+      // Reviewer is the caller's to report, and the same error goes on. The
+      // attempt still ends, saying why, or a trace would show it open under
+      // whatever came next.
+      stopped = 'the attempt threw'
+      throw error
+    } finally {
+      // The attempt's one end, on every way out of it — the `continue` after a
+      // refusal, a return, a throw — the way `asAgent` ends an agent. Emitted
+      // here and nowhere else, so it is emitted exactly once.
+      emit({ type: 'attempt:end', attempt, ...(stopped === undefined ? {} : { stopped }) })
     }
-
-    // [4] The re-check. Free, and it runs BEFORE the one that is not.
-    //
-    // It used to be last, on the grounds that it is the only gate whose answer
-    // can go stale. Inside one `repair` call nothing goes stale: the snapshot
-    // and the bytes are read once, before the Inspector runs, and never
-    // re-read — so the reason held for a loop this one is not. What it cost
-    // was visible in a recorded tape: `link-already-declared` paid three
-    // Reviewer round-trips for three approvals and three re-check refusals.
-    //
-    // Computing the preview for a plan the Reviewer might reject is the price,
-    // and it is bytes in memory against a paid round-trip. It also buys
-    // something: the Reviewer now judges a plan that WOULD land, and the edits
-    // are there to hand it when it should see them.
-    gates.push('recheck')
-    const { edits, dropped } = planEdits(signed, input.contents)
-    const recheck = recheckPlan(signed, input.snapshot, edits)
-    // Errors only. A dangling reference is a warning: it is surfaced, never
-    // pruned (§4.4), and refusing a plan over one would push people to delete
-    // the declaration instead — the one thing that rule forbids.
-    //
-    // And the PLAN's errors only. `recheck.standing` — what was already wrong
-    // in files this plan leaves alone — never reaches the report: no draft can
-    // fix it, so handing it back bought three paid attempts and a stop over a
-    // repository the Architect was never asked to change.
-    const errors = recheck.violations.filter((violation) => violation.severity === 'error')
-    if (errors.length > 0) {
-      fail(
-        'recheck',
-        errors.map((one) => `${one.rule} at ${one.file}: ${one.message}`),
-      )
-      continue
-    }
-    passed('recheck')
-
-    // [5] The Reviewer. The only gate that costs anything, and it is last for
-    // that reason: FOUR free gates have refused everything they can, so a
-    // round-trip is only ever paid for a plan that is expressible, vouched
-    // for, determined, policy-clean and would land in the repository as it
-    // stands. The question it answers is the one none of them can ask — is
-    // this what was asked for.
-    gates.push('reviewer')
-    const verdict = await input.review(signed.plan, {
-      derived: derivation.derived,
-      targets: targetsOf(signed.plan, input.snapshot),
-      effects: effectsOf(signed.plan, dropped, recheck),
-    })
-    if (verdict.verdict === 'no-opinion') {
-      // No opinion is not a rejection, and repairing is not the answer to it.
-      // Nobody found fault with this plan — nobody read it — so handing the
-      // Architect a report saying "fix this" would spend the remaining paid
-      // attempts on a defect that does not exist, and end by telling the user
-      // their plan was refused. It stops here, saying what actually happened.
-      ended()
-      return {
-        outcome: 'stopped',
-        plan: signed.plan,
-        gate: 'reviewer',
-        reason: verdict.reason,
-        attempts,
-        truncated,
-        rejections,
-      }
-    }
-    if (verdict.verdict === 'reject') {
-      fail('reviewer', [verdict.reason])
-      continue
-    }
-    passed('reviewer')
-
-    attempts.push({ attempt, gates: [...gates], failed: undefined, report: undefined })
-    ended()
-    return { outcome: 'planned', signed, edits, dropped, recheck, attempts, truncated, rejections }
   }
 
   // Past three attempts: a clean stop (§6.1). The partial plan goes back with

@@ -157,9 +157,9 @@ async function inspectRepository(
       // caller that asked for an inspection is owed the difference between
       // "nothing is established about this repository" and "I could not look".
       //
-      // But it IS this loop's to CLOSE. `agent:start` is already on the sink,
-      // and letting the rejection through untouched left a stream showing an
-      // agent that began and never ended.
+      // But it IS this loop's to EXPLAIN. `asAgent` closes the agent with
+      // `agent:end` whichever way it leaves; `stopped` is what says why, for a
+      // reader of the stream that sees no more than the stream.
       emit({
         type: 'stopped',
         agent: 'inspector',

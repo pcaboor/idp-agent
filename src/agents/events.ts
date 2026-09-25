@@ -24,7 +24,9 @@ export type AgentEvent =
   | { type: 'classified'; classification: 'MUTATION' | 'QUESTION' }
   /**
    * `id` is the model's own id for the call, and the result carries the same
-   * one: a call and its result are paired by identity, never by order.
+   * one: a call and its result are paired by identity, never by order. Every
+   * call gets its result, a refused one included — a call left unanswered is
+   * one a trace can only close by force.
    */
   | { type: 'tool:call'; id: string; name: string; args: unknown }
   /**
@@ -78,9 +80,16 @@ export type AgentEvent =
    * reports a refusal — a `gate` event carrying `passed: false` would have
    * stated that one fact twice. An attempt that passes every gate used to
    * leave nothing on the stream at all.
+   *
+   * `attempt:end` comes once per attempt, on every way out of it, a throw
+   * included. `stopped` says why an attempt ended with no verdict: the
+   * Reviewer had no opinion (its reason), the Architect drafted nothing, or
+   * the attempt threw. An attempt a gate refused has none — its `repair` event
+   * says so — and neither has one that ended on a question, which is not a
+   * failure.
    */
   | { type: 'attempt:start'; attempt: 1 | 2 | 3 }
-  | { type: 'attempt:end'; attempt: 1 | 2 | 3 }
+  | { type: 'attempt:end'; attempt: 1 | 2 | 3; stopped?: string }
   | { type: 'gate:passed'; attempt: 1 | 2 | 3; gate: Gate }
   /**
    * An agent handing its own malformed terminal call back to the model.
