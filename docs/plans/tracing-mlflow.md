@@ -1524,7 +1524,7 @@ export interface GenerateResult { text: string; toolCalls: ModelToolCall[]; fini
 export function usageOf(raw: unknown): TokenUsage | undefined
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/unit/runtime.test.ts`, replace the first import
 
@@ -1596,12 +1596,12 @@ describe('token usage', () => {
 })
 ```
 
-- [ ] **Step 2: Run them to see them fail**
+- [x] **Step 2: Run them to see them fail**
 
 Run: `pnpm vitest run tests/unit/runtime.test.ts`
 Expected: FAIL — `usageOf is not a function` (vitest may report `does not provide an export named 'usageOf'`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement** — *since changed:* upstream's `runtime.ts` gained `ModelCallError` and `IDP_TIMEOUT` meanwhile; `usage` rides beside them on the live, record and replay paths, and `tests/contract/providers.test.ts` expects it from all three providers.
 
 In `src/llm/client.ts`, replace
 
@@ -1728,14 +1728,14 @@ with
       }
 ```
 
-- [ ] **Step 4: Run the tests to see them pass**
+- [x] **Step 4: Run the tests to see them pass** — *since changed:* the live path does have a test seam after all: `tests/contract/providers.test.ts` drives it offline through a mocked wire `fetch`. Only the record path has none.
 
 Run: `pnpm vitest run tests/unit/runtime.test.ts && pnpm typecheck`
 Expected: PASS, and typecheck clean.
 
 The live and record paths call a real provider and have no test seam. They are the two `usageOf(response.usage)` reads above, and the next `IDP_RECORDING=record` run is what exercises them. Say so in the PR description rather than claiming coverage.
 
-- [ ] **Step 5: Document it**
+- [x] **Step 5: Document it**
 
 In `src/llm/README.md`, insert this section right before `## The third way in, and why it exists`:
 
@@ -1750,12 +1750,12 @@ one gives a result with **no** `usage` key — never a count of 0. `src/trace/` 
 as `idp.usage: absent`.
 ```
 
-- [ ] **Step 6: Run the CI commands and correct the count**
+- [x] **Step 6: Run the CI commands and correct the count**
 
 Run: `df -h / && pnpm test && pnpm typecheck && pnpm build && pnpm smoke`
 Expected: all green, with 4 tests added. Write the measured count into AGENTS.md.
 
-- [ ] **Step 7: Commit** (after a go-ahead)
+- [x] **Step 7: Commit** (after a go-ahead)
 
 ```bash
 git add src/llm/client.ts src/llm/runtime.ts src/llm/README.md tests/unit/runtime.test.ts AGENTS.md
@@ -1771,7 +1771,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 EOF
 ```
 
-- [ ] **Step 8: Open the PR against `feat/tracing-2-events`** (after a go-ahead)
+- [ ] **Step 8: Open the PR against `feat/tracing-2-events`** (after a go-ahead) — *not yet:* nothing is pushed until the owner says so.
 
 ---
 
