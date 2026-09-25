@@ -88,8 +88,12 @@ async function readOne(root: string, absolute: string): Promise<RepositoryFile> 
   return { path: where, ...parseDocuments(content) }
 }
 
-/** The two roots `init platform` lays its witnessed folders under. */
-const DECLARATION_ROOTS = ['catalog', 'dependencies'] as const
+/**
+ * The two roots `init platform` lays its witnessed folders under. Exported for
+ * `cli/repository.ts`, which refuses to inspect a folder under either as a
+ * service's repository.
+ */
+export const DECLARATION_ROOTS = ['catalog', 'dependencies'] as const
 
 /**
  * Whether `directory` is a declarations repository, told by its markers: a

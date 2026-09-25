@@ -29,7 +29,7 @@ import type { LlmClient } from '../../llm/client.js'
 import { readConfig, seededVocabulary, type RepositoryConfig } from '../config.js'
 import { paintDiff } from '../render/diff.js'
 import type { CommandResult } from './result.js'
-import { plain } from '../render/plain.js'
+import { inertLine, visible } from '../render/plain.js'
 import { declarationsRoot } from '../repository.js'
 
 /**
@@ -319,8 +319,14 @@ const standingLines = (recheck: Recheck | undefined, repo: string | undefined): 
   ]
 }
 
+/**
+ * Both halves are a repository file's words or quote them: a file name is
+ * somebody's choice, and a message quotes the key or value it faults. The
+ * name is flattened and never cut — it is how the user finds the file.
+ */
 const violationLine = (violation: Violation): string =>
-  `${violation.severity.padEnd(7)} ${violation.file}: ${violation.message}`
+  `${violation.severity.padEnd(7)} ${inertLine(violation.file, Number.POSITIVE_INFINITY)}: ` +
+  inertLine(violation.message)
 
 const plural = (count: number, one: string, many: string): string =>
   `${count} ${count === 1 ? one : many}`
@@ -430,7 +436,9 @@ const droppedLines = (dropped: readonly DroppedOperation[]): string[] =>
     : [
         '',
         `${plural(dropped.length, 'operation', 'operations')} produced no change:`,
-        ...dropped.map((one) => `  ! operations.${String(one.opIndex)} — ${one.reason}`),
+        // A reason names the entity or the file it could not use, which a
+        // model or a repository file wrote.
+        ...dropped.map((one) => `  ! operations.${String(one.opIndex)} — ${inertLine(one.reason)}`),
       ]
 
 /**
@@ -505,7 +513,10 @@ export function renderPreview(preview: {
       ...standing,
       ...droppedLines(dropped),
       ...(warnings.length > 0 || standing.length > 0 || dropped.length > 0 ? [''] : []),
-      paintDiff(diff, preview.colour === true).trimEnd(),
+      // `visible` before the paint, so the escapes this tool adds are the only
+      // ones in it: the lines of context are a repository file's bytes, and a
+      // file can hold what a terminal obeys. See `visible`.
+      paintDiff(visible(diff), preview.colour === true).trimEnd(),
       '',
       `${plural(changed.length, 'file', 'files')} · nothing written`,
       CLOSING,
@@ -527,11 +538,13 @@ export const renderQuestions = (questions: readonly Question[]): CommandResult =
   text: [
     `${plural(questions.length, 'question', 'questions')}, asked rather than guessed:`,
     '',
-    // `plain`, because the reason is up to 8 192 characters the MODEL wrote
-    // and this line goes to a terminal. The path beside it is the engine's.
+    // Cleaned and kept to its one line, because the reason is up to 8 192
+    // characters the MODEL wrote and this line goes to a terminal: a newline in
+    // it would print a line of ours — a closing sentence, a `+++` header —
+    // under the question. The path beside it is the engine's.
     ...questions.flatMap((question) => [
       `  ${question.path}`,
-      `      ${plain(question.question)}`,
+      `      ${inertLine(question.question)}`,
     ]),
     '',
     'Fill them in and run this again. Nothing was previewed, and nothing was written.',
@@ -620,7 +633,10 @@ const provenanceOf = (request: string, answers: ReadonlyMap<string, string>): Pr
  */
 const renderRefusedAnswer = (reason: string): CommandResult => ({
   text: [
-    `the answer was refused — ${reason}`,
+    // Today a field's path and the rule it broke, never the value: neither zod
+    // nor `answer` quotes one. Cleaned like every reason here all the same, so
+    // a rule that one day quotes what the user typed cannot print it raw.
+    `the answer was refused — ${inertLine(reason)}`,
     '',
     'Nothing was previewed, and nothing was written.',
   ].join('\n'),
@@ -688,7 +704,10 @@ export async function fillAnswers(
  *
  * The operations cross as JSON, for `reviewer.ts`'s reason: a formatter of our
  * own would be one field away from hiding the field that mattered, and the
- * field that mattered is why this stopped.
+ * field that mattered is why this stopped. Spelled out by `visible` rather
+ * than cleaned, because every string in it is one a model wrote and removing a
+ * character would show a plan that is not the one refused; the escapes it adds
+ * are JSON's own, so the text still parses back to that plan.
  */
 export function renderStopped(
   plan: Plan | undefined,
@@ -698,15 +717,16 @@ export function renderStopped(
   const where = gate === undefined ? 'the plan was refused' : `refused at the ${gate} gate`
   return {
     text: [
-      // The Reviewer's own words, and the one place a refusal quotes a model.
-      `${where}: ${plain(reason)}`,
+      // The Reviewer's own words, or a gate's quoting what the model wrote: one
+      // line, because it is printed where the engine's own lines are.
+      `${where}: ${inertLine(reason)}`,
       '',
       ...(plan === undefined
         ? ['No draft ever parsed, so there is no partial plan to show.']
         : [
             'the plan as it stood when it was refused, and it was not written:',
             '',
-            asJson(plan.operations),
+            visible(asJson(plan.operations)),
           ]),
       '',
       'Nothing was previewed, and nothing was written. Name the value the gate ' +
@@ -767,7 +787,9 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
       return {
         text: [
           'refused at the signature — the engine signs what it can vouch for:',
-          ...signed.refusals.map((refusal) => `  ${refusal.path}: ${refusal.reason}`),
+          // A reason quotes at most a name the schema has held to Backstage's
+          // characters; cleaned anyway, for the refusal that quotes more.
+          ...signed.refusals.map((refusal) => `  ${refusal.path}: ${inertLine(refusal.reason)}`),
         ].join('\n'),
         found: false,
       }
@@ -844,9 +866,10 @@ function previewPlan(
   if (policies.length > 0) {
     return {
       text: [
+        // The message quotes the value it refuses, which a model or a file wrote.
         ...policies.flatMap((violation) => [
           `policy  ${violation.policy} at ${violation.path}`,
-          `        ${violation.message}`,
+          `        ${inertLine(violation.message)}`,
         ]),
         '',
         `${plural(policies.length, 'policy violation', 'policy violations')}. ` +
@@ -890,9 +913,18 @@ export interface IntentOptions {
    * this string, so rewriting it rewrites what the gate will vouch for.
    */
   readonly intent: string
-  /** The declarations repository. A preview is decided against it (§4.4). */
+  /**
+   * The declarations repository. A preview is decided against it (§4.4).
+   * `cli/index.ts` hands over the absolute one `applicationRoot` compared with
+   * `project`, so a relative one is not resolved a second time, elsewhere.
+   */
   readonly repo: string
-  /** The application repository the Inspector reads (§7.4, step 3). */
+  /**
+   * The application repository the Inspector reads (§7.4, step 3), absolute.
+   * `cli/index.ts` has already refused one that is a declarations repository,
+   * the `repo` directory itself or a folder of its declarations
+   * (`applicationRoot`).
+   */
   readonly project: string
   readonly client: LlmClient
   readonly emit: EventSink

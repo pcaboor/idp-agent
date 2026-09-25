@@ -30,8 +30,12 @@ import { isForgeHandle } from '../scaffold/codeowners.js'
 import { VERSION } from '../core/index.js'
 import type { LlmClient } from '../llm/client.js'
 import type { CommandResult } from './commands/result.js'
-import { oneLine, plain } from './render/plain.js'
-import { RepositoryArgumentError, type DeclarationsCommand } from './repository.js'
+import { inert, inertLine, oneLine } from './render/plain.js'
+import {
+  RepositoryArgumentError,
+  applicationRoot,
+  type DeclarationsCommand,
+} from './repository.js'
 import {
   blameOf,
   overviewName,
@@ -48,8 +52,12 @@ import {
  * that "both" and "neither" are unrepresentable. They are two roads to one
  * renderer (see `commands/plan.ts`): one reads a file and calls no model, the
  * other drafts one and calls three.
+ *
+ * `project` belongs to the intent alone, which makes `--project` with `--from`
+ * unrepresentable too: a plan in a file has no Inspector to point. Absent
+ * means the directory the user is standing in.
  */
-export type PlanSource = { from: string } | { intent: string }
+export type PlanSource = { from: string } | { intent: string; project?: string }
 
 /**
  * Where the three read commands read from: `repo`, the declarations repository
@@ -80,7 +88,7 @@ const HELP = `idp-agent - turn an intent into reviewed infrastructure declaratio
   idp-agent show <name-or-reference> [--repo <directory> | --demo]
   idp-agent ask "<question>" [--repo <directory> | --demo]     needs IDP_PROVIDER and IDP_MODEL
   idp-agent validate <directory>
-  idp-agent plan "<intent>" [--repo <directory>] [--json]
+  idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json]
   idp-agent plan --from <plan.json> [--repo <directory>] [--json]
   idp-agent init [--repo <directory>]
   idp-agent init platform <directory> --owner @org/team
@@ -90,7 +98,9 @@ const HELP = `idp-agent - turn an intent into reviewed infrastructure declaratio
   IDP_REPO, then repo in the personal config.yml ($XDG_CONFIG_HOME/idp-agent/,
   else ~/.config/idp-agent/), and the fictional demo SI otherwise or with
   --demo. plan takes --repo, IDP_REPO or that file, and never the current
-  directory, which is the service it declares.
+  directory, which is the service it declares: plan "<intent>" inspects that
+  service's repository, the current directory or --project, and refuses to
+  inspect a declarations repository.
   plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL. Both write nothing.
   Every model-backed command also needs that provider's key (ANTHROPIC_API_KEY,
   MISTRAL_API_KEY or OPENAI_API_KEY); IDP_TIMEOUT bounds each model call, in
@@ -162,6 +172,7 @@ export function parseArguments(argv: string[]): Command {
         options: {
           from: { type: 'string' },
           repo: { type: 'string' },
+          project: { type: 'string' },
           json: { type: 'boolean' },
         },
         // The intent is a positional: §7.4's daily gesture is a sentence in
@@ -185,6 +196,15 @@ export function parseArguments(argv: string[]): Command {
       if (from === undefined && intent === '') {
         return { name: 'error', message: 'plan needs an intent, or --from <plan.json>' }
       }
+      const project = values.project
+      if (from !== undefined && project !== undefined) {
+        return {
+          name: 'error',
+          message:
+            'plan --from reads a plan and inspects nothing, so --project has nothing to point: ' +
+            'it names the application repository plan "<intent>" inspects',
+        }
+      }
       if (intent.length > PLAN_LIMITS.maxIntentLength) {
         return {
           name: 'error',
@@ -196,7 +216,11 @@ export function parseArguments(argv: string[]): Command {
       const repo = values.repo
       return {
         name: 'plan',
-        source: from !== undefined ? { from } : { intent },
+        source:
+          from !== undefined
+            ? { from }
+            : // Omitted rather than undefined: "where I am standing" is an absence.
+              { intent, ...(project !== undefined ? { project } : {}) },
         ...(repo !== undefined ? { repo } : {}),
         json: values.json === true,
       }
@@ -384,27 +408,33 @@ export function renderEvent(event: AgentEvent): string | undefined {
       // A refused call reads no rows, and "0 row(s)" is what a search that ran
       // and found nothing looks like; the reason is what tells them apart. One
       // bounded line, like every reason: it can quote a value the model sent.
-      if (event.error !== undefined) return `  ← refused: ${oneLine(event.error)}`
+      if (event.error !== undefined) return `  ← refused: ${said(event.error)}`
       // Truncation is stated, never silent — the rule the whole tool layer is
       // built on, and the one a reader has to see too.
       return `  ← ${event.rows} row(s)${event.truncated > 0 ? ` · ${event.truncated} more not shown` : ''}`
     case 'retry':
-      return `  ! ${event.agent} corrected itself: ${oneLine(event.reason)}`
+      return `  ! ${event.agent} corrected itself: ${said(event.reason)}`
     case 'repair':
-      return `  ! attempt ${event.attempt} refused at the ${event.gate} gate: ${oneLine(event.reason)}`
+      return `  ! attempt ${event.attempt} refused at the ${event.gate} gate: ${said(event.reason)}`
     case 'plan:ready':
       return `· a draft with ${event.operations} operation(s)`
     case 'derived':
       // The consumers, not just the owner. A line saying only that an owner
       // appeared would be the engine asserting a value; naming who it was read
       // off is what makes it checkable against the diff below it.
-      return `  = ${event.path} follows from ${event.from.join(', ')}: ${event.owner}`
+      //
+      // Every name on it is cleaned: a consumer is a reference a model wrote,
+      // and an owner is one a repository file declares.
+      return (
+        `  = ${event.path} follows from ${event.from.map(whole).join(', ')}: ` +
+        whole(event.owner)
+      )
     case 'overridden':
       // Both owners and where the second came from, for the reason `derived`
       // names its consumers: the line is checked against the diff below it.
       return (
-        `  = ${event.path} is ${event.owner}, as stated; ` +
-        `${event.from.join(', ')} would give ${event.determined}`
+        `  = ${event.path} is ${whole(event.owner)}, as stated; ` +
+        `${event.from.map(whole).join(', ')} would give ${whole(event.determined)}`
       )
     case 'reapplied':
       // The entity, not the path it was typed at: that path belongs to a plan
@@ -415,7 +445,7 @@ export function renderEvent(event: AgentEvent): string | undefined {
         (event.replaced === undefined ? '' : `; the draft said ${oneLine(event.replaced)}`)
       )
     case 'refused':
-      return `! ${event.agent} refused: ${oneLine(event.reason)}`
+      return `! ${event.agent} refused: ${said(event.reason)}`
     case 'stopped':
       // No reason: it is the error the command prints next, as its last line,
       // and said here too it would reach the user twice.
@@ -431,8 +461,20 @@ export function renderEvent(event: AgentEvent): string | undefined {
   }
 }
 
-/** One line with nothing a terminal obeys, and nothing cut. */
-const whole = (text: string): string => oneLine(text, Number.POSITIVE_INFINITY)
+/**
+ * One line with nothing a terminal obeys, the bidi controls spelled out, and
+ * nothing cut: a file name on a `skipped` line, a reference on a `derived`
+ * one. A shortened name is another file, and a shortened reference another
+ * entity; an override in either is how `lmy.evil` reads `live.yml`.
+ */
+const whole = (text: string): string => inertLine(text, Number.POSITIVE_INFINITY)
+
+/**
+ * A reason on the event stream: one line, bounded at `oneLine`'s 200, and the
+ * bidi controls spelled out as well — `plan` streams the Reviewer's and the
+ * gates' reasons here, the same words its stdout quotes.
+ */
+const said = (text: string): string => inertLine(text, 200)
 
 const progress =
   (err: (chunk: string) => void) =>
@@ -557,16 +599,39 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
       return report(result, out)
     }
 
+    // §7.4 step 3: the Inspector reads "the local repository" — the one the
+    // user is standing in, or the one `--project` names. `--repo` names the
+    // declarations repository the preview is decided against, and they are two
+    // different repositories; `applicationRoot` refuses the run that confuses
+    // them.
+    //
+    // Here, before `agentBacked` chooses a model, and not inside `runIntent`:
+    // a directory is an argument, and an argument is refused before the
+    // configuration is. The other order told someone standing in their
+    // declarations repository with nothing configured to configure a model,
+    // which they would do, only to be refused for the directory next — and a
+    // refusal that is about the arguments whatever the configuration says
+    // should not wait on it. It walks nothing, so it costs a few `stat`s.
+    //
+    // Both roots come back resolved, and `runIntent` is handed those: the
+    // directory compared with the project is the directory the preview reads.
+    let roots: { readonly repo: string; readonly project: string }
+    try {
+      roots = await applicationRoot({
+        repo,
+        project: source.project,
+        cwd: () => deps.cwd ?? process.cwd(),
+      })
+    } catch (error) {
+      return failed(error, err)
+    }
+
     return agentBacked(deps, err, out, 'plan', async (client) =>
       runIntent({
         intent: source.intent,
-        repo,
+        repo: roots.repo,
         ...(ask !== undefined ? { ask } : {}),
-        // §7.4 step 3: the Inspector reads "the local repository", which is the
-        // one the user is standing in. `--repo` names the declarations
-        // repository the preview is decided against, and they are two different
-        // repositories — the whole reason the flag exists.
-        project: path.resolve(deps.cwd ?? process.cwd()),
+        project: roots.project,
         client,
         emit: deps.events ?? progress(err),
         json: command.json,
@@ -758,7 +823,7 @@ const promptOnTerminal = (): Ask => async (question) => {
     })
     return await Promise.race([
       // The model wrote the question; the path beside it is the engine's.
-      reader.question(`  ${question.path}\n      ${plain(question.question)}\n  > `),
+      reader.question(`  ${question.path}\n      ${inertLine(question.question)}\n  > `),
       closed,
     ])
   } finally {
@@ -811,21 +876,30 @@ function report(result: CommandResult, out: (chunk: string) => void): number {
  * trace: that is indistinguishable from success to a script.
  */
 function failed(error: unknown, err: (chunk: string) => void): number {
+  // Cleaned, every one: a refusal quotes what it refuses — a plan file's key,
+  // the parser's excerpt of a file that is not JSON, a folder's name, a
+  // provider's own words — and none of that is this tool's to print raw.
+  //
+  // These two are one sentence each by construction, so they are kept to one
+  // line, and never cut: the parser quotes a file's bytes, line breaks
+  // included, and one would print a line of the file as a line of ours.
+  if (error instanceof PlanInputError || error instanceof RepositoryArgumentError) {
+    err(`${inertLine(error.message, Number.POSITIVE_INFINITY)}\n`)
+    return EXIT.badUsage
+  }
   if (
-    error instanceof PlanInputError ||
-    error instanceof RepositoryArgumentError ||
     error instanceof ConfigError ||
     error instanceof NoModelConfiguredError ||
     error instanceof ModelSettingError
   ) {
-    err(`${error.message}\n`)
+    err(`${inert(error.message)}\n`)
     return EXIT.badUsage
   }
   if (error instanceof ModelCallError) {
-    err(`${error.message}\n`)
+    err(`${inert(error.message)}\n`)
     return EXIT.notFound
   }
-  err(`${error instanceof Error ? error.message : String(error)}\n`)
+  err(`${inert(error instanceof Error ? error.message : String(error))}\n`)
   return EXIT.notFound
 }
 

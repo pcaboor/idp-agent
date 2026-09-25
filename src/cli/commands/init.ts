@@ -22,6 +22,7 @@ import { loadTemplates } from '../../scaffold/templates.js'
 import { scaffoldLayout } from '../../scaffold/layout.js'
 import { writeScaffold, type FileIO } from '../../scaffold/write.js'
 import { renderPreview, renderQuestions } from './plan.js'
+import { inertLine } from '../render/plain.js'
 import type { CommandResult } from './result.js'
 
 /**
@@ -286,7 +287,7 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
     return {
       text: [
         'refused before signing — init declares one Component, this repository’s own:',
-        ...narrowed.refusals.map((refusal) => `  ${refusal}`),
+        ...narrowed.refusals.map((refusal) => `  ${inertLine(refusal)}`),
       ].join('\n'),
       found: false,
     }
@@ -323,7 +324,9 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
     return {
       text: [
         'refused at the signature — the engine signs what it can vouch for:',
-        ...signed.refusals.map((refusal) => `  ${refusal.path}: ${refusal.reason}`),
+        // A reason quotes at most a name the schema has held to Backstage's
+        // characters; cleaned anyway, for the refusal that quotes more.
+        ...signed.refusals.map((refusal) => `  ${refusal.path}: ${inertLine(refusal.reason)}`),
       ].join('\n'),
       found: false,
     }
@@ -340,7 +343,10 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
     operations: signed.plan.operations.map(asCatalogInfo),
   })
   if (!minted.success) {
-    return { text: `the composed plan is not a plan — ${reasonOf(minted.error)}`, found: false }
+    return {
+      text: `the composed plan is not a plan — ${inertLine(reasonOf(minted.error))}`,
+      found: false,
+    }
   }
 
   return renderPreview({

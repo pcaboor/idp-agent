@@ -1,3 +1,5 @@
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent } from '../../src/agents/events.js'
@@ -14,6 +16,24 @@ import type { LlmClient } from '../../src/llm/client.js'
  */
 
 const FIXTURES = path.resolve(import.meta.dirname, '../../fixtures/si-demo')
+
+/**
+ * The application repository `plan "<intent>"` inspects. Not FIXTURES, where
+ * these runs stand: that is a declarations repository, and `plan` refuses to
+ * inspect one before it reads a key. Empty, because every run below ends
+ * before the Inspector reads a file.
+ */
+const APPLICATION = mkdtempSync(path.join(tmpdir(), 'idp-failures-'))
+
+/** The request both `plan` runs make, from where they stand. */
+const PLAN = [
+  'plan',
+  'give billing-api read access to billing-db in prod',
+  '--repo',
+  FIXTURES,
+  '--project',
+  APPLICATION,
+]
 
 const run = async (
   argv: string[],
@@ -61,7 +81,7 @@ describe('a missing key', () => {
 
   it('is refused before the Inspector reads anything, on plan "<intent>"', async () => {
     const { code, err, events } = await run(
-      ['plan', 'give billing-api read access to billing-db in prod', '--repo', FIXTURES],
+      PLAN,
       { env: { IDP_PROVIDER: 'openai', IDP_MODEL: 'gpt-6-luna' } },
     )
 
@@ -132,7 +152,7 @@ describe('plan "<intent>", rendered as a person sees it', () => {
     vi.stubGlobal('fetch', fetch)
     const err: string[] = []
     const code = await main(
-      ['plan', 'give billing-api read access to billing-db in prod', '--repo', FIXTURES],
+      PLAN,
       {
         root: FIXTURES,
         cwd: FIXTURES,

@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 1401 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 1437 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -38,8 +38,9 @@ number in the same commit as the change.
 answer is negative — nothing matched, a name was ambiguous, **the repository does not
 conform**, a gate refused a plan, the repair loop stopped at three attempts, or something
 failed unexpectedly · `2` the arguments were refused — a bad flag, a plan file that is not
-a plan, a `--repo` or a configured repository that is not a directory, a `.idp-agent.yml`
-or a personal `config.yml` that does not parse — or no model, no key or no usable
+a plan, a `--repo`, a `--project` or a configured repository that is not a directory, a
+`plan "<intent>"` that would inspect a declarations repository, a `.idp-agent.yml` or a
+personal `config.yml` that does not parse — or no model, no key or no usable
 `IDP_TIMEOUT` is configured · `3` the request was understood and this build will not act on it: a
 change request put to `ask`, a question the model refused, or a plan holding values nobody
 can vouch for, **asked rather than guessed**. A command returns
@@ -99,7 +100,14 @@ trust, and `pnpm smoke` makes the same assertion about the built binary.
 The two `--repo` flags name different repositories, which is the first thing that trips
 someone up. `plan --repo` is the **declarations** repository the preview is decided
 against; `init --repo` is the **application** repository being declared. For
-`plan "<intent>"` the Inspector reads the directory the user is standing in. `graph`,
+`plan "<intent>"` the Inspector reads the application repository too: the directory the
+user is standing in, or the one `--project` names (`--project` with `--from` is refused —
+there is no Inspector to point). A project directory that is a declarations repository by
+its markers, is the `--repo` directory by real path, or lies under that directory's
+`catalog/` or `dependencies/`, is refused with exit 2 before a model is chosen —
+`cli/repository.ts`'s `applicationRoot`, which hands `runIntent` both roots resolved; the
+run that asked for it read the declarations repository as billing-api's and drafted from
+that. `graph`,
 `show` and `ask` take `--repo` in `plan`'s sense, through the same guard. Without it they
 read the working directory when its root carries the markers `init platform` writes — a
 witnessed folder under `catalog/` or `dependencies/`, looked for there and never by walking

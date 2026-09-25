@@ -10,7 +10,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 1401, no API key" src="https://img.shields.io/badge/tests-1401%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 1437, no API key" src="https://img.shields.io/badge/tests-1437%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -46,7 +46,7 @@ idp-agent sits between the two:
   your request or to what your repository already holds. Anything else becomes a question.
 - ✂️ **Minimal diffs.** It edits the text surgically and never reformats a file, so a
   reviewer sees one added line, not a reshuffled file.
-- 🧪 **Reproducible without an API key.** 1401 tests run offline from recordings: no
+- 🧪 **Reproducible without an API key.** 1437 tests run offline from recordings: no
   network, no cost, no flaky model.
 
 > Platform GitOps is the use case. The real subject is **how to build a reliable
@@ -137,7 +137,7 @@ flowchart LR
     G -. value nobody vouches for .-> Q["Question to you<br/>exit 3"]
 ```
 
-1. The **Inspector** reads the repository you're standing in.
+1. The **Inspector** reads the repository you're standing in, or the one `--project` names.
 2. The **Architect** proposes a `Plan` into a typed buffer, never free text.
 3. **Five gates** judge it: schema shape, provenance (can each value be traced to a
    source?), policy, an independent Reviewer that never sees the Architect's reasoning,
@@ -194,6 +194,7 @@ idp-agent validate <directory>                     # what the generated CI runs
 idp-agent init platform <dir> --owner @org/team    # the only command that writes
 idp-agent plan --from <plan.json> [--repo <dir>]   # no model, and none is possible
 idp-agent plan "<intent>" [--repo <dir>] [--json]  # needs IDP_PROVIDER, IDP_MODEL and its key
+    [--project <dir>]                              # the service's repository, if not where you stand
 idp-agent init [--repo <dir>]                      # the catalog-info.yml it would write
 ```
 
@@ -212,6 +213,14 @@ repository (a folder under `catalog/` or `dependencies/` holding a `.witness.yml
 `init platform` writes them), then the one you configured (below), and the fictional demo
 SI otherwise, or with `--demo`. Either way they say which on stderr, and name a repository
 by its folder.
+
+`plan "<intent>"` reads two repositories, and they are never the same one. Run it from the
+**service's** repository — the one being declared, which the Inspector reads — or name
+that one with `--project <dir>`; `--repo` names the declarations repository the diff is
+decided against. Standing in a declarations repository or one of its `catalog/` and
+`dependencies/` folders, or pointing both at one directory, is refused with exit 2 before
+any model is called. `plan --from` inspects nothing and takes
+no `--project`.
 
 **Exit codes:** `0` success · `1` negative answer (nothing matched, the repository doesn't
 conform, or a gate refused the plan), or a model call that failed · `2` bad arguments, or no
