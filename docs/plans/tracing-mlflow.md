@@ -72,7 +72,7 @@
 
 This task's content was validated against a live `v3.16.1` server on 2026-09-24. The contract script passed, and it failed as it should on a fixture tampered with `input_tokens → prompt_tokens`.
 
-- [ ] **Step 1: Write the compose file**
+- [x] **Step 1: Write the compose file**
 
 `tools/mlflow/compose.yml`:
 
@@ -108,7 +108,7 @@ volumes:
   mlflow-data:
 ```
 
-- [ ] **Step 2: Add the scripts**
+- [x] **Step 2: Add the scripts**
 
 In `package.json`, inside `"scripts"`, after `"demo": "bash scripts/demo.sh"` (add a comma after that line):
 
@@ -118,12 +118,12 @@ In `package.json`, inside `"scripts"`, after `"demo": "bash scripts/demo.sh"` (a
     "mlflow:contract": "node scripts/mlflow-contract.mjs"
 ```
 
-- [ ] **Step 3: Start it and check it answers**
+- [x] **Step 3: Start it and check it answers**
 
 Run: `pnpm mlflow:up && curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:5055/health`
 Expected: `Container idp-agent-mlflow-mlflow-1  Healthy`, then `200`.
 
-- [ ] **Step 4: Write the contract fixture**
+- [x] **Step 4: Write the contract fixture**
 
 `tests/contract/otlp/accepted.json`. The content is exact; formatting does not matter, because the test compares parsed JSON.
 
@@ -333,7 +333,7 @@ Expected: `Container idp-agent-mlflow-mlflow-1  Healthy`, then `200`.
 }
 ```
 
-- [ ] **Step 5: Write the contract check**
+- [x] **Step 5: Write the contract check** — *since changed:* the script posts to `http://127.0.0.1:5055` and reads no variable: it reads the trace back through that container, so posting anywhere else could never be read back (spec §8.1).
 
 `scripts/mlflow-contract.mjs`:
 
@@ -465,12 +465,12 @@ if (failures.length > 0) {
 console.log(`MLflow at ${TRACKING_URI} reads all ${sent.length} spans of the contract as sent (tr-${traceId})`)
 ```
 
-- [ ] **Step 6: Run the contract against the live server**
+- [x] **Step 6: Run the contract against the live server**
 
 Run: `pnpm mlflow:contract`
 Expected: `MLflow at http://127.0.0.1:5055 reads all 9 spans of the contract as sent (tr-<32 hex>)`, exit 0.
 
-- [ ] **Step 7: Prove the check can fail**
+- [x] **Step 7: Prove the check can fail**
 
 Run:
 ```bash
@@ -481,12 +481,12 @@ mv tests/contract/otlp/accepted.json.bak tests/contract/otlp/accepted.json
 ```
 Expected: `the trace token usage: read back {"input_tokens":0,"output_tokens":3,"total_tokens":123}, sent {"prompt_tokens":120,…}`, then `exit 1`. After the `mv`, `pnpm mlflow:contract` passes again.
 
-- [ ] **Step 8: Stop the server and run the CI commands**
+- [x] **Step 8: Stop the server and run the CI commands**
 
 Run: `pnpm mlflow:down && pnpm test && pnpm typecheck && pnpm build && pnpm smoke`
 Expected: all green, with the test count unchanged. No test reads the fixture yet.
 
-- [ ] **Step 9: Commit** (after a go-ahead)
+- [x] **Step 9: Commit** (after a go-ahead)
 
 ```bash
 git add tools/mlflow/compose.yml tests/contract/otlp/accepted.json scripts/mlflow-contract.mjs package.json
@@ -502,7 +502,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 EOF
 ```
 
-- [ ] **Step 10: Open the PR against `docs/tracing-design`** (after a go-ahead)
+- [ ] **Step 10: Open the PR against `docs/tracing-design`** (after a go-ahead) — *not yet:* nothing is pushed until the owner says so.
 
 ---
 

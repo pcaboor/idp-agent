@@ -13,6 +13,12 @@
  *
  * Run it whenever the image tag in tools/mlflow/compose.yml moves. Needs Docker
  * and `pnpm mlflow:up`; never part of CI, which has neither.
+ *
+ * It posts to http://127.0.0.1:5055, the port that compose file publishes, and
+ * to nowhere else: no environment variable moves it. The read-back always
+ * goes through that container, so a trace posted to any other server could
+ * never be read back — and a tracking URI exported for some other tool would
+ * have sent the contract's trace to that tool's server.
  */
 import { execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
@@ -23,7 +29,7 @@ import { isDeepStrictEqual } from 'node:util'
 
 const ROOT = path.resolve(fileURLToPath(import.meta.url), '../..')
 const COMPOSE = path.join(ROOT, 'tools/mlflow/compose.yml')
-const TRACKING_URI = (process.env.MLFLOW_TRACKING_URI || 'http://127.0.0.1:5055').replace(/\/+$/, '')
+const TRACKING_URI = 'http://127.0.0.1:5055'
 
 const body = JSON.parse(readFileSync(path.join(ROOT, 'tests/contract/otlp/accepted.json'), 'utf8'))
 const sent = body.resourceSpans[0].scopeSpans[0].spans
