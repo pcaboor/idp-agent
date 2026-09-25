@@ -629,6 +629,25 @@ describe('what a run looks like on a terminal', () => {
       '  = operations.0.entity.spec.owner is group:default/lynx, as stated; ' +
         'component:default/billing-api would give group:default/tiger',
     )
+    // An answer put back where a redraft left the question open, and named by
+    // the entity it is about: the path it was typed at belongs to a plan the
+    // user no longer sees.
+    const reapplied = {
+      type: 'reapplied',
+      path: 'operations.1.entity.spec.owner',
+      value: 'group:default/tiger',
+      entity: 'resource:default/orders-db-prod',
+      answeredAt: 'operations.0.entity.spec.owner',
+    } as const
+    expect(renderEvent(reapplied)).toBe(
+      '  = operations.1.entity.spec.owner is group:default/tiger, ' +
+        'as answered for resource:default/orders-db-prod',
+    )
+    // What the draft said instead is a model's, so it is one bounded line.
+    expect(renderEvent({ ...reapplied, replaced: `group:default/lion\n${'x'.repeat(300)}` })).toBe(
+      '  = operations.1.entity.spec.owner is group:default/tiger, ' +
+        `as answered for resource:default/orders-db-prod; the draft said group:default/lion ${'x'.repeat(181)}…`,
+    )
     // The questions and the answer ARE what the command prints, on stdout. A
     // stderr copy would state one fact twice.
     expect(

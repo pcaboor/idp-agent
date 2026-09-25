@@ -352,6 +352,7 @@ const reviewing = (
 
 const inputs = (over: Partial<RepairInput> = {}): RepairInput => ({
   provenance: stating(INTENT),
+  answers: [],
   draft: drafting(PLAN).draft,
   review: reviewing({ verdict: 'ok' }).review,
   signature: signature(),
@@ -715,6 +716,57 @@ describe('a right’s owner is derived, not asked', () => {
 
     expect(outcome.questions.map((question) => question.path)).toEqual([
       'operations.0.entity.spec.owner',
+    ])
+  })
+})
+
+describe('an answer goes back into every draft', () => {
+  it('says so once, however many attempts it goes back into', async () => {
+    // The level was answered in an earlier round; every draft here leaves it
+    // open again, and the Reviewer refuses twice before it accepts. The same
+    // answer back in the same field is one fact, said once — as a derivation
+    // is — never a line per attempt.
+    const { events, emit } = collect()
+    const open = planOf({
+      ...ACCESS,
+      spec: { ...ACCESS.spec, access: { unknown: 'which level?' } },
+    })
+    let reviews = 0
+    const review: RepairInput['review'] = async () => {
+      reviews += 1
+      return reviews < 3 ? { verdict: 'reject', reason: 'try again' } : { verdict: 'ok' }
+    }
+
+    const outcome = planned(
+      await repair(
+        inputs({
+          provenance: userSaid(INTENT),
+          answers: [
+            {
+              path: 'operations.0.entity.spec.access',
+              value: 'read',
+              about: {
+                entity: 'resource:default/billing-api-orders-db-prod',
+                field: 'entity.spec.access',
+              },
+            },
+          ],
+          draft: drafting(open).draft,
+          review,
+        }),
+        emit,
+      ),
+    )
+
+    expect(outcome.attempts).toHaveLength(3)
+    expect(eventsOfType(events, 'reapplied')).toEqual([
+      {
+        type: 'reapplied',
+        path: 'operations.0.entity.spec.access',
+        value: 'read',
+        entity: 'resource:default/billing-api-orders-db-prod',
+        answeredAt: 'operations.0.entity.spec.access',
+      },
     ])
   })
 })

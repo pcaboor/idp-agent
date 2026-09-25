@@ -97,6 +97,25 @@ export type AgentEvent =
       determined: string
       from: readonly string[]
     }
+  /**
+   * The engine put an answer the user gave back into a draft that did not
+   * carry it — a redraft that left the field open, or wrote another value,
+   * or moved the entity to another index (`reapplyAnswers`).
+   *
+   * Said for the reason `derived` is: the engine is writing a value the model
+   * did not, and the line is what explains a question that was not asked
+   * again. `entity` names what the answer is about, because the path it was
+   * typed at (`answeredAt`) is one of a plan the user no longer sees.
+   * `replaced` is what the draft held instead, when it held a value.
+   */
+  | {
+      type: 'reapplied'
+      path: string
+      value: string
+      entity: string
+      answeredAt: string
+      replaced?: string
+    }
   | { type: 'ask'; question: Question }
 
 export type EventSink = (event: AgentEvent) => void

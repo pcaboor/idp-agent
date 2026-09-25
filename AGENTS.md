@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 1372 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 1401 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -291,12 +291,22 @@ defines what it means — `named` (the request's words, and only a person's), `a
 what the user said everywhere it should and only there: an answered owner is not withdrawn
 on the next pass, an environment answered for an operation counts as asked for that
 operation, and answering one grant's level `read` vouches for nothing on another grant.
-The one exception is the index itself: an answer's path is the plan's own, so an Architect
-that redrafts after a gate refused the filled plan and puts a different operation at the
-same index inherits the answer for the same value at the same field. The words live there
-and nowhere else — no gate reads `plan.intent`, which arrives with the plan from whoever
-drafted it. `plan.ts` builds the provenance once per round of the ask loop, and `repair`
-takes it from its caller, never from a draft.
+A path is the plan's own index and the Architect keeps none, so an answer is **recorded by
+what it is about** — the entity its operation declares or amends, and the field — and
+`reapplyAnswers` (`core/plan/reapply.ts`) puts it back into every plan before the
+derivation, on both roads: a field a redraft left open is filled, a different value is
+replaced and the replacement said (`reapplied`), and the provenance is re-keyed to where
+the entity now sits — so a redraft that moves the entity, or puts the question back, does
+not ask it again. It IS asked again — the safe direction — when the redraft renames the
+entity, leaves its name open or changes its kind; when the answer is a list element or a
+consumer the redraft moved (their position is not their identity, so they are never
+written); when the schema would refuse the value at the redraft's field; and when two
+operations of one plan amend the same entity (two updates of one grant ask two levels,
+which are two answers). Still keyed by the index: an answer about an operation with no
+name to know it by or about an entity two operations share, and one a caller vouches for
+at a fixed path. The words live there and nowhere else — no gate reads `plan.intent`,
+which arrives with the plan from whoever drafted it. `plan.ts` records the answers, and
+`repair` takes them and the request from its caller, never from a draft.
 
 An environment is deliberately **not** enumerable. `prod` always exists, so accepting one
 because the catalogue uses it would let a model pick production for a request that named
@@ -357,6 +367,13 @@ them never reaches the one that spends a model call. Three attempts, then a clea
   `request` — and building the provenance from the Architect's `intent` instead is the
   change that would let the gate that caught a value vouch for it on the next attempt.
   Worth renaming the parameter when someone next touches `architect.ts`.
+- **The Architect is not told what the user answered.** `repair` puts every answer back
+  into a redraft (`reapplyAnswers`), so one that moves or reopens an answered field is not
+  asked again, but a redraft is still drafted without them: it can propose a different
+  owner the engine then overwrites, or rename the entity and have the question asked again. Listing the
+  answers in that same trailing slot would let it converge instead; it changes what the
+  Architect is sent after an answered round, which stales the `link-db-missing` tape, so
+  it waits for a re-record.
 - **`docs/plans/stage-3-init-platform.md` still documents `init` as a tested refusal.**
   Stage 4 answered that refusal. The historical plan was left alone on purpose — a plan is
   a record of what was decided then — but it is not a description of the code now.

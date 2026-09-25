@@ -18,6 +18,7 @@ import { planEdits, type DroppedOperation } from '../../core/plan/edits.js'
 import { declaredLevel, natureOf } from '../../core/plan/grant.js'
 import { checkPolicies, type PolicyContext, type PolicyViolation } from '../../core/plan/policies.js'
 import type { Provenance } from '../../core/plan/provenance.js'
+import { reapplyAnswers, recordAnswers, type RecordedAnswer } from '../../core/plan/reapply.js'
 import { recheckPlan, type Recheck } from '../../core/plan/recheck.js'
 import { signPlan, type SignatureContext, type SignedPlan } from '../../core/plan/sign.js'
 import { planSchema, type Plan } from '../../core/schemas/plan.js'
@@ -586,11 +587,12 @@ export type Filling =
   | { readonly outcome: 'refused'; readonly reason: string }
 
 /**
- * What the user has stated by this round: the request, in their own words, and
- * every answer they typed at a prompt, at the field it answered. The one place
- * a round's provenance is built, and the one value the derivation, the
- * signature and the policies are all handed — so an answer counts for what the
- * user said wherever one of them asks, and only there.
+ * What the user has stated about a plan: the request, in their own words, and
+ * every answer they typed at a prompt, at the field it now sits at in THAT plan
+ * (`reapplyAnswers` re-keys them). The one place a provenance is built, and the
+ * one value the derivation, the signature and the policies are all handed — so
+ * an answer counts for what the user said wherever one of them asks, and only
+ * there.
  *
  * **This is what stops an answer being asked about twice.** A value typed at a
  * prompt that nothing else vouches for classified `novel` on the next pass and
@@ -598,17 +600,17 @@ export type Filling =
  * came back for ever. The request itself does not grow — that put sentences
  * nobody typed into a `--json` report, and let a common word answered once
  * vouch for every occurrence of it — and an answer is not a bare value either:
- * it is the user's word about one field, indexed by it (see `Provenance`).
+ * it is the user's word about one field of one entity (see `reapply.ts`).
  *
  * The request is a person's words on both roads — `plan "<intent>"` and
  * `plan --from` both carry the sentence somebody typed — so the word test
  * stands. A later answer to the same field replaces an earlier one, as it
  * replaced it in the plan.
  */
-const provenanceOf = (request: string, answers: readonly Answer[]): Provenance => ({
+const provenanceOf = (request: string, answers: ReadonlyMap<string, string>): Provenance => ({
   intent: request,
   wordsOf: 'user',
-  answers: new Map(answers.map((one) => [one.path, one.value])),
+  answers,
 })
 
 /**
@@ -722,8 +724,8 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
   const contexts = contextsOf(root, snapshot, graphOf(snapshot))
   const contents = await readContents(root, snapshot)
 
-  /** What the user said when asked, at the field each answer filled. See `provenanceOf`. */
-  const answers: Answer[] = []
+  /** What the user said when asked, and what about. See `provenanceOf`. */
+  const answers: RecordedAnswer[] = []
   let plan = loaded
   const request = loaded.intent
 
@@ -732,7 +734,15 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
   // signature judged the plan as it was — the policies, the bytes, the
   // re-check. Re-running only the signer would show a diff two gates never saw.
   for (let round = 0; ; round += 1) {
-    const provenance = provenanceOf(request, answers)
+    // The step `repair` runs on every draft, run here for the reason the
+    // derivation below is: two roads, one engine. Nothing moves on this road —
+    // the plan each round starts from is the one the user just filled, and an
+    // answer about an entity two operations share stays at its path — so it
+    // puts nothing back and re-keys every answer to the path it was typed at.
+    const reapplication = reapplyAnswers(plan, answers)
+    for (const one of reapplication.reapplied) options.emit?.({ type: 'reapplied', ...one })
+    plan = reapplication.plan
+    const provenance = provenanceOf(request, reapplication.answers)
 
     // The same derivation the loop runs between gates [1] and [2], and it runs
     // here for the reason this file exists: both roads have to answer "what
@@ -786,7 +796,7 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
     if (!reparsed.success) return renderRefusedAnswer(reasonOf(reparsed.error.issues))
 
     plan = reparsed.data
-    answers.push(...filled.answers)
+    answers.push(...recordAnswers(plan, filled.answers))
   }
 }
 
@@ -932,8 +942,12 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
 
   const facts = await inspect(options.client, project, options.emit)
 
-  /** What the user said when asked, at the field each answer filled. See `provenanceOf`. */
-  const answers: Answer[] = []
+  /**
+   * What the user said when asked, and what each answer is about — never
+   * where it sat, since the Architect's next draft may put it elsewhere, or
+   * nowhere. `repair` puts them back into every draft and re-keys them to it.
+   */
+  const answers: RecordedAnswer[] = []
   /**
    * The plan the user just filled, which the next run of the gates starts from.
    * Absent on the first round, when there is nothing to start from but a draft.
@@ -977,8 +991,10 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
         // intent could otherwise name the owner it wanted and have the gates
         // vouch for it (see `RepairInput.provenance`). The request is passed
         // once, from the caller that read it, and the answers are only what
-        // the USER typed — never anything a model wrote.
-        provenance: provenanceOf(request, answers),
+        // the USER typed — never anything a model wrote. None at a fixed path:
+        // every one follows its entity into whichever draft this round judges.
+        provenance: provenanceOf(request, new Map()),
+        answers: [...answers],
         draft: (report) => {
           if (seeded !== undefined) {
             const filled = seeded
@@ -1052,7 +1068,7 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
       return renderOutcome({ ...outcome, ...spent, questions: filled.unanswered }, options)
     }
 
-    answers.push(...filled.answers)
+    answers.push(...recordAnswers(filled.plan, filled.answers))
     answered = filled.plan
   }
 }

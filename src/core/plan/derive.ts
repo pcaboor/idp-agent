@@ -66,7 +66,8 @@ import { stated, type Provenance } from './provenance.js'
  * signature classifies an owner `echoed` with. Both come from `provenance.ts`,
  * the one module every gate reads what the user said from, so the three cannot
  * drift about it. The words are the provenance's, never `plan.intent`'s, and
- * an answer counts at the path it was typed for: a record kept alongside the
+ * an answer counts at the field it was typed for — re-keyed to wherever this
+ * plan puts that entity (`reapplyAnswers`): a record kept alongside the
  * plan — "these paths were derived last round" — would not survive the
  * Architect handing back a different plan under the same indices, but what the
  * user typed at a field is the user's whatever the engine concluded there

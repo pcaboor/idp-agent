@@ -3,6 +3,7 @@ import { deriveOwners, type DerivedOwner } from '../core/plan/derive.js'
 import { planEdits, type DroppedOperation } from '../core/plan/edits.js'
 import { checkPolicies, type PolicyContext } from '../core/plan/policies.js'
 import type { Provenance } from '../core/plan/provenance.js'
+import { reapplyAnswers, type RecordedAnswer } from '../core/plan/reapply.js'
 import { recheckPlan, type Recheck } from '../core/plan/recheck.js'
 import { declaredLevel } from '../core/plan/grant.js'
 import { signPlan, type SignatureContext, type SignedPlan } from '../core/plan/sign.js'
@@ -139,6 +140,21 @@ export interface RepairInput {
    * on every draft as well, so the plan a report carries says what was asked.
    */
   readonly provenance: Provenance
+  /**
+   * What the user typed at a prompt, recorded by what each answer is about
+   * (`recordAnswers`), and put back into EVERY draft before the derivation —
+   * a redraft after a refusal included, which is the one that did not carry
+   * them. Each draft is then judged against `provenance` with these re-keyed
+   * to where that draft puts them.
+   *
+   * Apart from `provenance.answers` because the two are held differently:
+   * those vouch at a fixed path, for a caller with no plan to follow them
+   * through; these follow their entity from draft to draft. `plan "<intent>"`
+   * puts every answer here and none there. Required, so a caller that has
+   * answers cannot forget them — an empty list is the statement that nobody
+   * was asked anything yet.
+   */
+  readonly answers: readonly RecordedAnswer[]
   /**
    * Ask the Architect for a plan. `report` is what the previous attempt's gate
    * refused, in the engine's own words; it is absent on the first attempt,
@@ -322,13 +338,34 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
     // The caller's provenance, never the draft's. The derivation keeps an
     // owner the user stated (F2), so a drafter whose own `intent` counted
     // could write the sentence that protects the owner it wanted; the gates
-    // read `input.provenance` and no gate reads `plan.intent`. The caller's
+    // read the caller's provenance and no gate reads `plan.intent`. The caller's
     // request is imposed on the plan all the same, so the plan the later gates
     // judge and a clean stop shows carries what the user asked for.
+    //
+    // First, what the user already answered goes back in, wherever this draft
+    // put the entity it is about. Also not a gate, and before the derivation
+    // for the derivation's own reason: an owner the user answered is one it
+    // must keep, so it has to be in the field, and vouched for at the path it
+    // now sits at, before the consumers are read. Without it a redraft after
+    // the Reviewer refused a filled plan put `{unknown}` back where the user
+    // had answered, and the same question was asked a second time.
+    const reapplication = reapplyAnswers(parsed.data, input.answers)
+    const provenance: Provenance = {
+      ...input.provenance,
+      answers: new Map([...input.provenance.answers, ...reapplication.answers]),
+    }
+    for (const one of reapplication.reapplied) {
+      // Once per path and value, like a derivation: the same answer goes back
+      // into the same field on every attempt that leaves it open.
+      const key = `reapplied ${one.path} ${one.value} ${one.replaced ?? ''}`
+      if (announced.has(key)) continue
+      announced.add(key)
+      emit({ type: 'reapplied', ...one })
+    }
     const derivation = deriveOwners(
-      { ...parsed.data, intent: input.provenance.intent },
+      { ...reapplication.plan, intent: input.provenance.intent },
       input.owners,
-      input.provenance,
+      provenance,
     )
     // Stated, never silent. The engine is overwriting a model's explicit "I do
     // not know" with a value the model never wrote; the same rule that makes a
@@ -370,7 +407,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
     // them — "declare, never infer" means asking (see `signPlan`).
     gates.push('signature')
     // The caller's provenance, never the draft's. See RepairInput.provenance.
-    const signed = signPlan(derivation.plan, input.signature, input.provenance)
+    const signed = signPlan(derivation.plan, input.signature, provenance)
     if ('outcome' in signed) {
       fail(
         'signature',
@@ -401,7 +438,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
     // into a question by emitting one `{unknown}` anywhere in the plan, and
     // the loop would stop asking it to try again.
     gates.push('policy')
-    const violations = checkPolicies(signed, input.policy, input.provenance)
+    const violations = checkPolicies(signed, input.policy, provenance)
     if (violations.length > 0) {
       fail(
         'policy',

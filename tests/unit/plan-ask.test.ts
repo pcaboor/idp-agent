@@ -1036,3 +1036,498 @@ describe('an answer counts for what the user said, at the field they said it', (
     })
   })
 })
+
+/**
+ * The owner's run: an answer the user gave is never asked again in the same
+ * run, whatever the Architect does with it.
+ *
+ * The Architect drafts the database alone with its owner `{unknown}`; the user
+ * answers tiger; the Reviewer refuses the filled plan because it grants no
+ * access; and the Architect's redraft — which never saw the answer — puts
+ * `{unknown}` back in the same field. Keyed by path, the answer vouched for
+ * nothing there and the same question came back. It is recorded by what it
+ * is about now — the entity and the field — and put back on every draft.
+ */
+
+// `orders db` rather than the owner's `orders database`, so every segment of both
+// names is in the request and the questions are the ones his run asked: the
+// database's owner, and a grant's level.
+const OWNERS_REQUEST = 'give billing-api read access to the orders db in prod'
+
+const DATABASE_ASKED = {
+  op: 'create-entity',
+  entity: {
+    kind: 'Resource',
+    metadata: { name: 'orders-db-prod', env: 'prod' },
+    spec: { type: 'database', owner: { unknown: 'who owns the orders database?' } },
+  },
+}
+
+const withOwner = (owner: unknown) => ({
+  ...DATABASE_ASKED,
+  entity: { ...DATABASE_ASKED.entity, spec: { ...DATABASE_ASKED.entity.spec, owner } },
+})
+
+const BILLING_ACCESS = {
+  op: 'create-entity',
+  entity: {
+    kind: 'Resource',
+    metadata: { name: 'billing-api-orders-db-prod', env: 'prod' },
+    spec: {
+      type: 'database-access',
+      access: { unknown: 'which level does billing-api need?' },
+      owner: { unknown: 'who owns this access?' },
+      dependsOn: ['resource:default/orders-db-prod'],
+      dependencyOf: ['component:default/billing-api'],
+    },
+  },
+}
+
+/** A fresh repository that declares billing-api, owned by tiger. */
+const declaringBillingApi = async (): Promise<string> => {
+  const repo = await scaffoldedRepository()
+  const files: Record<string, string> = {
+    'catalog/components/.witness.yml': '---\n',
+    'catalog/components/billing-api.yml': componentDocument('billing-api', 'group:default/tiger'),
+  }
+  for (const [relative, text] of Object.entries(files)) {
+    const absolute = path.join(repo, ...relative.split('/'))
+    await mkdir(path.dirname(absolute), { recursive: true })
+    await writeFile(absolute, text, 'utf8')
+  }
+  return repo
+}
+
+/** Draft 1, refused once filled, then draft 2 — which the Reviewer accepts. */
+const redrafting = (redraft: unknown[]): LlmClient & { seen: GenerateRequest[] } =>
+  scripted({
+    inspector: [turnCalling(REPORT_TOOL, FACTS)],
+    architect: [
+      turnCalling(PROPOSE_TOOL, { operations: [DATABASE_ASKED] }),
+      turnCalling(PROPOSE_TOOL, { operations: redraft }),
+    ],
+    reviewer: [
+      turnCalling(VERDICT_TOOL, {
+        verdict: 'reject',
+        reason:
+          'The plan only creates an orders database resource; it does not give billing-api ' +
+          'read access to it',
+      }),
+      turnCalling(VERDICT_TOOL, { verdict: 'ok' }),
+    ],
+  })
+
+/** Answers an owner tiger, a level `read`, the consumer billing-api, and nothing else. */
+const theOwner = (): { ask: Ask; asked: Question[] } =>
+  answeringPath({
+    '.spec.owner': 'group:default/tiger',
+    '.dependencyOf.0': 'component:default/billing-api',
+  })
+
+const ownerQuestions = (asked: readonly Question[]): Question[] =>
+  asked.filter((question) => question.path.endsWith('.spec.owner'))
+
+const ACCESS_FILE = 'dependencies/access/billing-api-orders-db-prod.yml'
+
+describe('an answer is never asked twice, whatever the Architect redrafts', () => {
+  it("the owner's run: asked once, the redraft carries the answer, exit 0", async () => {
+    const repo = await declaringBillingApi()
+    const project = await application()
+    const before = await hashBoth(repo, project)
+    const { ask, asked } = theOwner()
+    const { events, emit } = collect()
+    const out: string[] = []
+
+    const code = await main(['plan', OWNERS_REQUEST, '--repo', repo], {
+      cwd: project,
+      client: redrafting([DATABASE_ASKED, BILLING_ACCESS]),
+      env: {},
+      ask,
+      out: (chunk) => void out.push(chunk),
+      err: () => undefined,
+      events: emit,
+    })
+
+    expect(ownerQuestions(asked).map((question) => question.path)).toEqual([OWNER_PATH])
+    expect(code).toBe(0)
+    const text = out.join('')
+    expect(text).toContain(`+++ b/${DATABASE_PATH}`)
+    expect(text).toContain(`+++ b/${ACCESS_FILE}`)
+    expect(text).toContain('+  owner: group:default/tiger')
+    // Said, never silent: the engine wrote a value into a field the redraft
+    // left open, and the line names whose word it was.
+    expect(events).toContainEqual({
+      type: 'reapplied',
+      path: OWNER_PATH,
+      value: 'group:default/tiger',
+      entity: 'resource:default/orders-db-prod',
+      answeredAt: OWNER_PATH,
+    })
+    expect(await hashBoth(repo, project)).toBe(before)
+  })
+
+  it('follows the database when the redraft puts it second', async () => {
+    const repo = await declaringBillingApi()
+    const project = await application()
+    const { ask, asked } = theOwner()
+
+    const result = await runIntent({
+      intent: OWNERS_REQUEST,
+      repo,
+      project,
+      client: redrafting([BILLING_ACCESS, DATABASE_ASKED]),
+      emit: collect().emit,
+      ask,
+      json: true,
+    })
+
+    expect(ownerQuestions(asked).map((question) => question.path)).toEqual([OWNER_PATH])
+    const report = JSON.parse(result.text) as { outcome: string; plan: Plan }
+    expect(report.outcome).toBe('planned')
+    const database = report.plan.operations[1]
+    expect(database?.op === 'create-entity' && database.entity.spec.owner).toBe(
+      'group:default/tiger',
+    )
+    expect(result.found).toBe(true)
+  })
+
+  it("keeps the user's owner over a different one the redraft wrote, and says so", async () => {
+    const repo = await declaringBillingApi()
+    const project = await application()
+    const { ask, asked } = theOwner()
+    const { events, emit } = collect()
+
+    const result = await runIntent({
+      intent: OWNERS_REQUEST,
+      repo,
+      project,
+      client: redrafting([withOwner('group:default/lion'), BILLING_ACCESS]),
+      emit,
+      ask,
+    })
+
+    expect(ownerQuestions(asked)).toHaveLength(1)
+    expect(result.found).toBe(true)
+    expect(result.text).toContain('+  owner: group:default/tiger')
+    expect(result.text).not.toContain('group:default/lion')
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'reapplied',
+        path: OWNER_PATH,
+        value: 'group:default/tiger',
+        replaced: 'group:default/lion',
+      }),
+    )
+  })
+
+  it('vouches for nothing the redraft put at the index the answer was typed at', async () => {
+    // The limit a path key had, on the road it had it: the redraft puts the
+    // grant where the database was, with the very owner the user answered for
+    // the database — the model's value, at a field the request does not name.
+    // Held by its entity, the answer vouches for the database at its new
+    // index and for nothing at the old one, so the grant's owner follows from
+    // its consumer. Held by its path, it vouched for the grant too: the
+    // user's word outranked the consumer, and lynx went into the diff.
+    const repo = await declaringBillingApi()
+    const project = await application()
+    const { ask, asked } = answeringPath({
+      '.spec.owner': ANSWERED_OWNER,
+      '.dependencyOf.0': 'component:default/billing-api',
+    })
+    const { events, emit } = collect()
+    const { entity } = BILLING_ACCESS
+    const ownedByLynx = {
+      ...BILLING_ACCESS,
+      entity: { ...entity, spec: { ...entity.spec, owner: ANSWERED_OWNER } },
+    }
+
+    const result = await runIntent({
+      intent: OWNERS_REQUEST,
+      repo,
+      project,
+      client: redrafting([ownedByLynx, DATABASE_ASKED]),
+      emit,
+      ask,
+    })
+
+    expect(ownerQuestions(asked).map((question) => question.path)).toEqual([OWNER_PATH])
+    expect(result.found).toBe(true)
+    const files = result.text.split('+++ b/')
+    const grant = files.find((file) => file.startsWith(ACCESS_FILE)) ?? ''
+    expect(grant).toContain('+  owner: group:default/tiger')
+    expect(grant).not.toContain(ANSWERED_OWNER)
+    expect(events.filter((event) => event.type === 'overridden')).toEqual([])
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'reapplied', path: 'operations.1.entity.spec.owner' }),
+    )
+  })
+
+  it('asks again when the redraft renames the database', async () => {
+    // The safe direction: an answer about orders-db-prod says nothing about
+    // an entity with another name.
+    const repo = await declaringBillingApi()
+    const project = await application()
+    const { ask, asked } = theOwner()
+    const renamed = {
+      ...DATABASE_ASKED,
+      entity: { ...DATABASE_ASKED.entity, metadata: { name: 'orders-prod', env: 'prod' } },
+    }
+    const access = {
+      ...BILLING_ACCESS,
+      entity: {
+        ...BILLING_ACCESS.entity,
+        spec: { ...BILLING_ACCESS.entity.spec, dependsOn: ['resource:default/orders-prod'] },
+      },
+    }
+
+    await runIntent({
+      intent: OWNERS_REQUEST,
+      repo,
+      project,
+      client: redrafting([renamed, access]),
+      emit: collect().emit,
+      ask,
+    })
+
+    expect(ownerQuestions(asked).map((question) => question.path)).toEqual([OWNER_PATH, OWNER_PATH])
+  })
+
+  it("keeps an update's answered level through a redraft", async () => {
+    // The grant exists; the first draft extends it with the level unknown,
+    // the user answers `read`, the Reviewer refuses, and the redraft puts the
+    // question back with a second operation ahead of it.
+    const repo = await declaringBillingApi()
+    await mkdir(path.join(repo, 'catalog', 'components'), { recursive: true })
+    await writeFile(
+      path.join(repo, 'catalog', 'components', 'payments-api.yml'),
+      componentDocument('payments-api', 'group:default/tiger'),
+      'utf8',
+    )
+    await mkdir(path.join(repo, 'dependencies', 'access'), { recursive: true })
+    await writeFile(
+      path.join(repo, 'dependencies', 'access', 'billing-api-orders-db-prod.yml'),
+      [
+        '---',
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: Resource',
+        'metadata:',
+        '  name: billing-api-orders-db-prod',
+        '  annotations:',
+        '    company.fr/env: prod',
+        'spec:',
+        '  type: database-access',
+        '  access: read',
+        '  owner: group:default/tiger',
+        '  dependsOn:',
+        '    - resource:default/orders-db-prod',
+        '  dependencyOf:',
+        '    - component:default/billing-api',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+    const project = await application()
+    const extend = (consumer: string) => ({
+      op: 'update-entity',
+      entityRef: 'resource:default/billing-api-orders-db-prod',
+      patch: {
+        patch: 'add-dependency-of',
+        consumer,
+        access: { unknown: 'which level does this grant state?' },
+      },
+    })
+    const client = scripted({
+      inspector: [turnCalling(REPORT_TOOL, FACTS)],
+      architect: [
+        turnCalling(PROPOSE_TOOL, { operations: [extend('component:default/payments-api')] }),
+        turnCalling(PROPOSE_TOOL, {
+          operations: [DATABASE_ASKED, extend('component:default/payments-api')],
+        }),
+      ],
+      reviewer: [
+        turnCalling(VERDICT_TOOL, { verdict: 'reject', reason: 'declare the database too' }),
+        turnCalling(VERDICT_TOOL, { verdict: 'ok' }),
+      ],
+    })
+    const { ask, asked } = answeringPath({ '.spec.owner': 'group:default/tiger' })
+    const { events, emit } = collect()
+
+    const result = await runIntent({
+      intent:
+        'give component:default/payments-api read access through ' +
+        'resource:default/billing-api-orders-db-prod',
+      repo,
+      project,
+      client,
+      emit,
+      ask,
+    })
+
+    expect(asked.map((question) => question.path)).toEqual([
+      'operations.0.patch.access',
+      'operations.0.entity.spec.owner',
+    ])
+    expect(result.found).toBe(true)
+    expect(result.text).toContain(`+++ b/${ACCESS_FILE}`)
+    expect(result.text).toContain('+    - component:default/payments-api')
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'reapplied',
+        path: 'operations.1.patch.access',
+        value: 'read',
+        answeredAt: 'operations.0.patch.access',
+      }),
+    )
+  })
+})
+
+describe('plan --from puts nothing back, because nothing moved', () => {
+  it('answers each question once and reports no answer re-applied', async () => {
+    // A guard, green before the step existed: running it on this road must
+    // change nothing a --from run did. The case it could have changed — two
+    // answers about one entity — is the describe below.
+    const repo = await scaffoldedRepository()
+    const from = await planFile(repo, {
+      intent: TWO_QUESTIONS,
+      operations: [CREATE_DATABASE_UNSCOPED],
+    })
+    const { events, emit } = collect()
+    const { ask, asked } = answering(['prod', 'group:default/tiger'])
+
+    const result = await runPlan({ from, repo, ask, emit })
+
+    expect(asked.map((question) => question.path)).toEqual([ENV_PATH, OWNER_PATH])
+    expect(result.found).toBe(true)
+    expect(events.filter((event) => event.type === 'reapplied')).toEqual([])
+  })
+})
+
+/**
+ * Two operations amending ONE entity are two questions, not one asked twice.
+ *
+ * Two updates extending one grant to two consumers each carry the grant's
+ * level, and the user answers them separately. Keyed by the entity alone, the
+ * second answer overwrote the first as though it were a value the draft
+ * wrote: `read`, answered for payments-api, became `readwrite`, the
+ * `declared-level-mismatch` policy had nothing left to refuse, and a
+ * readwrite grant was extended to a request for read at exit 0. An identity
+ * two operations share is no identity: such an answer stays at its path.
+ */
+const READWRITE_GRANT = [
+  '---',
+  'apiVersion: backstage.io/v1alpha1',
+  'kind: Resource',
+  'metadata:',
+  '  name: billing-api-orders-db-prod',
+  '  annotations:',
+  '    company.fr/env: prod',
+  'spec:',
+  '  type: database-access',
+  '  access: readwrite',
+  '  owner: group:default/tiger',
+  '  dependsOn:',
+  '    - resource:default/orders-db-prod',
+  '  dependencyOf:',
+  '    - component:default/billing-api',
+  '',
+].join('\n')
+
+const GRANT_REF = 'resource:default/billing-api-orders-db-prod'
+
+const TWO_CONSUMERS =
+  'give component:default/payments-api and component:default/shipping-api access through ' +
+  GRANT_REF
+
+const extending = (consumer: string) => ({
+  op: 'update-entity',
+  entityRef: GRANT_REF,
+  patch: {
+    patch: 'add-dependency-of',
+    consumer,
+    access: { unknown: 'which level does this grant state?' },
+  },
+})
+
+const TWO_EXTENSIONS = [
+  extending('component:default/payments-api'),
+  extending('component:default/shipping-api'),
+]
+
+/** Declares the grant readwrite, and both consumers. */
+const grantingReadwrite = async (): Promise<string> => {
+  const repo = await catalogued()
+  await writeFile(
+    path.join(repo, 'catalog', 'components', 'shipping-api.yml'),
+    componentDocument('shipping-api', 'group:default/tiger'),
+    'utf8',
+  )
+  await mkdir(path.join(repo, 'dependencies', 'access'), { recursive: true })
+  await writeFile(
+    path.join(repo, 'dependencies', 'access', 'billing-api-orders-db-prod.yml'),
+    READWRITE_GRANT,
+    'utf8',
+  )
+  return repo
+}
+
+/** `read` for the first level asked, `readwrite` for the second. */
+const readThenReadwrite = (): { ask: Ask; asked: Question[] } => {
+  const asked: Question[] = []
+  const levels = ['read', 'readwrite']
+  const ask: Ask = async (question) => {
+    asked.push(question)
+    return question.path.endsWith('.patch.access') ? levels.shift() : undefined
+  }
+  return { ask, asked }
+}
+
+describe('two operations on one entity keep two answers', () => {
+  it('refuses a read joined onto a readwrite grant (--from)', async () => {
+    const repo = await grantingReadwrite()
+    const from = await planFile(repo, { intent: TWO_CONSUMERS, operations: TWO_EXTENSIONS })
+    const { events, emit } = collect()
+    const { ask, asked } = readThenReadwrite()
+
+    const result = await runPlan({ from, repo, ask, emit, json: true })
+
+    expect(asked.map((question) => question.path)).toEqual([
+      'operations.0.patch.access',
+      'operations.1.patch.access',
+    ])
+    expect(result.found).toBe(false)
+    const { policies } = JSON.parse(result.text) as { policies: unknown[] }
+    expect(policies).toContainEqual(
+      expect.objectContaining({
+        policy: 'declared-level-mismatch',
+        path: 'operations.0.patch.access',
+      }),
+    )
+    expect(events.filter((event) => event.type === 'reapplied')).toEqual([])
+  })
+
+  it('refuses it on the drafted road too, and puts neither answer on the other', async () => {
+    const repo = await grantingReadwrite()
+    const project = await application()
+    const { events, emit } = collect()
+    const { ask } = readThenReadwrite()
+
+    const result = await runIntent({
+      intent: TWO_CONSUMERS,
+      repo,
+      project,
+      client: converging(TWO_EXTENSIONS),
+      emit,
+      ask,
+    })
+
+    expect(result.found).toBe(false)
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'repair',
+        gate: 'policy',
+        reason: expect.stringContaining('declared-level-mismatch'),
+      }),
+    )
+    expect(events.filter((event) => event.type === 'reapplied')).toEqual([])
+  })
+})
