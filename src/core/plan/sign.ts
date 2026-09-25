@@ -8,11 +8,12 @@ import type { Vocabulary } from '../schemas/vocabulary.js'
 /**
  * The write-side guarantee ADR-0007 said propose() owed.
  *
- * The read-side one worked because an Answer carries nothing but identifiers,
- * so one membership test covered all of it. A Plan carries values that were
- * never in the catalogue — that is what proposing means — so membership has
- * nothing to test against. Instead every leaf is classified by WHERE IT CAME
- * FROM, and a value nobody can vouch for becomes a question.
+ * The read-side one worked because an Answer carries nothing but identifiers
+ * (its commentary, since ADR-0008, has a check of its own and is not the
+ * answer), so one membership test covered all of it. A Plan carries values
+ * that were never in the catalogue — that is what proposing means — so
+ * membership has nothing to test against. Instead every leaf is classified by
+ * WHERE IT CAME FROM, and a value nobody can vouch for becomes a question.
  *
  * What this does not cover, stated as plainly as ADR-0007 stated its own:
  * the signature says where a value came from. It says NOTHING about whether

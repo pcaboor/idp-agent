@@ -5,7 +5,17 @@ import { entityRefSchema, ownerRefSchema } from './entity.js'
  * Bounds on what a model may ask for and what it may emit. Untrusted input,
  * exactly like a Plan (design § 5.4).
  */
-export const QUERY_LIMITS = { maxRows: 25, maxName: 63, maxReason: 300 } as const
+export const QUERY_LIMITS = {
+  maxRows: 25,
+  maxName: 63,
+  maxReason: 300,
+  /**
+   * The raw bound on one commentary field, far above what is printed
+   * (`core/answer/commentary.ts` bounds that, at a sentence boundary). Past it
+   * the field is dropped, not refused.
+   */
+  maxCommentary: 2_000,
+} as const
 
 export const searchCriteriaSchema = z
   .object({
@@ -30,6 +40,37 @@ export const getDependenciesInputSchema = z.object({
 })
 
 /**
+ * One commentary field: optional, and DROPPED rather than refused when it is
+ * malformed — `.catch` turns any failure into `undefined`, which no reader
+ * tells from an absent field, so the answer it rode on is kept and no repair
+ * turn is spent on a sentence.
+ *
+ * The advertised JSON Schema cannot say "dropped, not refused": it shows a
+ * string of at most `maxCommentary` characters, which is stricter than what is
+ * accepted, never looser, and the description says the rest (json-schema.ts:
+ * "a schema quietly weaker than the validator is worse than no schema at
+ * all"). Both count characters as code points, as zod's `.max` does.
+ */
+const commentaryField = (what: string) =>
+  z
+    .string()
+    .max(QUERY_LIMITS.maxCommentary)
+    .optional()
+    .catch(undefined)
+    .describe(
+      `${what}, in the language of the question. Optional. Dropped, never refused, when it ` +
+        `is not a string or is longer than ${QUERY_LIMITS.maxCommentary} characters.`,
+    )
+
+/** Built per branch, so the three branches advertise one identical field. */
+const commentary = () => ({
+  intro: commentaryField('One short sentence introducing the answer'),
+  conclusion: commentaryField(
+    'At most three short sentences on what the result means for the question',
+  ),
+})
+
+/**
  * The terminal channel — the read side of propose(). Refusal is a MEMBER of
  * the union, not a parse failure: the model has a legal way to say "I cannot",
  * so it never has to approximate in order to stay in schema. `refs` carries
@@ -37,7 +78,7 @@ export const getDependenciesInputSchema = z.object({
  *
  * `overview` is a request for the catalogue described as a whole, and the
  * model only CHOOSES it: the engine computes and writes the description from
- * the graph (ADR-0007). It carries no field.
+ * the graph (ADR-0007). It carries no field but the commentary below.
  *
  * What rides along with any outcome is DISCARDED, never refused. The tool is
  * advertised flat (llm/tool-schema.ts), so `refs` and `reason` are optional
@@ -49,14 +90,23 @@ export const getDependenciesInputSchema = z.object({
  * refs, checked against the witness set and re-read before printing, and
  * `unanswerable`'s reason, which is the model's prose, unchecked, and reaches
  * stderr only.
+ *
+ * `entities`, `nothing` and `overview` also carry the model's commentary
+ * (ADR-0008): an `intro` and a `conclusion` around the block the engine
+ * prints. Neither is trusted — each sentence is checked against what the
+ * tools returned before it is printed, marked as the model's (`checkCommentary`)
+ * — and neither is worth a refusal: one that is not a string, or is past its
+ * raw bound, is dropped at the parse and the answer kept. An `unanswerable`
+ * discards both; its reason already says why.
  */
 export const answerSchema = z.discriminatedUnion('outcome', [
   z.object({
     outcome: z.literal('entities'),
     refs: z.array(entityRefSchema).min(1).max(QUERY_LIMITS.maxRows),
+    ...commentary(),
   }),
-  z.object({ outcome: z.literal('nothing') }),
-  z.object({ outcome: z.literal('overview') }),
+  z.object({ outcome: z.literal('nothing'), ...commentary() }),
+  z.object({ outcome: z.literal('overview'), ...commentary() }),
   z.object({
     outcome: z.literal('unanswerable'),
     reason: z.string().min(1).max(QUERY_LIMITS.maxReason),

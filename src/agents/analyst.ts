@@ -22,6 +22,12 @@ export const LOOP_LIMITS = {
 } as const
 
 export interface AnalystOutcome {
+  /**
+   * Signed: an `entities` answer names only what the tools returned. Its
+   * `intro` and `conclusion`, when it carries them, are the model's words as
+   * written and are NOT checked here — whoever prints them runs
+   * `checkCommentary` first (ADR-0008), and nothing puts them on the stream.
+   */
   answer: Answer
   witnessed: ReadonlySet<string>
   calls: string[]
@@ -47,6 +53,15 @@ Finish by calling "answer":
   unanswerable  with a reason, when the catalogue cannot answer this question
 
 Refusing is a valid outcome. Do not approximate to produce one.
+
+With "entities", "nothing" or "overview" you may add "intro", one short sentence
+introducing the answer, and "conclusion", at most three short sentences on what
+the result means for the question. Write both in the language of the question.
+Say only what the tool results state; where they do not say, say it is not
+declared rather than guess. Do not restate the list or its figures: the engine
+prints them. Name only entities a tool returned in this conversation: the
+engine deletes any sentence that names anything else, an identifier nobody
+returned included. Both are optional: omit them rather than pad.
 
 If the request is not a question about this catalogue at all — a greeting, small
 talk, something about the weather — call "answer" with "unanswerable" straight
@@ -271,7 +286,10 @@ function sign(
   }
 
   // An overview passes as chosen, whatever was read on the way: it carries no
-  // reference and no sentence, so there is nothing in it to witness. The
-  // engine writes it from the graph.
+  // reference, so there is nothing in it to witness here. The engine writes it
+  // from the graph. Its commentary, like that of every answer kept here, is
+  // handed back as the model wrote it: the check that reads it needs every
+  // entity the graph holds, and this agent never holds a graph
+  // (`core/answer/commentary.ts`, run by `cli/commands/ask.ts`).
   return answer
 }

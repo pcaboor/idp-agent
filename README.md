@@ -10,7 +10,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 1515, no API key" src="https://img.shields.io/badge/tests-1515%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 1608, no API key" src="https://img.shields.io/badge/tests-1608%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -48,7 +48,7 @@ idp-agent sits between the two:
   your request or to what your repository already holds. Anything else becomes a question.
 - ✂️ **Minimal diffs.** It edits the text surgically and never reformats a file, so a
   reviewer sees one added line, not a reshuffled file.
-- 🧪 **Reproducible without an API key.** 1515 tests run offline from recordings: no
+- 🧪 **Reproducible without an API key.** 1608 tests run offline from recordings: no
   network, no cost, no flaky model.
 
 > Platform GitOps is the use case. The real subject is **how to build a reliable
@@ -149,6 +149,26 @@ flowchart LR
 The model decides *what to ask*. The deterministic engine answers, validates and renders.
 A reference the tools never returned is refused, not printed.
 
+An answer reads like a reply: the model may put a sentence before the engine's block and a
+few after it, in the language of the question. Those lines are the model's, and marked `›`
+so they are never mistaken for the verified part; the engine drops, whole, any sentence
+naming an entity or an identifier no tool returned (ADR-0008). What they say in plain words
+is not checked — the mark is what tells you so. `--quiet` prints the block alone.
+
+```console
+$ idpa "which databases are in prod?"
+› These are the databases declared in production.
+
+NAME                KIND      TYPE      ENV   OWNER
+billing-db-prod     Resource  database  prod  group:default/tiger
+compliance-db-prod  Resource  database  prod  group:default/common
+mysql-prod-01       Resource  database  prod  group:default/common
+orders-db-prod      Resource  database  prod  group:default/tiger
+
+› The search matched on type and environment only.
+› A database with no environment declared would not be listed here.
+```
+
 ## Install
 
 > **Not on npm yet.** Publishing is planned for stage 7 (`npx idp-agent`). Until then,
@@ -189,7 +209,7 @@ output limit or a content filter before answering.
 ## Commands
 
 ```bash
-idpa "<phrase>" [--repo <dir> | --demo] [--project <dir>] [--json]
+idpa "<phrase>" [--repo <dir> | --demo] [--project <dir>] [--json] [--quiet]
 ```
 
 The daily gesture, typed from anywhere. The Supervisor reads the phrase and decides: a
@@ -201,14 +221,15 @@ replaces it with a file name. Any language the model reads will do. `idpa` is th
 name of `idp-agent`. A single word one slip away from a command — `idpa grpah` — is taken
 for the typo it is and never sent to a model, and options go after a command
 (`idpa show billing-api --repo IaC`), never before it. `--project` and `--json` apply to a
-change only; a question with `--json` is answered as text, and stderr says so. `ask` and
-`plan` below force a road: `plan` previews without classifying, and `ask` classifies and
-only answers, declining a change.
+change only; a question with `--json` is answered as text, and stderr says so. `--quiet`
+applies to a question only: the verified answer, without the model's sentences around it.
+`ask` and `plan` below force a road: `plan` previews without classifying, and `ask`
+classifies and only answers, declining a change.
 
 ```bash
 idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource] [--repo <dir> | --demo]
 idp-agent show <name-or-reference> [--repo <dir> | --demo]
-idp-agent ask "<question>" [--repo <dir> | --demo]  # needs IDP_PROVIDER, IDP_MODEL and its key
+idp-agent ask "<question>" [--repo <dir> | --demo] [--quiet]  # needs IDP_PROVIDER, IDP_MODEL and its key
 idp-agent validate <directory>                     # what the generated CI runs
 idp-agent init platform <dir> --owner @org/team    # the only command that writes
 idp-agent plan --from <plan.json> [--repo <dir>]   # no model, and none is possible
@@ -221,7 +242,7 @@ idp-agent init [--repo <dir>]                      # the catalog-info.yml it wou
 |---|---|
 | `graph`, `show` | Walk the dependency graph: who depends on what, which services reach a database. `show` also says what an entity is — its description, system, tags and links, when its file declares them. No model. |
 | `idpa "<phrase>"` | A question is answered, a change is previewed; the classification is said on stderr (`· question`, `· mutation`). Needs a model. |
-| `ask` | Answers a question about your platform. The model picks the queries; the engine answers them. Asked about the catalogue as a whole — *talk about this project* — it prints an overview the engine writes: counts by kind, type, environment, owner, system and tag, a few entities in their own descriptions, rights and their levels, the most-reached resources, dangling references, and what it could not read. |
+| `ask` | Answers a question about your platform. The model picks the queries; the engine answers them, and prints the model's short introduction and conclusion around the answer, checked and marked `›`. Asked about the catalogue as a whole — *talk about this project* — it prints an overview the engine writes: counts by kind, type, environment, owner, system and tag, a few entities in their own descriptions, rights and their levels, the most-reached resources, dangling references, and what it could not read. |
 | `init platform` | Scaffolds the declarations repository, its CI and a branch-protection checklist. |
 | `validate` | Checks a repository against the schemas. This is what the scaffolded CI runs. |
 | `plan` | Turns an intent, or a `Plan` file, into a checked and previewed diff. |

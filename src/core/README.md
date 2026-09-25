@@ -42,6 +42,13 @@ and nothing here can be steered by what it validates. Hence the property tests r
   round-trip's reformat. Locating a document by lines is a heuristic, so what it cannot
   locate it refuses, and `planEdits` reads every edit back with the parser before offering it.
 
+- **Commentary** — `checkCommentary`, `COMMENTARY_LIMITS` (`answer/commentary.ts`). The
+  engine's check on the sentences a model writes around an answer (ADR-0008): a sentence
+  naming an entity no tool returned, or an identifier nobody read, is dropped whole, in
+  every script; the rest is bounded at a sentence boundary. Plain data in — the entities
+  as `KnownEntity`, the witnessed references, the question — and the cleaner handed in,
+  since nothing here imports a renderer.
+
 **The rule: nothing in `core/` may read, write, fetch or ask.** Work that needs a disk belongs
 in `context/` or `cli/`, work that needs a model in `agents/` or `llm/` — carve out the pure
 part and leave only that here.

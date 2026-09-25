@@ -87,8 +87,9 @@ describe('runAsk on a question', () => {
   })
 
   it('sends an unanswerable reason to stderr and never to stdout', async () => {
-    // The only model-authored text in the build. It does not get to look like
-    // an answer.
+    // The model's own reason, unchecked. It does not get to look like an
+    // answer, so it never reaches stdout (its commentary does, checked and
+    // marked: ADR-0008).
     const { result, errors } = await ask([
       saying('QUESTION'),
       calling('answer', { outcome: 'unanswerable', reason: 'the catalogue holds no cost data' }),

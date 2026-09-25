@@ -26,7 +26,9 @@ over the repository the phrase was read against, or the refusal when that is the
 A phrase's `--project` is checked before the model whichever road is then taken: in full
 against the repository found (`applicationRoot`), and for what it is on its own —
 empty, no directory, a declarations repository — when that is the demo SI (`projectRoot`).
-`--json` on a question does nothing, and one line on `err` says so. The refusals name
+`--json` on a question does nothing, and one line on `err` says so; `--quiet`, on `ask` and on
+a phrase, prints a question's verified block without the model's commentary, and on a change
+does nothing and says nothing. The refusals name
 `idpa`, which is what was typed, and the source line names `--demo` as the question's.
 `ask` still declines a change, and says `run it as idpa "<phrase>" to preview the plan`.
 `tests/unit/entry.test.ts` holds both roads.
@@ -51,6 +53,17 @@ systems, tags, and up to five entities with their description on one line each �
 catalogue contains in the words its repository wrote. `runAsk` gets the
 source and what the reader set aside and rejected from `main`, which already has them.
 
+**An answer's commentary (ADR-0008).** `runAsk` prints the model's `intro` above the
+engine's block and its `conclusion` under it, a blank line between each, the block's bytes
+unchanged. Before that, `core/answer/commentary.ts`'s `checkCommentary` drops every sentence
+naming an entity no tool returned or an identifier nobody read, and cleans and bounds the
+rest through `inertLine`. Each kept line starts with `› `, which no engine block starts with,
+so the mark survives a pipe; it is also dimmed (SGR 2) when `main`'s `colourOf` says stdout is
+a terminal that wants colour, which an injected `out` never is. What the check left out for
+what it named is one line on `err`, per answer — `! the model's commentary named …, which no
+tool returned; that sentence was left out` — its names cleaned and bounded. `--quiet` skips
+all of it. `tests/unit/ask-commentary.test.ts` holds the bytes.
+
 **What reaches a terminal.** On `show`, `graph`, `ask` and `validate`, every string a
 repository file or a model wrote goes through `render/plain.ts` before it is printed: `plain`
 removes what a terminal obeys, and `oneLine` also flattens it to one line, cut at the bound it
@@ -59,7 +72,9 @@ never cut: a value shortened there would be wrong), every label and description 
 overview, the `skipped <file>: <reason>` lines on stderr and `validate`'s violation lines —
 a reason quotes the key it faults, and a file name is somebody's choice — the event stream,
 and `ask`'s two model-authored lines on stderr: `cannot answer: <reason>` and the
-Supervisor's refusal to classify, which quotes what it said. `plan` and `init` go further,
+Supervisor's refusal to classify, which quotes what it said. An answer's commentary, the
+model's words on stdout, goes further: through `inertLine`, like a reason `plan` prints,
+once the engine's check has kept it. `plan` and `init` go further,
 through `inertLine`: every reason they print — a question, a refusal at the signature or a
 policy, a violation, a dropped operation, a refused answer, the stop and the Reviewer's words
 in it — is one line, cleaned, with the bidi overrides spelled out as `\u202e`, and bounded:

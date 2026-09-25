@@ -28,13 +28,21 @@ describe('every tool an agent hands the client', () => {
     }
   })
 
-  it('offers the overview as one more value of the answer, with no field of its own', async () => {
+  it('offers the overview as one more value of the answer, with no field of its own but the commentary', async () => {
     const answer = (await offeredTools()).find((spec) => spec.name === 'answer')
     expect(answer).toBeDefined()
     if (answer === undefined) return
     const advertised = await asSchema(toTools([answer])['answer']?.inputSchema).jsonSchema
     expect(advertised.properties.outcome.enum).toContain('overview')
-    expect(Object.keys(advertised.properties).sort()).toEqual(['outcome', 'reason', 'refs'])
+    // `intro` and `conclusion` frame the block the engine writes (ADR-0008);
+    // the overview has nothing else, and the engine still writes all of it.
+    expect(Object.keys(advertised.properties).sort()).toEqual([
+      'conclusion',
+      'intro',
+      'outcome',
+      'reason',
+      'refs',
+    ])
   })
 
   it('is still validated by its own Zod schema, not by what is advertised', async () => {
