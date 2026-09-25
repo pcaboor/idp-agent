@@ -1,15 +1,16 @@
 # Tracing agent runs into MLflow — design
 
-**Date** 2026-09-24 · **Status** proposed · **Scope** tracing only; evaluation is a later,
-separate sub-project that will read these traces.
+**Date** 2026-09-24, revised 2026-09-25 · **Status** accepted · **Scope** tracing only;
+evaluation is a later, separate sub-project that will read these traces.
 
 ## 1. Goal
 
-Every run of an agent-backed command — `plan "<intent>"`, `ask`, `init` — can produce one
-trace: the command at the root, then each agent, each model call (prompt, response, token
-usage, latency, finish reason), each tool call, and each attempt of the repair loop with the
-gates it passed and the one that refused it. The trace lands in a local MLflow server, where
-a failed run can be opened and read instead of reconstructed from stderr.
+Every run of an agent-backed command — `plan "<intent>"`, `ask`, `init`, and the one gesture
+`idpa "<phrase>"` (the `entry` command) — can produce one trace: the command at the root, then
+each agent, each model call (prompt, response, token usage, latency, finish reason), each tool
+call, and each attempt of the repair loop with the gates it passed and the one that refused it.
+The trace lands in a local MLflow server, where a failed run can be opened and read instead of
+reconstructed from stderr.
 
 It must hold under the project's existing constraints, not beside them:
 
@@ -37,7 +38,7 @@ It must hold under the project's existing constraints, not beside them:
 ## 3. Decision
 
 A pure trace builder folds the `AgentEvent` stream and the model calls into a span tree, and a
-sink in `cli/` exports it as OTLP/JSON to `POST <MLFLOW_TRACKING_URI>/v1/traces`.
+sink in `cli/` exports it as OTLP/JSON to `POST <IDP_MLFLOW_TRACKING_URI>/v1/traces`.
 
 Rejected, and recorded in `docs/adr/0009-tracing-renders-the-event-stream.md`:
 
@@ -52,21 +53,28 @@ Rejected, and recorded in `docs/adr/0009-tracing-renders-the-event-stream.md`:
 ## 4. The shape of a trace
 
 ```
-idp-agent plan "<intent>"            CHAIN   command, mode, provider, model, scenario, exit code
+idp-agent plan                       CHAIN   inputs: command, intent, repo, project
+│                                            idp.mode, idp.provider, idp.model, idp.scenario,
+│                                            idp.exit_code
 ├─ supervisor                        AGENT
-│  └─ supervisor#0                   CHAT_MODEL  system, transcript, tools → text, toolCalls,
+│  └─ supervisor call 0              CHAT_MODEL  system, transcript, tools → text, toolCalls,
 │                                                finishReason, token usage
 ├─ inspector                         AGENT
-│  ├─ inspector#0                    CHAT_MODEL
-│  ├─ read_file                      TOOL    args → rows, truncated
-│  └─ inspector#1                    CHAT_MODEL
-├─ attempt 1                         CHAIN
+│  ├─ inspector call 0               CHAT_MODEL
+│  ├─ read_file                      TOOL    args → rows, truncated (and error, when refused)
+│  └─ inspector call 1               CHAT_MODEL
+├─ attempt 1                         CHAIN   ERROR: refused at the policy gate
 │  ├─ architect                      AGENT   → CHAT_MODEL…, TOOL…
 │  ├─ gate zod                       ✓
 │  ├─ gate signature                 ✓
 │  └─ gate policy                    ✗       status ERROR, the refusal's reason
 └─ attempt 2                         CHAIN   … reviewer, recheck, then the outcome
 ```
+
+The root is named after the command — `idp-agent plan`, `idp-agent ask`, `idp-agent init`,
+`idp-agent entry` — and what it was asked is its `inputs`: the intent or the phrase, and the
+repositories the run reads, **resolved** to absolute paths, since what was typed may be a
+relative path or nothing at all.
 
 `mode` is `live`, `record`, `replay` or `scripted` (an injected `MainDeps.client`). A replayed
 trace's latencies measure the tape, not the model, and `mode` is how a reader knows.
@@ -75,6 +83,42 @@ trace's latencies measure the tape, not the model, and `mode` is how a reader kn
 Three of the five gates are free and synchronous; their duration is noise. The Reviewer's cost
 is real and is already visible: it is the `reviewer` AGENT span directly before the
 `gate reviewer` marker.
+
+### 4.1 Statuses — decided
+
+A span is `ERROR` when something it stands for failed, and its message says what:
+
+| span | `ERROR` when | message |
+|---|---|---|
+| gate marker | the gate refused (`repair`) | the refusal's reason |
+| attempt | a gate refused it | `refused at the <gate> gate` |
+| attempt | it ended with no verdict (`attempt:end.stopped`) | the Reviewer's reason for having no opinion; `the draft ended with no proposal`; `the attempt threw` |
+| agent | it refused (`refused`), or its model call threw (`stopped`) | the reason on the event |
+| agent | it threw, and nothing said why first (`agent:end { threw: true }`) | `the agent threw` |
+| model call | the call threw | the error's message |
+| tool | the tool refused the call (`tool:result.error`) | that error |
+| root | **the run threw** | the error's message |
+
+The first failure of a span stands. A later one does not overwrite it: an attempt a gate
+refused still reads `refused at the policy gate` when it then ends, and an agent that
+`stopped` keeps that reason when its `agent:end { threw: true }` arrives.
+
+**The root is `ERROR` only when the run threw, and `idp.exit_code` is always on it.** A plan the
+repair loop stopped after three attempts exits `1` with an `OK` root, and is found by its
+failed attempt spans, each of which says why.
+
+The reason is what an `ERROR` root means in MLflow: the trace's state follows the root's status
+(§12), so the root decides whether the run is listed as failed. Exit `1` is the negative answer
+— nothing matched, a gate refused, three attempts refused (AGENTS.md) — and exit `3` is a
+question asked rather than a value guessed. Neither is the run failing; a trace list where every
+"nothing matched" is red would hide the runs that did fail. A thrown run is the one where the
+harness itself did not reach an answer, and that is what `ERROR` says. What each run concluded
+is `idp.exit_code`, which MLflow can filter on.
+
+A refusal that throws is a thrown run. `idpa "<change>"` against the demo SI throws once the
+Supervisor has said it is a change — a change is never previewed against the demo SI — and
+`failed()` maps that error to exit `2`. Its root is `ERROR` and carries the refusal, beside
+the `supervisor` span that got it there.
 
 ## 5. Components
 
@@ -86,19 +130,32 @@ No disk, no network, no model SDK, nothing from `cli/`. It imports **types only*
 | module | what it is |
 |---|---|
 | `model.ts` | `Span`, `Trace`, `SpanType`, `SpanStatus` — plain data |
-| `builder.ts` | `createTraceBuilder({ clock, ids, root })` → `{ onEvent, modelCallStarted, modelCallEnded, finish }` |
+| `builder.ts` | `createTraceBuilder({ clock, ids, name, inputs, attributes })` → `{ traceId, onEvent, modelCallStarted, modelCallEnded, finish }` |
 | `client.ts` | `traced(client, builder): LlmClient` — the decorator |
 | `otlp.ts` | `toOtlpJson(trace, resource)` — the OTLP `ExportTraceServiceRequest` as JSON |
 | `README.md` | what lives here, what may not, and which architecture rule holds the line |
 
 `clock` returns Unix nanoseconds as a `bigint`; `ids` returns fresh trace and span ids. Both
-are injected, so a unit test builds the same tree twice.
+are injected, so a unit test builds the same tree twice. `name` and `inputs` are the root's;
+`attributes` are the session's (`idp.mode` and the rest), and `finish` adds the run's own —
+`idp.exit_code` — with its outputs.
 
 **The builder never throws.** An event that does not fit the open tree — `agent:end` with no
-`agent:start`, a `tool:result` whose `id` matches no open `tool:call` — becomes a span closed
-with status `ERROR` and `unbalanced event` in its attributes. `finish` closes every span still
-open with status `ERROR` and `closed by finish, not by an event`: an unclosed span is reported
-as unclosed, never guessed to have succeeded.
+`agent:start`, a `tool:result` whose `id` matches no open `tool:call` — becomes a zero-length
+span **named** `unbalanced event`, with status `ERROR` saying what it matched nothing of, and the
+event's type in `idp.event`. `finish` closes every span still open with status `ERROR` and
+`closed by finish, by no event of its own`, and a span closed by the end of the one around it
+says `closed when <key> ended, by no event of its own`: an unclosed span is reported as
+unclosed, never guessed to have succeeded. A span that had already failed keeps why, with the
+forced close in brackets after it.
+
+**A tool call is a leaf.** A `TOOL` span is paired with its result by id and never contains
+anything, and it never becomes the span later events land on. Every agent answers every call it
+receives — the Architect answers a call to a tool it does not have with a `tool:result` carrying
+`error` — so in a well-formed run each `TOOL` span is closed by its own result. A call that
+still gets none is closed, as `ERROR`, when its parent ends; it does not become the parent of
+everything after it. Agents, attempts and model calls nest; that works because events and model
+calls arrive one at a time and no two model calls overlap.
 
 **The decorator relays and never swallows.** `traced` hands the request to the inner client,
 returns its result unchanged, and on a thrown error closes the model span as `ERROR` and
@@ -113,15 +170,30 @@ doctrine forbids. Each is emitted where the fact happens:
 |---|---|---|
 | `{ type: 'agent:end'; agent; threw }` | `asAgent`, around each agent, on every path out | an agent's end is never emitted today; `threw` says whether it returned |
 | `{ type: 'attempt:start'; attempt }` | `repair()`, at the top of the loop | an attempt that passes emits nothing today |
-| `{ type: 'attempt:end'; attempt }` | `repair()`, on every exit from an iteration | closes the attempt span |
+| `{ type: 'attempt:end'; attempt; stopped? }` | `repair()`, exactly once per attempt, on every exit — a throw included | closes the attempt span; `stopped` says why an attempt ended with no verdict |
 | `{ type: 'gate:passed'; attempt; gate }` | `repair()`, after each gate that passes | a refusal is already `repair { attempt, gate, reason }` |
 | `id` on `tool:call` and `tool:result` | the agents' tool loops | pair by identity, not by order |
+
+`stopped` on `attempt:end` is set when the attempt ended without a verdict: the Reviewer's
+`no-opinion` (its reason), an Architect that produced no draft (`the draft ended with no
+proposal`), and a throw (`the attempt threw`, and the error goes on unchanged). An attempt a gate
+refused needs none — its `repair` event already says so — and neither does one that ends on a
+question, which is not a failure.
 
 A refusal stays the existing `repair` event. A `gate` event carrying `passed: false` would have
 stated one fact twice. That is the same reasoning that split `repair` from `retry` (design §6.2).
 
-`renderEvent` prints nothing for these new events. It says so in its switch, and the `never` in
-`default` keeps an unhandled one a compile error. The stderr log stays as it reads today.
+The trace also reads three facts the stream carries for its own reasons:
+
+| event | emitted by | what the trace draws |
+|---|---|---|
+| `{ type: 'stopped'; agent; reason }` | the Architect, the Inspector and the Reviewer, when the model call beneath them threw | the agent span fails with `reason`; `agent:end` still closes it |
+| `error?` on `tool:result` | a tool loop, when the tool refused or failed the call — the Architect's refused `answer` included | the `TOOL` span's outputs carry `error`, and it fails with it |
+| `{ type: 'reapplied'; path; value; entity; answeredAt; replaced? }` | the ask loop, when an answer the user gave is put back into a redraft | a span event on whatever is open |
+
+`renderEvent` prints nothing for the four events this design adds. It says so in its switch,
+and the `never` in `default` keeps an unhandled one a compile error. The stderr log stays as it
+reads today.
 
 ### 5.3 Token usage — `src/llm/`
 
@@ -141,24 +213,37 @@ interface TraceSink { name: string; export(trace: Trace): Promise<void> }
 - **`mlflowSink({ trackingUri, experimentId, fetch, timeoutMs? })`** — `POST
   {trackingUri}/v1/traces` with `content-type: application/json` and `x-mlflow-experiment-id`,
   bounded by `AbortSignal.timeout(timeoutMs ?? 3000)`. The spike posted 24 MB in 1.2 s to a local
-  server; a real trace is about the size of its recording, 200 KB at most today.
-- **`fileSink({ dir })`** — writes `<dir>/<traceId>.json`, the same OTLP/JSON body.
+  server; a real trace is about the size of its recording, 200 KB at most today. A `2xx` is not
+  the end of it: the body is read, and an OTLP `partialSuccess` with `rejectedSpans > 0` is a
+  failure, `<n> span(s) rejected: <errorMessage>` — a trace MLflow kept only part of is never
+  reported as sent.
+- **`fileSink({ dir })`** — writes `<dir>/<traceId>.json`, the same OTLP/JSON body, with mode
+  `0600`, since it holds full prompts, and never over a file already there.
 - **`pnpm trace:push <dir>` (`scripts/trace-push.mjs`)** — posts every file in a directory to the
-  configured server. It is how a replayed scenario reaches MLflow without the suite ever touching
-  the network.
+  server `IDP_MLFLOW_TRACKING_URI` names. It is how a replayed scenario reaches MLflow without the
+  suite ever touching the network.
 
 ### 5.5 Wiring — `src/cli/index.ts`
 
+- The traced commands are the four agent-backed ones: `plan "<intent>"`, `ask`, `init`, and
+  `entry` — `idpa "<phrase>"`, whose question road is `ask`'s and whose change road is `plan`'s.
 - `agentBacked` builds the builder and wraps the client, whichever client the session opened,
   when at least one sink is configured. When none is, nothing is built and the client is
   today's.
 - The trace starts once the session is open. A run refused for want of a model, or for a bad
   `IDP_RECORDING`, has no run to trace.
 - `agentBacked` finishes the trace on **both** paths, the result and the catch, records the exit
-  code on the root, exports to each sink, then returns the same code it returns today.
+  code on the root as `idp.exit_code`, exports to each sink, then returns the same code it
+  returns today. The root's outputs are `{ exitCode, text }`, with the text as a terminal would
+  not show it — no escape sequences, so MLflow's preview reads — or `{ exitCode, error }`.
 - `openSession` hands the root its attributes: `idp.mode`, plus `idp.scenario`, `idp.provider`
   and `idp.model` when it knows them.
-- When tracing is on, stderr gains one line, `· trace <id>`, so a run can be found in the UI.
+- The root's `inputs` carry the resolved repositories: `plan`'s `repo` and `project`, and
+  `entry`'s when it found them. When `plan` skips the Inspector — the working directory is not a
+  service's — there is no `project` key, and the root says so: `idp.inspector: 'skipped'`, with
+  the reason in `idp.inspector.reason`. Otherwise the skip reached only stderr.
+- When tracing is on, stderr gains one line, `· trace tr-<hex>`: MLflow's own id for the trace,
+  which pastes into its search.
 - `MainDeps` gains `traceSinks?: readonly TraceSink[]` and `fetch?: typeof fetch`. The sinks are
   **added to** those the environment configures, so a scenario test reads its trace from memory
   while `IDP_TRACE_DIR` still writes the same run to a file.
@@ -169,13 +254,22 @@ Environment only, like `IDP_PROVIDER`. `.idp-agent.yml` gains no field.
 
 | variable | effect |
 |---|---|
-| `MLFLOW_TRACKING_URI` | present → export to that server |
-| `MLFLOW_EXPERIMENT_ID` | the experiment; `0`, MLflow's Default experiment, when unset |
+| `IDP_MLFLOW_TRACKING_URI` | present → export to that server |
+| `IDP_MLFLOW_EXPERIMENT_ID` | the experiment; `0`, MLflow's Default experiment, when unset |
 | `IDP_TRACE_DIR` | present → write one OTLP/JSON file per run there, resolved against the shell's working directory, never against `--repo` |
+
+**MLflow's own `MLFLOW_TRACKING_URI` and `MLFLOW_EXPERIMENT_ID` are ignored entirely.** They are
+routinely set for other tools — a Databricks workspace, a team's tracking server — and honouring
+them would start sending full prompts to that server on every run of this CLI, for someone who
+never asked this tool to trace anything. Tracing is off unless this tool's own environment turns
+it on, and that promise has to hold whatever else the shell exports.
 
 Both sinks can be on at once. The scenario tests already pass `env: process.env` to `main`,
 so `IDP_TRACE_DIR=.traces pnpm vitest run tests/scenarios` writes one trace per recorded
-scenario. `.traces/` is gitignored.
+scenario. `.traces/` is gitignored. `tests/setup/personal.ts` removes `IDP_MLFLOW_TRACKING_URI`
+and `IDP_MLFLOW_EXPERIMENT_ID` from the suite's environment, so a developer who exported them
+never sends the suite's traces anywhere; it leaves `IDP_TRACE_DIR` alone, because a file on this
+machine is not a trace sent anywhere, and that variable is how the tapes are traced on purpose.
 
 ## 7. Failure and security
 
@@ -183,23 +277,29 @@ scenario. `.traces/` is gitignored.
 |---|---|
 | nothing configured | no builder, no decorator, no cost |
 | the server is unreachable, or answers non-2xx | one stderr line, `! trace not exported to mlflow: <status or error>`; exit code unchanged |
+| the server accepts the body and rejects spans | as above, `<n> span(s) rejected: <its message>` |
 | the server hangs | aborted after 3 s, then as above |
 | the run throws | the root span closes as `ERROR` with the message; the trace is still exported, because it is the run most worth reading |
 | an unbalanced event sequence | §5.1: an `ERROR` span naming it, never a throw and never a silent drop |
 
 **What leaves the machine — a new row in `SECURITY.md`.** A trace carries the full prompts. That
 includes the SI summary and the snapshots `context/project-fs` takes, with the secrets
-`project-fs` already excludes, and nothing further redacted. With `MLFLOW_TRACKING_URI` set, that
-content goes to that server. It never does by default, and the compose file this project ships
-publishes the port on `127.0.0.1` only. No provider credential enters a trace: the decorator only
-ever sees `GenerateRequest` and `GenerateResult`.
+`project-fs` already excludes, and nothing further redacted. With `IDP_MLFLOW_TRACKING_URI` set,
+that content goes to that server. It never does by default, `MLFLOW_TRACKING_URI` never turns it
+on (§6), and the compose file this project ships publishes the port on `127.0.0.1` only. A trace
+file is written `0600`. Kept inside an application repository, it would be read back by the
+Inspector: `IDP_TRACE_DIR` belongs outside it, or in a hidden folder, the only kind `project-fs`
+skips. No provider credential enters a trace: the decorator only ever sees `GenerateRequest` and
+`GenerateResult`.
 
 **A fourteenth architecture rule.** `src/trace/` imports neither `node:fs`, `node:http(s)`,
-`undici`, the model SDK nor `cli/`. From `agents/` and `llm/` it may import types only. `agents/`
-does not import `src/trace/`. `fetch` is a global that no import rule can see, as `SECURITY.md`
-already says of the others. So the same test also refuses the identifier `fetch` anywhere in
-`src/trace/`'s source. The rule is verified non-vacuous against a deliberate violation before it
-is relied on. AGENTS.md's "Thirteen" becomes "Fourteen" in the same commit.
+`undici`, the model SDK nor `cli/`. Outside its own folder it may import types only — from any
+layer and any package — and it loads nothing through `import()` or `require()` but its own
+modules. Only `cli/` imports `src/trace/`, so neither `agents/` nor `llm/` does. `fetch` is a
+global that no import rule can see, as `SECURITY.md` already says of the others. So the same
+test also refuses the identifier `fetch` anywhere in `src/trace/`'s source. The rule is verified
+non-vacuous against a deliberate violation before it is relied on. AGENTS.md's "Thirteen"
+becomes "Fourteen" in the same commit.
 
 ## 8. Testing — all offline
 
@@ -207,23 +307,31 @@ is relied on. AGENTS.md's "Thirteen" becomes "Fourteen" in the same commit.
    - The first task is a spike. MLflow runs in Docker, and a hand-written OTLP/JSON body goes to
      it: a root, a `CHAT_MODEL`, a `TOOL`, and an `ERROR` span. The spike checks in the UI that
      span types, inputs and outputs, token usage and status render.
-   - The accepted body is committed as `tests/fixtures/otlp/accepted.json`, and `toOtlpJson` is
+   - The accepted body is committed as `tests/contract/otlp/accepted.json`, and `toOtlpJson` is
      tested against it.
-   - `scripts/mlflow-contract.mjs` re-runs that check against a live server, outside CI, whenever
-     the pinned MLflow version moves.
+   - `scripts/mlflow-contract.mjs` re-runs that check against the local compose server, outside
+     CI, whenever the pinned MLflow version moves. It posts to `http://127.0.0.1:5055` and to
+     nowhere else: it reads the trace back through that container, so a trace posted anywhere
+     else could never be read back, and could land on a team's server.
 2. **The builder.**
    - Unit tests turn an event sequence, a fake clock and fake ids into the expected tree. They
-     cover two attempts, an agent's own `retry`, a truncated tool, `ask`, and a stop after three
-     attempts.
+     cover two attempts, an agent's own `retry`, a truncated tool, a refused tool, `ask`, an
+     agent that stopped, an attempt that stopped or threw, and a stop after three attempts.
    - Property tests (`fast-check`, beside `tests/invariants/`): for **any** event sequence, the
-     builder never throws, every span is closed, `end ≥ start`, every parent exists, and there is
-     exactly one root.
+     builder never throws, every span is closed, `end ≥ start`, every parent exists, every child
+     lies inside its parent in time, there is exactly one root, and nothing is dropped — one
+     AGENT span per `agent:start`, one TOOL per `tool:call`, one gate marker per verdict. For a
+     **well-formed** run, generated as nested blocks, every span is also closed by its own event,
+     an agent fails only for its own refusal, its `stopped` or its throw, and a tool only for its
+     own error.
 3. **The decorator.** It relays the result unchanged and rethrows the same error. A missing
    `usage` stays missing.
-4. **End to end, on every recorded plan scenario.** The shared `run()` in
-   `tests/scenarios/plan-mode.test.ts` passes `traceSinks: [memory]`, and each run's trace must
-   agree with its own event stream:
-   - every span was closed by an event of its own;
+4. **End to end, on every recorded scenario.** The shared `run()` in
+   `tests/scenarios/plan-mode.test.ts`, and the question-mode scenarios the same way, pass
+   `traceSinks: [memory]`, and each run's trace must agree with its own event stream:
+   - every span was closed by an event of its own — any forced close is a disagreement, since
+     every tool call is answered (§5.1);
+   - no `unbalanced event`;
    - every model call sits inside an agent;
    - there is one AGENT span per `agent:start`;
    - every gate verdict, passed or refused, is a marker with the same verdict under its attempt,
@@ -232,11 +340,14 @@ is relied on. AGENTS.md's "Thirteen" becomes "Fourteen" in the same commit.
    The test compares that projection, never a raw snapshot, because prompts run to hundreds of
    kilobytes and would change on every re-recording.
 5. **The sinks.**
-   - Failure: `MLFLOW_TRACKING_URI` set with no injected `fetch` meets `offline.ts`'s thrower.
-     That is a real assertion of "one stderr line, same exit code".
+   - Failure: `IDP_MLFLOW_TRACKING_URI` set, with an injected `fetch` that throws as a refused
+     connection does. That is a real assertion of "one stderr line, same exit code", and it holds
+     on its own rather than borrowing `offline.ts`'s thrower, which steps aside under
+     `IDP_RECORDING=record`.
+   - `MLFLOW_TRACKING_URI` set, and nothing else, configures no sink.
    - Success: an injected `fetch` asserts the URL, the headers, the content type and the timeout
-     signal.
-   - The file sink writes to a temporary directory and removes it afterwards.
+     signal; a `partialSuccess` that rejected spans is a failure.
+   - The file sink writes `0600` to a temporary directory and removes it afterwards.
    - With nothing configured, stdout and the exit code are byte-identical to a run without
      tracing.
 6. **Architecture.** The fourteenth rule, as §7 describes.
@@ -259,7 +370,7 @@ Docker is never required by `test`, `typecheck`, `build` or `smoke`, and CI is u
 
 ```bash
 pnpm mlflow:up
-export MLFLOW_TRACKING_URI=http://127.0.0.1:5055
+export IDP_MLFLOW_TRACKING_URI=http://127.0.0.1:5055
 idp-agent plan "<intent>" --repo <iac>                                              # a live run
 IDP_TRACE_DIR=.traces pnpm vitest run tests/scenarios && pnpm trace:push .traces    # the tapes, no key
 ```
