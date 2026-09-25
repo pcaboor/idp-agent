@@ -48,6 +48,30 @@ describe('tracing an agent-backed run', () => {
     expect(err).not.toContain('not exported')
   })
 
+  it('calls no sink and traces nothing when the session cannot open for want of a model', async () => {
+    const sent: string[] = []
+    const fetch = (async (url: string | URL | Request) => {
+      sent.push(String(url))
+      return new Response('', { status: 200 })
+    }) as typeof globalThis.fetch
+    const err: string[] = []
+
+    // No `client` injected and no `IDP_PROVIDER`/`IDP_MODEL` in `env`: the
+    // session never opens, so there is no run to trace at all — the sink
+    // must never even be asked, and nothing is said about a trace.
+    const code = await main(['ask', 'which databases are in prod?'], {
+      root: FIXTURES,
+      env: { MLFLOW_TRACKING_URI: 'http://127.0.0.1:5055' },
+      fetch,
+      out: () => {},
+      err: (chunk) => void err.push(chunk),
+    })
+
+    expect(code).toBe(2)
+    expect(sent).toEqual([])
+    expect(err.join('')).not.toContain('· trace')
+  })
+
   it('leaves stdout and the exit code exactly as an untraced run leaves them', async () => {
     const untraced = await ask()
     const traced = await ask({ traceSinks: [memorySink()] })
@@ -114,12 +138,21 @@ describe('tracing an agent-backed run', () => {
   })
 
   it('says so on one line when MLflow cannot be reached, and exits as it would have', async () => {
-    // No fetch injected: the global one is tests/setup/offline.ts's thrower,
-    // which is what an unreachable server looks like from here.
-    const untraced = await ask()
-    const unreachable = await ask({ env: { MLFLOW_TRACKING_URI: 'http://127.0.0.1:5055' } })
+    // Injected explicitly rather than left to tests/setup/offline.ts's global
+    // thrower: under IDP_RECORDING=record that guard steps aside and fetch is
+    // real, so this must hold on its own rather than borrow that guard's
+    // message. `fetch failed` is what a real connection refusal throws.
+    const unreachableFetch = (() => {
+      throw new TypeError('fetch failed')
+    }) as typeof globalThis.fetch
 
-    expect(unreachable.err).toContain('! trace not exported to mlflow: the test suite reached the network')
+    const untraced = await ask()
+    const unreachable = await ask({
+      env: { MLFLOW_TRACKING_URI: 'http://127.0.0.1:5055' },
+      fetch: unreachableFetch,
+    })
+
+    expect(unreachable.err).toContain('! trace not exported to mlflow: fetch failed')
     expect(unreachable.code).toBe(untraced.code)
     expect(unreachable.out).toBe(untraced.out)
   })
@@ -132,6 +165,18 @@ describe('tracing an agent-backed run', () => {
     await ask({ env: { IDP_TRACE_DIR: dir }, traceSinks: [sink] })
 
     expect(await readdir(dir)).toEqual([`${onlyTrace(sink).traceId}.json`])
+  })
+
+  it('resolves a relative IDP_TRACE_DIR against process.cwd()', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'idp-trace-'))
+    dirs.push(dir)
+    // The path handed to sinksFromEnv, in the shell's own words: relative to
+    // where the variable was typed, never to --repo.
+    const relative = path.relative(process.cwd(), dir)
+
+    await ask({ env: { IDP_TRACE_DIR: relative } })
+
+    expect(await readdir(dir)).toHaveLength(1)
   })
 
   it('still exports the trace of a run that threw, and marks it failed', async () => {

@@ -21,7 +21,16 @@ if (!dir || !trackingUri) {
 const experimentId = process.env.MLFLOW_EXPERIMENT_ID || '0'
 const url = `${trackingUri.replace(/\/+$/, '')}/v1/traces`
 
-const files = readdirSync(dir).filter((name) => name.endsWith('.json')).sort()
+let files
+try {
+  files = readdirSync(dir).filter((name) => name.endsWith('.json')).sort()
+} catch (error) {
+  // A missing IDP_TRACE_DIR, or one this user cannot read, is the same
+  // ordinary mistake as a bad --repo elsewhere in this project: one line
+  // naming it, never a stack.
+  console.error(`${dir}: ${error instanceof Error ? error.message : String(error)}`)
+  process.exit(2)
+}
 if (files.length === 0) {
   console.error(`${dir} holds no trace`)
   process.exit(1)
