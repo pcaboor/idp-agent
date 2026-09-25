@@ -1024,6 +1024,7 @@ ADR-0005  structured entities, never model-authored YAML
 ADR-0006  the merge request is the act of authorisation
 ADR-0007  the answer crosses the boundary, under a witness check
 ADR-0008  commentary crosses the boundary, labelled and witness-checked
+ADR-0009  a trace is one more reader of the event stream
 ```
 
 ### 12.2 The whole suite runs without an API key
