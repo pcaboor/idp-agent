@@ -128,7 +128,9 @@ describe('graph and show with IDP_REPO, from anywhere', () => {
     for (const IDP_REPO of ['../IaC', '.', 'IaC']) {
       for (const [argv, cwd] of [
         [['show', 'ledger-db-prod'], w.elsewhere],
-        [['plan', '--from', path.join(EXAMPLES, 'declare-database.json')], w.iac],
+        // Not from IaC: the working directory comes before IDP_REPO, for plan
+        // too, and a declarations repository there would never reach it.
+        [['plan', '--from', path.join(EXAMPLES, 'declare-database.json')], w.elsewhere],
       ] as const) {
         const { code, out, err, lines } = await run([...argv], { cwd, env: { IDP_REPO } })
         expect(code).toBe(2)
@@ -463,16 +465,31 @@ describe('plan with a configured declarations repository', () => {
     })
     expect(code).toBe(2)
     expect(err).toMatch(/no model configured/)
-    expect(err).not.toContain('plan needs --repo')
+    expect(err).not.toContain('plan needs a declarations repository')
   })
 
-  it('never takes the working directory as its declarations repository', async () => {
-    // For plan the working directory is the service being declared.
+  it('takes the working directory when it is a declarations repository, and says so', async () => {
+    // The same order as every command: --repo, then the directory the user
+    // stands in when its markers say it is one, then what is configured.
     const w = await world()
-    const { code, out, err } = await run(['plan', '--from', FROM], { cwd: w.iac, env: {} })
+    const { code, out, err } = await run(['plan', '--from', FROM], {
+      cwd: w.iac,
+      env: { IDP_REPO: w.demo },
+    })
+    expect(code).toBe(0)
+    expect(out).toContain('+++ b/catalog/databases/orders-db-prod.yml')
+    expect(err).toMatch(
+      /^reading the declarations repository IaC \(the current directory\); --repo <directory> decides against another$/m,
+    )
+  })
+
+  it('is refused with nothing to decide against, naming every way to name one', async () => {
+    const w = await world()
+    const { code, out, err } = await run(['plan', '--from', FROM], { cwd: w.elsewhere, env: {} })
     expect(code).toBe(2)
     expect(out).toBe('')
-    expect(err).toContain('plan needs --repo <directory>')
+    expect(err).toContain('plan needs a declarations repository: --repo <directory>')
+    expect(err).toContain('the current directory when it is one')
     expect(err).toContain('IDP_REPO')
     expect(err).toContain('config.yml')
     expect(err).not.toMatch(/^reading/m)

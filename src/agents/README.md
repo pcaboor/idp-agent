@@ -68,6 +68,9 @@ Plain data, handed in. Never a graph, never a provider, never a path.
   and hidden directories bar `.github` are gone before this folder sees anything.
   `list_files` and `read_file` read that snapshot and nothing else, so "confined to the
   repository" is a property of the data it was handed rather than a check it performs.
+  It runs only when there is an application repository to read; otherwise the Architect
+  is handed `NOT_INSPECTED` instead of `ProjectFacts`, and its opening message says that
+  nothing was inspected rather than listing facts nobody established.
 - The **Reviewer** gets the `Plan` and the **original request**, and nothing else. Not the
   Architect's transcript, not which attempt this is, not what an earlier gate said. It and
   the Architect are the same weights behind the same provider, so their errors are

@@ -166,16 +166,24 @@ check({ args: ['show', 'billing-api'], code: 0, stdout: /billing-api-billing-db-
 check({ args: ['show', 'no-such-entity'], code: 1, stdout: /No entity named/ })
 check({ args: ['graph', '--env', 'nowhere'], code: 1 })
 check({ args: ['graph', '--wat', 'x'], code: 2 })
-check({ args: ['nope'], code: 2 })
+// A first word that is no command is a phrase for the Supervisor, so with
+// nothing configured it is refused for want of a model; a word one slip away
+// from a command is a typo, and is refused before any model is chosen.
+check({ args: ['nope'], code: 2, stderr: /no model configured/ })
+check({ args: ['which databases are in prod?'], code: 2, stderr: /no model configured/ })
+check({
+  args: ['grpah'],
+  code: 2,
+  stderr: /unknown command "grpah"; did you mean graph\? To ask something, write a sentence/,
+  absentFromStderr: /no model configured/,
+})
 // With nothing configured — the state a reviewing agent who just cloned the
 // repository is in — the built binary must refuse cleanly, not crash.
 check({ args: ['ask', 'which databases are in prod?'], code: 2, stderr: /no model configured/ })
 check({ args: ['ask'], code: 2, stderr: /needs a question/ })
 // `init` and `plan "<intent>"` both reach a model now, so with nothing
 // configured they must refuse for want of one — not for want of a recording,
-// and not by walking a repository first. `--repo` names the demo SI rather than
-// `.`: the directory `plan` inspects is the one it stands in, and one directory
-// as both repositories is refused before the model is (see further down).
+// and not by walking a repository first.
 check({ args: ['init'], code: 2, stderr: /no model configured/ })
 check({
   args: ['plan', 'give billing-api access to orders-db', '--repo', path.join(ROOT, 'fixtures/si-demo')],
@@ -315,18 +323,27 @@ rmSync(CONFIG_HOME, { recursive: true, force: true })
 check({
   args: ['plan', '--from', path.join(ROOT, 'examples/declare-database.json')],
   code: 2,
-  stderr: /^plan needs --repo <directory>, or IDP_REPO or repo in .*config\.yml/,
+  stderr:
+    /^plan needs a declarations repository: --repo <directory>, the current directory when it is one, or IDP_REPO or repo in .*config\.yml/,
 })
 // The owner's run: `plan "<intent>"` typed from inside his declarations
-// repository. The Inspector would read it as the service's, so it is refused —
-// and refused before the missing model is, because the directory is the
-// argument to fix whatever is configured, and it walks nothing to find that out.
+// repository. It is the repository the preview is decided against, and it is
+// no service's, so the Inspector is skipped and said to be — before the
+// missing model is, because that line walks nothing and needs no model.
 check({
   args: ['plan', 'give billing-api read access to the orders database in prod', '--repo', '.'],
   cwd: STANDING,
   code: 2,
-  stderr: /IaC is a declarations repository[\s\S]*--project <dir>/,
-  absentFromStderr: /no model configured/,
+  stderr:
+    /no application repository in the current directory \(IaC is a declarations repository\)[\s\S]*no model configured/,
+})
+// And the one gesture from there, with nothing configured: IaC is found where
+// the user stands, and the phrase needs a model to be classified.
+check({
+  args: ['give billing-api read access to the orders database in prod'],
+  cwd: STANDING,
+  code: 2,
+  stderr: /^reading the declarations repository IaC \(the current directory\)[\s\S]*no model configured/,
 })
 
 // A repository that was already wrong before the plan, as a real one usually

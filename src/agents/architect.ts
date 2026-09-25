@@ -56,6 +56,19 @@ preview compares your declaration to the bytes on disk and reports that it is
 already there, naming the file. An empty list is not an answer, and it is
 refused.`
 
+/**
+ * What the Architect is handed instead of `ProjectFacts` when no application
+ * repository was inspected: `plan` run from a directory that is no service's,
+ * with no `--project` to name one. A value of its own rather than an
+ * all-unknown `ProjectFacts`, because that one means "an inspection ran and
+ * established nothing", and none ran — and rather than an absence, because an
+ * absent section reads as facts nobody needed, which the Architect fills in.
+ */
+export const NOT_INSPECTED: { readonly inspected: false } = Object.freeze({ inspected: false })
+
+/** Either what an inspection established, or that none was made. */
+export type ArchitectFacts = ProjectFacts | typeof NOT_INSPECTED
+
 const stated = (value: string | UnknownValue): string =>
   typeof value === 'string' ? value : `unknown (${value.unknown})`
 
@@ -70,7 +83,17 @@ const stated = (value: string | UnknownValue): string =>
  * An unknown is printed, never dropped. A fact that arrives as an absent line
  * reads as a fact nobody needed, and the Architect would fill it in.
  */
-function formatFacts(facts: ProjectFacts): string {
+function formatFacts(facts: ArchitectFacts): string {
+  // Stated, never omitted, and naming nothing: no file was read, so there is
+  // no name, owner or runtime to report, not even as an unknown with a reason.
+  if ('inspected' in facts) {
+    return [
+      'repository: not inspected',
+      '  no application repository was read for this request, so no fact about the',
+      '  service it concerns is established: what neither the request nor the',
+      '  catalogue states is unknown',
+    ].join('\n')
+  }
   const dependencies = facts.dependencies
 
   return [
@@ -90,7 +113,7 @@ function formatFacts(facts: ProjectFacts): string {
   ].join('\n')
 }
 
-const opening = (input: { intent: string; facts: ProjectFacts; summary: string; vocabulary: string }): string =>
+const opening = (input: { intent: string; facts: ArchitectFacts; summary: string; vocabulary: string }): string =>
   `request: ${input.intent}\n\n${formatFacts(input.facts)}\n\n${input.summary}\n${input.vocabulary}`
 
 export interface ArchitectOutcome {
@@ -121,7 +144,7 @@ export async function draftPlan(
     run(call: ModelToolCall): ToolOutcome
     witnessed: ReadonlySet<string>
   },
-  input: { intent: string; facts: ProjectFacts; summary: string; vocabulary: string },
+  input: { intent: string; facts: ArchitectFacts; summary: string; vocabulary: string },
   emit: EventSink,
 ): Promise<ArchitectOutcome> {
   emit({ type: 'agent:start', agent: 'architect' })

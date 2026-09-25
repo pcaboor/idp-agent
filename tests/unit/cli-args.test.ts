@@ -20,8 +20,11 @@ describe('parseArguments', () => {
     expect(parseArguments([])).toEqual({ name: 'help' })
   })
 
-  it('reports an unknown command instead of guessing one', () => {
-    expect(parseArguments(['destroy']).name).toBe('error')
+  it('reads an unknown first word as a phrase, and a near miss of a command as a typo', () => {
+    // The phrase goes to the Supervisor (`entry.test.ts`); a word one slip
+    // away from a command name never does.
+    expect(parseArguments(['destroy'])).toStrictEqual({ name: 'entry', phrase: 'destroy', json: false })
+    expect(parseArguments(['grpah']).name).toBe('error')
   })
 
   it('reports show without an argument', () => {

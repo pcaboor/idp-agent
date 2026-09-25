@@ -7,7 +7,29 @@ Three layers — parsing, then commands, then rendering — each testable on its
 message. It reads nothing and writes nothing, so `tests/unit/cli-args.test.ts` drives it
 with plain arrays and asserts on the returned object. `graph`, `show` and `ask` parse
 strictly: an option `ask` does not know is refused, never sent to the model as a word of the
-question.
+question. A first argument that is no command name is `entry`, the one gesture `idpa
+"<phrase>"`: the positionals joined are the phrase, quoted or not, and `--repo`, `--demo`,
+`--project` and `--json` are parsed as strictly and carried to whichever road it takes. Two
+things are refused, and nothing else is second-guessed: a command behind its options
+(`--repo IaC show billing-api` is `show` in the wrong order, not the phrase "show
+billing-api"), and a phrase of a single word a slip away from a command name (`grpah`,
+`shwo`, `palm`) — one edit, two for a name of four letters or more kept at its length, and
+never a change of first letter, so `who`, `edit` and `hello` stay phrases. Each is an
+`error`, and neither reaches a model. `COMMANDS` is the list of names, and
+`entry.test.ts` holds it to the parser and to `HELP`.
+
+**The one gesture.** `commands/entry.ts`'s `runEntry` is `ask`'s `classified` with a
+different answer to a change: the Supervisor classifies the phrase once, a `QUESTION` is
+answered by the very code `ask` runs — same summary, same Analyst, same output and exit
+codes — and a `MUTATION` runs the `change` callback `main` builds, which is `runIntent`
+over the repository the phrase was read against, or the refusal when that is the demo SI.
+A phrase's `--project` is checked before the model whichever road is then taken: in full
+against the repository found (`applicationRoot`), and for what it is on its own —
+empty, no directory, a declarations repository — when that is the demo SI (`projectRoot`).
+`--json` on a question does nothing, and one line on `err` says so. The refusals name
+`idpa`, which is what was typed, and the source line names `--demo` as the question's.
+`ask` still declines a change, and says `run it as idpa "<phrase>" to preview the plan`.
+`tests/unit/entry.test.ts` holds both roads.
 
 **Commands.** `runGraph(graph, options)` and `runShow(graph, query)` take an `EntityGraph`
 and return a `CommandResult` — `text` plus `found`. No I/O and no process, so
@@ -66,39 +88,47 @@ states the fact and stays free of the process — and `bin.ts` assigns it to
 one `skipped` line each; documents it set aside as a kind this tool does not model go there
 too, as one `not loaded:` line counting them by kind.
 
-**Which repository `plan` inspects.** `plan "<intent>"` reads two: the declarations
-repository the preview is decided against (`--repo`, `IDP_REPO` or the personal file), and
-the application repository the Inspector reads — the working directory, or `--project <dir>`
-resolved against it.
-`repository.ts`'s `applicationRoot` refuses, with exit 2 and before a model is chosen, a
-project that is not a directory, one that is a declarations repository by the markers
-`isDeclarationsRepository` looks for, one that is the `--repo` directory by real path, and
-one under that directory's `catalog/` or `dependencies/`. Before the model, because the
-directory is the argument to fix whatever is configured. It returns both roots resolved,
-and `runIntent` reads those, so the directory compared is the directory read; the working
-directory is asked for only when a path needs it.
+**Which repository a change inspects.** `plan "<intent>"`, and a phrase classified as a
+change, read the declarations repository the preview is decided against, and may read an
+application repository too — the Inspector is optional. `repository.ts`'s
+`applicationRoot` decides, before a model is chosen, and returns an `Inspection`: the
+directory `--project` names, resolved against the working directory; else the working
+directory when `isApplicationRepository` says it is one (a `catalog-info.yaml`/`.yml` or a
+package manifest at its root, never a declarations repository) and it is neither the
+declarations repository by real path nor anywhere under it, nor the home directory or the
+filesystem root; else
+`none`, with the reason, which `main` says on `err` in one line (`skipNotice`) before
+`runIntent` runs with `project: undefined` and the Architect is told `NOT_INSPECTED`. A
+`--project` that is not a directory, is a declarations repository, is the `--repo`
+directory or lies under its declaration folders is refused with exit 2: a flag is an
+argument, and an argument is refused before the configuration is. The working directory
+is not an argument, so it is never refused, only skipped. `runIntent` reads the roots it is
+handed, so the directory compared is the directory read; with no project it reads no
+`.idp-agent.yml` either, which lives in the application repository (§7.0).
 `--project` with `--from` is a parse error: that road has no Inspector.
 `tests/unit/plan-project.test.ts` holds all of it.
 
 **Where the SI comes from.** `source.ts`'s `sourceOf` decides it once, for `graph`, `show`,
-`ask` and `plan`, and returns a value — `{ kind: 'repo', root, label, origin }` or
-`{ kind: 'demo', label, origin }` — that `providerOf` turns into a `ContextProvider` and
-nothing after it knows which. The read commands take, first match wins: `--repo`, resolved
-against `cwd` and refused with exit 2 by `repository.ts`'s `declarationsRoot` — the guard
-`plan` uses too — or `--demo`; `cwd` itself when `isDeclarationsRepository` says it is one;
-`IDP_REPO`, absolute or under `~` — a relative one is exit 2, since it would name another
-repository in every directory; `repo` in the personal configuration; the demo SI. `plan`
-takes `--repo`, `IDP_REPO`, the file, never `cwd` — that is the service it declares — and
-without any of them is refused with exit 2, naming all three. What is not reached is not
-read: a malformed file cannot refuse a run `IDP_REPO` already answered. A configured path
-that is not a directory is exit 2 naming the variable or the file, never the demo SI; a
-directory with no markers is read all the same, as `--repo` reads one. Every road but
-`--repo` is said in one line on `err`, naming the folder and its `origin`, and `--demo`
-with `--repo` is a parse error. A repository is named by its folder's basename, whichever
-road reached it. A Backstage source is one more `kind`, and the exhaustive switches over
-`Source` — in `source.ts` and `providerOf` — are the only places that learn about it; what
-`main` needs of a source goes through them (`overviewName`, `blameOf`), never through a
-bare `kind === 'repo'`. Refusals quote a variable or a file in one flattened line, as the
+`ask`, `plan` and a phrase (which asks as `ask` does), and returns a value —
+`{ kind: 'repo', root, label, origin }` or `{ kind: 'demo', label, origin }` — that
+`providerOf` turns into a `ContextProvider` and nothing after it knows which. The read
+commands take, first match wins: `--repo`, resolved against `cwd` and refused with exit 2
+by `repository.ts`'s `declarationsRoot` — the guard `plan` uses too — or `--demo`; `cwd`
+itself when `isDeclarationsRepository` says it is one; `IDP_REPO`, absolute or under `~` —
+a relative one is exit 2, since it would name another repository in every directory; `repo`
+in the personal configuration; the demo SI. `plan` takes the same four, `cwd` included on
+its markers — a service's repository carries none — and never the demo SI: without any of
+them it is refused with exit 2, naming all four, and a phrase the Supervisor calls a change
+is refused the same way (`declarationsOf`). What is not reached is not read: a malformed
+file cannot refuse a run `IDP_REPO` already answered. A configured path that is not a
+directory is exit 2 naming the variable or the file, never the demo SI; a directory with no
+markers is read all the same, as `--repo` reads one. Every road but `--repo` is said in one
+line on `err`, naming the folder and its `origin`, and `--demo` with `--repo` is a parse
+error. A repository is named by its folder's basename, whichever road reached it. A
+Backstage source is one more `kind`, and the exhaustive switches over `Source` — in
+`source.ts` and `providerOf` — are the only places that learn about it; what `main` needs
+of a source goes through them (`overviewName`, `blameOf`), never through a bare
+`kind === 'repo'`. Refusals quote a variable or a file in one flattened line, as the
 notices do. `tests/unit/read-repo.test.ts` and `tests/unit/configured-source.test.ts` hold
 the roads.
 

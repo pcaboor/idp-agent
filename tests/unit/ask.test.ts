@@ -148,7 +148,9 @@ describe('runAsk on a change request', () => {
       'give billing-api read access to orders-db',
     )
     expect(result.unsupported).toBe(true)
-    expect(errors).toContain('this build only reads')
+    expect(errors).toContain(
+      'that is a change request; run it as idpa "<phrase>" to preview the plan',
+    )
   })
 
   it('never reaches the graph for a change request', async () => {

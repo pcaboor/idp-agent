@@ -129,6 +129,51 @@ export async function isDeclarationsRepository(directory: string): Promise<boole
   return false
 }
 
+/**
+ * What an application repository carries at its root: the file Backstage
+ * registers a service by, or the manifest of the language it is built in.
+ * `.csproj` is a suffix, and matched as one below.
+ */
+export const APPLICATION_MARKERS = [
+  'catalog-info.yaml',
+  'catalog-info.yml',
+  'package.json',
+  'go.mod',
+  'pom.xml',
+  'build.gradle',
+  'build.gradle.kts',
+  'pyproject.toml',
+  'requirements.txt',
+  'Cargo.toml',
+  'composer.json',
+  'Gemfile',
+] as const
+
+const PROJECT_SUFFIX = '.csproj'
+
+const isMarker = (name: string): boolean =>
+  (APPLICATION_MARKERS as readonly string[]).includes(name) ||
+  (name.endsWith(PROJECT_SUFFIX) && name.length > PROJECT_SUFFIX.length)
+
+/**
+ * Whether `directory` is an application repository — the service a plan may
+ * inspect when no `--project` names one: a regular file among
+ * `APPLICATION_MARKERS`, or a `*.csproj`, at its root, and not a declarations
+ * repository whatever else sits there.
+ *
+ * At the root only, one `readdir`, for the reason `isDeclarationsRepository`
+ * gives: `idpa` is typed from anywhere, $HOME included, and $HOME holds a
+ * service or two a few folders down. A yes hands the directory to a model, so
+ * a no is the answer whenever there is doubt — anything unreadable, a marker
+ * that is a directory or a symbolic link — and a run that said no drafts from
+ * the catalogue alone, which `--project` corrects.
+ */
+export async function isApplicationRepository(directory: string): Promise<boolean> {
+  if (await isDeclarationsRepository(directory)) return false
+  const top = await readdir(directory, { withFileTypes: true }).catch(() => [])
+  return top.some((entry) => entry.isFile() && isMarker(entry.name))
+}
+
 export async function readRepository(root: string): Promise<RepositorySnapshot> {
   const found: Walked = { folders: [], witnesses: [], files: [] }
   await walk(root, root, found)

@@ -120,10 +120,15 @@ const standingIn = (context: SourceContext): string | undefined => {
  * markers say it is a declarations repository → `IDP_REPO` → the personal
  * file's `repo` → the demo SI. Always a source.
  *
- * `plan`: `--repo` → `IDP_REPO` → the file's `repo`, and `undefined` when none
- * names one. Never the working directory — for `plan` that is the application
- * repository being declared, which the Inspector reads — and never the demo SI
- * or a catalogue: a write preview is decided against a repository (§4.4).
+ * `plan`: the same, bar `--demo` and the demo SI — `--repo` → the working
+ * directory when its markers say it is a declarations repository → `IDP_REPO`
+ * → the file's `repo` — and `undefined` when none names one: a write preview
+ * is decided against a repository, never the demo SI or a catalogue (§4.4).
+ * The working directory used to be left out, as the service `plan` declares;
+ * it is taken only on its markers, and a service's repository carries none, so
+ * `cd IaC && idpa "<intent>"` decides against IaC and a run from the service
+ * still reads what is configured. Which directory the Inspector reads is
+ * another question, answered by `repository.ts`'s `applicationRoot`.
  *
  * First match wins, so what is not reached is not read: a malformed file
  * cannot refuse a run that `IDP_REPO` or `--repo` already answered. A
@@ -148,12 +153,12 @@ export async function sourceOf(
     const root = await declarationsRoot(request.command, request.repo, context.cwd())
     return repository(root, { by: 'flag' })
   }
-  if (request.command !== 'plan') {
-    if (request.demo === true) return { kind: 'demo', label: DEMO_LABEL, origin: { by: 'flag' } }
-    const root = standingIn(context)
-    if (root !== undefined && (await isDeclarationsRepository(root))) {
-      return repository(root, { by: 'working-directory' })
-    }
+  if (request.command !== 'plan' && request.demo === true) {
+    return { kind: 'demo', label: DEMO_LABEL, origin: { by: 'flag' } }
+  }
+  const root = standingIn(context)
+  if (root !== undefined && (await isDeclarationsRepository(root))) {
+    return repository(root, { by: 'working-directory' })
   }
   const configured = await configuredRepository(request.command, context)
   if (configured !== undefined) return configured
@@ -315,6 +320,10 @@ function namedBy(origin: Origin): string | undefined {
  * demo they expected. The folder and what named it, both — the second is what
  * the user changes to read another. Flattened: a folder's name, and a file's
  * path, are whatever someone called them, escape sequences included.
+ *
+ * A phrase's line is said before the Supervisor has decided which road it
+ * takes, so its `--demo` is named for the one road that takes it: a change is
+ * never previewed against the demo SI.
  */
 export function sourceNotice(
   command: DeclarationsCommand,
@@ -327,7 +336,9 @@ export function sourceNotice(
       const alternatives =
         command === 'plan'
           ? '--repo <directory> decides against another'
-          : '--repo <directory> reads another, --demo the fictional SI'
+          : command === 'idpa'
+            ? '--repo <directory> reads another, --demo the fictional SI for a question'
+            : '--repo <directory> reads another, --demo the fictional SI'
       return (
         `reading the declarations repository ${oneLine(source.label)} ` +
         `(${oneLine(originText(source.origin))}); ${alternatives}`
@@ -349,11 +360,38 @@ export function sourceNotice(
   }
 }
 
-/** Why `plan` without `--repo` is refused when nothing is configured either. */
-export function planNeedsRepository(context: Pick<SourceContext, 'env' | 'platform'>): string {
+/**
+ * The declarations repository a change is previewed against, or `undefined`
+ * when the source is none: the demo SI is a catalogue to question, never a
+ * repository to decide a write against (§4.4). Exhaustive, for the reason
+ * `overviewName` is — a Backstage source is not one either.
+ */
+export function declarationsOf(source: Source): RepositorySource | undefined {
+  switch (source.kind) {
+    case 'repo':
+      return source
+    case 'demo':
+      return undefined
+    default: {
+      const exhaustive: never = source
+      return exhaustive
+    }
+  }
+}
+
+/**
+ * Why a change is refused when nothing names a declarations repository: every
+ * way of naming one, in the order they are tried. `who` is what asked —
+ * `plan`, or the phrase the Supervisor classified as a change.
+ */
+export function planNeedsRepository(
+  context: Pick<SourceContext, 'env' | 'platform'>,
+  who = 'plan',
+): string {
   const file = flat(personalFileHint(context.env, context.platform))
   return (
-    `plan needs --repo <directory>, or ${REPO_VARIABLE} or repo in ${file} set once: ` +
+    `${who} needs a declarations repository: --repo <directory>, the current directory ` +
+    `when it is one, or ${REPO_VARIABLE} or repo in ${file} set once; ` +
     'a write preview is decided against the repository, never against the catalogue'
   )
 }

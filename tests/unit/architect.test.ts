@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { ARCHITECT_LIMITS, draftPlan } from '../../src/agents/architect.js'
+import { ARCHITECT_LIMITS, NOT_INSPECTED, draftPlan } from '../../src/agents/architect.js'
 import { MAX_REPAIRS } from '../../src/agents/forced-turn.js'
 import type { AgentEvent } from '../../src/agents/events.js'
 import { renderEvent } from '../../src/cli/index.js'
@@ -497,6 +497,43 @@ describe('draftPlan', () => {
     expect(opening).toContain('billing-api')
     expect(opening).toContain('this repository has no CODEOWNERS')
     expect(opening).toContain('orders-db')
+  })
+
+  it('sends the facts in exactly the bytes the plan-mode recordings were made with', async () => {
+    // The opening message is part of every recorded request's digest. Letting
+    // a run inspect nothing added a second shape of facts; the first must not
+    // move by a byte, or every plan-mode tape goes stale.
+    const client = capturing([proposing([ACCESS])])
+    await draftPlan(client, readTools(), INPUT, collect().emit)
+    const first = client.seen[0]?.transcript[0]
+    expect(first?.role === 'user' ? first.text : undefined).toBe(
+      [
+        `request: ${INPUT.intent}`,
+        '',
+        'repository:',
+        '  name: billing-api',
+        '  type: service',
+        '  lifecycle: production',
+        '  runtime: node',
+        '  owner: group:default/platform',
+        '  forge handle: unknown (this repository has no CODEOWNERS)',
+        '  declared dependencies:',
+        '    orders-db: database',
+        '',
+        INPUT.summary,
+        INPUT.vocabulary,
+      ].join('\n'),
+    )
+  })
+
+  it('says so when no application repository was inspected, and states no fact', async () => {
+    const client = capturing([proposing([ACCESS])])
+    await draftPlan(client, readTools(), { ...INPUT, facts: NOT_INSPECTED }, collect().emit)
+    const first = client.seen[0]?.transcript[0]
+    const opening = first?.role === 'user' ? first.text : ''
+    expect(opening.startsWith(`request: ${INPUT.intent}\n\nrepository: not inspected\n`)).toBe(true)
+    expect(opening).not.toMatch(/^ {2}(name|owner|type|lifecycle|runtime): /m)
+    expect(opening.endsWith(`\n\n${INPUT.summary}\n${INPUT.vocabulary}`)).toBe(true)
   })
 
   it('stops at its turn bound and refuses rather than returning a partial plan', async () => {

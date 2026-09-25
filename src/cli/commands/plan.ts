@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { draftPlan } from '../../agents/architect.js'
+import { NOT_INSPECTED, draftPlan } from '../../agents/architect.js'
 import type { EventSink } from '../../agents/events.js'
 import { inspect } from '../../agents/inspector.js'
 import { repair, type Gate, type RepairAttempt, type RepairOutcome } from '../../agents/repair.js'
@@ -920,12 +920,14 @@ export interface IntentOptions {
    */
   readonly repo: string
   /**
-   * The application repository the Inspector reads (§7.4, step 3), absolute.
-   * `cli/index.ts` has already refused one that is a declarations repository,
-   * the `repo` directory itself or a folder of its declarations
-   * (`applicationRoot`).
+   * The application repository the Inspector reads (§7.4, step 3), absolute —
+   * or `undefined`, and then no Inspector runs and the Architect is told that
+   * nothing was inspected. `cli/index.ts` has already refused, or skipped, one
+   * that is a declarations repository, the `repo` directory itself or a folder
+   * of its declarations (`applicationRoot`). Required, so that inspecting
+   * nothing is something a caller writes rather than forgets.
    */
-  readonly project: string
+  readonly project: string | undefined
   readonly client: LlmClient
   readonly emit: EventSink
   readonly json?: boolean
@@ -939,7 +941,8 @@ export interface IntentOptions {
 }
 
 /**
- * §7.4 steps 3 to 7: Inspector, Architect, the repair loop, the diff.
+ * §7.4 steps 3 to 7: Inspector, Architect, the repair loop, the diff. The
+ * Inspector only when there is an application repository to read (`project`).
  *
  * Everything deterministic is reused rather than restated. The two gate
  * contexts are the ones `runPlan` builds, over the same snapshot; the five
@@ -952,12 +955,13 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
   // Read before a single agent runs, and before the project is walked. A
   // committed file that does not parse is not a repository that declared
   // nothing: falling back would answer a typo with a run that silently asks
-  // about everything, and charge a model round-trip for it.
-  const config = await readConfig(options.project)
+  // about everything, and charge a model round-trip for it. It lives in the
+  // application repository (§7.0), so a run that inspects none has none.
+  const config = options.project === undefined ? undefined : await readConfig(options.project)
   const snapshot = await readRepository(root)
   // Taken on this side of the line: `agents/` reaches no disk, so the bytes are
   // read here and handed over, with every exclusion and cap already applied.
-  const project = await readProject(options.project)
+  const project = options.project === undefined ? undefined : await readProject(options.project)
 
   // The Architect's read tools sit on the repository, not on the fixture SI,
   // and `buildTools` owns the witness set they fill — what the ENGINE returned
@@ -972,7 +976,10 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
   // and refused before a model round-trip is spent on it.
   const contents = await readContents(root, snapshot)
 
-  const facts = await inspect(options.client, project, options.emit)
+  // No repository, no Inspector: the Architect is told that nothing was
+  // inspected, never handed facts nobody established.
+  const facts =
+    project === undefined ? NOT_INSPECTED : await inspect(options.client, project, options.emit)
 
   /**
    * What the user said when asked, and what each answer is about — never
