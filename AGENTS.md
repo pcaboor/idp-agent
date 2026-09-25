@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 1515 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 1608 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -92,7 +92,7 @@ rules over an IaC repository; `init platform`, which writes twelve files and clo
 nothing; and stage 4's two previews, which write nothing at all:
 
 ```bash
-idpa "<phrase>" [--repo <dir> | --demo] [--project <dir>] [--json]  # question or change
+idpa "<phrase>" [--repo <dir> | --demo] [--project <dir>] [--json] [--quiet]  # question or change
 idp-agent plan --from <plan.json> --repo <dir>   # no model, and none is possible
 idp-agent plan "<intent>" --repo <dir> [--json]  # Inspector, Architect, five gates
 idp-agent init [--repo <dir>]                    # the catalog-info.yml it would write
@@ -165,7 +165,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 
 | Folder | Responsibility |
 |---|---|
-| `core/` | schemas (Zod), the seven validation rules, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, and `core/plan/` — everything between a proposal and a diff |
+| `core/` | schemas (Zod), the seven validation rules, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — and the engine's check on an answer's commentary (`core/answer/`) |
 | `context/` | `ContextProvider` (two implementations: `fixtures`, and `iac-fs` behind `--repo`), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries |
 | `cli/` | argument parsing, commands, rendering, `.idp-agent.yml` and the personal `config.yml`, which source a command reads — the only layer that writes to stdout |
 | `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |
@@ -238,8 +238,15 @@ One object crosses **per direction of authority** (design §5.1, ADR-0007). The 
 crosses when the AI side asks for a change. The **`Answer`** crosses when it reports a
 read — a union of `entities` / `nothing` / `overview` / `unanswerable` that authorises
 nothing and carries only references the engine's own tools returned, each re-read before
-printing. An `overview` carries nothing at all: the model chooses it, and the engine
-writes the description of the catalogue from the graph.
+printing. An `overview` carries no identifier at all: the model chooses it, and the engine
+writes the description of the catalogue from the graph. Around that block the model may
+write an `intro` and a `conclusion` (ADR-0008): it frames the answer and never is it. The
+engine drops, whole, every sentence that names an entity no tool returned or an identifier
+nobody read, cleans and bounds the rest, and prints each line marked `› ` as the model's —
+so no model-authored text reaches stdout unlabelled or unchecked. The check removes entities
+and identifiers nobody read, nothing else: a name in plain words (a team, a product, "the
+billing API"), a figure or an error of reasoning passes, and only the mark says whose words
+they are. `--quiet` prints the block alone.
 That witness check is a **read-side** guarantee and does not transfer to `propose()`,
 which is why the write side has a signature of its own.
 

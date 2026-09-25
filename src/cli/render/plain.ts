@@ -1,8 +1,9 @@
 /**
  * Model-authored text, with everything a terminal would obey removed.
  *
- * ADR-0007's consequence — "no model-authored text reaches stdout" — was
- * stated for the read path and did not hold for the write path. An audit
+ * ADR-0007's consequence — "no model-authored text reaches stdout", since
+ * ADR-0008 "none unlabelled or unchecked" — was stated for the read path and
+ * did not hold for the write path. An audit
  * demonstrated it (F5): a `{unknown}` reason is up to 8 192 characters the
  * model writes, and `renderQuestions` printed it raw. A question reading
  *
@@ -20,8 +21,14 @@
  *     isolates spelled out. On the event stream of every command, `ask`'s
  *     included (`said` and `whole` in `cli/index.ts`), on every reason `plan`
  *     and `init` print, on the `skipped` lines and on the question
- *     `promptOnTerminal` puts. `inert` is the same on as many lines as the text
- *     has, for the refusals `failed` prints on the way out of any command.
+ *     `promptOnTerminal` puts. And on an answer's commentary (ADR-0008), the
+ *     one place the read path prints model-authored text on stdout: every
+ *     sentence the engine's check keeps (`core/answer/commentary.ts`, handed
+ *     this as its cleaner, so it matches the text as it will print), and
+ *     every name the line about a dropped one quotes on stderr
+ *     (`cli/commands/ask.ts`). `inert` is the same on as many lines as the
+ *     text has, for the refusals `failed` prints on the way out of any
+ *     command.
  *   - `oneLine`: the same, less the bidi escape. On what `show`, `graph`,
  *     `ask` and `validate` print from a file — `show`'s card, a table cell,
  *     the overview, a violation — and on `ask`'s two model-authored lines on

@@ -79,14 +79,19 @@ export type ReadFrom = { repo?: string; demo?: never } | { demo: true; repo?: ne
 export type Command =
   | ({ name: 'graph'; options: GraphOptions } & ReadFrom)
   | ({ name: 'show'; query: string } & ReadFrom)
-  | ({ name: 'ask'; intent: string } & ReadFrom)
+  /**
+   * `quiet`, present only when `--quiet` was given: the verified block alone,
+   * without the model's commentary around it (ADR-0008).
+   */
+  | ({ name: 'ask'; intent: string; quiet?: true } & ReadFrom)
   /**
    * `idpa "<phrase>"`: a first word that is no command. The Supervisor decides
    * which road it takes (`commands/entry.ts`); `project` and `json` belong to
    * the plan road and are carried whichever is taken — a bad `--project`
    * refuses a question too, and `--json` on one is said to do nothing.
+   * `quiet` belongs to the question road, and does nothing on a change.
    */
-  | ({ name: 'entry'; phrase: string; project?: string; json: boolean } & ReadFrom)
+  | ({ name: 'entry'; phrase: string; project?: string; json: boolean; quiet?: true } & ReadFrom)
   | { name: 'validate'; directory: string }
   /**
    * Absent `repo` means the working directory when it is a declarations
@@ -101,7 +106,7 @@ export type Command =
 
 export const HELP = `idp-agent - turn an intent into reviewed infrastructure declarations
 
-  idpa "<phrase>" [--repo <directory> | --demo] [--project <directory>] [--json]
+  idpa "<phrase>" [--repo <directory> | --demo] [--project <directory>] [--json] [--quiet]
 
   The one gesture, from anywhere: a question about the SI is answered, an
   intent to change it is previewed as a plan, and the phrase need not say
@@ -110,9 +115,13 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   force a road: plan previews without classifying, and ask classifies and
   only answers, declining a change.
 
+  An answer is the engine's, verified against the catalogue. The model may
+  frame it with a sentence before and a few after, each checked by the engine
+  and marked with ›; --quiet prints the verified answer alone.
+
   idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource] [--repo <directory> | --demo]
   idp-agent show <name-or-reference> [--repo <directory> | --demo]
-  idp-agent ask "<question>" [--repo <directory> | --demo]
+  idp-agent ask "<question>" [--repo <directory> | --demo] [--quiet]
   idp-agent validate <directory>
   idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json]
   idp-agent plan --from <plan.json> [--repo <directory>] [--json]
@@ -263,7 +272,7 @@ export function parseArguments(argv: string[]): Command {
       // goes after `--`, which parseArgs' own refusal says.
       const { values, positionals } = parseArgs({
         args: rest,
-        options: READ_OPTIONS,
+        options: { ...READ_OPTIONS, quiet: { type: 'boolean' } },
         allowPositionals: true,
         strict: true,
       })
@@ -276,7 +285,7 @@ export function parseArguments(argv: string[]): Command {
       }
       const from = readFrom('ask', values)
       if ('message' in from) return from
-      return { name: 'ask', intent, ...from }
+      return { name: 'ask', intent, ...from, ...(values.quiet === true ? { quiet: true } : {}) }
     } catch (error) {
       return { name: 'error', message: (error as Error).message }
     }
@@ -374,7 +383,12 @@ function parsePhrase(argv: string[]): Command {
   try {
     const { values, positionals } = parseArgs({
       args: argv,
-      options: { ...READ_OPTIONS, project: { type: 'string' }, json: { type: 'boolean' } },
+      options: {
+        ...READ_OPTIONS,
+        project: { type: 'string' },
+        json: { type: 'boolean' },
+        quiet: { type: 'boolean' },
+      },
       allowPositionals: true,
       strict: true,
     })
@@ -409,6 +423,7 @@ function parsePhrase(argv: string[]): Command {
       ...from,
       ...(values.project !== undefined ? { project: values.project } : {}),
       json: values.json === true,
+      ...(values.quiet === true ? { quiet: true } : {}),
     }
   } catch (error) {
     return { name: 'error', message: (error as Error).message }
@@ -851,6 +866,8 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
       },
       emit: deps.events ?? progress(err),
       err,
+      colour: colourOf(deps),
+      quiet: command.quiet === true,
     }
     // The change road's repositories, decided before any model is chosen, for
     // the reason `plan`'s are: a `--project` is an argument, and it is checked
@@ -920,6 +937,8 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
         },
         emit: deps.events ?? progress(err),
         err,
+        colour: colourOf(deps),
+        quiet: command.quiet === true,
       }),
     )
   }

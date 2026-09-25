@@ -139,8 +139,18 @@ The **`Answer`** crosses when the AI side reports a read (stage 2, ADR-0007). It
 authorises nothing and names no value: it carries only identifiers the engine itself
 returned, and the engine re-reads every one of them from the graph before printing. An
 identifier the tools never produced is refused and named. One member, `overview`, carries
-nothing at all: the model chooses it for a request to describe the catalogue as a whole,
-and the engine writes the description from the graph.
+no identifier at all: the model chooses it for a request to describe the catalogue as a
+whole, and the engine writes the description from the graph.
+
+The model may frame that block in words (ADR-0008): an `intro` and a `conclusion` on
+`entities`, `nothing` and `overview`, written in the same terminal call. They are not the
+answer and authorise nothing. The engine checks every sentence before printing it — a
+sentence naming an entity no tool returned, or an identifier nobody read, is dropped whole
+— then cleans it, bounds it, and prints it marked `› ` as the model's, around the block's
+unchanged bytes. The check removes entities of the graph and identifiers nobody read, and
+nothing else: a name written in plain words (a team, a product, "the billing API"), a figure,
+a claim about the block all pass, and it does not make a sentence true. The label is what
+tells the reader which words are the model's. `--quiet` prints the block alone.
 
 The carve-out has a limit, and it does not travel: the witness check is a read-side
 guarantee. `propose()` needed its own, because a `Plan` proposes values that were never in
@@ -971,6 +981,7 @@ ADR-0004  recordings as the default suite, live evals as nightly
 ADR-0005  structured entities, never model-authored YAML
 ADR-0006  the merge request is the act of authorisation
 ADR-0007  the answer crosses the boundary, under a witness check
+ADR-0008  commentary crosses the boundary, labelled and witness-checked
 ```
 
 ### 12.2 The whole suite runs without an API key

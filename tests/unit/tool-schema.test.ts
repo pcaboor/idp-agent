@@ -32,6 +32,23 @@ describe('objectRooted', () => {
           items: { type: 'string', pattern: '^[a-z]+:[a-z0-9-]+\\/[a-z0-9._-]+$' },
           description: 'Required when outcome is "entities"; omit it otherwise.',
         },
+        intro: {
+          type: 'string',
+          maxLength: 2000,
+          description:
+            'One short sentence introducing the answer, in the language of the question. ' +
+            'Optional. Dropped, never refused, when it is not a string or is longer than 2000 ' +
+            'characters. Only when outcome is "entities", "nothing" or "overview".',
+        },
+        conclusion: {
+          type: 'string',
+          maxLength: 2000,
+          description:
+            'At most three short sentences on what the result means for the question, in the ' +
+            'language of the question. Optional. Dropped, never refused, when it is not a ' +
+            'string or is longer than 2000 characters. Only when outcome is "entities", ' +
+            '"nothing" or "overview".',
+        },
         reason: {
           type: 'string',
           minLength: 1,

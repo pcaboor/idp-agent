@@ -33,6 +33,15 @@ the carve-out invites being stretched — so its limit is written into both: **t
 not transfer to `propose()`**, which proposes values that were never in the catalogue and will need
 a guarantee of its own.
 
+> **Amended by [ADR-0008](0008-commentary-crosses-labelled.md) — 2026-09-25.** Model-authored text
+> now reaches stdout in one form: an introduction and a conclusion around the engine's block, each
+> sentence checked against what the tools returned, cleaned, bounded and printed marked `› ` as the
+> model's. The consequence now reads: no model-authored text reaches stdout unlabelled or unchecked,
+> and the engine's block states nothing the graph never produced. A labelled line can — the check
+> removes entities and identifiers no tool returned, not a claim made in plain words — which is why
+> it is labelled, and why `--quiet` leaves it out. The addenda below were true when written, and
+> still are of the block itself.
+
 ## Addendum — 2026-09-24: the overview
 
 `ask "Talk about this project"` ended on `cannot answer`, exit 3, on a real repository: the

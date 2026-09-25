@@ -26,7 +26,7 @@ Two consequences that look odd until you know why:
 | file | what it is |
 |---|---|
 | `supervisor.ts` | `MUTATION` or `QUESTION`, no tools, no third answer |
-| `analyst.ts` | a question against the graph, terminating in `answer`: `entities`, `nothing`, `overview` (chosen, never written — the engine describes the catalogue) or `unanswerable` |
+| `analyst.ts` | a question against the graph, terminating in `answer`: `entities`, `nothing`, `overview` (chosen, never written — the engine describes the catalogue) or `unanswerable`; the first three may carry the model's `intro` and `conclusion` |
 | `inspector.ts` | an application repository read into `ProjectFacts`, terminating in `report_facts` |
 | `architect.ts` | a draft into a typed buffer, terminating in `propose` |
 | `reviewer.ts` | substance, not shape: `ok` or a reason, terminating in `verdict` |
@@ -63,6 +63,13 @@ Plain data, handed in. Never a graph, never a provider, never a path.
   advertisement shows `refs` and `reason` beside every outcome, and a real model fills
   them — and never reads it (ADR-0007, amended). When every answer it sent was refused,
   the refusal says so and names the issue, rather than that nothing matched.
+- `entities`, `nothing` and `overview` also carry an optional `intro` and `conclusion`,
+  the model's words around the block the engine prints, written in the same call
+  (ADR-0008). A malformed or oversized one is dropped at the parse, never refused and never
+  worth a repair turn. The Analyst hands them back **unchecked**: the check needs every
+  entity the graph holds, and an agent never holds a graph, so `cli/commands/ask.ts` runs
+  `core/answer/commentary.ts` before a word is printed. They never reach the event stream —
+  `answer:ready` is the outcome and the references, and nothing else.
 - The **Inspector** gets a `ProjectSnapshot` that `context/project-fs` has already read,
   capped and stripped: `.env*`, key material, credential files, `.git/`, `node_modules/`
   and hidden directories bar `.github` are gone before this folder sees anything.
