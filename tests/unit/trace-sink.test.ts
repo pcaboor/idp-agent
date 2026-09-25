@@ -156,4 +156,49 @@ describe('exportTrace', () => {
     expect(written).toEqual([TRACE.traceId])
     expect(err).toEqual(['! trace not exported to mlflow: 502 from the proxy\n'])
   })
+
+  it('never rejects, even when a sink throws a value with no message and no prototype', async () => {
+    const failing: TraceSink = {
+      name: 'mlflow',
+      export: async () => {
+        // No `.message`, and `String()` throws on this — the shape a
+        // guarded helper exists for, not a contrived edge case.
+        throw Object.create(null)
+      },
+    }
+    const err: string[] = []
+
+    await expect(exportTrace(TRACE, [failing], (chunk) => void err.push(chunk))).resolves.toBeUndefined()
+    expect(err).toHaveLength(1)
+    expect(err[0]).toMatch(/^! trace not exported to mlflow: .+\n$/)
+  })
+
+  it('names the cause undici hangs the real reason on, so a forgotten `pnpm mlflow:up` is named', async () => {
+    const cause = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:5055'), { code: 'ECONNREFUSED' })
+    const failing: TraceSink = {
+      name: 'mlflow',
+      export: async () => {
+        throw new TypeError('fetch failed', { cause })
+      },
+    }
+    const err: string[] = []
+
+    await exportTrace(TRACE, [failing], (chunk) => void err.push(chunk))
+
+    expect(err[0]).toContain('ECONNREFUSED')
+  })
+
+  it('strips a control sequence a thrown message carries, the same as any other model text', async () => {
+    const failing: TraceSink = {
+      name: 'mlflow',
+      export: async () => {
+        throw new Error('failed\u001b[2Jmore')
+      },
+    }
+    const err: string[] = []
+
+    await exportTrace(TRACE, [failing], (chunk) => void err.push(chunk))
+
+    expect(err[0]).not.toContain('\u001b')
+  })
 })

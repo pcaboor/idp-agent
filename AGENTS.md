@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 1792 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 1801 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -33,7 +33,7 @@ Tracing is optional, needs Docker, and is never part of CI (ADR-0009):
 ```bash
 pnpm mlflow:up                                   # MLflow 3.16.1 on 127.0.0.1:5055
 MLFLOW_TRACKING_URI=http://127.0.0.1:5055 idp-agent plan "<intent>" --repo <dir>
-IDP_TRACE_DIR=.traces pnpm vitest run tests/scenarios && pnpm trace:push .traces   # the tapes, no key
+IDP_TRACE_DIR=.traces pnpm vitest run tests/scenarios && MLFLOW_TRACKING_URI=http://127.0.0.1:5055 pnpm trace:push .traces   # the tapes, no key
 pnpm mlflow:contract                             # after moving the image tag
 pnpm mlflow:down
 ```
@@ -104,7 +104,7 @@ Supervisor classifies the phrase once, a question takes `ask`'s road and a chang
 entities; `ask`, answered by the Supervisor and the Analyst against recordings with no API
 key; `validate`, seven
 rules over an IaC repository; `init platform`, which writes twelve files and clobbers
-nothing; and stage 4's two previews, which write nothing at all:
+nothing; and stage 4's two previews, which write nothing to a repository:
 
 ```bash
 idpa "<phrase>" [--repo <dir> | --demo] [--project <dir>] [--json] [--quiet]  # question or change
@@ -113,11 +113,13 @@ idp-agent plan "<intent>" --repo <dir> [--json]  # Inspector, Architect, five ga
 idp-agent init [--repo <dir>]                    # the catalog-info.yml it would write
 ```
 
-**`init platform` is still the only command that writes**, and only into the directory it
-was handed. The two forms of `plan` and `init` read two repositories and produce a unified
-diff; `plan-command.test.ts` and `plan-intent.test.ts` hash every path, every byte and
-every directory of both repositories either side of a full run rather than taking that on
-trust, and `pnpm smoke` makes the same assertion about the built binary.
+**`init platform` is still the only command that writes into a repository**, and only into
+the directory it was handed; with `IDP_TRACE_DIR` set, a phrase, `plan`, `ask` and `init`
+also write one trace file there, and nothing else. The two forms of `plan` and `init` read
+two repositories and produce a unified diff; `plan-command.test.ts` and
+`plan-intent.test.ts` hash every path, every byte and every directory of both repositories
+either side of a full run rather than taking that on trust, and `pnpm smoke` makes the same
+assertion about the built binary.
 
 The two `--repo` flags name different repositories, which is the first thing that trips
 someone up. `plan --repo` is the **declarations** repository the preview is decided

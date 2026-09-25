@@ -90,6 +90,37 @@ export function sinksFromEnv(
   return sinks
 }
 
+/**
+ * What a failure says, and always a string, however malformed the thrown
+ * value is: `thrown.message` might not be a string (or might not exist at
+ * all), and `String(thrown)` throws for an object with no prototype
+ * (`Object.create(null)`) — a sink's own failure must not take `exportTrace`
+ * down with it.
+ *
+ * undici's "fetch failed" carries the real reason on `cause`, not on the
+ * message itself — `ECONNREFUSED` is what names a forgotten `pnpm mlflow:up`
+ * — so a `code` or `message` found there is appended, as `fetch failed
+ * (ECONNREFUSED)`.
+ */
+const messageOf = (thrown: unknown): string => {
+  let text: string
+  try {
+    const message = (thrown as { message?: unknown } | null)?.message
+    text = typeof message === 'string' ? message : String(thrown)
+  } catch {
+    text = 'an error that could not be printed'
+  }
+  try {
+    const cause = (thrown as { cause?: { code?: unknown; message?: unknown } } | null)?.cause
+    const label =
+      typeof cause?.code === 'string' ? cause.code : typeof cause?.message === 'string' ? cause.message : undefined
+    if (label !== undefined) text += ` (${label})`
+  } catch {
+    // The cause is decoration on the message; losing it is fine, throwing here is not.
+  }
+  return text
+}
+
 /** Every sink, each on its own: one that fails says so, and does not stop the others. */
 export async function exportTrace(
   trace: Trace,
@@ -101,10 +132,7 @@ export async function exportTrace(
       try {
         await sink.export(trace)
       } catch (thrown) {
-        const message = plain(thrown instanceof Error ? thrown.message : String(thrown))
-          .replace(/\s+/g, ' ')
-          .trim()
-          .slice(0, 200)
+        const message = plain(messageOf(thrown)).replace(/\s+/g, ' ').trim().slice(0, 200)
         err(`! trace not exported to ${sink.name}: ${message}\n`)
       }
     }),

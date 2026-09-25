@@ -144,7 +144,11 @@ const run = async (
   // Whatever the model chose, the trace a replay produces tells the run the
   // way its own stream did: every span closed by an event, every model call
   // inside an agent, every gate verdict under its attempt.
-  expect(disagreements(onlyTrace(sink), events), `${scenario}: the trace and the stream disagree`).toEqual([])
+  const trace = onlyTrace(sink)
+  expect(disagreements(trace, events), `${scenario}: the trace and the stream disagree`).toEqual([])
+  // A replayed trace's latencies measure the tape, not the model — `idp.mode`
+  // and `idp.scenario` are how a reader of the trace knows that.
+  expect(trace.spans[0]?.attributes).toMatchObject({ 'idp.mode': 'replay', 'idp.scenario': scenario })
   return { code, out: out.join(''), err: stderr, events }
 }
 
