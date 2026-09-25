@@ -532,7 +532,7 @@ EOF
 export async function asAgent<T>(agent: AgentName, emit: EventSink, run: () => Promise<T>): Promise<T>
 ```
 
-- [ ] **Step 1: Write the failing test for `asAgent`**
+- [x] **Step 1: Write the failing test for `asAgent`**
 
 `tests/unit/lifetime.test.ts`:
 
@@ -580,12 +580,12 @@ describe('asAgent', () => {
 })
 ```
 
-- [ ] **Step 2: Run it to see it fail**
+- [x] **Step 2: Run it to see it fail**
 
 Run: `pnpm vitest run tests/unit/lifetime.test.ts`
 Expected: FAIL — `Cannot find module '../../src/agents/lifetime.js'` (or `Failed to load url`).
 
-- [ ] **Step 3: Add the events and `asAgent`**
+- [x] **Step 3: Add the events and `asAgent`**
 
 In `src/agents/events.ts`, replace:
 
@@ -673,12 +673,12 @@ export async function asAgent<T>(
 }
 ```
 
-- [ ] **Step 4: Run the test to see it pass**
+- [x] **Step 4: Run the test to see it pass**
 
 Run: `pnpm vitest run tests/unit/lifetime.test.ts`
 Expected: PASS, 2 tests.
 
-- [ ] **Step 5: Make the agents' own tests expect the end**
+- [x] **Step 5: Make the agents' own tests expect the end** — *since changed:* upstream renamed the event a failed model call ends on, so the Architect, Inspector and Reviewer tests expect `[agent:start, stopped, agent:end]` with `threw: true`, not `refused`.
 
 `tests/unit/supervisor.test.ts`. Replace:
 
@@ -852,12 +852,12 @@ with:
     expect(events.at(-1)).toEqual({ type: 'agent:end', agent: 'reviewer', threw: true })
 ```
 
-- [ ] **Step 6: Run them to see them fail**
+- [x] **Step 6: Run them to see them fail**
 
 Run: `pnpm vitest run tests/unit/supervisor.test.ts tests/unit/analyst.test.ts tests/unit/architect.test.ts tests/unit/inspector.test.ts tests/unit/reviewer.test.ts`
 Expected: FAIL. The sequences lack `agent:end`, and the new analyst test sees `[undefined, undefined]`.
 
-- [ ] **Step 7: Wrap the five agents, and give tool events their id**
+- [x] **Step 7: Wrap the five agents, and give tool events their id** — *since changed:* the Architect also answers the call it refuses (`answer`) with a `tool:result` carrying `error`, under the same id; `tests/unit/architect.test.ts` holds it.
 
 Apply the same three edits in each of the five files:
 - add `import { asAgent } from './lifetime.js'` beside the file's other `./` imports;
@@ -1062,12 +1062,12 @@ with
           name: call.name,
 ```
 
-- [ ] **Step 8: Run the agents' tests to see them pass**
+- [x] **Step 8: Run the agents' tests to see them pass**
 
 Run: `pnpm vitest run tests/unit/lifetime.test.ts tests/unit/supervisor.test.ts tests/unit/analyst.test.ts tests/unit/architect.test.ts tests/unit/inspector.test.ts tests/unit/reviewer.test.ts`
 Expected: PASS.
 
-- [ ] **Step 9: Write the failing test that ties the stream to the repair record**
+- [x] **Step 9: Write the failing test that ties the stream to the repair record**
 
 Append to the end of `tests/unit/repair.test.ts`. It uses only helpers already defined at the top of that file.
 
@@ -1161,12 +1161,12 @@ describe('the stream tells each attempt the way the record does', () => {
 })
 ```
 
-- [ ] **Step 10: Run it to see it fail**
+- [x] **Step 10: Run it to see it fail**
 
 Run: `pnpm vitest run tests/unit/repair.test.ts -t 'the stream tells each attempt'`
 Expected: FAIL — `told(events)` is `[]`, because nothing emits `attempt:start` yet.
 
-- [ ] **Step 11: Emit the bounds and the verdicts in `repair()`**
+- [x] **Step 11: Emit the bounds and the verdicts in `repair()`** — *since changed:* `attempt:end` is emitted once, from a `finally` around the attempt, on every exit — a throw included — and carries `stopped` when the attempt ended with no verdict (no-opinion, no draft, a throw); `tests/unit/repair.test.ts` holds each exit.
 
 In `src/agents/repair.ts`, make these edits in order.
 
@@ -1353,12 +1353,12 @@ with
     return { outcome: 'planned', signed, edits, dropped, recheck, attempts, truncated, rejections }
 ```
 
-- [ ] **Step 12: Run the repair tests to see them pass**
+- [x] **Step 12: Run the repair tests to see them pass**
 
 Run: `pnpm vitest run tests/unit/repair.test.ts`
 Expected: PASS, all tests, including the 7 new ones.
 
-- [ ] **Step 13: Render nothing for the new events, and test it**
+- [x] **Step 13: Render nothing for the new events, and test it**
 
 `tests/unit/plan-intent.test.ts`, in `describe('what a run looks like on a terminal'`. Replace
 
@@ -1427,7 +1427,7 @@ with
 Run: `pnpm typecheck && pnpm vitest run tests/unit/plan-intent.test.ts`
 Expected: typecheck clean; the tests PASS.
 
-- [ ] **Step 14: Update design §6.2**
+- [x] **Step 14: Update design §6.2** — *since changed:* the union also carries upstream's `stopped`, `reapplied` and `tool:result.error`, and `attempt:end.stopped`.
 
 In `docs/design.md` §6.2, replace the listed union:
 
@@ -1469,12 +1469,12 @@ type AgentEvent =
 
 The old listing had also drifted: `answer:ready`'s `outcome`, `derived` and `overridden` were missing. The new one is the union as `src/agents/events.ts` declares it.
 
-- [ ] **Step 15: Run the CI commands and correct the count**
+- [x] **Step 15: Run the CI commands and correct the count**
 
 Run: `df -h / && pnpm test && pnpm typecheck && pnpm build && pnpm smoke`
 Expected: all green, with 11 tests added: 2 in `lifetime.test.ts`, 1 in `analyst.test.ts`, 7 in `repair.test.ts` (6 from `it.each`, 1 on its own) and 1 in `plan-intent.test.ts`. Write the number `pnpm test` measured, not this sum, into AGENTS.md at `pnpm test             # <N> tests.`.
 
-- [ ] **Step 16: Commit** (after a go-ahead)
+- [x] **Step 16: Commit** (after a go-ahead)
 
 ```bash
 git add src/agents/events.ts src/agents/lifetime.ts src/agents/supervisor.ts src/agents/analyst.ts \
@@ -1495,7 +1495,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
 EOF
 ```
 
-- [ ] **Step 17: Open the PR against `feat/tracing-1-contract`** (after a go-ahead)
+- [ ] **Step 17: Open the PR against `feat/tracing-1-contract`** (after a go-ahead) — *not yet:* nothing is pushed until the owner says so.
 
 ---
 

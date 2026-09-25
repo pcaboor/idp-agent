@@ -576,7 +576,7 @@ type AgentEvent =
   | { type: 'stopped';       agent: AgentName; reason: string }
   | { type: 'repair';        attempt: 1 | 2 | 3; gate: Gate; reason: string }
   | { type: 'attempt:start'; attempt: 1 | 2 | 3 }
-  | { type: 'attempt:end';   attempt: 1 | 2 | 3 }
+  | { type: 'attempt:end';   attempt: 1 | 2 | 3; stopped?: string }
   | { type: 'gate:passed';   attempt: 1 | 2 | 3; gate: Gate }
   | { type: 'retry';         agent: AgentName; reason: string }
   | { type: 'plan:ready';    operations: number }
@@ -600,8 +600,8 @@ would invent it. Sharing a field put two counters under one name, one restarting
 every attempt of the other, and the rendered sequence went backwards within a run.
 
 `stopped` and `refused` are two facts for the same reason. `refused` is an agent judging;
-`stopped` says why an agent whose model call threw — a timeout, a provider failure — ended,
-and `agent:end` is what closes it. The error goes on to the caller, which prints it. So
+`stopped` says why an agent ended when its model call threw — a timeout, a provider failure
+— and `agent:end` is what closes it. The error goes on to the caller, which prints it. So
 `cli/index.ts` renders `stopped` without its reason: with it, the one line a failed call
 ends on was printed twice, the first time as the agent refusing.
 

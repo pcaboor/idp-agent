@@ -223,9 +223,9 @@ async function draftFromIntent(
       // caller that asked for an inspection is owed the difference between
       // "nothing is established about this repository" and "I could not look".
       //
-      // But it IS this loop's to CLOSE. `agent:start` is already on the sink,
-      // and letting the rejection through untouched left a stream showing an
-      // agent that began and never ended.
+      // But it IS this loop's to EXPLAIN. `asAgent` closes the agent with
+      // `agent:end` whichever way it leaves; `stopped` is what says why, for a
+      // reader of the stream that sees no more than the stream.
       emit({
         type: 'stopped',
         agent: 'architect',
@@ -271,12 +271,12 @@ async function draftFromIntent(
         // Not listed, so a model asking for it is asking for something that is
         // not there. Refused in the transcript rather than executed: listing is
         // not the enforcement, this is.
-        transcript.push({
-          role: 'tool',
-          id: call.id,
-          name: call.name,
-          result: { error: `${call.name} is not a tool this agent has` },
-        })
+        const refusal = `${call.name} is not a tool this agent has`
+        transcript.push({ role: 'tool', id: call.id, name: call.name, result: { error: refusal } })
+        // And answered on the stream, as any refused read is: a call with no
+        // result is one a reader of the stream — a trace — can only close by
+        // force, as if something had been lost, when the call was refused.
+        emit({ type: 'tool:result', id: call.id, name: call.name, rows: 0, truncated: 0, error: refusal })
         continue
       }
       const outcome = reads ? tools.run(call) : propose.run(call)

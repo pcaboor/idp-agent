@@ -1324,3 +1324,105 @@ describe('the stream tells each attempt the way the record does', () => {
     ])
   })
 })
+
+describe('an attempt ends on the stream on every exit, and says why when no gate did', () => {
+  /** The attempt events alone, in order: what a trace bounds an attempt span with. */
+  const bounds = (events: readonly AgentEvent[]): AgentEvent[] =>
+    events.filter((event) => event.type === 'attempt:start' || event.type === 'attempt:end')
+
+  it('ends an attempt whose draft threw, once, and lets the error through unchanged', async () => {
+    const { events, emit } = collect()
+    const failure = new Error('502 from the gateway')
+
+    const running = repair(
+      inputs({
+        draft: async () => {
+          throw failure
+        },
+      }),
+      emit,
+    )
+
+    await expect(running).rejects.toBe(failure)
+    expect(bounds(events)).toEqual([
+      { type: 'attempt:start', attempt: 1 },
+      { type: 'attempt:end', attempt: 1, stopped: 'the attempt threw' },
+    ])
+  })
+
+  it('ends an attempt whose review threw, once, after the gates it passed', async () => {
+    const { events, emit } = collect()
+    const failure = new Error('the reviewer timed out')
+
+    const running = repair(
+      inputs({
+        review: async () => {
+          throw failure
+        },
+      }),
+      emit,
+    )
+
+    await expect(running).rejects.toBe(failure)
+    const structure = events.filter((event) => event.type.startsWith('attempt:') || event.type === 'gate:passed')
+    expect(structure.map((event) => event.type)).toEqual([
+      'attempt:start',
+      'gate:passed',
+      'gate:passed',
+      'gate:passed',
+      'gate:passed',
+      'attempt:end',
+    ])
+    expect(bounds(events).at(-1)).toEqual({
+      type: 'attempt:end',
+      attempt: 1,
+      stopped: 'the attempt threw',
+    })
+  })
+
+  it('says a Reviewer with no opinion stopped the attempt, in its own words', async () => {
+    const { events, emit } = collect()
+
+    await repair(
+      inputs({
+        review: reviewing({ verdict: 'no-opinion', reason: 'the reviewer could not be reached' })
+          .review,
+      }),
+      emit,
+    )
+
+    expect(bounds(events)).toEqual([
+      { type: 'attempt:start', attempt: 1 },
+      { type: 'attempt:end', attempt: 1, stopped: 'the reviewer could not be reached' },
+    ])
+  })
+
+  it('says a draft with no proposal stopped the attempt', async () => {
+    const { events, emit } = collect()
+
+    await repair(inputs({ draft: drafting(undefined).draft }), emit)
+
+    expect(bounds(events)).toEqual([
+      { type: 'attempt:start', attempt: 1 },
+      { type: 'attempt:end', attempt: 1, stopped: 'the draft ended with no proposal' },
+    ])
+  })
+
+  it.each([
+    ['a plan that passes every gate', () => inputs()],
+    ['three refusals at the policy gate', () =>
+      inputs({ provenance: stating(DEV_INTENT), draft: drafting(MISMATCHED).draft })],
+    ['a question the signer asked', () =>
+      inputs({ provenance: stating(DECLARE_INTENT), draft: drafting(UNVOUCHED).draft })],
+  ] as const)('gives no reason to an attempt that ended on a verdict or a question: %s', async (_label, given) => {
+    const { events, emit } = collect()
+
+    await repair(given(), emit)
+
+    const ends = events.filter((event) => event.type === 'attempt:end')
+    expect(ends.length).toBeGreaterThan(0)
+    for (const end of ends) expect(end).not.toHaveProperty('stopped')
+    // One end per start, whatever the exit.
+    expect(ends).toHaveLength(events.filter((event) => event.type === 'attempt:start').length)
+  })
+})

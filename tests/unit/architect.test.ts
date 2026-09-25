@@ -732,6 +732,31 @@ describe('an agent is not handed another agent’s terminal channel', () => {
     // the model asked for must not come back as a tool RESULT.
     expect(JSON.stringify(client.seen)).not.toContain('echoed')
   })
+
+  it('answers the call it refuses on the stream, under the same id, with the refusal', async () => {
+    // A call with no result on the stream is one a trace can only close by
+    // force, as if something had been lost. Nothing was: the call was refused,
+    // and the stream says so the way it says any refused read.
+    const client = scripted([
+      { text: '', toolCalls: [{ id: 'refused-1', name: 'answer', args: {} }], finishReason: 'tool-calls' },
+      proposing([ACCESS]),
+    ])
+    const { events, emit } = collect()
+
+    await draftPlan(client, readTools(), INPUT, emit)
+
+    expect(events.filter((event) => event.type === 'tool:call' || event.type === 'tool:result')).toEqual([
+      { type: 'tool:call', id: 'refused-1', name: 'answer', args: {} },
+      {
+        type: 'tool:result',
+        id: 'refused-1',
+        name: 'answer',
+        rows: 0,
+        truncated: 0,
+        error: 'answer is not a tool this agent has',
+      },
+    ])
+  })
 })
 
 describe('the escape hatch is not a channel', () => {

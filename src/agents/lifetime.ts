@@ -6,10 +6,10 @@ import type { EventSink } from './events.js'
  * `agent:end` after its last, on every path out — a return, a refusal, a
  * throw.
  *
- * Each agent used to emit its own start and no end, and two of them emitted a
- * `refused` before rethrowing a provider failure so the stream would not show
- * an agent that began and never ended. That patch is kept — the refusal says
- * why — and this is the end it was standing in for.
+ * Each agent used to emit its own start and no end. The Architect, the
+ * Inspector and the Reviewer emit `stopped` before rethrowing a provider
+ * failure, and that event once stood in for the end the stream never had.
+ * It stays, because it says why; this is what closes the agent.
  */
 export async function asAgent<T>(
   agent: AgentName,

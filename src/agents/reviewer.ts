@@ -374,10 +374,10 @@ async function reviewAgainstRequest(
       // caller is owed the difference between "the plan was rejected" and "no
       // opinion was obtained". Both stop the plan; only one is about the plan.
       //
-      // But it IS this loop's to CLOSE, for the reason the Architect and the
-      // Inspector both give: `agent:start` is already on the sink, and letting
-      // the rejection through untouched leaves a stream showing an agent that
-      // began and never ended.
+      // But it IS this loop's to EXPLAIN, for the reason the Architect and the
+      // Inspector both give: `asAgent` closes the agent with `agent:end`
+      // whichever way it leaves, and `stopped` is what says why, for a reader
+      // of the stream that sees no more than the stream.
       emit({
         type: 'stopped',
         agent: 'reviewer',
