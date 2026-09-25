@@ -99,7 +99,20 @@ always has. `undefined` is a decline, and so is an empty line.
 
 Both roads then run **all the gates again** on the filled plan, bounded by
 `ASK_LIMITS.maxRounds`. An answer is not exempted from any gate: it joins what the user
-stated — `provenanceOf` in `plan.ts`, the request plus every answer at the field it
-answered — and the derivation, the signature and the policies all read that one
-`Provenance`. That is what stops the same field being asked about twice, and what makes an
-answer count exactly as the same value typed into the request would, at that field.
+stated, and the derivation, the signature and the policies all read that one
+`Provenance`. That is what makes an answer count exactly as the same value typed into the
+request would, at that field.
+
+An answer is recorded by what it is about — the entity its operation declares or amends,
+and the field inside it (`recordAnswers`) — not by its path, because the Architect does
+not keep paths: a redraft after the Reviewer refused a filled plan may move the entity, or
+put `{unknown}` back where the user answered. `reapplyAnswers` (`core/plan/reapply.ts`)
+runs on every plan before the derivation — inside `repair` on the intent road, once per
+round on `--from` — writes each answer back wherever its entity now is, and re-keys the
+answers to that plan's paths; `provenanceOf` builds the one `Provenance` from them. That
+is what stops a moved or reopened field being asked about twice. An answer it wrote into a
+redraft is said on stderr, one line per path, naming the entity rather than a path the
+user no longer sees, and what the draft said when the user's answer replaced it:
+`  = <path> is <value>, as answered for <entity>; the draft said <value>`. What it does
+not follow — a renamed entity, a moved consumer, an entity two operations amend — is asked
+again; `reapply.ts` lists it.

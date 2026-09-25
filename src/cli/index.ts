@@ -406,6 +406,14 @@ export function renderEvent(event: AgentEvent): string | undefined {
         `  = ${event.path} is ${event.owner}, as stated; ` +
         `${event.from.join(', ')} would give ${event.determined}`
       )
+    case 'reapplied':
+      // The entity, not the path it was typed at: that path belongs to a plan
+      // the user no longer sees. What the draft said instead is a model's
+      // value, so it is one bounded line like every reason.
+      return (
+        `  = ${event.path} is ${oneLine(event.value)}, as answered for ${event.entity}` +
+        (event.replaced === undefined ? '' : `; the draft said ${oneLine(event.replaced)}`)
+      )
     case 'refused':
       return `! ${event.agent} refused: ${oneLine(event.reason)}`
     case 'stopped':

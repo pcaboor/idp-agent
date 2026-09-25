@@ -13,6 +13,7 @@ are the same computation rather than two that agree until they do not.
 | Module | Question it answers |
 |---|---|
 | `../schemas/plan.ts` | can this even be expressed? — the closed `Operation` union |
+| `reapply.ts` | what has the user already answered about the entities in this draft? |
 | `derive.ts` | which values follow from the catalogue rather than being chosen? |
 | `sign.ts` | where did each value come from? |
 | `clarify.ts` | what has to be asked before anything happens? |
@@ -31,10 +32,15 @@ re-declares, and the loop once skipped it. The re-check exists because the catal
 the repository by about two minutes (§4.4): what was true when the plan was drafted may not
 be true now.
 
-`derive.ts` is in that list but it is **not a gate**: it has no refusal to make and hands
-nothing back. It runs between the schema and the signature because a right's owner is not a
-choice, it is a consequence — an access `billing-api → orders-db` belongs to whoever owns
-`billing-api`, and the catalogue already says who that is. §5.2 gives the model the owner
+`reapply.ts` and `derive.ts` are in that list but neither is **a gate**: neither has a
+refusal to make or hands anything back. Both run after the schema and before the
+signature, `reapply.ts` first: it needs a plan the schema has minted, since it checks each
+value it writes against the operation's schema, and it has to put an owner the user
+answered back in the field — and have the provenance vouch for it there — before
+`derive.ts` reads the consumers, or the derivation would treat that owner as nobody's.
+`derive.ts` runs where it does because a right's owner is not a choice, it is a
+consequence — an access `billing-api → orders-db` belongs to whoever owns `billing-api`,
+and the catalogue already says who that is. §5.2 gives the model the owner
 "entirely" and the signature says an owner nobody vouches for is a question; both were true
 at once and the run stopped between them. So the field is taken away from the model rather
 than asked of it, exactly as the path already is. Only for a right (`natureOf`), and only
@@ -66,10 +72,30 @@ an environment the user answered did not count as asked.
 
 An answer is indexed by its field because a value is not the user's everywhere it appears:
 answering one grant's level `read` says nothing about another grant's, and an environment
-answered for one operation counts as asked for that operation only. The index is the plan's
-own, which is the one limit: an Architect that redrafts after a gate refused the filled
-plan, putting a different operation at the same index, inherits the answer for the same
-value at the same field. And the words live in the provenance, never in `plan.intent` —
+answered for one operation counts as asked for that operation only.
+
+A path is the plan's own index, though, and the Architect does not keep indices. A run
+asked the owner of `orders-db-prod`, the Reviewer refused the filled plan because it
+granted no access, and the redraft — which had never seen the answer — put `{unknown}`
+back in the same field: the same question, asked twice. So an answer is **recorded by
+what it is about** — the entity its operation declares or amends, and the field inside
+the operation — and `reapply.ts` puts it back into every plan before the derivation, on
+both roads: a field the draft left open or left out is filled, a different value is
+replaced (the user's word for that entity's field wins, as an owner they state outranks
+the consumers) and the replacement is said, and the provenance's paths are re-keyed to
+where the entity now sits, so a redraft that moves the entity or reopens the field does
+not ask it again. What is asked again — the safe direction — is stated as plainly: a
+renamed entity, one whose name the redraft left open, or one of another kind, is another
+entity; a list element and a consumer are never written — their position is not their
+identity — and vouch only where the same entity still holds that value; a value the schema
+would refuse at the redraft's field is not written; and an entity two operations of one
+plan amend has no identity at all, because two updates of one grant ask two levels and
+those are two answers, not one given twice. What keeps the old limit is only what has no
+entity to follow — an answer about an operation with no name to know it by, or about an
+entity two operations share, and one a caller vouches for at a fixed path — which still
+vouches for the same value at the same field of whatever operation sits there.
+
+And the words live in the provenance, never in `plan.intent` —
 that field arrives with the plan, from whoever drafted it, and is only the record a report
 carries. `init` signs with the engine's own sentence, which vouches for nothing (`wordsOf:
 'engine'`), and puts what its inspection read in as answers at the Component's fields.

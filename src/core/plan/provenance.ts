@@ -28,11 +28,18 @@ import { echoes } from './echoes.js'
  *
  * What this does NOT cover:
  *
- *   - An answer's path is the plan's own index. The ask loop hands the next
- *     round the plan it filled, so the indices hold; an Architect that redrafts
- *     after a gate refused the filled plan may put a different operation at the
- *     same index, and an answer then vouches for the same value at the same
- *     field of that operation. The value still has to be the one typed.
+ *   - An answer's path is the plan's own index, so `answers` describes ONE
+ *     plan. The callers record each answer by what it is about — the entity
+ *     its operation declares or amends, and the field — and `reapplyAnswers`
+ *     builds this map for every plan a gate judges, a redraft included: an
+ *     answer sits at the path its entity has in THAT plan, and nowhere else.
+ *     What is still keyed by a bare path is what has no entity to follow — an
+ *     answer about an operation with no name to know it by, or about an entity
+ *     two operations of its plan share, and answers a caller vouches for at a
+ *     fixed path (`init`'s inspection,
+ *     `RepairInput.provenance`). Those vouch for the same value at the same
+ *     field of whatever operation sits there. The value still has to be the
+ *     one typed.
  *   - It says what the user stated, never whether it is right. The diff is
  *     where a person reads it, and the merge is the act of authorisation.
  */
