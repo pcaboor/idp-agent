@@ -4,9 +4,11 @@
 
 **Goal:** One MLflow trace per agent-backed run — `plan "<intent>"`, `ask`, `init` — live or replayed, built from the event stream and the model calls, with the suite still offline.
 
-**Architecture:** A pure `src/trace/` folds `AgentEvent`s and `LlmClient` calls into a span tree and encodes it as OTLP/JSON. `src/cli/` owns the only two ways a trace leaves the process: a `POST` to MLflow's `/v1/traces`, and a file per run. The spec is `docs/superpowers/specs/2026-09-24-mlflow-tracing-design.md`.
+**Architecture:** A pure `src/trace/` folds `AgentEvent`s and `LlmClient` calls into a span tree and encodes it as OTLP/JSON. `src/cli/` owns the only two ways a trace leaves the process: a `POST` to MLflow's `/v1/traces`, and a file per run. The spec is `docs/tracing-design.md`.
 
 **Tech Stack:** TypeScript (strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`), Node ≥ 22, vitest 5, fast-check 4, MLflow 3.16.1 in Docker. No new npm dependency.
+
+**Since written.** The steps below are the record of what was decided on 2026-09-24. The review of the whole stack, and the rebase onto a `main` that had moved, changed some of it, and the spec says what holds now: `IDP_MLFLOW_TRACKING_URI` and `IDP_MLFLOW_EXPERIMENT_ID` replace `MLFLOW_*`, which is ignored (spec §6); an attempt that stops or throws fails with its reason, and the root fails only when the run threw (spec §4.1); the Architect answers the call it refuses, so every tool call is answered; `idpa "<phrase>"` is traced as `idp-agent entry`. Each step a later commit changed is ticked with a note saying how.
 
 ## Global Constraints
 
@@ -75,9 +77,8 @@ This task's content was validated against a live `v3.16.1` server on 2026-09-24.
 `tools/mlflow/compose.yml`:
 
 ```yaml
-# MLflow for reading traces of idp-agent runs
-# (docs/superpowers/specs/2026-09-24-mlflow-tracing-design.md). Never part of
-# CI, and never needed by `pnpm test`.
+# MLflow for reading traces of idp-agent runs (docs/tracing-design.md). Never
+# part of CI, and never needed by `pnpm test`.
 #
 # 127.0.0.1 only: a trace carries full prompts (SECURITY.md). Port 5055, not
 # MLflow's 5000, because macOS's AirPlay receiver holds 5000. The tag is pinned
