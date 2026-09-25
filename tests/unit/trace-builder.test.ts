@@ -227,18 +227,69 @@ describe('an agent’s outcome', () => {
   })
 
   it('keeps the refusal’s reason when the agent then threw', () => {
-    // A provider failure, as the Inspector and the Architect report it: the
-    // refusal says why, and `asAgent` then ends the agent with `threw`.
+    // The first failure stands: `threw` says how the agent left, the refusal
+    // says what went wrong, and a reader needs the second more.
+    const builder = building()
+    emitAll(builder, [
+      { type: 'agent:start', agent: 'reviewer' },
+      { type: 'refused', agent: 'reviewer', reason: 'the verdict named no reason' },
+      { type: 'agent:end', agent: 'reviewer', threw: true },
+    ])
+    expect(spanNamed(builder.finish(DONE), 'reviewer').status).toEqual({
+      code: 'ERROR',
+      message: 'the verdict named no reason',
+    })
+  })
+
+  it('fails an agent that stopped with the reason, and keeps it when the agent then threw', () => {
+    // A provider failure, as the Architect, the Inspector and the Reviewer
+    // report it: `stopped` says why, and `asAgent` then ends the agent with
+    // `threw`, which must not replace the reason with "the agent threw".
     const builder = building()
     emitAll(builder, [
       { type: 'agent:start', agent: 'inspector' },
-      { type: 'refused', agent: 'inspector', reason: 'the run stopped: 502 from the gateway' },
+      { type: 'stopped', agent: 'inspector', reason: '502 from the gateway' },
       { type: 'agent:end', agent: 'inspector', threw: true },
     ])
-    expect(spanNamed(builder.finish(DONE), 'inspector').status).toEqual({
+    const inspector = spanNamed(builder.finish(DONE), 'inspector')
+
+    expect(inspector.status).toEqual({ code: 'ERROR', message: '502 from the gateway' })
+    expect(inspector.events.map((event) => [event.name, event.attributes])).toEqual([
+      ['stopped', { agent: 'inspector', reason: '502 from the gateway' }],
+    ])
+  })
+
+  it('fails a tool that refused the call, with its error, and not the agent that called it', () => {
+    // The Architect's refused `answer`: the call is answered, so the span is
+    // closed by its own result, and the result says the tool refused.
+    const builder = building()
+    emitAll(builder, [
+      { type: 'agent:start', agent: 'architect' },
+      { type: 'tool:call', id: 'c1', name: 'answer', args: {} },
+      {
+        type: 'tool:result',
+        id: 'c1',
+        name: 'answer',
+        rows: 0,
+        truncated: 0,
+        error: 'answer is not a tool this agent has',
+      },
+      { type: 'agent:end', agent: 'architect', threw: false },
+    ])
+    const trace = builder.finish(DONE)
+
+    expect(spanNamed(trace, 'answer').status).toEqual({
       code: 'ERROR',
-      message: 'the run stopped: 502 from the gateway',
+      message: 'answer is not a tool this agent has',
     })
+    expect(spanNamed(trace, 'answer').outputs).toEqual({
+      rows: 0,
+      truncated: 0,
+      error: 'answer is not a tool this agent has',
+    })
+    // A refused call is the model's mistake, answered in the loop; the agent
+    // went on and ended as it would have.
+    expect(spanNamed(trace, 'architect').status).toEqual({ code: 'OK' })
   })
 
   it('keeps what happened inside an agent as events on it, in order, without failing it', () => {
@@ -351,6 +402,41 @@ describe('the repair loop', () => {
     const gates = trace.spans.filter((span) => span.name.startsWith('gate '))
     expect(gates).toHaveLength(4)
     for (const span of gates) expect(span.end).toBe(span.start)
+  })
+
+  it('fails an attempt that ended with no verdict, saying why', () => {
+    const builder = building()
+    emitAll(builder, [
+      { type: 'attempt:start', attempt: 1 },
+      { type: 'gate:passed', attempt: 1, gate: 'recheck' },
+      { type: 'attempt:end', attempt: 1, stopped: 'the reviewer could not be reached' },
+      { type: 'attempt:start', attempt: 2 },
+      { type: 'attempt:end', attempt: 2, stopped: 'the attempt threw' },
+    ])
+    const trace = builder.finish(DONE)
+
+    expect(spanNamed(trace, 'attempt 1').status).toEqual({
+      code: 'ERROR',
+      message: 'the reviewer could not be reached',
+    })
+    expect(spanNamed(trace, 'attempt 2').status).toEqual({ code: 'ERROR', message: 'the attempt threw' })
+    // Closed by their own end, with nothing forced: the stop is a reason, not a loss.
+    expect(trace.spans.filter((span) => span.name === 'unbalanced event')).toEqual([])
+  })
+
+  it('keeps the gate that refused an attempt when the attempt then says it stopped', () => {
+    // The first failure stands, as it does on an agent.
+    const builder = building()
+    emitAll(builder, [
+      { type: 'attempt:start', attempt: 1 },
+      { type: 'repair', attempt: 1, gate: 'policy', reason: 'environment-mismatch at operations.0' },
+      { type: 'attempt:end', attempt: 1, stopped: 'the attempt threw' },
+    ])
+
+    expect(spanNamed(builder.finish(DONE), 'attempt 1').status).toEqual({
+      code: 'ERROR',
+      message: 'refused at the policy gate',
+    })
   })
 
   it('puts the agents an attempt ran inside it, beside its gates', () => {

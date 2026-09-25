@@ -31,9 +31,10 @@ import type {
  * stack is the wrong structure, and this is the assumption to revisit.
  *
  * A tool call is a leaf and never goes on the stack. It is paired with its
- * result by id, and a call that never gets one — the Architect emits a
- * refused `answer` call and moves on — must not become the parent of
- * everything after it, nor the span later events land on.
+ * result by id — a refused call included, which the agents answer with an
+ * `error` — and a call that never gets one must not become the parent of
+ * everything after it, nor the span later events land on: its parent's end
+ * closes it, as an error that says so.
  */
 
 export interface TraceIds {
@@ -76,7 +77,10 @@ interface Open {
   usage: TokenUsage | undefined
   readonly attributes: Record<string, AttributeValue>
   readonly events: SpanEvent[]
-  /** Set by the event that makes this span a failure: a refusal, a refused gate. */
+  /**
+   * Set by the event that makes this span a failure: a refusal, a `stopped`,
+   * a refused gate, an attempt that stopped, a tool's error.
+   */
   failure: string | undefined
 }
 
@@ -267,6 +271,10 @@ export function createTraceBuilder(options: {
         stack.push(open(top(), `attempt ${event.attempt}`, 'CHAIN', `attempt:${event.attempt}`))
         return
       case 'attempt:end':
+        // An attempt that ended with no verdict — no opinion, no draft, a
+        // throw — fails with why. Through `fail`, so a gate that already
+        // refused it stays the reason.
+        if (event.stopped !== undefined) fail(`attempt:${event.attempt}`, event.stopped)
         if (!closeTo(`attempt:${event.attempt}`)) unbalanced('attempt:end', `attempt ${event.attempt}`)
         return
       case 'tool:call':
@@ -288,7 +296,14 @@ export function createTraceBuilder(options: {
           unbalanced('tool:result', `tool call ${event.id}`)
           return
         }
-        tool.outputs = { rows: event.rows, truncated: event.truncated }
+        tool.outputs = {
+          rows: event.rows,
+          truncated: event.truncated,
+          ...(event.error === undefined ? {} : { error: event.error }),
+        }
+        // A refused call reads no rows, like a search that found nothing; the
+        // error is what tells them apart, so it is the span's status too.
+        if (event.error !== undefined) tool.failure ??= event.error
         record(tool, statusOf(tool))
         return
       }
