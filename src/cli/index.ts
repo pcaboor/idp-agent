@@ -18,7 +18,12 @@ import { createClient, type ClientMode } from '../llm/runtime.js'
 import { fileRecordingStore } from './recording-fs.js'
 import { runAsk } from './commands/ask.js'
 import { runEntry } from './commands/entry.js'
-import type { AgentEvent } from '../agents/events.js'
+import { randomBytes } from 'node:crypto'
+import type { AgentEvent, EventSink } from '../agents/events.js'
+import { createTraceBuilder } from '../trace/builder.js'
+import { traced } from '../trace/client.js'
+import type { Attributes } from '../trace/model.js'
+import { exportTrace, sinksFromEnv, type TraceSink } from './trace-sink.js'
 import { EntityGraph } from '../context/graph/entity-graph.js'
 import { runGraph, type GraphOptions } from './commands/graph.js'
 import { runShow } from './commands/show.js'
@@ -524,6 +529,15 @@ export interface MainDeps {
    * `askOf` decides from the process whether there is anybody there.
    */
   ask?: Ask
+  /**
+   * Where a finished run's trace goes, beside the sinks the environment
+   * configures (`MLFLOW_TRACKING_URI`, `IDP_TRACE_DIR`). Injected so a test
+   * reads the trace itself rather than a file or a server. With neither this
+   * nor those variables, which is every run by default, nothing is traced.
+   */
+  traceSinks?: readonly TraceSink[]
+  /** The MLflow sink's transport. Injected for tests; a real run uses the global one. */
+  fetch?: typeof globalThis.fetch
 }
 
 /**
@@ -680,13 +694,12 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     // application from inside it, and `--repo` is how someone standing
     // elsewhere says which one.
     const project = path.resolve(deps.cwd ?? process.cwd(), command.repo ?? '.')
-    return agentBacked(deps, err, out, 'init', async (client) =>
-      runInitRepo({
-        project,
-        client,
-        emit: deps.events ?? progress(err),
-        colour: colourOf(deps),
-      }),
+    return agentBacked(
+      deps,
+      err,
+      out,
+      { command: 'init', scenario: 'init', inputs: { command: 'init', project } },
+      async (client, emit) => runInitRepo({ project, client, emit, colour: colourOf(deps) }),
     )
   }
 
@@ -795,14 +808,30 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     }
     const project = inspected(roots.project, err)
 
-    return agentBacked(deps, err, out, 'plan', async (client) =>
+    return agentBacked(
+      deps,
+      err,
+      out,
+      {
+        command: 'plan',
+        scenario: 'plan',
+        // The repositories the run reads, resolved: what was typed may be
+        // nothing at all, and a trace says where the preview was decided.
+        inputs: {
+          command: 'plan',
+          intent: source.intent,
+          repo: roots.repo,
+          ...(project !== undefined ? { project } : {}),
+        },
+      },
+      async (client, emit) =>
       runIntent({
         intent: source.intent,
         repo: roots.repo,
         ...(ask !== undefined ? { ask } : {}),
         project,
         client,
-        emit: deps.events ?? progress(err),
+        emit,
         json: command.json,
         colour,
       }),
@@ -863,7 +892,8 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   )
 
   if (command.name === 'entry') {
-    // What `ask` is handed, word for word, so the question road is `ask`'s.
+    // What `ask` is handed, word for word, so the question road is `ask`'s —
+    // its events included, which `agentBacked` hands both roads below.
     const asked = {
       graph,
       intent: command.phrase,
@@ -872,7 +902,6 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
         ignored,
         rejected: rejected.length,
       },
-      emit: deps.events ?? progress(err),
       err,
       colour: colourOf(deps),
       quiet: command.quiet === true,
@@ -903,34 +932,56 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
       return failed(error, err)
     }
     const ask = askOf(deps)
-    return agentBacked(deps, err, out, 'entry', async (client) =>
-      runEntry({
-        ...asked,
-        client,
-        json: command.json,
-        change: async () => {
-          if (roots === undefined) {
-            throw new RepositoryArgumentError(
-              planNeedsRepository(sourceContextOf(deps), 'that is a change request, and it'),
-            )
-          }
-          return runIntent({
-            intent: command.phrase,
-            repo: roots.repo,
-            ...(ask !== undefined ? { ask } : {}),
-            project: inspected(roots.project, err),
-            client,
-            emit: asked.emit,
-            json: command.json,
-            colour: colourOf(deps),
-          })
+    return agentBacked(
+      deps,
+      err,
+      out,
+      {
+        command: 'entry',
+        scenario: 'entry',
+        // Resolved, as `plan`'s are: the repositories a change would read,
+        // when there are any, whichever road the Supervisor then takes.
+        inputs: {
+          command: 'entry',
+          phrase: command.phrase,
+          ...(roots !== undefined ? { repo: roots.repo } : {}),
+          ...(roots?.project.kind === 'project' ? { project: roots.project.root } : {}),
         },
-      }),
+      },
+      async (client, emit) =>
+        runEntry({
+          ...asked,
+          client,
+          emit,
+          json: command.json,
+          change: async () => {
+            if (roots === undefined) {
+              throw new RepositoryArgumentError(
+                planNeedsRepository(sourceContextOf(deps), 'that is a change request, and it'),
+              )
+            }
+            return runIntent({
+              intent: command.phrase,
+              repo: roots.repo,
+              ...(ask !== undefined ? { ask } : {}),
+              project: inspected(roots.project, err),
+              client,
+              emit,
+              json: command.json,
+              colour: colourOf(deps),
+            })
+          },
+        }),
     )
   }
 
   if (command.name === 'ask') {
-    return agentBacked(deps, err, out, 'question', async (client) =>
+    return agentBacked(
+      deps,
+      err,
+      out,
+      { command: 'ask', scenario: 'question', inputs: { command: 'ask', intent: command.intent } },
+      async (client, emit) =>
       runAsk({
         graph,
         client,
@@ -943,7 +994,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
           ignored,
           rejected: rejected.length,
         },
-        emit: deps.events ?? progress(err),
+        emit,
         err,
         colour: colourOf(deps),
         quiet: command.quiet === true,
@@ -1167,30 +1218,109 @@ function failed(error: unknown, err: (chunk: string) => void): number {
 }
 
 /**
- * Runs one command that needs a model, and closes the tape afterwards.
+ * Runs one command that needs a model, closes the tape afterwards, and traces
+ * the run when a sink asks for it.
  *
  * The client is built here and not inside the command, for the reason every
  * other seam in this file exists: a command that chose its own provider could
  * not be driven by a scripted one, and every agent-backed test would need a key
  * or a recording.
+ *
+ * The trace starts once the session is open — a run refused for want of a
+ * model has no run to trace — and is finished and exported on both paths out,
+ * the result and the throw, because the run that failed is the one most worth
+ * reading. Nothing about it reaches the exit code: an export that fails is one
+ * line on stderr (ADR-0009).
  */
 async function agentBacked(
   deps: MainDeps,
   err: (chunk: string) => void,
   out: (chunk: string) => void,
-  scenario: string,
-  run: (client: LlmClient) => Promise<CommandResult>,
+  run: AgentRun,
+  execute: (client: LlmClient, emit: EventSink) => Promise<CommandResult>,
 ): Promise<number> {
+  let session: Session
   try {
-    const session = await openSession(deps, err, scenario)
-    const result = await run(session.client)
-    // Recording in memory and never writing it down is the whole run wasted,
-    // and it is silent: the turns are there, the file never appears.
-    await session.save()
-    return report(result, out)
+    session = await openSession(deps, err, run.scenario)
   } catch (error) {
     return failed(error, err)
   }
+
+  const shown = deps.events ?? progress(err)
+  const sinks = [
+    ...sinksFromEnv(deps.env ?? process.env, deps.fetch ?? globalThis.fetch),
+    ...(deps.traceSinks ?? []),
+  ]
+  const builder =
+    sinks.length === 0
+      ? undefined
+      : createTraceBuilder({
+          clock: traceClock(),
+          ids: TRACE_IDS,
+          name: `idp-agent ${run.command}`,
+          inputs: run.inputs,
+          attributes: session.attributes,
+        })
+  if (builder !== undefined) err(`· trace ${builder.traceId}\n`)
+  const client = builder === undefined ? session.client : traced(session.client, builder)
+  const emit: EventSink =
+    builder === undefined
+      ? shown
+      : (event) => {
+          builder.onEvent(event)
+          shown(event)
+        }
+
+  let code: number
+  let outputs: unknown
+  let thrown: string | undefined
+  try {
+    const result = await execute(client, emit)
+    // Recording in memory and never writing it down is the whole run wasted,
+    // and it is silent: the turns are there, the file never appears.
+    await session.save()
+    code = report(result, out)
+    outputs = { exitCode: code, text: result.text }
+  } catch (error) {
+    code = failed(error, err)
+    thrown = error instanceof Error ? error.message : String(error)
+    outputs = { exitCode: code, error: thrown }
+  }
+
+  if (builder !== undefined) {
+    const trace = builder.finish({
+      outputs,
+      attributes: { 'idp.exit_code': code },
+      ...(thrown !== undefined ? { error: thrown } : {}),
+    })
+    await exportTrace(trace, sinks, err)
+  }
+  return code
+}
+
+/** One agent-backed command: what it is called, which tape it replays, and what it was asked. */
+interface AgentRun {
+  readonly command: 'ask' | 'entry' | 'init' | 'plan'
+  readonly scenario: string
+  readonly inputs: Readonly<Record<string, unknown>>
+}
+
+/** The model, the tape, and what a trace's root says about where the answers came from. */
+interface Session {
+  readonly client: LlmClient
+  save(): Promise<void>
+  readonly attributes: Attributes
+}
+
+/** Unix nanoseconds, monotonic within a run: the wall clock read once, the high-resolution timer after. */
+function traceClock(): () => bigint {
+  const epoch = BigInt(Date.now()) * 1_000_000n - process.hrtime.bigint()
+  return () => epoch + process.hrtime.bigint()
+}
+
+const TRACE_IDS = {
+  traceId: (): string => randomBytes(16).toString('hex'),
+  spanId: (): string => randomBytes(8).toString('hex'),
 }
 
 /**
@@ -1207,12 +1337,16 @@ async function openSession(
   deps: MainDeps,
   err: (chunk: string) => void,
   scenario: string,
-): Promise<{ client: LlmClient; save: () => Promise<void> }> {
+): Promise<Session> {
   // An injected client is a test on scripted turns. It reads no credential and
   // opens no tape, which is what makes "no model configured" a real assertion
   // rather than something every test has to work around.
   if (deps.client !== undefined) {
-    return { client: deps.client, save: async (): Promise<void> => {} }
+    return {
+      client: deps.client,
+      save: async (): Promise<void> => {},
+      attributes: { 'idp.mode': 'scripted' },
+    }
   }
 
   const env = deps.env ?? process.env
@@ -1226,11 +1360,12 @@ async function openSession(
   // names its own model and needs no key.
   const choice = mode === 'replay' ? undefined : chooseModel(env)
   const timeout = mode === 'replay' ? undefined : timeoutOf(env)
+  const name = deps.scenario ?? env['IDP_SCENARIO'] ?? scenario
   const tape =
     mode === 'live'
       ? undefined
       : await openRecording({
-          scenario: deps.scenario ?? env['IDP_SCENARIO'] ?? scenario,
+          scenario: name,
           store: fileRecordingStore(deps.recordingDir ?? DEFAULT_RECORDINGS),
           mode: mode === 'record' ? 'record' : 'replay',
           warn: (message) => err(`${message}\n`),
@@ -1245,6 +1380,13 @@ async function openSession(
     }),
     save: async (): Promise<void> => {
       if (mode === 'record' && tape !== undefined) await tape.save()
+    },
+    // A replayed trace's latencies measure the tape, not the model; `idp.mode`
+    // is how a reader of the trace knows which.
+    attributes: {
+      'idp.mode': mode,
+      ...(tape !== undefined ? { 'idp.scenario': name } : {}),
+      ...(choice !== undefined ? { 'idp.provider': choice.provider, 'idp.model': choice.model } : {}),
     },
   }
 }

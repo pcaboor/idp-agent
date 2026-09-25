@@ -46,7 +46,8 @@
     "demo": "bash scripts/demo.sh",
     "mlflow:up": "docker compose -f tools/mlflow/compose.yml up -d --wait",
     "mlflow:down": "docker compose -f tools/mlflow/compose.yml down",
-    "mlflow:contract": "node scripts/mlflow-contract.mjs"
+    "mlflow:contract": "node scripts/mlflow-contract.mjs",
+    "trace:push": "node scripts/trace-push.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.58",

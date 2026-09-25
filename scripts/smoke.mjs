@@ -54,11 +54,16 @@ process.on('exit', () => {
  * demo SI read the contributor's own repository instead. XDG_CONFIG_HOME is
  * the first place the binary looks for that file, on every platform, so
  * pointing it inside ELSEWHERE, where none is until a check below writes one,
- * keeps HOME's out of reach.
+ * keeps HOME's out of reach. An MLFLOW_TRACKING_URI left there would send the
+ * smoke run's traces to whatever server it names.
  */
 const CONFIG_HOME = path.join(ELSEWHERE, 'config')
 const CLEAN_ENV = {
-  ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('IDP_'))),
+  ...Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([name]) => !name.startsWith('IDP_') && !name.startsWith('MLFLOW_'),
+    ),
+  ),
   XDG_CONFIG_HOME: CONFIG_HOME,
 }
 

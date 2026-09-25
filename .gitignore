@@ -14,6 +14,9 @@ coverage/
 # Written by vitest when a reporter is attached; never part of the build.
 .vitest/
 
+# Written by IDP_TRACE_DIR=.traces; sent to MLflow by `pnpm trace:push`, never committed.
+.traces/
+
 # tsc emits beside the source when run on a file instead of the project
 # (`tsc src/foo.ts` ignores noEmit). These are never real files: every .js
 # under src/ or tests/ has a .ts next to it.
