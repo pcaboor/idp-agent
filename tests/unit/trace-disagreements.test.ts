@@ -17,13 +17,36 @@ const building = (): TraceBuilder =>
   })
 
 describe('disagreements', () => {
-  it('an honest orphan — a tool:call with no result — is not a disagreement', () => {
+  it('a tool:call with no result is a disagreement: every call on the stream is answered', () => {
+    // The Architect answers even the call it refuses (a tool:result carrying
+    // `error`), so a call left hanging is a stream that lost something.
     const call: AgentEvent = { type: 'tool:call', id: 'B', name: 'search_entities', args: {} }
     const builder = building()
     builder.onEvent(call)
     const trace = builder.finish({ outputs: { exitCode: 0 } })
 
-    expect(disagreements(trace, [call])).toEqual([])
+    expect(disagreements(trace, [call])).toEqual([
+      expect.stringContaining('closed by finish, by no event of its own'),
+    ])
+  })
+
+  it('a refused call, answered with its error, is not a disagreement', () => {
+    const events: AgentEvent[] = [
+      { type: 'tool:call', id: 'B', name: 'answer', args: {} },
+      {
+        type: 'tool:result',
+        id: 'B',
+        name: 'answer',
+        rows: 0,
+        truncated: 0,
+        error: 'answer is not a tool this agent has',
+      },
+    ]
+    const builder = building()
+    for (const event of events) builder.onEvent(event)
+    const trace = builder.finish({ outputs: { exitCode: 0 } })
+
+    expect(disagreements(trace, events)).toEqual([])
   })
 
   it('catches a trace and a stream that disagree about which call went unanswered', () => {

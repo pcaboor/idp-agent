@@ -36,7 +36,7 @@ import { isForgeHandle } from '../scaffold/codeowners.js'
 import { VERSION } from '../core/index.js'
 import type { LlmClient } from '../llm/client.js'
 import type { CommandResult } from './commands/result.js'
-import { inert, inertLine, oneLine } from './render/plain.js'
+import { inert, inertLine, oneLine, plain } from './render/plain.js'
 import { homeOf } from './personal.js'
 import {
   RepositoryArgumentError,
@@ -531,7 +531,7 @@ export interface MainDeps {
   ask?: Ask
   /**
    * Where a finished run's trace goes, beside the sinks the environment
-   * configures (`MLFLOW_TRACKING_URI`, `IDP_TRACE_DIR`). Injected so a test
+   * configures (`IDP_MLFLOW_TRACKING_URI`, `IDP_TRACE_DIR`). Injected so a test
    * reads the trace itself rather than a file or a server. With neither this
    * nor those variables, which is every run by default, nothing is traced.
    */
@@ -823,6 +823,11 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
           repo: roots.repo,
           ...(project !== undefined ? { project } : {}),
         },
+        // A skipped Inspector is a line on stderr and an absent `project`; the
+        // root keeps the line, or a trace would show the absence and not why.
+        ...(roots.project.kind === 'none'
+          ? { attributes: { 'idp.inspector': 'skipped', 'idp.inspector.reason': roots.project.reason } }
+          : {}),
       },
       async (client, emit) =>
       runIntent({
@@ -1259,9 +1264,11 @@ async function agentBacked(
           ids: TRACE_IDS,
           name: `idp-agent ${run.command}`,
           inputs: run.inputs,
-          attributes: session.attributes,
+          attributes: { ...session.attributes, ...run.attributes },
         })
-  if (builder !== undefined) err(`· trace ${builder.traceId}\n`)
+  // MLflow's own id for the trace, `tr-` and the OTLP id, so the line pastes
+  // straight into its search.
+  if (builder !== undefined) err(`· trace tr-${builder.traceId}\n`)
   const client = builder === undefined ? session.client : traced(session.client, builder)
   const emit: EventSink =
     builder === undefined
@@ -1280,7 +1287,9 @@ async function agentBacked(
     // and it is silent: the turns are there, the file never appears.
     await session.save()
     code = report(result, out)
-    outputs = { exitCode: code, text: result.text }
+    // Without the terminal's escape sequences: the diff may be coloured, and
+    // MLflow's preview of the root prints them as they are.
+    outputs = { exitCode: code, text: plain(result.text) }
   } catch (error) {
     code = failed(error, err)
     thrown = error instanceof Error ? error.message : String(error)
@@ -1303,6 +1312,8 @@ interface AgentRun {
   readonly command: 'ask' | 'entry' | 'init' | 'plan'
   readonly scenario: string
   readonly inputs: Readonly<Record<string, unknown>>
+  /** What the command decided before a model was chosen, for the trace's root. */
+  readonly attributes?: Attributes
 }
 
 /** The model, the tape, and what a trace's root says about where the answers came from. */

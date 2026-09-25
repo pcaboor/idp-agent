@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 1801 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 1818 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -28,18 +28,22 @@ pnpm smoke            # runs the built dist/cli/bin.js, which the suite never do
 CI runs exactly those five, on Node 22 and 24. A suite that demands a key is a
 regression, not a configuration problem.
 
-Tracing is optional, needs Docker, and is never part of CI (ADR-0009):
+Tracing is optional, needs Docker, and is never part of CI (ADR-0009,
+`docs/tracing-design.md`):
 
 ```bash
 pnpm mlflow:up                                   # MLflow 3.16.1 on 127.0.0.1:5055
-MLFLOW_TRACKING_URI=http://127.0.0.1:5055 idp-agent plan "<intent>" --repo <dir>
-IDP_TRACE_DIR=.traces pnpm vitest run tests/scenarios && MLFLOW_TRACKING_URI=http://127.0.0.1:5055 pnpm trace:push .traces   # the tapes, no key
+IDP_MLFLOW_TRACKING_URI=http://127.0.0.1:5055 idp-agent plan "<intent>" --repo <dir>
+IDP_TRACE_DIR=.traces pnpm vitest run tests/scenarios && IDP_MLFLOW_TRACKING_URI=http://127.0.0.1:5055 pnpm trace:push .traces   # the tapes, no key
 pnpm mlflow:contract                             # after moving the image tag
 pnpm mlflow:down
 ```
 
-`MLFLOW_EXPERIMENT_ID` defaults to `0`. A trace carries full prompts; `SECURITY.md` says
-where they go.
+`IDP_MLFLOW_EXPERIMENT_ID` defaults to `0`. MLflow's own `MLFLOW_TRACKING_URI` is ignored:
+it is set for other tools, and tracing is on only when this tool's variable says so. The
+suite removes both `IDP_MLFLOW_*` from its environment (`tests/setup/personal.ts`) and
+leaves `IDP_TRACE_DIR`, which is how the tapes are traced. A trace carries full prompts;
+`SECURITY.md` says where they go.
 
 **Every number on this page is a measurement, and this page has drifted from all of them
 before** — a test count one short, an architecture-rule count several short, one module
@@ -114,12 +118,12 @@ idp-agent init [--repo <dir>]                    # the catalog-info.yml it would
 ```
 
 **`init platform` is still the only command that writes into a repository**, and only into
-the directory it was handed; with `IDP_TRACE_DIR` set, a phrase, `plan "<intent>"`, `ask`
-and `init` also write one trace file there, and nothing else. The two forms of `plan` and
-`init` read two repositories and produce a unified diff; `plan-command.test.ts` and
-`plan-intent.test.ts` hash every path, every byte and every directory of both repositories
-either side of a full run rather than taking that on trust, and `pnpm smoke` makes the same
-assertion about the built binary.
+the directory it was handed; with `IDP_TRACE_DIR` set, `idpa "<phrase>"`, `plan
+"<intent>"`, `ask` and `init` also write one trace file there, and nothing else. The two
+forms of `plan` and `init` read two repositories and produce a unified diff;
+`plan-command.test.ts` and `plan-intent.test.ts` hash every path, every byte and every
+directory of both repositories either side of a full run rather than taking that on trust,
+and `pnpm smoke` makes the same assertion about the built binary.
 
 The two `--repo` flags name different repositories, which is the first thing that trips
 someone up. `plan --repo` is the **declarations** repository the preview is decided

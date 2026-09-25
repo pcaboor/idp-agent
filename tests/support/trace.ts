@@ -71,12 +71,11 @@ export function onlyTrace(sink: { readonly traces: readonly Trace[] }): Trace {
  * Where a trace tells a run differently from the stream it was built from.
  *
  * What is checked:
- *   - every TOOL span the builder force-closed with "…by no event of its
- *     own" carries, in `(span.inputs as { id }).id`, exactly the id of a
- *     `tool:call` the stream left unanswered — ids counted as a multiset,
- *     and the two id lists compared sorted;
- *   - a forced close on any span that is not a TOOL is a disagreement in its
- *     own right — nothing but an unanswered tool call may be forced closed;
+ *   - any span the builder force-closed — "…by no event of its own" — is a
+ *     disagreement. Every agent, attempt and model call is ended by an event
+ *     of its own, and every tool call is answered, a refused one with a
+ *     result carrying `error` (docs/tracing-design.md §8.4), so a forced
+ *     close is the stream having lost something;
  *   - every span named `unbalanced event` is a disagreement, named with its
  *     status message — the trace saw an event that fit no open span;
  *   - every model call sits inside an agent;
@@ -88,34 +87,10 @@ export function disagreements(trace: Trace, events: readonly AgentEvent[]): stri
   const problems: string[] = []
   const byId = new Map(trace.spans.map((span) => [span.spanId, span]))
 
-  // A tool call the stream never answered — the Architect emits one for a
-  // tool it does not have, refuses it, and moves on — is an unclosed span in
-  // the trace, and rightly so. Exactly those may be forced closed; any other
-  // forced close is a disagreement.
-  const isForcedClose = (span: Span): span is Span & { status: { code: 'ERROR'; message: string } } =>
-    span.status.code === 'ERROR' && span.status.message.includes('by no event of its own')
-  const forced = trace.spans.filter(isForcedClose)
-  for (const span of forced) {
-    if (span.type !== 'TOOL') problems.push(`${span.name}: ${span.status.message}`)
-  }
-
-  // The builder records `inputs: { id, name, args }` on every TOOL span, so
-  // the id a forced-closed one carries is read off the same field a real
-  // reader of the trace would.
-  const orphanedIds = forced
-    .filter((span) => span.type === 'TOOL')
-    .map((span) => (span.inputs as { id?: unknown }).id)
-    .filter((id): id is string => typeof id === 'string')
-    .sort()
-  const unansweredIds = unansweredToolCallIds(events)
-  if (JSON.stringify(orphanedIds) !== JSON.stringify(unansweredIds)) {
-    problems.push(
-      `tool spans closed by no event of their own: ${JSON.stringify(orphanedIds)}; ` +
-        `the stream left unanswered: ${JSON.stringify(unansweredIds)}`,
-    )
-  }
-
   for (const span of trace.spans) {
+    if (span.status.code === 'ERROR' && span.status.message.includes('by no event of its own')) {
+      problems.push(`${span.name}: ${span.status.message}`)
+    }
     if (span.name === 'unbalanced event' && span.status.code === 'ERROR') {
       problems.push(`unbalanced event: ${span.status.message}`)
     }
@@ -142,25 +117,4 @@ export function disagreements(trace: Trace, events: readonly AgentEvent[]): stri
     problems.push(`gates: the stream told ${JSON.stringify(told)}, the trace drew ${JSON.stringify(drawn)}`)
   }
   return problems
-}
-
-/**
- * The ids of `tool:call` events the stream itself never paired with a
- * `tool:result` of the same id — ids counted as a multiset: each result of
- * an id answers one call of that id, so which ids stay unanswered does not
- * depend on the order they are paired in.
- */
-function unansweredToolCallIds(events: readonly AgentEvent[]): string[] {
-  const resultsById = new Map<string, number>()
-  for (const event of events) {
-    if (event.type === 'tool:result') resultsById.set(event.id, (resultsById.get(event.id) ?? 0) + 1)
-  }
-  const unanswered: string[] = []
-  for (const event of events) {
-    if (event.type !== 'tool:call') continue
-    const remaining = resultsById.get(event.id) ?? 0
-    if (remaining > 0) resultsById.set(event.id, remaining - 1)
-    else unanswered.push(event.id)
-  }
-  return unanswered.sort()
 }

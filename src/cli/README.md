@@ -200,9 +200,14 @@ not follow — a renamed entity, a moved consumer, an entity two operations amen
 again; `reapply.ts` lists it.
 
 **Tracing.** `trace-sink.ts` is the only way a trace leaves the process: `mlflowSink` posts
-OTLP/JSON to `MLFLOW_TRACKING_URI`'s `/v1/traces`, `fileSink` writes one file per run under
-`IDP_TRACE_DIR`, and a sink that fails is one `! trace not exported` line on stderr — never
-an exit code. `agentBacked` in `index.ts` builds the trace (`src/trace/`), wraps the client
-with `traced` and tees the event stream, for a phrase, `plan "<intent>"`, `ask` and `init`
-alone: the commands that involve no model have nothing to trace. `MainDeps.traceSinks` and
-`MainDeps.fetch` are the test seams (`tests/unit/trace-wiring.test.ts`).
+OTLP/JSON to `IDP_MLFLOW_TRACKING_URI`'s `/v1/traces` — never `MLFLOW_TRACKING_URI`'s, which
+other tools set — and reads the answer, so spans MLflow rejected are not reported as sent;
+`fileSink` writes one `0600` file per run under `IDP_TRACE_DIR`. A sink that fails is one
+`! trace not exported` line on stderr — never an exit code. `agentBacked` in `index.ts`
+builds the trace (`src/trace/`), wraps the client with `traced` and tees the event stream,
+for `idpa "<phrase>"`, `plan "<intent>"`, `ask` and `init` alone: the commands that involve
+no model have nothing to trace. The root is `idp-agent <command>`, with the resolved
+repositories in its inputs and `idp.exit_code` on it, and fails only when the run threw
+(`docs/tracing-design.md` §4.1); stderr names it `· trace tr-<hex>`, as MLflow does.
+`MainDeps.traceSinks` and `MainDeps.fetch` are the test seams
+(`tests/unit/trace-wiring.test.ts`).

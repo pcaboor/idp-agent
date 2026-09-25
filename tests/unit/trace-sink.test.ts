@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -60,6 +60,33 @@ describe('mlflowSink', () => {
     expect(body.resourceSpans[0].scopeSpans[0].spans[0].traceId).toBe(TRACE.traceId)
   })
 
+  it('refuses a trace the server kept only part of, saying how many spans it rejected and why', async () => {
+    // OTLP answers 2xx and still drops what it could not take; the body says
+    // so. int64 travels as a string in OTLP/JSON, so both spellings count.
+    for (const rejectedSpans of [2, '2']) {
+      const body = JSON.stringify({ partialSuccess: { rejectedSpans, errorMessage: 'span 7 has no parent' } })
+      const sink = mlflowSink({
+        trackingUri: 'http://127.0.0.1:5055',
+        experimentId: '0',
+        fetch: answering(200, body).fetch,
+      })
+
+      await expect(sink.export(TRACE)).rejects.toThrow('2 span(s) rejected: span 7 has no parent')
+    }
+  })
+
+  it('takes a 2xx whose body rejects nothing as sent, whatever else the body holds', async () => {
+    for (const body of ['', '{}', '{"partialSuccess":{}}', '{"partialSuccess":{"rejectedSpans":"0"}}', 'OK']) {
+      const sink = mlflowSink({
+        trackingUri: 'http://127.0.0.1:5055',
+        experimentId: '0',
+        fetch: answering(200, body).fetch,
+      })
+
+      await expect(sink.export(TRACE)).resolves.toBeUndefined()
+    }
+  })
+
   it('refuses a server that did not accept the trace, saying what it answered', async () => {
     const server = answering(400, 'Invalid OpenTelemetry format')
     const sink = mlflowSink({ trackingUri: 'http://127.0.0.1:5055', experimentId: '0', fetch: server.fetch })
@@ -96,6 +123,15 @@ describe('fileSink', () => {
     expect(body.resourceSpans[0].scopeSpans[0].spans[0].name).toBe('idp-agent ask')
   })
 
+  it('writes a file only its owner can read: a trace holds full prompts', async () => {
+    const dir = await scratch()
+
+    await fileSink({ dir }).export(TRACE)
+
+    const { mode } = await stat(path.join(dir, `${TRACE.traceId}.json`))
+    expect(mode & 0o777).toBe(0o600)
+  })
+
   it('never overwrites a trace already written', async () => {
     const dir = await scratch()
     await fileSink({ dir }).export(TRACE)
@@ -112,23 +148,32 @@ describe('sinksFromEnv', () => {
   })
 
   it('ignores a variable set to the empty string', () => {
-    expect(sinksFromEnv({ MLFLOW_TRACKING_URI: '', IDP_TRACE_DIR: '' }, fetch)).toEqual([])
+    expect(sinksFromEnv({ IDP_MLFLOW_TRACKING_URI: '', IDP_TRACE_DIR: '' }, fetch)).toEqual([])
   })
 
   it('configures each sink its variable asks for', () => {
     const names = (env: Record<string, string>): string[] =>
       sinksFromEnv(env, fetch).map((sink) => sink.name)
-    expect(names({ MLFLOW_TRACKING_URI: 'http://127.0.0.1:5055' })).toEqual(['mlflow'])
+    expect(names({ IDP_MLFLOW_TRACKING_URI: 'http://127.0.0.1:5055' })).toEqual(['mlflow'])
     expect(names({ IDP_TRACE_DIR: '.traces' })).toEqual(['file'])
-    expect(names({ MLFLOW_TRACKING_URI: 'http://127.0.0.1:5055', IDP_TRACE_DIR: '.traces' })).toEqual([
+    expect(names({ IDP_MLFLOW_TRACKING_URI: 'http://127.0.0.1:5055', IDP_TRACE_DIR: '.traces' })).toEqual([
       'mlflow',
       'file',
     ])
   })
 
+  it('ignores MLflow’s own variables: they are set for other tools, and never turn tracing on', () => {
+    // A Databricks workspace or a team's tracking server exports these for
+    // its own clients; honouring them would send this tool's full prompts
+    // there on every run, for someone who never asked for a trace.
+    expect(
+      sinksFromEnv({ MLFLOW_TRACKING_URI: 'http://127.0.0.1:5055', MLFLOW_EXPERIMENT_ID: '12' }, fetch),
+    ).toEqual([])
+  })
+
   it('sends to MLflow’s Default experiment unless told otherwise', async () => {
     const server = answering(200)
-    const [sink] = sinksFromEnv({ MLFLOW_TRACKING_URI: 'http://127.0.0.1:5055' }, server.fetch)
+    const [sink] = sinksFromEnv({ IDP_MLFLOW_TRACKING_URI: 'http://127.0.0.1:5055' }, server.fetch)
 
     await sink?.export(TRACE)
 
@@ -136,6 +181,22 @@ describe('sinksFromEnv', () => {
       'content-type': 'application/json',
       'x-mlflow-experiment-id': '0',
     })
+  })
+
+  it('sends to the experiment IDP_MLFLOW_EXPERIMENT_ID names, and never MLFLOW_EXPERIMENT_ID’s', async () => {
+    const server = answering(200)
+    const [sink] = sinksFromEnv(
+      {
+        IDP_MLFLOW_TRACKING_URI: 'http://127.0.0.1:5055',
+        IDP_MLFLOW_EXPERIMENT_ID: '7',
+        MLFLOW_EXPERIMENT_ID: '12',
+      },
+      server.fetch,
+    )
+
+    await sink?.export(TRACE)
+
+    expect(server.sent[0]?.init.headers).toMatchObject({ 'x-mlflow-experiment-id': '7' })
   })
 })
 
