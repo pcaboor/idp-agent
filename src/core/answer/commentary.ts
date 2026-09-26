@@ -70,7 +70,8 @@ export interface KnownEntity {
   /**
    * Values the entity declares, which a sentence about it may quote once a
    * tool returned it: its owner, system, type, environment, lifecycle, the
-   * level a right grants, its tags.
+   * level a right grants, its tags, and the references it declares that name
+   * nothing, once a tool showed them.
    */
   readonly declares: readonly string[]
 }

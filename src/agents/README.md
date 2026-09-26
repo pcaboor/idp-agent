@@ -71,7 +71,26 @@ Plain data, handed in. Never a graph, never a provider, never a path.
   when it provides one. A tool of its own rather than a
   direction of `get_dependencies`, because providing is not depending, and who *consumes*
   an API is a right over it, which `get_dependencies` `consumers` already walks. Every
-  reference a row names joins the witness set. The Architect's registry has none of it:
+  reference a row names joins the witness set.
+
+  A reference the catalogue declares and no entity answers to is read too, never as an
+  entity: a row carries its entity's under `danglingReferences`, and `get_dependencies`
+  and `get_apis` put the ones on the side asked about beside `rows`, under the same key —
+  the subject's own `dependsOn`, `dependencyOf` or `providesApis`, and for `consumers` the
+  services every right on the walk names. Each is `{ ref, declared: false, field,
+  declaredBy, sameName }`: `rows` stay a list of entities, each witnessed, and the flag
+  says what the object is wherever it is quoted. A list is cut at the rows' bound, and the
+  cut stated beside it (`danglingTruncated`) as `truncated` states the rows'. `declaredBy`
+  and `sameName` are entities the engine returned, so they join the witness set; the
+  reference itself never does, and an `entities` answer naming it is refused as any
+  invention is. What a result showed is kept apart (`declaredNowhere`): the commentary
+  check lets a sentence quote such a reference as a value its declarer declares, and only
+  once shown — a declarer witnessed as a provider or as another reference's `declaredBy`
+  had none of its own read, and a reference quoted by its bare name names its homonym.
+  A turn whose results held only such references read something, and is not barren
+  (`ToolOutcome.dangling`), though the stream still counts its rows, none. The Analyst's
+  system prompt says, in one sentence, to say so and never to take it for the entity of
+  its name. The Architect's registry has none of it:
   it proposes neither an API nor what provides one, and its specs — part of every
   plan-mode recording's digest — are held byte for byte to the ones they were
   (`tests/golden/architect-tools.json`), as is every row of an entity that declares

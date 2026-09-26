@@ -153,6 +153,9 @@ describe('show', () => {
   })
 
   it('prints what a component provides, when it provides anything', async () => {
+    // `ghost` names no API: it is listed after what resolves, and said to be
+    // declared nowhere, rather than left off a card that would then read as
+    // providing one API.
     const { code, out } = await run(['show', 'billing-api', '--repo', GOLDEN])
     expect(code).toBe(0)
     expect(out).toBe(
@@ -166,6 +169,7 @@ describe('show', () => {
         '',
         'provides',
         '  api:default/billing',
+        '  api:default/ghost    declared nowhere',
         '',
         'depends on',
         '  none',

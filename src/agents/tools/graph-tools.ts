@@ -11,7 +11,13 @@ import {
   type SearchCriteria,
 } from '../../core/schemas/query.js'
 import { levelledOf } from '../../core/schemas/resource-types.js'
-import { ENV_ANNOTATION, refOf, type EntityGraph } from '../../context/graph/entity-graph.js'
+import {
+  ENV_ANNOTATION,
+  refOf,
+  type DeclaredField,
+  type EntityGraph,
+  type Unresolved,
+} from '../../context/graph/entity-graph.js'
 import type { ModelToolCall, ModelToolSpec } from '../../llm/client.js'
 
 export interface ToolOutcome {
@@ -25,6 +31,13 @@ export interface ToolOutcome {
    * search that ran and found nothing looks like.
    */
   error?: string
+  /**
+   * The references beside the rows that name nothing (`danglingReferences`),
+   * on the Analyst's registry. Not rows, since none is an entity, but read: a
+   * turn that showed one found what the catalogue declares, and is not a
+   * turn that read nothing.
+   */
+  dangling?: number
 }
 
 /** Returned, never thrown: the loop continues and the model reads the reason. */
@@ -66,8 +79,10 @@ interface Row {
  * definition), what its file says it is (description, system, tags, links)
  * and the components that provide it: the Architect never reads an API row,
  * so it is free to say all of that. A Component's row carries the APIs it
- * provides, and only when it provides one, so every other row is the
- * Architect's row, byte for byte.
+ * provides, and only when it provides one; any row other than an API's
+ * carries `danglingReferences` when its entity declares a reference that
+ * names nothing (`Dangling`). Every other row is the Architect's row, byte
+ * for byte.
  */
 interface ApiRow extends Row {
   lifecycle?: string
@@ -78,6 +93,53 @@ interface ApiRow extends Row {
   links?: Array<{ url: string; title?: string }>
   provides?: string[]
   providedBy?: string[]
+  danglingReferences?: Dangling[]
+  danglingTruncated?: string
+}
+
+/**
+ * A reference the catalogue declares and no entity answers to, as the
+ * Analyst reads it: on the row of the entity that declares it, and beside
+ * the rows of a query whose answer it belongs to — never among them, since
+ * `rows` are entities, each one witnessed, and this is none. `declared:
+ * false` says so in the object itself, whatever the key it sits under, and
+ * `sameName` names the entities of its name — real ones, which the model may
+ * read and answer with, and which the prompt tells it not to take for the
+ * reference. The summary's "dangling references" are these.
+ */
+interface Dangling {
+  ref: string
+  declared: false
+  field: DeclaredField
+  declaredBy: string
+  sameName: string[]
+}
+
+const danglingOf = ({ to, field, from, sameName }: Unresolved): Dangling => ({
+  ref: to,
+  declared: false,
+  field,
+  declaredBy: from,
+  sameName: [...sameName],
+})
+
+/**
+ * At most as many as a result's rows, and the cut stated beside them as the
+ * rows' is: a consumers walk over an object many rights reach can name any
+ * number, and a model that believed it had seen them all would say so.
+ */
+const boundedOf = (
+  unresolved: readonly Unresolved[],
+): { shown: Dangling[]; fields: Pick<ApiRow, 'danglingReferences' | 'danglingTruncated'> } => {
+  const shown = unresolved.slice(0, QUERY_LIMITS.maxRows).map(danglingOf)
+  const cut = unresolved.length - shown.length
+  return {
+    shown,
+    fields: {
+      ...(shown.length === 0 ? {} : { danglingReferences: shown }),
+      ...(cut > 0 ? { danglingTruncated: `${cut} more not shown` } : {}),
+    },
+  }
 }
 
 /**
@@ -218,10 +280,18 @@ export function buildTools(
   specs: ModelToolSpec[]
   run(call: ModelToolCall): ToolOutcome
   witnessed: ReadonlySet<string>
+  /**
+   * The references naming nothing that a result showed, as `declared: false`
+   * objects: values the model read, which a sentence may quote (ask.ts's
+   * `known`). Never entities, so never in `witnessed`. Empty on the
+   * Architect's registry, which shows none.
+   */
+  declaredNowhere: ReadonlySet<string>
 } {
   // What the ENGINE returned. The answer tool never adds to it: a model that
   // could witness its own invention would defeat the check entirely.
   const witnessed = new Set<string>()
+  const declaredNowhere = new Set<string>()
   const apis = options.apis ?? false
 
   /**
@@ -263,25 +333,42 @@ export function buildTools(
       }
     }
     const provides = graph.providedApisOf(row.ref).map(refOf)
-    return provides.length === 0
-      ? { row, refs: [row.ref] }
-      : { row: { ...row, provides }, refs: [row.ref, ...provides] }
+    const dangling = boundedOf(graph.unresolvedOf(row.ref))
+    for (const { ref } of dangling.shown) declaredNowhere.add(ref)
+    return {
+      row: { ...row, ...(provides.length === 0 ? {} : { provides }), ...dangling.fields },
+      refs: [row.ref, ...provides, ...dangling.shown.flatMap(({ sameName }) => sameName)],
+    }
   }
 
-  const report = (entities: CatalogueEntity[]): ToolOutcome => {
+  /**
+   * The rows of a query, and — on the Analyst's registry, when there are any —
+   * what the query's subject declares on that side and nothing answers to.
+   * Its entity references (who declares it, what shares its name) are
+   * witnessed as a row's are: the engine returned them. The reference itself
+   * never is, so an answer naming it as an entity is refused.
+   */
+  const report = (entities: CatalogueEntity[], unresolved: Unresolved[] = []): ToolOutcome => {
     const shown = entities.slice(0, QUERY_LIMITS.maxRows)
     const truncated = entities.length - shown.length
     const readings = shown.map(read)
     for (const { refs } of readings) for (const ref of refs) witnessed.add(ref)
+    const dangling = boundedOf(apis ? unresolved : [])
+    for (const { ref, declaredBy, sameName } of dangling.shown) {
+      declaredNowhere.add(ref)
+      for (const entity of [declaredBy, ...sameName]) witnessed.add(entity)
+    }
     return {
       // Truncation is stated, never silent: a model that believed it had seen
       // everything would answer "those are all of them" and be wrong.
       result: {
         rows: readings.map(({ row }) => row),
         ...(truncated > 0 ? { truncated: `${truncated} more not shown` } : {}),
+        ...dangling.fields,
       },
       rows: shown.length,
       truncated,
+      ...(dangling.shown.length === 0 ? {} : { dangling: dangling.shown.length }),
     }
   }
 
@@ -337,6 +424,7 @@ export function buildTools(
   return {
     specs,
     witnessed,
+    declaredNowhere,
 
     run(call: ModelToolCall): ToolOutcome {
       if (call.name === 'search_entities') {
@@ -375,9 +463,15 @@ export function buildTools(
         const parsed = getDependenciesInputSchema.safeParse(call.args)
         if (!parsed.success) return failed('get_dependencies', parsed.error)
         const { ref, direction } = parsed.data
-        if (direction === 'dependencies') return report(graph.dependenciesOf(ref))
-        if (direction === 'dependants') return report(graph.dependantsOf(ref))
-        if (direction === 'consumers') return report(graph.consumersOf(ref))
+        if (direction === 'dependencies') {
+          return report(graph.dependenciesOf(ref), graph.unresolvedOf(ref, 'dependsOn'))
+        }
+        if (direction === 'dependants') {
+          return report(graph.dependantsOf(ref), graph.unresolvedOf(ref, 'dependencyOf'))
+        }
+        if (direction === 'consumers') {
+          return report(graph.consumersOf(ref), graph.unresolvedConsumersOf(ref))
+        }
         const _exhaustive: never = direction
         return _exhaustive
       }
@@ -388,7 +482,7 @@ export function buildTools(
         const { ref, direction } = parsed.data
         switch (direction) {
           case 'provides':
-            return report(graph.providedApisOf(ref))
+            return report(graph.providedApisOf(ref), graph.unresolvedOf(ref, 'providesApis'))
           case 'providedBy':
             return report(graph.providersOf(ref))
           default: {

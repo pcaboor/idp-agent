@@ -1,0 +1,14 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: billing-api-to-payments
+  annotations:
+    company.fr/env: prod
+spec:
+  type: network-access
+  owner: group:default/tiger
+  dependsOn:
+    - resource:default/payments-api
+  dependencyOf:
+    - component:default/billing-api

@@ -1,6 +1,11 @@
 import type { CatalogueEntity } from '../../core/schemas/entity.js'
 import { natureOf } from '../../core/schemas/resource-types.js'
-import { ENV_ANNOTATION, refOf, type EntityGraph } from '../../context/graph/entity-graph.js'
+import {
+  ENV_ANNOTATION,
+  refOf,
+  type EntityGraph,
+  type Unresolved,
+} from '../../context/graph/entity-graph.js'
 import { oneLine } from './plain.js'
 
 /** Declare, never infer: an absent environment is stated as absent (design 4.1). */
@@ -15,6 +20,13 @@ const UNDECLARED = '(undeclared)'
  * and the card says so.
  */
 export const ENTITY_LIMITS = { text: 160, tags: 10, links: 5, url: 2048 } as const
+
+/**
+ * The widest reference to an entity in the default namespace: the longest
+ * kind, and a name of Backstage's 63 characters. A bound on alignment, never
+ * a check.
+ */
+const REF_WIDTH = 'component:default/'.length + 63
 
 /** Backstage's limit on a tag, used here as a bound and never as a check. */
 export const TAG_LENGTH = 63
@@ -45,6 +57,21 @@ function address(url: string): string {
   return length > ENTITY_LIMITS.url
     ? `(a URL of ${String(length)} characters, too long to print)`
     : whole
+}
+
+/**
+ * What a reference naming nothing is said to be, beside it: declared nowhere,
+ * and the entities that share its name when there are any. Beside, never in
+ * place of: which of them the file meant, if any, is the reader's to decide.
+ */
+function nowhere(unresolved: Unresolved): string {
+  const names = unresolved.sameName.map((ref) => shown(ref))
+  if (names.length === 0) return 'declared nowhere'
+  const listed =
+    names.length === 1
+      ? (names[0] ?? '')
+      : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`
+  return `declared nowhere; ${listed} ${names.length === 1 ? 'has' : 'have'} this name`
 }
 
 export function renderEntityDetail(graph: EntityGraph, entity: CatalogueEntity): string {
@@ -111,21 +138,39 @@ export function renderEntityDetail(graph: EntityGraph, entity: CatalogueEntity):
   // A service lists rights from several environments at once, and being
   // authorised in dev grants nothing in prod (design 4.1). Reading that off the
   // name would be reading a convention; the annotation is the declaration.
-  const section = (title: string, entities: CatalogueEntity[]): void => {
+  //
+  // What the entity declares of the relation and nothing answers to comes
+  // after what resolves, one per line, marked where an environment would be
+  // (`nowhere`). A section with none of it prints as it always did.
+  const section = (
+    title: string,
+    entities: CatalogueEntity[],
+    unresolved: readonly Unresolved[] = [],
+  ): void => {
     lines.push('', title)
-    if (entities.length === 0) {
+    if (entities.length === 0 && unresolved.length === 0) {
       lines.push('  none')
       return
     }
-    const refs = entities.map((found) => shown(refOf(found)))
-    const width = Math.max(...refs.map((ref) => ref.length))
-    entities.forEach((found, at) => {
-      const env =
-        found.kind === 'Resource'
-          ? shown(found.metadata.annotations[ENV_ANNOTATION] ?? UNDECLARED)
-          : ''
-      lines.push(`  ${(refs[at] ?? '').padEnd(width)}  ${env}`.trimEnd())
-    })
+    const resolved = entities.map((found): [string, string] => [
+      shown(refOf(found)),
+      found.kind === 'Resource'
+        ? shown(found.metadata.annotations[ENV_ANNOTATION] ?? UNDECLARED)
+        : '',
+    ])
+    const missing = unresolved.map((ref): [string, string] => [shown(ref.to), nowhere(ref)])
+    // A reference nothing answers to is as long as its file made it — a
+    // `providesApis` the grammar could not split is kept as written — so it
+    // sets the column only while it is as short as an entity's can be. A
+    // longer one is printed with its marker after it, and pads nothing else.
+    const width = Math.max(
+      0,
+      ...resolved.map(([ref]) => ref.length),
+      ...missing.map(([ref]) => ref.length).filter((length) => length <= REF_WIDTH),
+    )
+    for (const [ref, after] of [...resolved, ...missing]) {
+      lines.push(`  ${ref.padEnd(width)}  ${after}`.trimEnd())
+    }
   }
 
   // Who provides an API is always said of one, "none" included: an API no
@@ -133,16 +178,25 @@ export function renderEntityDetail(graph: EntityGraph, entity: CatalogueEntity):
   // `providesApis` names it — Backstage keeps an explicit kind as written — so
   // the relation reads at both ends. What a component provides is said only
   // when it provides something, so a card without APIs reads as before.
-  const providers = graph.providersOf(refOf(entity))
+  const ref = refOf(entity)
+  const providers = graph.providersOf(ref)
   if (entity.kind === 'API' || providers.length > 0) section('provided by', providers)
-  const provides = graph.providedApisOf(refOf(entity))
-  if (provides.length > 0) section('provides', provides)
+  const provides = graph.providedApisOf(ref)
+  const unprovided = graph.unresolvedOf(ref, 'providesApis')
+  if (provides.length > 0 || unprovided.length > 0) section('provides', provides, unprovided)
 
-  section('depends on', graph.dependenciesOf(refOf(entity)))
-  section('used by', graph.dependantsOf(refOf(entity)))
+  section('depends on', graph.dependenciesOf(ref), graph.unresolvedOf(ref, 'dependsOn'))
+  section('used by', graph.dependantsOf(ref), graph.unresolvedOf(ref, 'dependencyOf'))
 
-  const consumers = graph.consumersOf(refOf(entity))
-  if (consumers.length > 0) section('reached by services', consumers)
+  // One line per reference: two rights naming the same missing service are
+  // one service the walk cannot reach, as `consumersOf` lists one per service.
+  const consumers = graph.consumersOf(ref)
+  const unreached = graph
+    .unresolvedConsumersOf(ref)
+    .filter((missing, at, all) => all.findIndex(({ to }) => to === missing.to) === at)
+  if (consumers.length > 0 || unreached.length > 0) {
+    section('reached by services', consumers, unreached)
+  }
 
   return lines.join('\n')
 }

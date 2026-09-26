@@ -1,0 +1,13 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: billing-api
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/tiger
+  dependsOn:
+    - resource:default/billing-queue-dev
+  providesApis:
+    - billing-events

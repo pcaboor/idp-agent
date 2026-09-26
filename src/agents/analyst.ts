@@ -43,6 +43,8 @@ const SYSTEM = `You answer questions about an infrastructure catalogue.
 
 Use the tools to read the catalogue. You may not state anything you have not read:
 every reference you give must have come back from a tool in this conversation.
+A reference marked "declared": false is written in the catalogue and names no entity:
+say so, and never treat it as the entity that shares its name.
 
 Finish by calling "answer":
   entities      with the references you read, when they answer the question
@@ -72,7 +74,9 @@ const unanswerable = (reason: string): Answer => ({ outcome: 'unanswerable', rea
 
 export async function answerQuestion(
   client: LlmClient,
-  tools: ReturnType<typeof buildTools>,
+  // What the loop runs and signs with. What a result showed as naming nothing
+  // is the commentary check's, read off the registry by whoever runs it.
+  tools: Pick<ReturnType<typeof buildTools>, 'specs' | 'run' | 'witnessed'>,
   input: { intent: string; summary: string; vocabulary: string },
   emit: EventSink,
 ): Promise<AnalystOutcome> {
@@ -81,7 +85,7 @@ export async function answerQuestion(
 
 async function answerFromCatalogue(
   client: LlmClient,
-  tools: ReturnType<typeof buildTools>,
+  tools: Pick<ReturnType<typeof buildTools>, 'specs' | 'run' | 'witnessed'>,
   input: { intent: string; summary: string; vocabulary: string },
   emit: EventSink,
 ): Promise<AnalystOutcome> {
@@ -165,8 +169,11 @@ async function answerFromCatalogue(
       if (reads) emit({ type: 'tool:call', id: call.id, name: call.name, args: call.args })
       const outcome = tools.run(call)
       truncated += outcome.truncated
-      read += outcome.rows
-      if (outcome.rows > 0) {
+      // A reference shown as naming nothing is not a row, but it was read:
+      // two turns that found only those have not found nothing.
+      const found = outcome.rows + (outcome.dangling ?? 0)
+      read += found
+      if (found > 0) {
         rejected.times = 0
         rejected.issue = ''
       }
