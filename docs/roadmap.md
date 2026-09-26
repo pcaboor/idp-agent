@@ -26,9 +26,7 @@ each:
 | 5 | Write + local branch | in progress: the owner's own work, not on `main` |
 | 6 | GitHub pull request | not started |
 | 7 | Polish: Ink TUI, asciinema, npm publish | not started |
-| 8 | Discovery | design note in [PR #76](https://github.com/pcaboor/idp-agent/pull/76), open |
-
-Row 8 is not in the README's table yet: PR #76 adds it.
+| 8 | Discovery | designed ([the design note](stage-8-brief.md), [#76](https://github.com/pcaboor/idp-agent/pull/76)); not started |
 
 Since stage 4, the work has gone into the review's priorities and into the question half of
 the product: `--repo` and a configured source, the one gesture `idpa "<phrase>"`, answers
@@ -48,24 +46,31 @@ what the item is for.
    access that does not exist.
 4. **Review priority 9, `init` on a real service repository.** The first onboarding gesture
    ends on a diff, not a dead end or a duplicate.
-5. **The `backstage-http` read provider: a design note and a stage plan.** Context read from a
-   Backstage catalogue, where today it comes from a configured source.
+5. **A sweep of the review.** Each finding no pull request names is classified still true,
+   fixed or obsolete; the Status section is updated, and the cheap fixes still true are
+   batched.
+6. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
+   the current `main`, read only: what it covers and what it misses.
+7. **Stage 5, write + local branch.** The first write, atomic and idempotent. The owner's own
+   work, on branch `feat/s5-cleared`, at the owner's pace.
+
+The `backstage-http` read provider's design note and stage plan were ordered right after
+priority 9 on 2026-09-25 and earlier on 2026-09-26; the later order of 2026-09-26 (items 5 to
+7) does not place it, so its place is to be confirmed.
 
 **Not yet ordered.**
 
-- **Stage 5, write + local branch.** The first write, atomic and idempotent. The owner's own
-  work in progress, on branch `feat/s5-cleared`, not on `main`.
 - **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
   authorisation (ADR-0006).
 - **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal
   that the owner set as the project's end goal (2026-09-23).
-- **The `backstage-http` read provider itself**, once its design note and plan (item 6) are
-  agreed.
-- **Stage 8, discovery** ([PR #76](https://github.com/pcaboor/idp-agent/pull/76)). From any
+- **The `backstage-http` read provider**: its design note and stage plan, then the provider
+  itself.
+- **Stage 8, discovery** ([the design note](stage-8-brief.md)). From any
   service repository, generate its catalog-info and discover the dependencies it already
   has, with evidence.
 
-The one order stated beyond these five is stage 8's own, in its design note (section 11):
+The one order stated beyond these seven is stage 8's own, in its design note (section 11):
 priorities 6, 7, 8 and 9 as queued, and stage 5's first two tasks; then slice 1, which needs
 only priority 7 and can start as soon as it lands; then slices 2 and 3, and submission.
 Submitting rights for a Component declared in its own service repository needs the
@@ -129,8 +134,18 @@ The owner's decisions, dated, each with where it is recorded.
   `IDP_SUPERVISOR_MODEL` ([#75](https://github.com/pcaboor/idp-agent/pull/75)).
 - Stage 8, discovery, is added: from any service repository, generate its catalog-info and
   discover the dependencies it already has, with evidence. Decided: Node first, and exit 1
-  for an empty result with incomplete coverage. Questions 3 to 11 are open
-  ([PR #76](https://github.com/pcaboor/idp-agent/pull/76), open).
+  for an empty result with incomplete coverage
+  ([#76](https://github.com/pcaboor/idp-agent/pull/76)).
+- Stage 8's remaining questions are answered as recommended: the `--project` rename in stage
+  8; a new Component's place is a setting, central by default; the declarations merge request
+  waits for a declared consumer; the `idp-agent.dev/` prefix; per-folder CODEOWNERS; the
+  account is part of a grant's identity; no new resource types in v1; labelled environment
+  hints; deterministic extractors only in v1
+  ([the note's section 13](stage-8-brief.md), [#76](https://github.com/pcaboor/idp-agent/pull/76)).
+- The order after review priority 9: a sweep of the review's remaining findings (still true,
+  fixed or obsolete, with the Status updated and the cheap fixes batched), then a check of the
+  owner's stage-5 plan against the review's stage-5 readiness findings and the current
+  `main`, then stage 5.
 - No GitHub issues for now: open items are tracked in this file.
 
 ## Known debts and open items
@@ -211,20 +226,6 @@ Each was checked against `main` at `3b642fa`.
 - When `repair()` runs again within one `plan`, attempt names restart at 1; no round
   attribute tells them apart.
 - MLflow's protobuf `partialSuccess` is not decoded; only a JSON one is reported.
-
-**Stage 8's open questions** ([PR #76](https://github.com/pcaboor/idp-agent/pull/76), the
-design note's section 13)
-
-3. The flag rename `init --repo` → `--project`: in stage 5 or in stage 8?
-4. Where a new Component goes: centrally, in the service repository, or a setting.
-5. The merge request order, and whether a dangling consumer is refused.
-6. Identifier annotations: is the `idp-agent.dev/` prefix acceptable, and should it and
-   `company.fr/env` become configurable?
-7. Per-folder CODEOWNERS from `init platform`, or the merge alone.
-8. Whether `spec.account` is part of a grant's identity.
-9. Grow `RESOURCE_TYPES` (queue, topic, bucket), or only report what is not expressible.
-10. Whether a file name may be shown, labelled, in the environment question.
-11. Deterministic extractors only in v1, or also model-quoted findings.
 
 ## How this file is kept
 
