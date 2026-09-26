@@ -71,7 +71,11 @@ Plain data, handed in. Never a graph, never a provider, never a path.
   when it provides one. A tool of its own rather than a
   direction of `get_dependencies`, because providing is not depending, and who *consumes*
   an API is a right over it, which `get_dependencies` `consumers` already walks. Every
-  reference a row names joins the witness set.
+  reference a row names joins the witness set, and so does the entity `get_dependencies`
+  walked from, when the graph holds it — the engine looked it up, and an Analyst that
+  answered with it and the right it found was refused for naming what "no tool returned".
+  An unknown one witnesses nothing. The Architect's registry does not witness it: its
+  witness set is what a proposed value's provenance is measured against, as it was.
 
   A reference the catalogue declares and no entity answers to is read too, never as an
   entity: a row carries its entity's under `danglingReferences`, and `get_dependencies`
