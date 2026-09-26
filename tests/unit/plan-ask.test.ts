@@ -1041,10 +1041,19 @@ describe('an answer counts for what the user said, at the field they said it', (
     })
 
     expect(typed.found).toBe(false)
+    // The name's prod is also no scope of a right declared dev (core-plan-1):
+    // what it reaches and who holds it live in prod, and its name says another
+    // environment than the one it declares.
     expect(typed.policies).toEqual([
       expect.objectContaining({
         policy: 'environment-mismatch',
         path: 'operations.0.entity.metadata',
+      }),
+      expect.objectContaining({ policy: 'cross-environment-consumer' }),
+      expect.objectContaining({ policy: 'cross-environment-consumer' }),
+      expect.objectContaining({
+        policy: 'environment-in-name',
+        path: 'operations.0.entity.metadata.name',
       }),
     ])
     // The same refusal, at the same field. The sentence differs on purpose:
@@ -1057,11 +1066,11 @@ describe('an answer counts for what the user said, at the field they said it', (
       }),
     })
     expect(where(answered)).toEqual(where(typed))
-    expect(answered.policies).toEqual([
+    expect(answered.policies[0]).toEqual(
       expect.objectContaining({
         message: expect.stringContaining('dev was answered at operations.0.entity.metadata.env'),
       }),
-    ])
+    )
   })
 
   it('keeps an answered owner over a consumer answered in the same round, and says so', async () => {
@@ -1418,8 +1427,11 @@ describe('an answer is never asked twice, whatever the Architect redrafts', () =
     const { events, emit } = collect()
 
     const result = await runIntent({
+      // The database the redraft declares is named by the request as a whole
+      // word: a name inside `billing-api-orders-db-prod` is no word of it
+      // (`echoes`), and would be one more question here.
       intent:
-        'give component:default/payments-api read access through ' +
+        'give component:default/payments-api read access to orders-db-prod in prod through ' +
         'resource:default/billing-api-orders-db-prod',
       repo,
       project,
@@ -1499,9 +1511,11 @@ const READWRITE_GRANT = [
 
 const GRANT_REF = 'resource:default/billing-api-orders-db-prod'
 
+// "in prod" as a word of its own: inside the grant's reference it is part of a
+// longer one, and the environment of the grant both updates extend is asked.
 const TWO_CONSUMERS =
-  'give component:default/payments-api and component:default/shipping-api access through ' +
-  GRANT_REF
+  'give component:default/payments-api and component:default/shipping-api access in prod ' +
+  `through ${GRANT_REF}`
 
 const extending = (consumer: string) => ({
   op: 'update-entity',

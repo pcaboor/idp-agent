@@ -620,7 +620,11 @@ const amending = async ({
   await writeFile(
     from,
     JSON.stringify({
-      intent: `let ${CONSUMER} use resource:default/billing-api-billing-db-prod, the readwrite access`,
+      // "in prod", or the environment of the grant it extends is asked: the
+      // `prod` inside the reference is part of a longer word (core-plan-3).
+      intent:
+        `let ${CONSUMER} use resource:default/billing-api-billing-db-prod in prod, ` +
+        'the readwrite access',
       operations: [
         {
           op: 'update-entity',

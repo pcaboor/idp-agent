@@ -1,6 +1,7 @@
 import { Document, Scalar, parse, parseAllDocuments, visit, type YAMLError } from 'yaml'
 import { apiSchema, entitySchema, type Api, type Entity } from '../schemas/entity.js'
 import { reasonOf } from '../schemas/reject.js'
+import { ENV_ANNOTATION } from '../schemas/vocabulary.js'
 
 /**
  * The model never emits YAML; it emits a structure, and this is the only place
@@ -442,4 +443,65 @@ export function parseDocuments(text: string): {
   }
 
   return { entities, apis, rejections, ignored, documents: readings.length }
+}
+
+/** A name a document carries, and the environment it declares, if any. */
+export interface DocumentName {
+  readonly name: string
+  readonly env: string | undefined
+}
+
+/**
+ * The name and the environment of every document in a file that states a
+ * name, whatever `parseDocuments` made of it — an entity, an API, a document
+ * set aside, a document refused — and whether a document it refused states
+ * none it can read, or an environment it cannot.
+ *
+ * What a request can mention (`namesakesIn`), which is more than the write
+ * model: a person reads the repository, not the schema, and a System
+ * annotated dev or a Component refused for a missing owner is a name they may
+ * write. So nothing here is filtered by kind, by namespace or by validity, and
+ * a file declaring the same name twice gives both.
+ *
+ * `unreadable` is the one fact about a refused document the rest cannot be:
+ * a YAML error, a document that is not a mapping, a `metadata.name` that is
+ * not text, or an environment annotation that is not. Its name might be in
+ * the request, so the reader asks rather than guesses. A document set aside
+ * that states no name — a mkdocs.yml, a Chart.yaml — is nobody's name, and a
+ * witness is no document at all.
+ */
+export function documentNames(text: string): {
+  named: DocumentName[]
+  unreadable: boolean
+} {
+  const named: DocumentName[] = []
+  let unreadable = false
+  for (const reading of readDocuments(text)) {
+    if ('error' in reading) {
+      unreadable = true
+      continue
+    }
+    const { value } = reading
+    if (value === null || value === undefined) continue
+    const metadata = isMapping(value) && isMapping(value.metadata) ? value.metadata : undefined
+    const name = metadata?.name
+    if (metadata === undefined || typeof name !== 'string') {
+      // The order `parseDocuments` reads in: a misdeclared kind is refused
+      // before anything is set aside.
+      const aside = misdeclaredKind(value) === undefined && ignoredOf(value) !== undefined
+      if (!aside) unreadable = true
+      continue
+    }
+    const { annotations } = metadata
+    const env = isMapping(annotations) ? annotations[ENV_ANNOTATION] : undefined
+    if (
+      (annotations !== undefined && !isMapping(annotations)) ||
+      (env !== undefined && typeof env !== 'string')
+    ) {
+      unreadable = true
+      continue
+    }
+    named.push({ name, env: typeof env === 'string' ? env : undefined })
+  }
+  return { named, unreadable }
 }

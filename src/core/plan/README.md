@@ -26,7 +26,7 @@ schema rejects what cannot be requested. The signature turns a value nobody can 
 into a question rather than a refusal — *declare, never infer* means asking, not guessing
 and not giving up. A policy refuses what is expressible, vouched for, and still wrong; the
 design named that gate four times and defined it nowhere, so `policies.ts` opens with the
-definition. Five ship, and **every operation is gated** — `update-entity` joins a consumer
+definition. Six ship, and **every operation is gated** — `update-entity` joins a consumer
 to an *existing* grant, so it is the one operation that hands out an authorisation nobody
 re-declares, and the loop once skipped it. The re-check exists because the catalogue lags
 the repository by about two minutes (§4.4): what was true when the plan was drafted may not
@@ -137,6 +137,58 @@ An environment is deliberately not enumerable: `prod` always exists, so acceptin
 because the catalogue uses it would let a model pick production for a request that named no
 environment at all. §4.1 says being authorised in dev grants nothing elsewhere, so an
 environment is echoed — the user named it — or novel, and novel means asked.
+
+Echoed means named as a **whole word** (`echoes.ts`): letters, marks and digits of any
+script joined by `.`, `_` or `-`, ended by anything else and by a change of script. A
+hyphen joins, so "non-prod", "pre-prod" and "hors-prod" name no `prod` and "lion-ops" no
+`lion`; the price, in the safe direction, is that "en production" names no `prod` either,
+nor does "orders-db-prod" — an environment inside a longer name is no word of the request —
+and the environment is asked, unless the entity named is what a grant is over (below). U+2010 and U+2011 are hyphens too, and a letter of any script
+but Latin ends a token, listed anywhere or not. A composed name is vouched for by runs of its segments that
+are whole words of the request, so `orders-db-prod` still passes on "orders-db in prod".
+
+## Where an environment is read, and where it is asked
+
+`environment.ts` holds the two readings three modules share. **A name says an environment**
+only as a whole part of it (`environmentsNamedBy`), and that is read for a contradiction,
+never as a scope: `cross-environment-consumer` compares the environment a right *declares*
+with what it reaches and who holds it, and `environment-in-name` refuses a name that says
+another. Counting the name as scope let `billing-api-orders-db-prod`, declared dev, pass
+over the prod database. `environment-mismatch` still reads the name, against what the user
+stated, because there reading more only refuses more.
+
+**An update's environment is asked** when nothing the user said names the environment of
+the grant it extends — the patch carries none, so the model chose. The question is put at
+`operations.<n>.environment` (`ENVIRONMENT_FIELD`), a path the operation has no field for,
+with the grant, its environment as the draft's, and the environments in use; `fillAnswers`
+records the answer without writing it into the plan. It is keyed by its access like a
+level (`environmentFieldOf`), so an environment answered for a grant the draft declared and
+one answered for a grant an update extends are one answer, and follow the redraft between
+the two shapes; a redraft that reaches another thing asks again. An answer naming another
+environment than the grant's is `environment-mismatch`'s to refuse, and the remedy names
+the grant of that environment — a right declared there, held by the same consumers, and
+what it is over — beside a separate grant. The engine never retargets the operation itself.
+A grant that declares no environment is asked about too, with the environment of what it
+is over (`scopeOf`); a request naming an environment is not asked, and a grant in another
+is refused against it. Nor is a request naming no environment but everything the grant is
+over by its reference in full — `kind:namespace/name`, or `kind:name` in the default
+namespace, each a whole token — each thing declaring the environment the grant hands out:
+"…à resource:default/orders-db-prod" pointed at a declaration, so nothing is inferred, and
+`checkPolicies` counts that environment as stated, holding the consumer to it. All or
+nothing — a grant over two things with one named, a thing declaring no environment, another
+thing named, or the reference inside a longer token, is asked — and a bare name never
+points. Both the word and the pointing are vetoed by what the request mentions: every name
+the repository holds (`Namesakes`, read off every file's bytes by `namesakesIn` — entities,
+APIs, documents refused whose name can be read, documents set aside that carry one, and
+namesakes in other namespaces), each with the SET of environments its documents declare,
+found anywhere in the folded request as a plain substring. A mentioned name in another
+environment than the grant's, or words and mentions naming more than one, and the update's
+environment is asked; so it is when a refused document's name cannot be read. One function,
+`requestedEnvironment`, for the question and the policies, so what stops the question is
+what the gates hold the plan to. The cost, in the safe direction: a bare name, or a request
+mentioning several environments' entities, gets the question. Pointing stands in for
+silence only: beside a named or answered environment it adds nothing. An answer held by its path alone vouches only while that path joins
+the same consumer to the same grant, since the plan holds no value to check it against.
 
 ## The translation nobody owns
 

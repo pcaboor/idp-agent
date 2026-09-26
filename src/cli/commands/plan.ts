@@ -20,6 +20,7 @@ import { readProject } from '../../context/project-fs/snapshot.js'
 import { renderUnifiedDiff, type FileEdit } from '../../core/diff/unified.js'
 import { answer, AnswerError, questionsOf, type Question } from '../../core/plan/clarify.js'
 import { deriveOwners } from '../../core/plan/derive.js'
+import { namesakesIn } from '../../core/plan/environment.js'
 import { planEdits, type DroppedOperation } from '../../core/plan/edits.js'
 import { declaredLevel, natureOf, statesLevels } from '../../core/plan/grant.js'
 import { checkPolicies, type PolicyContext, type PolicyViolation } from '../../core/plan/policies.js'
@@ -256,6 +257,7 @@ const unprovided = (entity: Entity): Entity => {
 function contextsOf(
   root: string,
   snapshot: RepositorySnapshot,
+  contents: ReadonlyMap<string, string>,
   graph: EntityGraph,
   seed: {
     readonly config?: RepositoryConfig | undefined
@@ -274,6 +276,12 @@ function contextsOf(
   const levels = new Map<string, AccessLevel | undefined>()
   const natures = new Map<string, Nature>()
   const over = new Map<string, readonly string[]>()
+  const holders = new Map<string, readonly string[]>()
+  // Every name a request can mention, read off the bytes rather than the
+  // parse: an API, a System set aside, a document refused and a namesake in
+  // another namespace are each a name a person may write, with every
+  // environment any of them declares (`requestedEnvironment`).
+  const namesakes = namesakesIn(contents.values())
   for (const file of snapshot.files) {
     for (const entity of file.entities) {
       declared.set(refOf(entity), file.path)
@@ -293,6 +301,11 @@ function contextsOf(
       // network flow over the same database is never read as that access
       // (see `GrantedOver`).
       if (statesLevels(entity)) over.set(refOf(entity), entity.spec.dependsOn ?? [])
+      // Who holds each right, for one remedy: the grant of the environment
+      // the user answered is the one the same consumers hold (`holders`).
+      if (natureOf(entity) === 'right' && entity.kind === 'Resource') {
+        holders.set(refOf(entity), entity.spec.dependencyOf ?? [])
+      }
       // Read from the entity, never inferred: `spec.owner` is required on both
       // kinds, so every entity the reader accepted contributes exactly one.
       owners.set(refOf(entity), entity.spec.owner)
@@ -323,6 +336,8 @@ function contextsOf(
       levels,
       natures,
       over,
+      holders,
+      namesakes,
     },
   }
 }
@@ -583,11 +598,34 @@ export const renderQuestions = (questions: readonly Question[]): CommandResult =
     '',
     ...questions.flatMap(questionLines),
     '',
-    'Fill them in and run this again. Nothing was previewed, and nothing was written.',
+    ...closingOf(questions),
   ].join('\n'),
   found: false,
   unsupported: true,
 })
+
+/**
+ * What to do next, true of every question listed. "Fill them in" cannot be
+ * followed for an implied one — the environment of the grant an update
+ * extends: its path is no field of the plan, `update-entity` is a strict
+ * object, and an `environment` written into it is refused at the schema. So
+ * with nobody to ask, it is answered by the request's own words, which on
+ * `--from` are the plan's `intent`, or at a terminal.
+ */
+const closingOf = (questions: readonly Question[]): string[] => {
+  const nothing = 'Nothing was previewed, and nothing was written.'
+  const implied = questions.filter((question) => question.implied === true)
+  if (implied.length === 0) return [`Fill them in and run this again. ${nothing}`]
+  const paths = implied.map((question) => question.path)
+  return [
+    `${paths.join(', ')} ${paths.length === 1 ? 'is not a field' : 'are not fields'} of the ` +
+      'plan: name the environment in the request — a plan’s intent — or run this at a ' +
+      'terminal to be asked.',
+    implied.length === questions.length
+      ? nothing
+      : `Fill in the rest and run this again. ${nothing}`,
+  ]
+}
 
 /**
  * One question as a person reads it, printed and prompted alike — the prompt
@@ -778,7 +816,11 @@ export async function fillAnswers(
     }
 
     try {
-      filled = answer(filled, question.path, said.trim())
+      // A fact the plan has no field for — the environment of the grant an
+      // update extends — is the user's word all the same, and is recorded
+      // below like any other. Nothing is written: the plan never held a
+      // question there, and the gates read the answer where it was given.
+      if (question.implied !== true) filled = answer(filled, question.path, said.trim())
     } catch (error) {
       // `answer` refuses a path that is not a question, which is how a value
       // the engine vouched for would otherwise be overwritten by one nobody
@@ -895,8 +937,8 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
   const snapshot = await readRepository(root)
   const loaded = await loadPlan(options.from)
 
-  const contexts = contextsOf(root, snapshot, graphOf(snapshot))
   const contents = await readContents(root, snapshot)
+  const contexts = contextsOf(root, snapshot, contents, graphOf(snapshot))
 
   /** What the user said when asked, and what about. See `provenanceOf`. */
   const answers: RecordedAnswer[] = []
@@ -953,6 +995,10 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
       draft: derived,
       environments: contexts.vocabulary.environments,
       over: contexts.policy.over,
+      declared: contexts.policy.environments,
+      namesakes: contexts.policy.namesakes,
+      natures: contexts.policy.natures,
+      provenance,
     })
     if (questions.length === 0 || options.ask === undefined || round >= ASK_LIMITS.maxRounds) {
       return previewPlan(signed, questions, contexts, provenance, snapshot, contents, options)
@@ -1128,11 +1174,14 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
   // tapes were recorded — an open decision, see `refuseUnusedValues`.
   const graph = graphOf(snapshot)
   const tools = buildTools(graph, { refuseUnusedValues: false })
-  const contexts = contextsOf(root, snapshot, graph, { config, witnessed: tools.witnessed })
-  const summary = formatSummary(contexts.summary, contexts.vocabulary)
   // Before the Inspector too: a repository `plan` cannot read whole is refused,
   // and refused before a model round-trip is spent on it.
   const contents = await readContents(root, snapshot)
+  const contexts = contextsOf(root, snapshot, contents, graph, {
+    config,
+    witnessed: tools.witnessed,
+  })
+  const summary = formatSummary(contexts.summary, contexts.vocabulary)
 
   // No repository, no Inspector: the Architect is told that nothing was
   // inspected, never handed facts nobody established.

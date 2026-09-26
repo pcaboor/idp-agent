@@ -64,9 +64,11 @@ export interface Provenance {
 /**
  * Did the request name this value? Only a person's request can; see `wordsOf`.
  *
- * Exported apart from `stated` for the two readers that ask about the words
- * alone: a composed name vouched for segment by segment, and the environments
- * a request names for every operation of a plan at once.
+ * Exported apart from `stated` for the three readers that ask about the words
+ * alone: a composed name vouched for in runs of its segments, the environments
+ * a request names for every operation of a plan at once, and whether the
+ * request states an update's environment, by a word or by the references it
+ * names (`requestedEnvironment`).
  */
 export const named = (provenance: Provenance, value: string): boolean =>
   provenance.wordsOf === 'user' && echoes(provenance.intent, value)

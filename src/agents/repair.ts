@@ -558,6 +558,10 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       draft: derivation.plan,
       environments: input.signature.vocabulary.environments,
       over: input.policy.over,
+      declared: input.policy.environments,
+      namesakes: input.policy.namesakes,
+      natures: input.policy.natures,
+      provenance,
     })
 
       // [3] Policies. Free, deterministic, and every violation at once: a caller
