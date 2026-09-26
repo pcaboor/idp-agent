@@ -88,6 +88,10 @@ what you decided against. `main` is reached through a pull request — the repos
 holds its own doctrine about merges being the act of authorisation, and applies it to
 itself.
 
+A pull request adds its line to [`CHANGELOG.md`](CHANGELOG.md) under Unreleased, and updates
+[`docs/roadmap.md`](docs/roadmap.md) when it closes an item listed there. The full rule is in
+[`AGENTS.md`](AGENTS.md#conventions).
+
 **English throughout** — code, comments, commit messages, test names, CLI output.
 
 ## Reporting a bug, or a vulnerability
