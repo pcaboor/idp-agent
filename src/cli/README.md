@@ -258,7 +258,10 @@ Both roads then run **all the gates again** on the filled plan, bounded by
 `ASK_LIMITS.maxRounds`. An answer is not exempted from any gate: it joins what the user
 stated, and the derivation, the signature and the policies all read that one
 `Provenance`. That is what makes an answer count exactly as the same value typed into the
-request would, at that field.
+request would, at that field. Each round derives the owners again and says so on the
+stream; the terminal's sink (`progress` in `index.ts`) prints a `derived` line once per path
+and owner per run, so an owner the second round derives again is not a second line, and an
+owner that replaced the first one is. The trace keeps every emission, on its round's span.
 
 An answer is recorded by what it is about — the entity its operation declares or amends,
 and the field inside it (`recordAnswers`) — not by its path, because the Architect does
