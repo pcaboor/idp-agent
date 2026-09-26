@@ -42,6 +42,25 @@ describe('validate', () => {
     expect(out).toMatch(/0 violations/)
   })
 
+  it('prints the fixture SI\'s report byte for byte, and nothing on stderr', async () => {
+    // Pinned whole: naming an absent field as required changed a reason's
+    // words, and only for that case.
+    const { code, out, err } = await run(FIXTURES)
+    expect({ code, out, err }).toEqual({ code: 0, out: '33 entities in 33 files, 0 violations\n', err: '' })
+  })
+
+  it('names a Component\'s absent lifecycle as required, with the values it accepts', async () => {
+    const root = await repositoryWith({
+      'payments-api.yml':
+        '---\napiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: payments-api\n' +
+        'spec:\n  type: service\n  owner: group:default/tiger\n',
+    })
+    const { code, out } = await run(root)
+    expect(code).toBe(1)
+    expect(out).toContain('spec.lifecycle: required — experimental, production or deprecated')
+    expect(out).not.toContain('Invalid option')
+  })
+
   it('passes a repository that is also a Backstage catalogue, warning about what it leaves alone', async () => {
     // A Group and a mkdocs.yml are not this tool's to judge. Each was an
     // invalid-entity error, so a real catalogue could not get its CI green.

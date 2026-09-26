@@ -433,12 +433,12 @@ export function parseDocuments(text: string): {
     if (READ_KINDS.has(kindOf(reading.value) ?? '')) {
       const api = apiSchema.safeParse(reading.value)
       if (api.success) apis.push(api.data)
-      else rejections.push(reasonOf(api.error))
+      else rejections.push(reasonOf(api.error, reading.value))
       continue
     }
     const parsed = entitySchema.safeParse(reading.value)
     if (parsed.success) entities.push(parsed.data)
-    else rejections.push(reasonOf(parsed.error))
+    else rejections.push(reasonOf(parsed.error, reading.value))
   }
 
   return { entities, apis, rejections, ignored, documents: readings.length }
