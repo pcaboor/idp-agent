@@ -1,6 +1,6 @@
 # idp-agent — Design Specification
 
-**Date** 2026-09-09 · **Status** approved, ready for implementation planning · **Target** v0.1
+**Date** 2026-09-09 · **Status** approved; stages 0 to 4 built, 5 to 7 designed (README, *Roadmap*) · **Target** v0.1
 
 ---
 
@@ -490,7 +490,7 @@ can *vouch for* — and asks rather than refuses, because *declare, never infer*
 putting the question to the user, not guessing and not giving up — and a policy refuses
 what is expressible, vouched for, and still wrong.
 
-Four ship in v0.1:
+Five ship in v0.1:
 
 | policy | refuses |
 |---|---|
@@ -675,7 +675,7 @@ fields above are the whole schema — strict, so `enviroments:` is a named error
 a silent fallback to "this repository declared nothing". There is deliberately no field
 that could carry a credential: a token in a committed file is a token in every clone of
 it. Writing the file is § 7.3's last clause, and writing arrives at stage 5, so `init`
-previews the `catalog-info.yml` and leaves this one to the stage allowed to create it.
+previews the `catalog-info.yaml` and leaves this one to the stage allowed to create it.
 
 What the read buys is `environments`, which seeds the vocabulary the deterministic gates
 measure a proposal against. That vocabulary is otherwise empirical — what the catalogue
@@ -759,6 +759,12 @@ $ npx idp-agent
 The guided tour replays recordings: no API key, no Docker, no network. This is the
 sixty seconds that decide whether the project is examined or closed.
 
+**Not built yet.** Until the tour exists, first contact is the README's first screen and
+`pnpm demo` from a clone: `relations`, `show` and `plan --from` against the demo SI, with
+no model, and the demo SI hashed around the preview. It replays no recording, so it shows
+the engine and not the agents; `pnpm smoke` runs it, and every example, at the exit codes
+their pages state.
+
 ### 7.2 `idp-agent init platform` — once per organisation
 
 Run by whoever sets up the platform. Creates the IaC repository and materialises the
@@ -793,7 +799,7 @@ statement the product makes.
 ### 7.3 `idp-agent init` — once per application (stage 4)
 
 Inspects the repository (manifest, git remote, CODEOWNERS), proposes a
-`catalog-info.yml` through the same `propose()` path as any other entity, confirms
+`catalog-info.yaml` through the same `propose()` path as any other entity, confirms
 the owner it inferred rather than assuming it, and writes `.idp-agent.yml`.
 
 Three of those four need the Inspector and `propose()`. The command existed from stage 3
@@ -808,7 +814,7 @@ minting first puts a path in front of a gate that classifies a value by where it
 from, and the engine's own choice comes out as "nobody vouches for this" — a question the
 CLI would put to the user about a path chosen by the code asking.
 
-The fourth clause waits for stage 5. The `catalog-info.yml` is previewed as a diff and
+The fourth clause waits for stage 5. The `catalog-info.yaml` is previewed as a diff and
 nothing is written, `.idp-agent.yml` included — and "confirms the owner it inferred rather
 than assuming it" is a human reading that diff. The signature says a proposed value
 matches what the inspection established; the Inspector is a model reading files, so it
@@ -878,8 +884,8 @@ Every run ends on the same line, so no one mistakes submission for permission:
 | No convergence | stops at 3 attempts, states what could not be determined, suggests the flag or field that would resolve it, writes nothing |
 
 An empty plan used to be how both of those rows were written, and it is not a
-channel any more: `proposeTool` and `planSchema` both require at least one
-operation. The reason is that an empty plan is indistinguishable from a model
+channel any more: the Architect's `PROPOSE_TOOL` and `planSchema` both require at
+least one operation. The reason is that an empty plan is indistinguishable from a model
 giving up. It passes every gate vacuously, produces no edits, and came out of
 the CLI as `nothing to change.` on exit 0 — a person asked for an authorisation
 and was told their repository already grants it. Idempotence is now demonstrated
@@ -963,6 +969,10 @@ test('a Plan carrying an unknown field cannot be applied')
 
 ## 10. Repository layout
 
+The layout as designed. `forge/`, `governance/` and `tui/` arrive with the stages that
+need them, and git with `forge/`, since `core/` reaches no disk; `AGENTS.md` describes
+the folders that exist today.
+
 ```
 idp-agent/
 ├─ src/
@@ -971,8 +981,7 @@ idp-agent/
 │  │  ├─ plan/           construction · validation · atomic application
 │  │  ├─ yaml/           deterministic serialiser + textual surgery
 │  │  ├─ diff/           unified rendering
-│  │  ├─ paths/          entity path computation — never the AI
-│  │  └─ git/            branch, commit
+│  │  └─ paths/          entity path computation — never the AI
 │  ├─ context/
 │  │  ├─ provider.ts     ContextProvider interface
 │  │  ├─ fixtures/       embedded fictional SI (default)
@@ -981,12 +990,12 @@ idp-agent/
 │  │  └─ graph/          in-memory index + dependency queries
 │  ├─ forge/
 │  │  ├─ provider.ts     ForgeProvider interface
-│  │  ├─ local/          local branch + MR preview (no token)
+│  │  ├─ local/          git: local branch, commit, MR preview (no token)
 │  │  └─ github/         GitHub API
 │  ├─ llm/
 │  │  ├─ client.ts       the single crossing point — types only
 │  │  ├─ recording.ts    record / replay
-│  │  ├─ runtime.ts      the only file importing the model SDK
+│  │  ├─ runtime.ts      with providers.ts, the only files importing the model SDK
 │  │  └─ providers.ts    anthropic · mistral · openai
 │  ├─ agents/          cannot import fs, git, child_process
 │  │  ├─ supervisor.ts · analyst.ts · inspector.ts · architect.ts · reviewer.ts
@@ -1110,7 +1119,7 @@ English throughout: code, comments, commits, docs, CLI output.
 
 Deliberately excluded; do not reintroduce without an explicit decision.
 
-- GitLab (v0.2 — the interface is in place, it is one file to write)
+- GitLab (v0.2 — one file to write once stage 5's `ForgeProvider` interface exists; it does not yet)
 - The `backstage-http` provider (MVP). v0.1 ships `fixtures` and `iac-fs`.
   `iac-fs` cannot be deferred with it: the catalogue lags the repository by about
   two minutes, so deciding to write against Backstage would propose creating what

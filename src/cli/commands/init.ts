@@ -75,7 +75,7 @@ export async function runInitPlatform(
  * Stage 3 shipped this as a tested refusal naming what it waited for: the
  * Inspector, and `propose()`. Both exist, so this is the refusal answered.
  *
- * Inspector → Architect → the catalog-info.yml it would write. It stops one
+ * Inspector → Architect → the catalog-info.yaml it would write. It stops one
  * step short of §7.3's last two clauses on purpose: writing the file and
  * writing `.idp-agent.yml` are writes, and writing arrives at stage 5. What
  * lands here is the preview and the questions, rendered by `plan.ts` — the same

@@ -86,7 +86,8 @@ function check({ args, code, stdout, stderr, absentFromStdout, absentFromStderr,
   const set = Object.keys(env ?? {})
     .map((name) => `${name}=… `)
     .join('')
-  const label = `${where}${set}idp-agent ${args.join(' ')}`
+  // Paths inside the clone are shown from its root, as a person would type them.
+  const label = `${where}${set}idp-agent ${args.join(' ')}`.replaceAll(`${ROOT}${path.sep}`, '')
   // spawnSync, not execFileSync: the latter hands back stderr only when the
   // process fails, and a check on what a SUCCESSFUL run says on stderr — or
   // keeps off it — then passes or fails on an empty string.
@@ -223,7 +224,7 @@ check({ args: ['init', 'platform', 'repo', '--owner', '@acme/platform'], code: 0
 check({ args: ['validate', 'repo'], code: 0, stdout: /0 violations/ })
 
 // `plan --from` against the repository the two checks above just scaffolded and
-// validated, using a plan that ships with the project. No model is involved and
+// validated, using the plans that ship with the project. No model is involved and
 // none can be — the whole point of the file form — so this is the one
 // agent-adjacent path the built binary can be driven down with nothing
 // configured.
@@ -231,7 +232,6 @@ check({ args: ['validate', 'repo'], code: 0, stdout: /0 violations/ })
 // The example is resolved from this script's own location, not from the working
 // directory: the binary runs in ELSEWHERE, and `examples/` is not packaged.
 const PREVIEWED = path.join(ELSEWHERE, 'repo')
-const EXAMPLE = path.join(ROOT, 'examples/add-access.json')
 const untouched = hashTree(PREVIEWED)
 // ELSEWHERE as well, not just the repository inside it. The binary RUNS in
 // ELSEWHERE, so a command writing into its own working directory — a stray
@@ -239,24 +239,46 @@ const untouched = hashTree(PREVIEWED)
 // hashing only the directory the diff was about.
 const cwdUntouched = hashTree(ELSEWHERE)
 
-// Exit 3, and that is the shape of a non-interactive run now: the plan
-// declares a database AND a grant, and a grant's access level is asked rather
-// than read out of the request. Nobody is at this keyboard — stdin is not a
-// TTY in a smoke run, exactly as in CI — so the question is printed and the
-// preview is withheld. A wrapper that wants a diff for a grant has to answer.
-check({
-  args: ['plan', '--from', EXAMPLE, '--repo', 'repo'],
-  code: 3,
-  stdout: /asked rather than guessed[\s\S]*spec\.access/,
-})
-
-// The diff itself, on the half of the same plan that carries no level: an
-// object is not read or write, so nothing about it is a question.
-check({
-  args: ['plan', '--from', path.join(ROOT, 'examples/declare-database.json'), '--repo', 'repo'],
-  code: 0,
-  stdout: /\+\+\+ b\/catalog\/databases\/orders-db-prod\.yml[\s\S]*nothing written/,
-})
+// Every example against both repositories `examples/README.md` names, with
+// the exit code and the outcome its table states — read from the table, so the
+// page a newcomer follows cannot drift from the binary again: it once announced
+// a diff and exit 0 for `add-access.json`, which exits 3 outside a terminal.
+// Nobody is at this keyboard — stdin is not a TTY in a smoke run, exactly as in
+// CI — so a question is printed and the preview withheld. A file in examples/
+// with no row, or a row naming no file, fails too.
+const DEMO_SI = path.join(ROOT, 'fixtures/si-demo')
+const demoUntouched = hashTree(DEMO_SI)
+const OUTCOMES = {
+  diff: { stdout: /^\+\+\+ b\/[\s\S]*^\d+ files? · nothing written$/m },
+  'nothing to change': { stdout: /^nothing to change/m, absentFromStdout: /^\+\+\+ /m },
+  question: { stdout: /^\d+ questions?, asked rather than guessed:/m, absentFromStdout: /^\+\+\+ /m },
+  refused: { stdout: /policy violation/, absentFromStdout: /^\+\+\+ /m },
+}
+const table = readFileSync(path.join(ROOT, 'examples/README.md'), 'utf8')
+const rows = [...table.matchAll(/^\| `([\w-]+\.json)` \|[^|]*\| (\d) · ([a-z ]+) \| (\d) · ([a-z ]+) \|$/gm)]
+const onDisk = readdirSync(path.join(ROOT, 'examples')).filter((name) => name.endsWith('.json')).sort()
+assert(
+  'examples/README.md has one row per example file',
+  JSON.stringify(rows.map((row) => row[1]).sort()) === JSON.stringify(onDisk),
+  `examples/README.md rows ${rows.map((row) => row[1]).join(', ')} do not match examples/ ${onDisk.join(', ')}`,
+)
+for (const [, file, freshCode, freshOutcome, demoCode, demoOutcome] of rows) {
+  for (const [repo, code, outcome] of [
+    ['repo', freshCode, freshOutcome],
+    [DEMO_SI, demoCode, demoOutcome],
+  ]) {
+    const expected = OUTCOMES[outcome]
+    if (expected === undefined) {
+      assert(`${file}: outcome "${outcome}"`, false, `examples/README.md: unknown outcome "${outcome}" for ${file}`)
+      continue
+    }
+    check({
+      args: ['plan', '--from', path.join(ROOT, 'examples', file), '--repo', repo],
+      code: Number(code),
+      ...expected,
+    })
+  }
+}
 
 // The stage's claim, and the reason the check above is not enough on its own.
 assert(
@@ -269,6 +291,12 @@ assert(
   'plan --from wrote nothing into its working directory either',
   hashTree(ELSEWHERE) === cwdUntouched,
   'plan --from wrote into the directory it ran in; stage 4 writes nothing anywhere',
+)
+
+assert(
+  'plan --from left the demo SI byte for byte',
+  hashTree(DEMO_SI) === demoUntouched,
+  'plan --from changed fixtures/si-demo; stage 4 writes nothing',
 )
 
 // The read commands over a declarations repository of the user's own, and the
@@ -406,6 +434,34 @@ check({
   code: 0,
   stdout: /^warning org\/tiger\.yml: kind Group is not modelled[\s\S]*33 entities in 34 files, 0 violations/m,
 })
+
+// `pnpm demo`, the tour the README points a newcomer at: run to the end with
+// nothing configured, every step at the exit code it states, and the demo SI
+// hashed around the preview. It once stopped at its second step under
+// `set -e`, and nothing ran it.
+{
+  checks += 1
+  const run = spawnSync(process.execPath, [path.join(ROOT, 'scripts/demo.mjs')], {
+    cwd: ELSEWHERE,
+    env: CLEAN_ENV,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  const out = run.stdout ?? ''
+  const before = failures.length
+  if (run.status !== 0) failures.push(`pnpm demo: expected exit 0, got ${run.status}\n${run.stderr}`)
+  for (const shown of [
+    /^impacts \(9\)$/m,
+    /^component:default\/billing-api$/m,
+    /^\+\+\+ b\/catalog\/caches\/orders-cache-dev\.yml$/m,
+    /^unchanged: same files, same bytes, same folders$/m,
+    /^1 question, asked rather than guessed:$[\s\S]*^\(exit 3\)$/m,
+    /^Done\. No model was called/m,
+  ]) {
+    if (!shown.test(out)) failures.push(`pnpm demo: stdout ${shown}`)
+  }
+  console.log(`  ${failures.length === before ? 'ok  ' : 'FAIL'} pnpm demo`)
+}
 
 // The one check that can catch "green tests, broken package": the templates
 // live outside dist/, so nothing in the suite notices if they are missing from

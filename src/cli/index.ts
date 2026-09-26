@@ -1556,7 +1556,9 @@ async function openSession(
   const choice = mode === 'replay' ? undefined : chooseModel(env)
   const models = choice === undefined ? undefined : agentModelsOf(env, choice)
   const timeout = mode === 'replay' ? undefined : timeoutOf(env)
-  const name = deps.scenario ?? env['IDP_SCENARIO'] ?? scenario
+  // Empty is unset, as for every IDP_ variable.
+  const named = env['IDP_SCENARIO']
+  const name = deps.scenario ?? (named === undefined || named === '' ? scenario : named)
   const tape =
     mode === 'live'
       ? undefined

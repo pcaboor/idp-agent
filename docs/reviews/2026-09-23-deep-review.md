@@ -147,11 +147,11 @@ priority 6.
 | 3 | `--repo` on `ask`, `graph` and `show` | done | [#46](https://github.com/pcaboor/idp-agent/pull/46) | Said on stderr when the demo SI is read. |
 | 4 | Make existing repositories hold | done, but for part of domain-backstage-1 | [#48](https://github.com/pcaboor/idp-agent/pull/48), [#49](https://github.com/pcaboor/idp-agent/pull/49) | #48: only the plan's own violations refuse it. #49: unmodelled kinds and non-entity YAML set aside, "the kinds part" of domain-backstage-1; the short references followed in [#53](https://github.com/pcaboor/idp-agent/pull/53). Left: a Component or a Resource is still read by the strict schema (`src/core/schemas/entity.ts`), so an upper-case name, a Component lifecycle outside `experimental`, `production` and `deprecated`, and an apiVersion other than `backstage.io/v1alpha1` are still refused. #49 keeps that strictness on purpose ("what `validate` is for"); #53 names case-insensitive names out of scope. |
 | 5 | A single provenance | done | [#52](https://github.com/pcaboor/idp-agent/pull/52) | |
-| 6 | Harden the environment gates | open | | Next after priority 10. |
+| 6 | Harden the environment gates | open | | Next. |
 | 7 | Fix project-fs's secret filter | open | | |
 | 8 | Make "already declared" exact | open | | `restates` still compares the level only (`src/core/plan/grant.ts`). |
 | 9 | Make `init` usable on a real service | open | | |
-| 10 | Repair first contact | in progress | | On branch `docs/first-contact`. Two of its ids closed earlier: docs-4 by [#43](https://github.com/pcaboor/idp-agent/pull/43), runtime-probe-14 by [#59](https://github.com/pcaboor/idp-agent/pull/59). |
+| 10 | Repair first contact | done, but for part of docs-2 | [#78](https://github.com/pcaboor/idp-agent/pull/78) | SECURITY.md rewritten with a test per guarantee; a keyless README first screen held byte for byte by a test; `.env.example` with a drift test; `pnpm demo` and every example run by smoke against their documented exit codes; the key checked to reach only its provider's header, for all three providers. docs-4 and runtime-probe-14 were already closed by [#43](https://github.com/pcaboor/idp-agent/pull/43) and [#59](https://github.com/pcaboor/idp-agent/pull/59). Left from docs-2: a repository-contract document, a "wire it into Backstage" section, and the `credentials.json` the design mentions. |
 
 ### Beyond the priorities
 

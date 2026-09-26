@@ -26,7 +26,7 @@ schema rejects what cannot be requested. The signature turns a value nobody can 
 into a question rather than a refusal — *declare, never infer* means asking, not guessing
 and not giving up. A policy refuses what is expressible, vouched for, and still wrong; the
 design named that gate four times and defined it nowhere, so `policies.ts` opens with the
-definition. Four ship, and **every operation is gated** — `update-entity` joins a consumer
+definition. Five ship, and **every operation is gated** — `update-entity` joins a consumer
 to an *existing* grant, so it is the one operation that hands out an authorisation nobody
 re-declares, and the loop once skipped it. The re-check exists because the catalogue lags
 the repository by about two minutes (§4.4): what was true when the plan was drafted may not

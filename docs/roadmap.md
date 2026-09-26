@@ -39,19 +39,16 @@ framed in the model's words, Backstage APIs, the relations view, and tracing int
 **In order**, as the owner decided on 2026-09-23, 2026-09-25 and 2026-09-26. Each line says
 what the item is for.
 
-1. **Review priority 10, first contact.** The README's first screen, `SECURITY.md`, the
-   demo, the examples and a `.env.example`, so that what a newcomer reads and runs in the
-   first two minutes is true. In progress on branch `docs/first-contact`.
-2. **Review priority 6, the environment gates.** "An environment is never inferred" must
+1. **Review priority 6, the environment gates.** "An environment is never inferred" must
    hold against a natural name: `cross-environment-consumer` reads `metadata.env` alone, the
    environment of an extended grant is asked, and `echoes` reads whole tokens.
-3. **Review priority 7, project-fs's secret filter.** No secret reaches the provider, and no
+2. **Review priority 7, project-fs's secret filter.** No secret reaches the provider, and no
    ordinary manifest is withheld as one.
-4. **Review priority 8, an exact "already declared".** The tool never asserts on exit 0 an
+3. **Review priority 8, an exact "already declared".** The tool never asserts on exit 0 an
    access that does not exist.
-5. **Review priority 9, `init` on a real service repository.** The first onboarding gesture
+4. **Review priority 9, `init` on a real service repository.** The first onboarding gesture
    ends on a diff, not a dead end or a duplicate.
-6. **The `backstage-http` read provider: a design note and a stage plan.** Context read from a
+5. **The `backstage-http` read provider: a design note and a stage plan.** Context read from a
    Backstage catalogue, where today it comes from a configured source.
 
 **Not yet ordered.**
@@ -68,7 +65,7 @@ what the item is for.
   service repository, generate its catalog-info and discover the dependencies it already
   has, with evidence.
 
-The one order stated beyond these six is stage 8's own, in its design note (section 11):
+The one order stated beyond these five is stage 8's own, in its design note (section 11):
 priorities 6, 7, 8 and 9 as queued, and stage 5's first two tasks; then slice 1, which needs
 only priority 7 and can start as soon as it lands; then slices 2 and 3, and submission.
 Submitting rights for a Component declared in its own service repository needs the
@@ -139,6 +136,12 @@ The owner's decisions, dated, each with where it is recorded.
 ## Known debts and open items
 
 Each was checked against `main` at `3b642fa`.
+
+**First contact, left from review id docs-2**
+
+- A repository-contract document (what a declarations repository must hold), a "wire it
+  into Backstage" section, and the `credentials.json` the design mentions are not written
+  (review priority 10 closed the rest in [#78](https://github.com/pcaboor/idp-agent/pull/78)).
 
 **Recordings that need the owner's key**
 
