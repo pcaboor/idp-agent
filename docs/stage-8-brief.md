@@ -779,38 +779,31 @@ Helm values labelled "values, not rendered", Kustomize overlays, generated OpenA
 Prisma conventions, and model-quoted findings for code that no rule reaches. Terraform stays on
 the declarations side. The organisation-wide scan comes last.
 
-## 13. Open questions for the owner
+## 13. The owner's answers
 
-**Decided (2026-09-26)**
+**Decided by the owner (2026-09-26)**
 
 1. **Stacks: Node.** The owner's services are Node, so npm's `package.json` ships with
    `env-file` in 1.4 and Node's configuration conventions come first in 3.3.
 2. **Exit code: 1.** Zero evidenced findings with incomplete coverage exits 1 with the
    coverage sentence, as `relations` does when nothing holds.
 
-**Blocking later slices**
-
-3. **The flag rename** `init --repo` → `--project`: in your `feat/s5-init-submit`, so there is
-   one breaking change, or in stage 8's 2.3?
-4. **Where does a new Component go?** Centrally in `components/` (a Component folder in the
-   path registry), in the service repository as § 7.3 says, or a setting of the declarations
-   repository? Central declaration also removes the wait on `backstage-http` (§ 10).
-5. **Merge request order.** Do you accept that the declarations merge request waits until the
-   consumer is declared and identifiable, and that a dangling consumer is refused (§ 10)?
-6. **Identifier annotations.** Is the `idp-agent.dev/` prefix acceptable, or should it and
-   `company.fr/env` become configurable? Do hosts live on the server object, the database, or
-   either?
-7. **Per-owner review.** Should `init platform` generate per-folder CODEOWNERS, so an
-   `add-identifier` reaches the target's owner, or is the merge alone enough?
-8. **The account.** Is `spec.account` part of the grant's identity? For a shared right that
-   turns out to serve two accounts, report only (proposed), or propose a split?
-9. **The registry.** Grow `RESOURCE_TYPES` (queue, topic, bucket), or only report those
-   findings as not expressible?
-10. **Environment hints.** May a file name (`application-dev.yml`, `values-prod.yaml`) be shown,
-    labelled, in the environment question, given that .NET's `Development` usually means a
-    laptop?
-11. **Model-quoted findings.** Deterministic extractors only in v1 (recommended), or also a
-    `quoted` class that vouches for nothing and pre-fills a question?
+3. **The flag rename: in stage 8 (2.3).** `init --repo` becomes `--project` there, so the
+   owner's stage-5 branch is not touched.
+4. **Where a new Component goes: a setting of the declarations repository**, defaulting to
+   the central `components/` folder the owner's repository uses.
+5. **Merge request order: yes.** The declarations merge request waits until the consumer is
+   declared and identifiable, and a dangling consumer is refused.
+6. **Identifier annotations: the `idp-agent.dev/` prefix.** Hosts sit on whichever entity the
+   connection reaches — the database or the server — matched exactly.
+7. **Per-owner review: yes.** `init platform` generates per-folder CODEOWNERS, so an
+   `add-identifier` reaches the target's owner.
+8. **The account is part of a grant's identity.** A shared right that turns out to serve two
+   accounts is reported, not split.
+9. **The registry does not grow in v1.** Queues, topics and buckets are reported as not
+   expressible; their types come later.
+10. **Environment hints: yes**, labelled as hints and never pre-selected.
+11. **Deterministic extractors only in v1.** Model-quoted findings come later, if at all.
 
 ## 14. Rejected alternatives
 

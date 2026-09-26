@@ -24,6 +24,10 @@ Each pull request adds its line here.
 
 ### Documentation
 
+- Stage 8, discovery, is designed: from a service repository, report the dependencies its
+  configuration already states, with evidence the engine re-reads, and propose the missing
+  catalog-info and rights; the owner's answers to its questions are recorded
+  ([#76](https://github.com/pcaboor/idp-agent/pull/76)).
 - The first two minutes work and tell the truth: a keyless README first screen whose outputs
   a test holds, `SECURITY.md` rewritten for today with the test behind each guarantee, a
   `.env.example` that cannot drift from the code, `pnpm demo` and the examples checked by
