@@ -50,7 +50,13 @@ and nothing here can be steered by what it validates. Hence the property tests r
   another tool's, like a `mkdocs.yml` or a Helm `Chart.yaml`, is `ignored`, returned with a
   reason and never refused. Anything that looks like a failed entity — an empty kind,
   Backstage's `apiVersion` or a `metadata` with no kind, a document that is not a mapping — is
-  still a rejection.
+  still a rejection. A rejection's reason is `reasonOf`'s (`schemas/reject.ts`): the field's
+  dotted path, then what is wrong with it. Handed the document, it tells a field nobody wrote
+  from one written wrong, which zod words alike — an absent field reads `<path>: required`,
+  with the values a closed set accepts (`spec.lifecycle: required — experimental, production
+  or deprecated`), and so does one written with no value (`lifecycle:`, which YAML reads as
+  null); a value that is there keeps zod's words, as does a reason a schema words itself (an
+  API's absent definition).
 - **Textual surgery** — `insertDocument`, `removeDocument`, `appendSequenceItem`,
   `listDocumentNames`. Line edits, because a reviewer must see an added line, not an AST
   round-trip's reformat. Locating a document by lines is a heuristic, so what it cannot

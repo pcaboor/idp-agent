@@ -531,3 +531,96 @@ describe('parseDocuments over a real Backstage catalogue', () => {
     expect(rejections).toHaveLength(1)
   })
 })
+
+describe('a required field the file does not write reads as missing', () => {
+  // components/payments-api.yml had no spec.lifecycle, and the reader said
+  // "Invalid option: expected one of …" — zod's words for a wrong value, about a
+  // value nobody wrote. An absent field is named as required, with what it
+  // accepts when the set is closed; a value that is there and wrong keeps
+  // saying what was wrong with it, word for word as before.
+  const component = (...spec: string[]): string =>
+    [
+      '---',
+      'apiVersion: backstage.io/v1alpha1',
+      'kind: Component',
+      'metadata:',
+      '  name: payments-api',
+      'spec:',
+      '  type: service',
+      ...spec,
+      '',
+    ].join('\n')
+  const reasons = (text: string): string[] => parseDocuments(text).rejections
+
+  it('names an absent lifecycle as required, with the three values it accepts', () => {
+    expect(reasons(component('  owner: group:default/tiger'))).toEqual([
+      'spec.lifecycle: required — experimental, production or deprecated',
+    ])
+  })
+
+  it('names a lifecycle written with no value as required too — the file holds nothing there', () => {
+    // `lifecycle:` with nothing after it is YAML's way of leaving a field
+    // empty, and it parses to null: no value, so no value to call invalid.
+    expect(reasons(component('  owner: group:default/tiger', '  lifecycle:'))).toEqual([
+      'spec.lifecycle: required — experimental, production or deprecated',
+    ])
+    expect(reasons(component('  lifecycle: production', '  owner: ~'))).toEqual(['spec.owner: required'])
+  })
+
+  it('keeps zod\'s words for a lifecycle that is there and wrong', () => {
+    expect(reasons(component('  owner: group:default/tiger', '  lifecycle: live'))).toEqual([
+      'spec.lifecycle: Invalid option: expected one of "experimental"|"production"|"deprecated"',
+    ])
+  })
+
+  it('names an absent owner as required, and nothing more, since any reference would do', () => {
+    expect(reasons(component('  lifecycle: production'))).toEqual(['spec.owner: required'])
+  })
+
+  it('keeps zod\'s words for an owner of the wrong type', () => {
+    expect(reasons(component('  lifecycle: production', '  owner: 42'))).toEqual([
+      'spec.owner: Invalid input: expected string, received number',
+    ])
+  })
+
+  it('names the outermost field that is absent, not one inside it', () => {
+    const text = component().replace(/spec:\n {2}type: service\n/, '')
+    expect(reasons(text)).toEqual(['spec: required'])
+  })
+
+  it('names a Resource\'s absent type as required, with every type it accepts', () => {
+    const [reason] = reasons(
+      [
+        '---',
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: Resource',
+        'metadata:',
+        '  name: billing-db-dev',
+        'spec:',
+        '  owner: group:default/tiger',
+        '',
+      ].join('\n'),
+    )
+    expect(reason).toMatch(/^spec\.type: required — database, /)
+    expect(reason).toMatch(/, [a-z-]+ or [a-z-]+$/)
+  })
+
+  it('leaves the reasons a schema words itself alone, an API\'s absent definition included', () => {
+    expect(
+      reasons(
+        [
+          '---',
+          'apiVersion: backstage.io/v1alpha1',
+          'kind: API',
+          'metadata:',
+          '  name: payments',
+          'spec:',
+          '  type: openapi',
+          '  lifecycle: production',
+          '  owner: group:default/tiger',
+          '',
+        ].join('\n'),
+      ),
+    ).toEqual(['spec.definition: required: Backstage refuses an API without its definition'])
+  })
+})
