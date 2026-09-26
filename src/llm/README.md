@@ -52,6 +52,23 @@ and replay without a warning, which is sound only because the argument shape is 
 and the next re-record captures the new one. `tests/contract/providers.test.ts` checks the
 bytes each adapter actually sends, which no tape can — replay never builds an adapter.
 
+## A turn that said nothing is not sent back
+
+An agent keeps a turn where the model said nothing and called nothing — it counts it and
+asks again — and `toMessages` in `runtime.ts` does not send it back. As an assistant
+message with no content it went to Anthropic as `content: []`, which the Messages API
+refuses anywhere but last, and to Mistral as `""` with no tool call. A text that is only
+whitespace counts as nothing said. The user messages either side of a dropped turn become
+one, holding both texts in order — what `@ai-sdk/anthropic` does with consecutive user
+messages on its own, done here so every provider is sent one shape. The turn an agent's
+loop drops most often came right after a tool result, which then meets the user message
+asking again: Anthropic groups the two into one user message, the tool result first as its
+`tool_use` requires, OpenAI is sent a `function_call_output` and then a message, and Mistral
+a `tool` message and then a `user` one — the order `question-unanswerable-ranking` was
+recorded answering on Mistral. The digest is taken over the transcript, not over the
+messages, so a tape is unaffected; no recorded scenario holds such a turn.
+`tests/contract/providers.test.ts` checks each adapter's wire, for both shapes.
+
 ## No default model, on purpose
 
 There is no default provider and no default model. With nothing configured the CLI says
