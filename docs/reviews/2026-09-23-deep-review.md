@@ -127,6 +127,51 @@ plugin.
     two minutes. *Ids:* docs-3, security-9, docs-1, build-ci-4, product-gap-12, docs-2,
     docs-4, docs-5, cli-ux-15, runtime-probe-14, build-ci-11. *Effort:* S.
 
+## Status
+
+Updated 2026-09-26.
+
+Not part of the review as delivered: this section tracks what later pull requests did about
+it, and the review around it is left as it was. The pull request that closes a priority or
+an id updates this section; the order of what is left is in
+[`docs/roadmap.md`](../roadmap.md).
+
+The owner took the priorities in order, the foundation before plugins. On 2026-09-26 priority
+10 moved up, to right after [#75](https://github.com/pcaboor/idp-agent/pull/75) and before
+priority 6.
+
+| # | Priority | State | Closed by | Note |
+|---|---|---|---|---|
+| 1 | Make Anthropic usable | done, but for the tape | [#44](https://github.com/pcaboor/idp-agent/pull/44) | #44 names gap-provider-matrix-1. Its contract test, which checks the HTTP body each provider is sent, answers part of gap-provider-matrix-5 and tests-10 without naming them. No Anthropic recording exists yet: it needs a key. |
+| 2 | Make the YAML surgery honest | done | [#45](https://github.com/pcaboor/idp-agent/pull/45) | #45 names 7 of the 10 ids. It does not name tests-1, security-7 or domain-backstage-3, and describes the work that answers them: a property test over hand-written shapes, and one reader that turns a YAML error into a rejection. |
+| 3 | `--repo` on `ask`, `graph` and `show` | done | [#46](https://github.com/pcaboor/idp-agent/pull/46) | Said on stderr when the demo SI is read. |
+| 4 | Make existing repositories hold | done, but for part of domain-backstage-1 | [#48](https://github.com/pcaboor/idp-agent/pull/48), [#49](https://github.com/pcaboor/idp-agent/pull/49) | #48: only the plan's own violations refuse it. #49: unmodelled kinds and non-entity YAML set aside, "the kinds part" of domain-backstage-1; the short references followed in [#53](https://github.com/pcaboor/idp-agent/pull/53). Left: a Component or a Resource is still read by the strict schema (`src/core/schemas/entity.ts`), so an upper-case name, a Component lifecycle outside `experimental`, `production` and `deprecated`, and an apiVersion other than `backstage.io/v1alpha1` are still refused. #49 keeps that strictness on purpose ("what `validate` is for"); #53 names case-insensitive names out of scope. |
+| 5 | A single provenance | done | [#52](https://github.com/pcaboor/idp-agent/pull/52) | |
+| 6 | Harden the environment gates | open | | Next after priority 10. |
+| 7 | Fix project-fs's secret filter | open | | |
+| 8 | Make "already declared" exact | open | | `restates` still compares the level only (`src/core/plan/grant.ts`). |
+| 9 | Make `init` usable on a real service | open | | |
+| 10 | Repair first contact | in progress | | On branch `docs/first-contact`. Two of its ids closed earlier: docs-4 by [#43](https://github.com/pcaboor/idp-agent/pull/43), runtime-probe-14 by [#59](https://github.com/pcaboor/idp-agent/pull/59). |
+
+### Beyond the priorities
+
+Review ids that a later pull request names as fixed, outside the ids the priorities list:
+
+- agents-llm-5 → [#75](https://github.com/pcaboor/idp-agent/pull/75)
+- agents-llm-11 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
+- cli-ux-7 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
+- core-yaml-9 → [#50](https://github.com/pcaboor/idp-agent/pull/50), found while stacking #49
+- gap-provider-matrix-2 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
+- gap-provider-matrix-3 → [#75](https://github.com/pcaboor/idp-agent/pull/75), seen and left in #44
+- gap-provider-matrix-4 → [#59](https://github.com/pcaboor/idp-agent/pull/59), for the request timeout; calls are still not streamed (`generateText` in `src/llm/runtime.ts`)
+- runtime-probe-8 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
+- security-4 → [#58](https://github.com/pcaboor/idp-agent/pull/58) for `show`, `graph`, `ask` and `validate`; [#62](https://github.com/pcaboor/idp-agent/pull/62) cleans what `plan` and `init` print, without naming the id
+- tests-13 → [#56](https://github.com/pcaboor/idp-agent/pull/56), for the temp directories; the 10-minute scenario timeout is unchanged
+
+Named as left open, and still open: runtime-probe-15, `plan --repo` resolved against
+`process.cwd()` rather than `MainDeps.cwd` ([#46](https://github.com/pcaboor/idp-agent/pull/46);
+the comment where `plan`'s source is resolved in `src/cli/index.ts` says so).
+
 ## 3. Findings by theme
 
 ### Security

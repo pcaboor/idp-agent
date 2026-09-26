@@ -432,6 +432,8 @@ The order follows the doctrine: read first, validate before the first write, pre
 before the pull request. Today **nothing is written**: the test suite and `pnpm smoke` hash
 every byte around a full run to prove it.
 
+What comes next and the owner's decisions: [`docs/roadmap.md`](docs/roadmap.md). What each pull request changed: [`CHANGELOG.md`](CHANGELOG.md).
+
 ## FAQ
 
 **Is this a Backstage plugin?**

@@ -413,6 +413,14 @@ them never reaches the one that spends a model call. Three attempts, then a clea
 
 - **English throughout** — code, comments, commit messages, test names, CLI output.
 - Conventional Commits. Work on a branch; `main` is reached through a merge request.
+- **What was done is traceable in the repository, not only in a pull request's description.**
+  Every pull request adds its line to [`CHANGELOG.md`](CHANGELOG.md) under Unreleased. It
+  updates [`docs/roadmap.md`](docs/roadmap.md) when it closes a queue item, a debt or an open
+  question, or records a decision of the owner's. It updates the review's
+  [Status section](docs/reviews/2026-09-23-deep-review.md#status) when it
+  closes a review priority or a review id. There are no GitHub issues for now: open items
+  live in the roadmap, and questions about the code itself in [Open
+  questions](#open-questions) below, which the roadmap links.
 - Implementation plans are executed task by task, test first. The plan file is the
   checklist; tick its boxes as you go — Stage 1 shipped with all 36 unticked, which is
   how a plan stops being a status signal.

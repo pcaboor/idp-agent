@@ -1037,6 +1037,8 @@ agent at it — wants to judge it in two minutes.
 | `AGENTS.md` | architecture in 60 lines, invariants, commands. The first file any agent reads. |
 | `src/core/README.md`, `src/agents/README.md` | why this boundary exists, at folder level |
 | `docs/adr/000X-*.md` | one decision per file, ~20 lines, dated |
+| `CHANGELOG.md` | what each merged pull request changed, one line each, newest first by merge time; stages 0 to 4 summarised at the end |
+| `docs/roadmap.md` | where the project stands, the queue in order, the owner's dated decisions, known debts |
 
 Architecture Decision Records pay the most here. An agent reading *"ADR-0001:
 deterministic orchestration over model-driven — rejected alternative: let the Supervisor
