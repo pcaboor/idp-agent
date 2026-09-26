@@ -167,7 +167,8 @@ left as it is.
 matches nothing, an ambiguous name, a relation that holds nothing, or a repository that does
 not conform — and a model call
 that failed, in the one line `llm/failures.ts` wrote for it), `EXIT.badUsage` is 2 (the
-arguments were refused, or no model, no key or no usable `IDP_TIMEOUT` is configured),
+arguments were refused, or no model, no key or no usable `IDP_TIMEOUT` or
+`IDP_SUPERVISOR_MODEL` is configured),
 `EXIT.unsupported` is 3 (understood, and this build
 will not act on it). Only `cli/index.ts` turns `CommandResult.found` into an exit code — a command
 states the fact and stays free of the process — and `bin.ts` assigns it to

@@ -13,6 +13,7 @@ import {
   type ToolSet,
 } from 'ai'
 import type {
+  AgentName,
   GenerateRequest,
   ModelToolSpec,
   GenerateResult,
@@ -362,6 +363,94 @@ function watched(choice: ModelChoice, seen: (error: APICallError) => void) {
   })
 }
 
+/** What an agent's calls ask of a provider beyond the request itself. */
+export interface AgentCall {
+  /** How much the model may reason before it answers, where it can be told. */
+  readonly effort?: 'low'
+}
+
+/**
+ * Per agent, the call settings that are not part of what it asks.
+ *
+ * The Supervisor answers one word, QUESTION or MUTATION: on the owner's
+ * diagnostic run gpt-6-luna spent 22 reasoning tokens on it. Every other agent
+ * calls with the provider's defaults, as before.
+ *
+ * Here and not in `GenerateRequest`: the recording digest is taken over the
+ * request, and a setting that entered it would stale every tape the Supervisor
+ * is in. Replay builds no adapter and sends nothing, so it never reads this.
+ */
+export const AGENT_CALLS: Partial<Record<AgentName, AgentCall>> = {
+  supervisor: { effort: 'low' },
+}
+
+/**
+ * An agent's call settings, as the one provider and model it calls understand
+ * them.
+ *
+ *   openai     `reasoningEffort`, and `reasoningSummary: null` — to a model
+ *              that takes a low effort (`takesLowEffort`), and nothing to any
+ *              other. The summary is held off because the adapter asks for a
+ *              detailed one whenever an effort is set, and a summary is output
+ *              nobody here reads.
+ *   anthropic  nothing. Extended thinking is off unless it is asked for, which
+ *              is the low effort wanted, and a budget is not a level.
+ *   mistral    nothing. Its adapter's effort is `high` or `none`, on the models
+ *              that take one; there is no low.
+ */
+export function providerOptionsOf(
+  choice: ModelChoice,
+  call: AgentCall | undefined,
+): Record<string, Record<string, string | null>> | undefined {
+  if (call?.effort === undefined) return undefined
+  switch (choice.provider) {
+    case 'openai':
+      return takesLowEffort(choice.model)
+        ? { openai: { reasoningEffort: call.effort, reasoningSummary: null } }
+        : undefined
+    case 'anthropic':
+    case 'mistral':
+      return undefined
+    default: {
+      const exhaustive: never = choice.provider
+      return exhaustive
+    }
+  }
+}
+
+/**
+ * Whether an OpenAI model is sent a low reasoning effort — by the shape of its
+ * id, since no model is named here, and in doubt not.
+ *
+ * First the adapter's own rule for a model that reasons
+ * (`getOpenAILanguageModelCapabilities` in `@ai-sdk/openai`, not exported): an
+ * o-series id, or gpt-N with N ≥ 5 but a chat variant with no minor version.
+ * The adapter drops an effort for any other model, which would refuse it, and
+ * says so as a Node warning on stderr in every run — so it is not handed one.
+ *
+ * Then the ids that rule classes as reasoning and that take no low effort,
+ * which the adapter sends one to regardless: it checks the level only from
+ * gpt-6 on. A chat variant, with a minor version or not, reasons at its own
+ * setting; a pro variant takes only `high`; a deep-research one only `medium`;
+ * the first o1 previews, `o1-mini` and `o1-preview`, no effort at all. Sent
+ * nothing, each reasons at its default, as every agent did before.
+ */
+function takesLowEffort(model: string): boolean {
+  const oSeries = /^o(\d+)(?:-(.+))?$/.exec(model)
+  const gpt = /^gpt-(\d+)(?:\.(\d+))?(?:-(.+))?$/.exec(model)
+  let variant: string
+  if (oSeries !== null) {
+    variant = oSeries[2] ?? ''
+    if (oSeries[1] === '1' && /^(mini|preview)(-|$)/.test(variant)) return false
+  } else if (gpt !== null && Number(gpt[1]) >= 5) {
+    variant = gpt[3] ?? ''
+    if (variant.startsWith('chat')) return false
+  } else {
+    return false
+  }
+  return !/(^|-)pro(-|$)/.test(variant) && !/(^|-)deep-research(-|$)/.test(variant)
+}
+
 /**
  * replay — read a recorded turn, build no adapter, read no credential.
  * record — call the model and write the turn down.
@@ -374,6 +463,12 @@ export function createClient(options: {
   tape?: OpenRecording
   mode: ClientMode
   choice?: ModelChoice
+  /**
+   * The agents that call another model than `choice`, on its provider:
+   * `agentModelsOf` (IDP_SUPERVISOR_MODEL). A recorded turn names the model it
+   * was made against, so replay reads neither.
+   */
+  models?: Partial<Record<AgentName, ModelChoice>>
   /** Seconds one live call may take, retries included. Replay has no clock. */
   timeout?: number
 }): LlmClient {
@@ -403,10 +498,13 @@ export function createClient(options: {
         return usable(fromRecord(record), record)
       }
 
-      const choice = options.choice
-      if (choice === undefined) {
+      if (options.choice === undefined) {
         throw new Error('recording needs a configured model: set IDP_PROVIDER and IDP_MODEL')
       }
+      // The model this agent calls, which is what a failure names and a tape
+      // records: IDP_MODEL's, unless the agent was given one of its own.
+      const choice = options.models?.[request.agent] ?? options.choice
+      const providerOptions = providerOptionsOf(choice, AGENT_CALLS[request.agent])
 
       // No temperature: it is rejected outright by several current models, and
       // determinism here comes from the recording, not from sampling settings.
@@ -420,6 +518,7 @@ export function createClient(options: {
           messages: toMessages(request.transcript),
           tools: toTools(request.tools),
           toolChoice: toToolChoice(request.toolChoice),
+          ...(providerOptions !== undefined ? { providerOptions } : {}),
           abortSignal,
         }),
       ).catch((error: unknown) => {

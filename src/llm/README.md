@@ -12,10 +12,10 @@ importing `trace/`: `traced` wraps whichever client `cli/` opened, from the outs
 | file | what it is |
 |---|---|
 | `client.ts` | the interface — `LlmClient`, `AgentName`, `ModelToolSpec`, `ModelToolCall`, `Transcript`. **Types only.** |
-| `providers.ts` | the three adapters, `chooseModel(env)` and the key it checks, `timeoutOf(env)`, `NoModelConfiguredError`, `ModelSettingError` |
+| `providers.ts` | the three adapters, `chooseModel(env)` and the key it checks, `agentModelsOf(env, choice)`, `timeoutOf(env)`, `NoModelConfiguredError`, `ModelSettingError` |
 | `failures.ts` | what a call that cannot succeed becomes — `ModelTimeoutError`, `ProviderCallError`, `ModelOutputLimitError`, `ModelRefusalError` — each one line. No SDK import |
 | `recording.ts` | the tape, over an abstract `RecordingStore`; `resolveMode`, `RecordingMissError` |
-| `runtime.ts` | the one file that calls a model — `generateText`, the tool plumbing, and the live / record / replay switch |
+| `runtime.ts` | the one file that calls a model — `generateText`, the tool plumbing, each agent's call settings (`AGENT_CALLS`), and the live / record / replay switch |
 | `tool-schema.ts` | `objectRooted` — the object-rooted JSON Schema a tool is advertised in. Pure; imports nothing from the SDK |
 
 **Two of those six import the SDK**, not one: `providers.ts` names the three `@ai-sdk/*`
@@ -71,6 +71,45 @@ request. It checks the key and never reads it into the choice, so the key reache
 choice is copied into; the adapter reads it itself. Neither a replay nor an injected client
 calls `chooseModel`, which is why the suite runs with no key. Adding a fourth provider is one
 entry in `ADAPTERS` and one in `KEY_VARIABLES`.
+
+## One agent's calls
+
+Every agent calls `IDP_MODEL` with the provider's defaults, but one. The Supervisor answers
+one word, QUESTION or MUTATION — gpt-6-luna spent 22 reasoning tokens on it in the owner's
+diagnostic run — so its calls ask for a **low reasoning effort** (`AGENT_CALLS` in
+`runtime.ts`), mapped per provider by `providerOptionsOf` into the SDK's `providerOptions`:
+
+| provider | sent for the Supervisor |
+|---|---|
+| OpenAI | `reasoningEffort: 'low'`, `reasoningSummary: null`, to a model that takes a low effort (`takesLowEffort`), and nothing to any other. The summary is held off because the adapter asks for a detailed one whenever an effort is set. |
+| Anthropic | nothing: extended thinking is off unless it is asked for |
+| Mistral | nothing: its adapter's effort is `high` or `none`, and there is no low |
+
+Which OpenAI model takes a low effort is read off the shape of its id, since no model is
+named in the code, and in doubt it is sent nothing — the model then reasons at its default,
+as every agent does. First the adapter's rule for a model that reasons: an o-series id, or
+gpt-N with N ≥ 5 but a chat variant with no minor version (`gpt-5-chat-latest`). The
+adapter drops an effort for any other model, which would refuse it, and says so as a Node
+warning on stderr in every run — so gpt-4o is never handed one. Then the adapter decides
+whether a model reasons, not which levels it accepts (it checks the level only from gpt-6
+on), so the ids it would send `low` to and that do not take it are left out too: a chat
+variant with a minor version (`gpt-5.1-chat-latest`), a `pro` variant (`high` only), a
+`deep-research` one (`medium` only), and `o1-mini` and `o1-preview` (no effort at all). The
+levels those accept are OpenAI's documentation, not something a test here can call;
+`tests/contract/providers.test.ts` pins the rule against the adapter, one id of each shape,
+and checks that no warning is printed.
+
+`IDP_SUPERVISOR_MODEL`, when set, is the model the Supervisor calls instead, on
+`IDP_PROVIDER`'s provider and key (`agentModelsOf`); unset, it is `IDP_MODEL`, and no model
+name is written anywhere in the code. A value holding a space or a control character is
+refused with exit 2, before any agent starts. A failure line and a recorded turn name the
+model the call went to, and a trace names it apart, `idp.supervisor.model` beside
+`idp.model` on the root.
+
+Both are settings of the call, never fields of the request: the recording digest is taken
+over the `GenerateRequest`, so neither stales a tape, and replay, which sends nothing, reads
+neither. `tests/contract/providers.test.ts` checks what each adapter puts on the wire for the
+Supervisor and for another agent.
 
 ## A call that cannot succeed
 

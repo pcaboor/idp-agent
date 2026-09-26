@@ -10,6 +10,7 @@ import { ModelCallError } from '../llm/failures.js'
 import {
   ModelSettingError,
   NoModelConfiguredError,
+  agentModelsOf,
   chooseModel,
   timeoutOf,
 } from '../llm/providers.js'
@@ -167,7 +168,9 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   A phrase, ask, plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL, and
   none of them writes. Every model-backed command also needs that provider's
   key (ANTHROPIC_API_KEY, MISTRAL_API_KEY or OPENAI_API_KEY); IDP_TIMEOUT
-  bounds each model call, in seconds, 120 by default.
+  bounds each model call, in seconds, 120 by default. IDP_SUPERVISOR_MODEL
+  gives the Supervisor, which only classifies a phrase, another model of the
+  same provider; unset, it uses IDP_MODEL.
 `
 
 export function parseArguments(argv: string[]): Command {
@@ -782,12 +785,29 @@ const whole = (text: string): string => inertLine(text, Number.POSITIVE_INFINITY
  */
 const said = (text: string): string => inertLine(text, 200)
 
-const progress =
-  (err: (chunk: string) => void) =>
-  (event: AgentEvent): void => {
+/**
+ * The terminal's sink, one per run.
+ *
+ * A `derived` line is said once per path and owner per run, whoever emitted it.
+ * `repair` says it once per path per call, but a run that asks is a call per
+ * round, and the owner's `idpa "<change>"` printed the same owner line twice —
+ * `plan --from` would print it once per round too. The stream keeps every
+ * emission, because the trace draws each round's derivation on that round's
+ * span; the reader of stderr needs the fact, not the count. A second owner for
+ * the same path is news — the terminal saw the first — and is printed.
+ */
+const progress = (err: (chunk: string) => void): EventSink => {
+  const derived = new Set<string>()
+  return (event) => {
+    if (event.type === 'derived') {
+      const key = `${event.path}\u0000${event.owner}`
+      if (derived.has(key)) return
+      derived.add(key)
+    }
     const line = renderEvent(event)
     if (line !== undefined) err(`${line}\n`)
   }
+}
 
 /**
  * 0 succeeded · 1 the query resolved nothing · 2 the arguments were refused ·
@@ -1342,7 +1362,8 @@ function report(result: CommandResult, out: (chunk: string) => void): number {
  * These refusals are the user's arguments and earn exit 2 — a plan file that is
  * not a plan, a `--repo` that is not a directory or holds a file `plan` cannot
  * read, a `.idp-agent.yml` that does not parse, a run with no model configured,
- * no key for it, or an IDP_TIMEOUT that is not a number of seconds.
+ * no key for it, an IDP_TIMEOUT that is not a number of seconds, or an
+ * IDP_SUPERVISOR_MODEL that is not a model name.
  *
  * A model call that could not succeed — it timed out, the provider refused the
  * key or failed, the output limit or a content filter stopped it — is exit 1,
@@ -1527,11 +1548,13 @@ async function openSession(
   const mode: ClientMode =
     recording === 'record' ? 'record' : deps.scenario !== undefined ? 'replay' : 'live'
 
-  // Both read before a tape is opened or an agent started: a missing key or a
-  // bad IDP_TIMEOUT is a refusal of the configuration, said up front, and not a
-  // failure discovered at the first request. Replay reads neither — a recording
-  // names its own model and needs no key.
+  // All three read before a tape is opened or an agent started: a missing key,
+  // a bad IDP_SUPERVISOR_MODEL or a bad IDP_TIMEOUT is a refusal of the
+  // configuration, said up front, and not a failure discovered at the first
+  // request. Replay reads none — a recording names its own model and needs no
+  // key.
   const choice = mode === 'replay' ? undefined : chooseModel(env)
+  const models = choice === undefined ? undefined : agentModelsOf(env, choice)
   const timeout = mode === 'replay' ? undefined : timeoutOf(env)
   const name = deps.scenario ?? env['IDP_SCENARIO'] ?? scenario
   const tape =
@@ -1549,6 +1572,7 @@ async function openSession(
       mode,
       ...(tape !== undefined ? { tape } : {}),
       ...(choice !== undefined ? { choice } : {}),
+      ...(models !== undefined ? { models } : {}),
       ...(timeout !== undefined ? { timeout } : {}),
     }),
     save: async (): Promise<void> => {
@@ -1560,6 +1584,9 @@ async function openSession(
       'idp.mode': mode,
       ...(tape !== undefined ? { 'idp.scenario': name } : {}),
       ...(choice !== undefined ? { 'idp.provider': choice.provider, 'idp.model': choice.model } : {}),
+      // `idp.model` is every other call's; the Supervisor's is said apart, or
+      // the trace would name a model one of its calls never went to.
+      ...(models?.supervisor !== undefined ? { 'idp.supervisor.model': models.supervisor.model } : {}),
     },
   }
 }

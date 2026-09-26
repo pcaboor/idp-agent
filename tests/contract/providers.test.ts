@@ -222,6 +222,7 @@ beforeAll(async () => {
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
+  vi.restoreAllMocks()
 })
 
 describe.each(Object.keys(WIRES) as ProviderName[])('the %s wire', (provider) => {
@@ -324,3 +325,109 @@ describe('a schema no provider can be sent', () => {
     expect(sent).toHaveLength(0)
   })
 })
+
+describe('what an agent is sent beside its request', () => {
+  // The Supervisor answers one word. On the owner's diagnostic run gpt-6-luna
+  // spent 22 reasoning tokens deciding QUESTION or MUTATION, so the runtime
+  // asks for a low reasoning effort on its calls — where the provider has the
+  // setting, and only there. It is a call option, never a field of the
+  // request: the recording digest is taken over the request, and a tape made
+  // before this replays as it did.
+  const asking = (agent: GenerateRequest['agent']): GenerateRequest => ({
+    ...request([], 'auto'),
+    agent,
+  })
+
+  const sentFor = async (
+    provider: ProviderName,
+    options: { model?: string; models?: Parameters<typeof createClient>[0]['models'] } = {},
+  ): Promise<{ supervisor: Body; analyst: Body; warned: string[] }> => {
+    const wire = WIRES[provider]
+    vi.stubEnv(wire.key, 'test-key-not-a-real-one')
+    for (const name of wire.moves) vi.stubEnv(name, undefined)
+    // The CLI leaves the SDK's warning logger as it is, and the SDK prints a
+    // warning as a Node process warning on stderr: kept here, not silenced.
+    vi.stubGlobal('AI_SDK_LOG_WARNINGS', undefined)
+    const warned: string[] = []
+    vi.spyOn(process, 'emitWarning').mockImplementation((warning: string | Error) => {
+      warned.push(String(warning))
+    })
+    const sent = serving(wire.saying('QUESTION'))
+    const client = createClient({
+      mode: 'live',
+      choice: { provider, model: options.model ?? wire.model },
+      ...(options.models !== undefined ? { models: options.models } : {}),
+    })
+    await client.generate(asking('supervisor'))
+    await client.generate(asking('analyst'))
+    expect(sent).toHaveLength(2)
+    return { supervisor: sent[0]?.body ?? {}, analyst: sent[1]?.body ?? {}, warned }
+  }
+
+  it("asks an OpenAI reasoning model for a low effort on the Supervisor's call, and no summary", async () => {
+    const { supervisor, analyst } = await sentFor('openai')
+    // No summary: the SDK asks for a detailed one whenever an effort is set,
+    // unless told otherwise, and a summary is output nobody reads.
+    expect(supervisor['reasoning']).toEqual({ effort: 'low' })
+    expect(analyst).not.toHaveProperty('reasoning')
+  })
+
+  it.each(['gpt-5', 'gpt-5-mini', 'gpt-5.1', 'gpt-5-codex', 'gpt-6-luna', 'o3', 'o4-mini'])(
+    'asks %s for a low effort, and prints no warning',
+    async (model) => {
+      const { supervisor, warned } = await sentFor('openai', { model })
+      expect(supervisor['reasoning']).toEqual({ effort: 'low' })
+      expect(warned).toEqual([])
+    },
+  )
+
+  it.each([
+    // No reasoning, by the adapter's own rule: it would drop the effort, and
+    // print a warning on stderr for it in every run.
+    'gpt-4o',
+    'gpt-4.1',
+    'gpt-4.1-mini',
+    'gpt-5-chat-latest',
+    'ft:gpt-4o-mini:acme::a1b2',
+    // Reasoning, but not at a low effort — a chat variant takes its default,
+    // a pro one only high, a deep-research one only medium, and the first
+    // o1 previews no effort at all. The adapter would send `low` to each.
+    'gpt-5.1-chat-latest',
+    'gpt-5-pro',
+    'gpt-5-pro-2025-10-06',
+    'o3-deep-research',
+    'o4-mini-deep-research',
+    'o1-mini',
+    'o1-preview',
+  ])('sends %s no reasoning parameter at all, and prints no warning', async (model) => {
+    const { supervisor, analyst, warned } = await sentFor('openai', { model })
+    expect(supervisor).not.toHaveProperty('reasoning')
+    expect(supervisor).not.toHaveProperty('reasoning_effort')
+    expect(Object.keys(supervisor).sort()).toEqual(Object.keys(analyst).sort())
+    expect(warned).toEqual([])
+  })
+
+  it.each(['anthropic', 'mistral'] as const)(
+    "sends %s nothing more for the Supervisor's call than for any other agent's",
+    async (provider) => {
+      // Anthropic thinks only when asked to, which is the setting wanted;
+      // Mistral's reasoning is a model, not a parameter of one.
+      const { supervisor, analyst } = await sentFor(provider)
+      expect(supervisor).not.toHaveProperty('thinking')
+      expect(supervisor).not.toHaveProperty('reasoning_effort')
+      expect(Object.keys(supervisor).sort()).toEqual(Object.keys(analyst).sort())
+    },
+  )
+
+  it.each(Object.keys(WIRES) as ProviderName[])(
+    "sends the Supervisor's call to the model given for it, and every other to the configured one (%s)",
+    async (provider) => {
+      const { supervisor, analyst } = await sentFor(provider, {
+        models: { supervisor: { provider, model: 'a-lighter-model' } },
+      })
+      expect(supervisor['model']).toBe('a-lighter-model')
+      expect(analyst['model']).toBe(WIRES[provider].model)
+    },
+  )
+})
+

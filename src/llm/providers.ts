@@ -2,6 +2,7 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { createMistral } from '@ai-sdk/mistral'
 import { createOpenAI } from '@ai-sdk/openai'
 import type { LanguageModel } from 'ai'
+import type { AgentName } from './client.js'
 
 export type ProviderName = 'anthropic' | 'mistral' | 'openai'
 
@@ -90,6 +91,32 @@ const quoted = (raw: string): string =>
     /[\u007f-\u009f]/g,
     (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
   )
+
+/**
+ * The agents that call a model other than IDP_MODEL, each on IDP_PROVIDER's
+ * provider and key. Empty unless IDP_SUPERVISOR_MODEL is set.
+ *
+ * Only the Supervisor has one: it answers one word, QUESTION or MUTATION, and
+ * a lighter model of the same provider is a reasonable choice for that and for
+ * nothing else here. No name is chosen on anyone's behalf — unset, it is
+ * IDP_MODEL's, as it was. Refused, exit 2, when it holds a space or a control
+ * character, which no model name does and a typo or a stray newline does.
+ */
+export function agentModelsOf(
+  env: Record<string, string | undefined>,
+  choice: ModelChoice,
+): Partial<Record<AgentName, ModelChoice>> {
+  const raw = valueOf(env['IDP_SUPERVISOR_MODEL'])
+  if (raw === undefined) return {}
+  // eslint-disable-next-line no-control-regex -- refusing them is the point
+  if (/[\s\u0000-\u001f\u007f-\u009f]/.test(raw)) {
+    throw new ModelSettingError(
+      `IDP_SUPERVISOR_MODEL must be a model name, with no space or control character; ` +
+        `got ${quoted(raw)}`,
+    )
+  }
+  return { supervisor: { provider: choice.provider, model: raw } }
+}
 
 /** How long a model call may take before it is aborted, when IDP_TIMEOUT is unset. */
 export const DEFAULT_TIMEOUT_SECONDS = 120

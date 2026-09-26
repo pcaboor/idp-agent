@@ -64,11 +64,11 @@ declarations repository to decide against, a single word one slip away from a co
 (`idpa grpah`, `idpa relation`), a command typed after its options, two relation flags or
 one beside `--to`, a `--depth` that is not a whole number from 1 to 100, a
 `.idp-agent.yml` or a personal `config.yml` that does not parse — or no model, no key or
-no usable `IDP_TIMEOUT` is configured · `3` the request was understood and this build will
-not act on it: a change request put to `ask` (which names `idpa "<phrase>"` as the gesture
-that previews it), a question the model refused, or a plan holding values nobody can vouch
-for, **asked rather than guessed**. A command returns `{ text, found, unsupported? }`;
-only `cli/index.ts` turns that into a code.
+no usable `IDP_TIMEOUT` or `IDP_SUPERVISOR_MODEL` is configured · `3` the request was
+understood and this build will not act on it: a change request put to `ask` (which names
+`idpa "<phrase>"` as the gesture that previews it), a question the model refused, or a plan
+holding values nobody can vouch for, **asked rather than guessed**. A command returns
+`{ text, found, unsupported? }`; only `cli/index.ts` turns that into a code.
 
 The one that is not obvious is a **stop**: three attempts, still refused, exit `1`. Not
 `3`, because `3` is a boundary the user cannot move by typing anything, and a stop is the
