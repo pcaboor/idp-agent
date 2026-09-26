@@ -151,6 +151,8 @@ const policy = (over: Partial<PolicyContext> = {}): PolicyContext => ({
     ['resource:default/orders-db-dev', 'object'],
     ['component:default/billing-api-dev', 'object'],
   ]),
+  // No grant is declared, so none is over anything.
+  over: new Map(),
   ...over,
 })
 

@@ -5,7 +5,7 @@ import { checkPolicies, type PolicyContext } from '../core/plan/policies.js'
 import type { Provenance } from '../core/plan/provenance.js'
 import { reapplyAnswers, type RecordedAnswer } from '../core/plan/reapply.js'
 import { recheckPlan, type Recheck } from '../core/plan/recheck.js'
-import { declaredLevel } from '../core/plan/grant.js'
+import { declaredLevel, levelledSiteOf } from '../core/plan/grant.js'
 import { signPlan, type SignatureContext, type SignedPlan } from '../core/plan/sign.js'
 import type { FileEdit } from '../core/diff/unified.js'
 import type { Entity } from '../core/schemas/entity.js'
@@ -119,10 +119,35 @@ export type RepairOutcome =
       readonly plan: Plan | undefined
       readonly gate: Gate | undefined
       readonly reason: string
+      /**
+       * The user's values the refusal that ended the run was at — what a
+       * person is told was theirs and kept, rather than "name the value the
+       * gate could not accept" about a value they already named. Empty when
+       * nothing refused was theirs.
+       */
+      readonly kept: readonly KeptValue[]
       readonly attempts: readonly RepairAttempt[]
       readonly truncated: number
       readonly rejections: number
     }
+
+/**
+ * A value the user gave that a gate refused, and that the engine kept anyway:
+ * it goes back into every draft (`reapplyAnswers`), so no redraft can move it.
+ */
+export interface KeptValue {
+  readonly path: string
+  readonly value: string
+  /**
+   * Present when the value is the level of a grant whose type states one —
+   * which is what says what would pass: a grant of its own at that level.
+   * The consumer and the thing, each where exactly one is known.
+   */
+  readonly level?: {
+    readonly consumer?: string | undefined
+    readonly resource?: string | undefined
+  }
+}
 
 export interface RepairInput {
   /**
@@ -226,7 +251,14 @@ export interface RepairInput {
  * the legal escape from not knowing a value is the question named below, not a
  * plausible value chosen under pressure.
  */
-const reportOf = (gate: Gate, findings: readonly string[]): string =>
+/** A value the user gave, where the draft holds it, and what it is about when that is known. */
+interface UsersValue {
+  readonly path: string
+  readonly value: string
+  readonly about?: string | undefined
+}
+
+const reportOf = (gate: Gate, findings: readonly string[], theirs: readonly UsersValue[]): string =>
   [
     `the plan was refused at the ${gate} gate:`,
     '',
@@ -234,7 +266,55 @@ const reportOf = (gate: Gate, findings: readonly string[]): string =>
     '',
     'Each line names a field by its path in the plan you proposed. Propose again with ' +
       'those fixed, and {"unknown": "<why>"} wherever you cannot determine a value.',
+    ...usersBlock(theirs),
   ].join('\n')
+
+/**
+ * What the user fixed, said to the model that has to draft around it.
+ *
+ * `repair` puts every answer back into every draft (`reapplyAnswers`), and the
+ * Architect was never told: the owner's run refused `read` joined to a
+ * readwrite grant, the model did as the remedy said and wrote readwrite, the
+ * engine put `read` back, and the same refusal came round three times. A
+ * report that asks for a fix the engine will undo is a refusal with extra
+ * words — the fault `repairFor` states for the level message.
+ *
+ * Only when a finding is AT one of those values, and that condition is not
+ * caution for its own sake. A report is part of what the model is sent, and a
+ * refusal that is not about the user's values — a Reviewer's objection after
+ * an answered round, which the `link-db-missing` tape recorded — says nothing
+ * this block would change; adding it there would change the bytes of a run
+ * that converges today. So a run with no answers, or whose refusal is not at
+ * one, is handed exactly what it was handed before.
+ *
+ * Every value the engine puts back is listed once the block is added, not
+ * only the refused one: a model told one field is fixed and not that another
+ * is will move the other. Only those, though (`Reapplication.about`): an
+ * answer held by its path alone, or a consumer, stands only where the draft
+ * put it, and "put back whatever you write" would be false of it.
+ */
+const usersBlock = (theirs: readonly UsersValue[]): string[] =>
+  theirs.length === 0
+    ? []
+    : [
+        '',
+        "These values are the user's, and are put back into every draft whatever you write:",
+        '',
+        ...theirs.map(({ path, value, about }) =>
+          about === undefined ? `  ${path} = ${value}` : `  ${path} = ${value} (${about})`,
+        ),
+        '',
+        'Choose operations that honour them.',
+      ]
+
+/** What the user fixed in one draft: path → value, path → what it is about, and the draft. */
+interface Theirs {
+  readonly answers: ReadonlyMap<string, string>
+  readonly about: ReadonlyMap<string, string>
+  readonly plan: Plan | undefined
+}
+
+const NOTHING_THEIRS: Theirs = { answers: new Map(), about: new Map(), plan: undefined }
 
 export async function repair(input: RepairInput, emit: EventSink): Promise<RepairOutcome> {
   const attempts: RepairAttempt[] = []
@@ -247,7 +327,13 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
   /** Proposals the Architect's own schema refused, summed across attempts. */
   let rejections = 0
   let report: string | undefined
-  let refusal: { gate: Gate; reason: string } | undefined
+  let refusal: { gate: Gate; reason: string; kept: readonly KeptValue[] } | undefined
+  /**
+   * What the user fixed in the draft being judged, path → value and what it
+   * is about. Set once the draft's answers are put back; empty before that,
+   * and for a draft the schema refused, which holds none of them yet.
+   */
+  let theirs: Theirs = NOTHING_THEIRS
 
   for (let number = 1; number <= REPAIR_LIMITS.maxAttempts; number += 1) {
     // The event's attempt is 1 | 2 | 3 (design §6.2) and `maxAttempts` is the 3
@@ -267,19 +353,35 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
      */
     let stopped: string | undefined
 
-    const fail = (gate: Gate, findings: readonly string[]): void => {
+    const fail = (gate: Gate, findings: readonly string[], at: readonly string[] = []): void => {
       // One list of findings, two renderings: the report the model reads and
       // the one line a person watching the stream reads. Two formatters would
       // be two places for them to say different things about one refusal.
       const reason = findings.join('; ')
-      report = reportOf(gate, findings)
-      refusal = { gate, reason }
+      // The user's values this refusal is at, by the path each finding names.
+      // A gate whose findings name no path — the schema's, the Reviewer's, the
+      // re-check's — is at none of them. Only the ones the engine puts back
+      // (`about`): an answer held by its path alone, or a consumer, stands
+      // only where the draft put it, and saying otherwise to the model would
+      // be a claim the next draft disproves.
+      const placed = [...theirs.answers].filter(([path]) => theirs.about.has(path))
+      const kept = at.flatMap((path) => {
+        const value = theirs.about.has(path) ? theirs.answers.get(path) : undefined
+        return value === undefined ? [] : [{ path, value, ...levelAt(theirs.plan, path, input) }]
+      })
+      const listed =
+        kept.length === 0
+          ? []
+          : placed.map(([path, value]) => ({ path, value, about: theirs.about.get(path) }))
+      report = reportOf(gate, findings, listed)
+      refusal = { gate, reason, kept: dedupe(kept) }
       attempts.push({ attempt, gates: [...gates], failed: gate, report })
       emit({ type: 'repair', attempt, gate, reason })
     }
 
     try {
       const drafted = await input.draft(report)
+      theirs = NOTHING_THEIRS
       // Carried, not read and dropped. The Architect counts these for its caller:
       // rows the tools cut off, and proposals its own schema refused. A plan
       // drafted on a partial view of the catalogue looks exactly like one drafted
@@ -306,6 +408,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
           outcome: 'stopped',
           plan: partial,
           gate: earlier?.failed,
+        kept: refusal?.kept ?? [],
           reason:
             earlier === undefined
               ? 'the draft ended with no proposal, so there was nothing for a gate to judge'
@@ -364,7 +467,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       // now sits at, before the consumers are read. Without it a redraft after
       // the Reviewer refused a filled plan put `{unknown}` back where the user
       // had answered, and the same question was asked a second time.
-      const reapplication = reapplyAnswers(parsed.data, input.answers)
+    const reapplication = reapplyAnswers(parsed.data, input.answers, input.policy.over)
       const provenance: Provenance = {
         ...input.provenance,
         answers: new Map([...input.provenance.answers, ...reapplication.answers]),
@@ -416,6 +519,11 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       // `parsed.data`: showing the pre-derivation draft would show the user a
       // plan no gate ever saw.
       partial = derivation.plan
+    // Only what the user TYPED: `reapplication.answers` is built from
+    // `input.answers` alone. `input.provenance.answers` is not the user's
+    // everywhere — `init` puts what its inspection read there — so it is
+    // never reported to the model as theirs.
+    theirs = { answers: reapplication.answers, about: reapplication.about, plan: derivation.plan }
 
       // [2] The signature. Free. It vouches for where every value came from, and
       // turns the ones nobody can vouch for into questions rather than refusing
@@ -427,6 +535,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
         fail(
           'signature',
           signed.refusals.map((one) => `${one.path}: ${one.reason}`),
+        signed.refusals.map((one) => one.path),
         )
         continue
       }
@@ -442,7 +551,14 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       // asking the Architect to invent exactly what design 4.1 forbids it to
       // invent, and the third would end in a clean stop over a plan that was
       // never wrong. Design 7.5: the CLI asks.
-      const questions = questionsOf(signed.plan)
+    // What the person is shown beside each question — the draft's value, and
+    // what the field accepts — and never what the model is: the plan keeps
+    // the `{unknown}` it carries, byte for byte.
+    const questions = questionsOf(signed.plan, {
+      draft: derivation.plan,
+      environments: input.signature.vocabulary.environments,
+      over: input.policy.over,
+    })
 
       // [3] Policies. Free, deterministic, and every violation at once: a caller
       // fixing them one round-trip at a time is this loop's worst case.
@@ -459,6 +575,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
         fail(
           'policy',
           violations.map((one) => `${one.policy} at ${one.path}: ${one.message}`),
+        violations.map((one) => one.path),
         )
         continue
       }
@@ -539,6 +656,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
           plan: signed.plan,
           gate: 'reviewer',
           reason: verdict.reason,
+        kept: [],
           attempts,
           truncated,
           rejections,
@@ -580,6 +698,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
     outcome: 'stopped',
     plan: partial,
     gate: refusal?.gate,
+    kept: refusal?.kept ?? [],
     reason:
       refusal === undefined
         ? 'the plan was refused, and no gate said which'
@@ -590,6 +709,31 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
   }
 }
 
+
+/**
+ * The grant a level at `path` is for, when `path` is where its operation
+ * states the level of a grant that has one — which is what lets a stop say
+ * "a separate grant at read for billing-api over orders-db-prod" rather than
+ * only that the value was theirs, and say as much of it as is known when the
+ * grant is over two things.
+ */
+function levelAt(
+  plan: Plan | undefined,
+  path: string,
+  input: Pick<RepairInput, 'policy'>,
+): Pick<KeptValue, 'level'> {
+  const match = /^operations\.(\d+)\.(.+)$/.exec(path)
+  const operation = match === null ? undefined : plan?.operations[Number(match[1])]
+  if (match === null || operation === undefined) return {}
+  const site = levelledSiteOf(operation, input.policy.over)
+  return site !== undefined && site.field === match[2]
+    ? { level: { consumer: site.consumer, resource: site.resource } }
+    : {}
+}
+
+/** Once per path: two findings at one field are one value kept. */
+const dedupe = (kept: readonly KeptValue[]): KeptValue[] =>
+  kept.filter((one, index) => kept.findIndex((other) => other.path === one.path) === index)
 
 /**
  * What the repository declares about every entity an `update-entity` targets.

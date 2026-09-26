@@ -1,5 +1,13 @@
 import type { Entity } from '../schemas/entity.js'
-import { RESOURCE_TYPES, type AccessLevel, type Nature } from '../schemas/resource-types.js'
+import type { Operation } from '../schemas/plan.js'
+import {
+  RESOURCE_TYPES,
+  RESOURCE_TYPE_NAMES,
+  levelledOf,
+  type AccessLevel,
+  type Nature,
+  type ResourceType,
+} from '../schemas/resource-types.js'
 
 /**
  * What "already declared" means, in one place.
@@ -120,3 +128,148 @@ export const statedAs = (level: string | undefined): string =>
  */
 export const natureOf = (entity: Entity): Nature =>
   entity.kind === 'Resource' ? RESOURCE_TYPES[entity.spec.type].nature : 'object'
+
+/**
+ * ref → what that right is over — its `dependsOn` — for every right a
+ * repository declares WHOSE TYPE STATES A LEVEL. An `update-entity` names its
+ * grant by reference and carries none of it, so this is how the engine knows
+ * which thing a consumer joined to an existing grant would reach at a level.
+ *
+ * Only the levelled rights, and that is the point of it rather than a saving.
+ * A `network-access` over orders-db-prod is billing-api reaching that database
+ * too, but not at any level: a level answered for billing-api's database
+ * access, carried by that access onto a network join, was written into a
+ * `patch.access` the grant cannot state and refused there — and a plan that
+ * held both counted one access twice and asked its level again. So `has` on
+ * this map is also the engine's one answer to "does this declared grant state
+ * a level", and the policy and the questions read it as that (`levelSiteOf`).
+ */
+export type GrantedOver = ReadonlyMap<string, readonly string[]>
+
+/** Whether a declaration is a right whose type states a level: the ones `GrantedOver` holds. */
+export const statesLevels = (entity: Entity): entity is Extract<Entity, { kind: 'Resource' }> =>
+  entity.kind === 'Resource' && levelledOf(entity.spec.type)
+
+/**
+ * An access, as the person thinks of it: who reaches what. Not the grant that
+ * carries it — the owner's run answered "the level at which billing-api reaches
+ * orders-db-prod", and whether a draft says that by joining billing-api to
+ * orders-api's grant or by declaring a grant of its own is the draft's choice,
+ * not the person's.
+ */
+export interface AccessSubject {
+  readonly consumer: string
+  readonly resource: string
+}
+
+/** Where an operation states the level of an access, and which access it is. */
+export interface LevelField {
+  /** Dotted, relative to the operation: `patch.access` or `entity.spec.access`. */
+  readonly field: string
+  readonly access: AccessSubject
+}
+
+/** The one reference a list holds, or undefined when it holds none, several or a question. */
+export const soleReference = (list: unknown): string | undefined =>
+  Array.isArray(list) && list.length === 1 && typeof list[0] === 'string' ? list[0] : undefined
+
+/**
+ * Where an operation would state a level, and the one consumer it would state
+ * it for — read off the operation alone, whatever the grant turns out to be.
+ *
+ * An update joins ONE consumer, and states the level at `patch.access`; a
+ * creation of a Resource states it at `entity.spec.access`, for the consumer
+ * its `dependencyOf` holds when it holds exactly one. A grant for two
+ * consumers states one level for both, which neither could claim alone, and
+ * has no consumer here. This is what an answer typed at a level is about
+ * before anything is known of the access: the consumer it was typed for.
+ */
+export interface LevelSite {
+  /** Dotted, relative to the operation: `patch.access` or `entity.spec.access`. */
+  readonly field: string
+  readonly consumer: string | undefined
+}
+
+export function levelSiteOf(operation: Operation): LevelSite | undefined {
+  switch (operation.op) {
+    case 'update-entity': {
+      const { consumer } = operation.patch
+      return {
+        field: 'patch.access',
+        consumer: typeof consumer === 'string' ? consumer : undefined,
+      }
+    }
+    case 'create-entity':
+      return operation.entity.kind === 'Resource'
+        ? {
+            field: 'entity.spec.access',
+            consumer: soleReference(operation.entity.spec.dependencyOf),
+          }
+        : undefined
+    case 'create-catalog-info':
+      return undefined
+    default: {
+      const exhaustive: never = operation
+      return exhaustive
+    }
+  }
+}
+
+/**
+ * Where an operation states the level of a grant that HAS one, and the
+ * consumer and the thing as far as they are known — each undefined where the
+ * operation or the repository does not say exactly one.
+ *
+ * An update's grant states a level when the repository declares it among the
+ * levelled rights (`GrantedOver`), and reaches what that grant is over; a
+ * creation's type says outright. A right with no level (`network-access`) and
+ * an update of a grant the repository does not declare as levelled answer
+ * undefined: no level of theirs is anyone's answer.
+ */
+export interface LevelledSite extends LevelSite {
+  readonly resource: string | undefined
+}
+
+export function levelledSiteOf(operation: Operation, over: GrantedOver): LevelledSite | undefined {
+  const site = levelSiteOf(operation)
+  if (site === undefined) return undefined
+  switch (operation.op) {
+    case 'update-entity':
+      return over.has(operation.entityRef)
+        ? { ...site, resource: soleReference(over.get(operation.entityRef)) }
+        : undefined
+    case 'create-entity': {
+      const { entity } = operation
+      if (entity.kind !== 'Resource') return undefined
+      const { type, dependsOn } = entity.spec
+      if (typeof type !== 'string' || !RESOURCE_TYPE_NAMES.includes(type as ResourceType)) {
+        return undefined
+      }
+      if (!levelledOf(type as ResourceType)) return undefined
+      return { ...site, resource: soleReference(dependsOn) }
+    }
+    case 'create-catalog-info':
+      return undefined
+    default: {
+      const exhaustive: never = operation
+      return exhaustive
+    }
+  }
+}
+
+/**
+ * The access an operation states a level for, when there is exactly one: a
+ * `levelledSiteOf` whose consumer and thing are both known. Anything else — a
+ * question in the consumer or the type, a grant over two databases, a grant
+ * for two consumers, a right with no level — answers undefined, and a caller
+ * asking to carry an answer by its access carries nothing.
+ */
+export function levelFieldOf(operation: Operation, over: GrantedOver): LevelField | undefined {
+  const site = levelledSiteOf(operation, over)
+  if (site?.consumer === undefined || site.resource === undefined) return undefined
+  return { field: site.field, access: { consumer: site.consumer, resource: site.resource } }
+}
+
+/** An access in words, the same words everywhere it is named. */
+export const accessWords = ({ consumer, resource }: AccessSubject): string =>
+  `${consumer}'s access to ${resource}`

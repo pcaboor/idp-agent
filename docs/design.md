@@ -501,6 +501,15 @@ plan against the repository and never against the request: what the *request* na
 signature's question (§5.4), asked in any language, and reporting *nothing to change* about
 a requested narrowing is the falsehood this refuses to tell.
 
+What it hands back depends on whose level it is. A level the model chose may be fixed by
+stating the one the grant declares, or by a separate grant. A level the **user** answered
+may not: stating the declared one hands over more than they asked for, and the engine puts
+their answer back into every redraft anyway, so a model that took that advice was refused
+three times over one plan. For their level the remedy is only the separate grant, naming
+the consumer and the thing, and the report ends with the values the user fixed. Against a
+right whose type states no level (a network flow), the remedy stays *state none*: a
+separate grant at their level is one that type cannot state.
+
 `consumer-on-an-object` is the same §4.1 sentence read the other way: a right carries its
 consumers and a thing does not, so an `add-dependency-of` aimed at a database has nothing
 to add a consumer to. Nothing downstream asks — `planEdits` finds the file by reference and

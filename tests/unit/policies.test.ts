@@ -68,6 +68,13 @@ const policies = (over: Partial<PolicyContext> = {}): PolicyContext => ({
     ['resource:default/payments-orders-db-prod', 'right'],
     ['resource:default/legacy-orders-db-prod', 'right'],
   ]),
+  // What each grant is over, as the repository declares it.
+  over: new Map<string, readonly string[]>([
+    ['resource:default/checkout-orders-db-prod', ['resource:default/orders-db-prod']],
+    ['resource:default/checkout-orders-db-dev', ['resource:default/orders-db-dev']],
+    ['resource:default/payments-orders-db-prod', ['resource:default/orders-db-prod']],
+    ['resource:default/legacy-orders-db-prod', ['resource:default/orders-db-prod']],
+  ]),
   ...over,
 })
 
@@ -612,3 +619,189 @@ describe('an environment the user answered', () => {
     expect(of(elsewhere, 'environment-mismatch')).toBeUndefined()
   })
 })
+
+/**
+ * A level the USER set, against a grant that declares another.
+ *
+ * The owner's run: `billing-api` asked for read on `orders-db-prod`, the draft
+ * joined it to orders-api's grant, which declares readwrite, and the person
+ * answered `read` at the prompt. The remedy this gate handed back offered
+ * `"access": "readwrite"` first — more than the person asked for — and the
+ * answer was put back into every redraft anyway, so the loop could not
+ * converge. When the level is theirs, the only remedy is a grant of its own.
+ */
+describe('declared-level-mismatch, when the level is the user\'s', () => {
+  const REF = 'resource:default/payments-orders-db-prod'
+  const CONSUMER = 'component:default/billing-api'
+  const REQUEST = 'donne à billing-api un accès en lecture à orders-db en prod'
+  const ANSWERED = { 'operations.0.patch.access': 'read' }
+
+  /** Signed with the level answered, so the signature vouches for it and the policy runs. */
+  const joined = (access: string): SignedPlan =>
+    signUpdate(
+      REF,
+      CONSUMER,
+      REQUEST,
+      access,
+      userSaid(REQUEST, { 'operations.0.patch.access': access }),
+    )
+
+  it('names the separate grant as the only remedy, and never the wider level', () => {
+    const signed = joined('read')
+
+    const violation = of(
+      checkPolicies(signed, policies(), userSaid(REQUEST, ANSWERED)),
+      'declared-level-mismatch',
+    )
+
+    expect(violation?.path).toBe('operations.0.patch.access')
+    expect(violation?.message).toBe(
+      'resource:default/payments-orders-db-prod grants readwrite, and this plan grants read. ' +
+        'The user asked for read. A level is a scalar and this tool only ever appends (§4.3), ' +
+        'so appending cannot change the level a grant declares: declare a separate grant for ' +
+        'component:default/billing-api over resource:default/orders-db-prod that states access ' +
+        'read, instead of adding it to this one.',
+    )
+    expect(violation?.message).not.toContain('State')
+  })
+
+  it('says the same against a grant that states no level, rather than offering to omit it', () => {
+    const signed = signUpdate(
+      'resource:default/legacy-orders-db-prod',
+      CONSUMER,
+      REQUEST,
+      'read',
+      userSaid(REQUEST, ANSWERED),
+    )
+
+    const violation = of(
+      checkPolicies(signed, policies(), userSaid(REQUEST, ANSWERED)),
+      'declared-level-mismatch',
+    )
+
+    expect(violation?.message).toContain('states no level, and this plan grants read')
+    expect(violation?.message).toContain(
+      'declare a separate grant for component:default/billing-api',
+    )
+    expect(violation?.message).not.toContain('omit')
+  })
+
+  it('names what it can when the grant is over more than one thing', () => {
+    const signed = joined('read')
+    const context = policies({
+      over: new Map([[REF, ['resource:default/orders-db-prod', 'resource:default/orders-db-dev']]]),
+    })
+
+    const violation = of(
+      checkPolicies(signed, context, userSaid(REQUEST, ANSWERED)),
+      'declared-level-mismatch',
+    )
+
+    expect(violation?.message).toContain(
+      'declare a separate grant for component:default/billing-api that states access read, ' +
+        'instead of adding it to this one.',
+    )
+  })
+
+  it('offers a creation a grant under a name of its own', () => {
+    const grant = 'resource:default/billing-api-orders-db-prod'
+    const signed = sign(accessIn('prod'), READ_IN_PROD_REQUEST)
+
+    const violation = of(
+      checkPolicies(
+        signed,
+        policies({
+          levels: new Map<string, AccessLevel | undefined>([[grant, 'readwrite']]),
+          natures: new Map<string, Nature>([[grant, 'right']]),
+          over: new Map([[grant, ['resource:default/orders-db-prod']]]),
+        }),
+        userSaid(READ_IN_PROD_REQUEST, { 'operations.0.entity.spec.access': 'read' }),
+      ),
+      'declared-level-mismatch',
+    )
+
+    expect(violation?.message).toBe(
+      'resource:default/billing-api-orders-db-prod grants readwrite, and this plan grants read. ' +
+        'The user asked for read. A level is a scalar and this tool only ever appends (§4.3), ' +
+        'so appending cannot change the level a grant declares: declare a separate grant for ' +
+        'component:default/billing-api over resource:default/orders-db-prod that states access ' +
+        'read, under a name of its own, instead of restating this one.',
+    )
+  })
+
+  it("keeps today's message, byte for byte, when the level is the model's", () => {
+    // Nothing answered at this path: the value came from the draft, and the
+    // recorded plan-mode runs depend on this sentence not moving.
+    const signed = joined('read')
+
+    const violation = of(
+      checkPolicies(signed, policies(), userSaid(REQUEST)),
+      'declared-level-mismatch',
+    )
+
+    expect(violation?.message).toBe(
+      'resource:default/payments-orders-db-prod grants readwrite, and this plan grants read. ' +
+        'A level is a scalar and this tool only ever appends (§4.3), so what would be granted ' +
+        "is the level the repository declares. State '\"access\": \"readwrite\"' to hand over " +
+        'what it grants, or declare a separate grant for a different level.',
+    )
+  })
+
+  it("keeps today's message when the answer was another value, or at another field", () => {
+    const signed = joined('read')
+    const expected = of(
+      checkPolicies(signed, policies(), userSaid(REQUEST)),
+      'declared-level-mismatch',
+    )
+
+    for (const answers of [
+      { 'operations.0.patch.access': 'readwrite' },
+      { 'operations.1.patch.access': 'read' },
+    ]) {
+      const violation = of(
+        checkPolicies(signed, policies(), userSaid(REQUEST, answers)),
+        'declared-level-mismatch',
+      )
+      expect(violation?.message).toBe(expected?.message)
+    }
+  })
+
+  it('keeps the omit remedy against a right whose type states no level at all', () => {
+    // A network flow is opened or it is not. `over` holds only the rights
+    // that state a level, so this one is not there, and a level the person
+    // typed for it is answered with what such a grant CAN say: nothing. A
+    // separate grant "that states access read" is one the schema refuses.
+    const NETWORK = 'resource:default/legacy-orders-db-prod'
+    const signed = signUpdate(NETWORK, CONSUMER, REQUEST, 'read', userSaid(REQUEST, ANSWERED))
+    const context = policies({ over: new Map() })
+
+    const violation = of(
+      checkPolicies(signed, context, userSaid(REQUEST, ANSWERED)),
+      'declared-level-mismatch',
+    )
+
+    expect(violation?.message).toBe(
+      of(checkPolicies(signed, context, userSaid(REQUEST)), 'declared-level-mismatch')?.message,
+    )
+    expect(violation?.message).toContain("omit 'access'")
+    expect(violation?.message).not.toContain('The user asked for')
+  })
+
+  it("keeps today's message when the level was omitted", () => {
+    const signed = signUpdate(REF, CONSUMER, REQUEST, undefined, userSaid(REQUEST))
+
+    const violation = of(
+      checkPolicies(signed, policies(), userSaid(REQUEST)),
+      'declared-level-mismatch',
+    )
+
+    expect(violation?.message).toBe(
+      'resource:default/payments-orders-db-prod grants readwrite, and this plan states no level. ' +
+        'A level is a scalar and this tool only ever appends (§4.3), so what would be granted ' +
+        "is the level the repository declares. State '\"access\": \"readwrite\"' to hand over " +
+        'what it grants, or declare a separate grant for a different level.',
+    )
+  })
+})
+
+const READ_IN_PROD_REQUEST = 'give billing-api read access to orders-db in prod'

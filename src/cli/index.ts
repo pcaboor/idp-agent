@@ -28,7 +28,7 @@ import { EntityGraph } from '../context/graph/entity-graph.js'
 import { runGraph, type GraphOptions } from './commands/graph.js'
 import { runShow } from './commands/show.js'
 import { runValidate } from './commands/validate.js'
-import { PlanInputError, runIntent, runPlan, type Ask } from './commands/plan.js'
+import { PlanInputError, questionLines, runIntent, runPlan, type Ask } from './commands/plan.js'
 import { wantsColour } from './render/diff.js'
 import { runInitPlatform, runInitRepo } from './commands/init.js'
 import { ConfigError } from './config.js'
@@ -1130,9 +1130,17 @@ const colourOf = (deps: MainDeps): boolean =>
  * dotted path says which field, and the model's own reason IS the question — a
  * prompt showing one without the other asks about a path, or about nothing in
  * particular.
+ *
+ * The streams are parameters for one reason: this is the only thing a person
+ * at a terminal actually sees, and a test that checks the lines it is built
+ * from rather than what it writes would stay green with it reverted. Exported
+ * for that test; `askOf` is its only caller.
  */
-const promptOnTerminal = (): Ask => async (question) => {
-  const reader = createInterface({ input: process.stdin, output: process.stderr })
+export const promptOnTerminal = (
+  input: NodeJS.ReadableStream = process.stdin,
+  output: NodeJS.WritableStream = process.stderr,
+): Ask => async (question) => {
+  const reader = createInterface({ input, output })
   try {
     // Raced against `close`, because Ctrl-D ends the input without ever
     // answering: a closed stdin is a decline — which is what `undefined` means
@@ -1141,8 +1149,10 @@ const promptOnTerminal = (): Ask => async (question) => {
       reader.once('close', () => resolve(undefined))
     })
     return await Promise.race([
-      // The model wrote the question; the path beside it is the engine's.
-      reader.question(`  ${question.path}\n      ${inertLine(question.question)}\n  > `),
+      // The lines `renderQuestions` prints, so the prompt and the printed form
+      // ask the same thing — the model's reason, the engine's path, and what
+      // the field accepts — each cleaned there.
+      reader.question(`${questionLines(question).join('\n')}\n  > `),
       closed,
     ])
   } finally {

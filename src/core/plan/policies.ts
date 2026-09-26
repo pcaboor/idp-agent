@@ -1,5 +1,14 @@
 import { answered, named, type Provenance } from './provenance.js'
-import { levelClaim, proposedClaim, statedAs, type LevelClaim } from './grant.js'
+import {
+  levelClaim,
+  levelledSiteOf,
+  proposedClaim,
+  soleReference,
+  statedAs,
+  type AccessSubject,
+  type GrantedOver,
+  type LevelClaim,
+} from './grant.js'
 import type { AccessLevel, Nature } from '../schemas/resource-types.js'
 import type { Vocabulary } from '../schemas/vocabulary.js'
 import type { SignedPlan } from './sign.js'
@@ -75,6 +84,18 @@ export interface PolicyContext {
    * level of a database is how this gate used to spend a repair attempt.
    */
   readonly natures: ReadonlyMap<string, Nature>
+  /**
+   * ref → what that right is over, for every right the snapshot holds whose
+   * type states a level (`GrantedOver`).
+   *
+   * Read by one sentence: the remedy `declared-level-mismatch` hands back when
+   * the level it refuses is the user's. "Declare a separate grant" has to say
+   * for whom and over what, and an update names only the grant — the thing it
+   * reaches is in the repository, not in the operation. And whether the grant
+   * is here at all is whether that remedy applies: a grant of its own "that
+   * states access read" is only a remedy where a grant of that type can.
+   */
+  readonly over: GrantedOver
 }
 
 
@@ -141,14 +162,17 @@ function environmentsTouched(entity: unknown, vocabulary: Vocabulary): string[] 
  * What this does NOT cover: whether the level is the RIGHT one for what was
  * asked. It compares the plan to the repository, not to the request. The
  * signature asks where the value came from, the Reviewer reads the request,
- * and the merge is the act of authorisation (§4.2).
+ * and the merge is the act of authorisation (§4.2). Where the value came from
+ * does change one thing: the remedy. See `separateGrant`.
  */
 function levelMismatch(
   context: PolicyContext,
+  provenance: Provenance,
   opIndex: number,
   path: string,
   ref: string | undefined,
   claim: LevelClaim,
+  grant: GrantShape,
 ): PolicyViolation | undefined {
   // `has`, never `get`: a reference the map does not hold at all is a grant
   // this repository has never declared, and no level of it is wrong yet. See
@@ -169,6 +193,23 @@ function levelMismatch(
   const stated = claim.said === 'level' ? claim.level : undefined
   if (declared === stated) return undefined
 
+  // Whose level it is decides the remedy, and `answered` is the signer's own
+  // test for a level (`signPlan`): a level is never read out of the request,
+  // so the only way it is the user's is that they answered it, here. Against
+  // a right with no level — a network flow, which `over` does not hold — the
+  // only remedy there is is `repairFor`'s: state none. A separate grant at
+  // their level is one its type cannot state, and the schema refuses it.
+  if (stated !== undefined && answered(provenance, path, stated) && context.over.has(ref)) {
+    return {
+      policy: 'declared-level-mismatch',
+      opIndex,
+      path,
+      message:
+        `${ref} ${statedAs(declared)}, and this plan ${statedAs(stated)}. ` +
+        `The user asked for ${stated}. ${separateGrant(stated, grant)}`,
+    }
+  }
+
   return {
     policy: 'declared-level-mismatch',
     opIndex,
@@ -178,6 +219,49 @@ function levelMismatch(
       `and this tool only ever appends (§4.3), so what would be granted is the level the ` +
       `repository declares. ${repairFor(declared)}`,
   }
+}
+
+/**
+ * What the remedy needs to know about the operation a level mismatch is in:
+ * whether it joins an existing grant or declares one, and the consumer and the
+ * thing, as far as they are known.
+ */
+interface GrantShape {
+  readonly shape: 'update' | 'creation'
+  readonly access: {
+    readonly [K in keyof AccessSubject]?: AccessSubject[K] | undefined
+  }
+}
+
+/**
+ * The one remedy for a level the user set: a grant of its own, at their level.
+ *
+ * `repairFor`'s first option is "state the level the grant declares", and for
+ * a level the model chose that is the fix. For one the user answered it is
+ * the opposite of one: it proposes handing over more than they asked for, and
+ * the engine puts their answer back into every redraft anyway (`reapply.ts`),
+ * so a model that took the advice was refused again, three times, over a plan
+ * nobody could have written. Omitting the level against a grant that states
+ * none is the same widening by silence. So neither is offered here.
+ *
+ * It names the consumer and the thing when it knows them — a model told
+ * "declare a separate grant" without being told for whom and over what has to
+ * guess the half it was not told — and says only what it knows when it does
+ * not: an update against a grant over two things names no thing.
+ */
+const separateGrant = (level: string, { shape, access }: GrantShape): string => {
+  const whom = [
+    ...(access.consumer === undefined ? [] : [`for ${access.consumer}`]),
+    ...(access.resource === undefined ? [] : [`over ${access.resource}`]),
+  ]
+  return (
+    `A level is a scalar and this tool only ever appends (§4.3), so appending cannot change ` +
+    `the level a grant declares: declare a separate grant ${[...whom, ''].join(' ')}that states ` +
+    `access ${level}, ` +
+    (shape === 'update'
+      ? 'instead of adding it to this one.'
+      : 'under a name of its own, instead of restating this one.')
+  )
 }
 
 /**
@@ -194,6 +278,10 @@ function levelMismatch(
  * over the level the grant already declares and cannot alter it. The way to
  * hand over a DIFFERENT one is a different grant, which is the second
  * sentence rather than a hint.
+ *
+ * For a level the MODEL chose, or left out. One the user answered gets
+ * `separateGrant` instead, and this sentence is kept byte for byte for the
+ * rest: it is what the recorded runs were sent.
  */
 const repairFor = (declared: AccessLevel | undefined): string =>
   declared === undefined
@@ -399,10 +487,18 @@ export function checkPolicies(
       // omitted it and the claim was the omission.
       const level = levelMismatch(
         context,
+        provenance,
         opIndex,
         `operations.${opIndex}.patch.access`,
         entityRef,
         levelClaim(patch.access),
+        {
+          shape: 'update',
+          access: {
+            consumer: patch.consumer,
+            resource: soleReference(context.over.get(entityRef)),
+          },
+        },
       )
       if (level !== undefined) violations.push(level)
 
@@ -475,10 +571,12 @@ export function checkPolicies(
     // states a level, and neither is a grant.
     const level = levelMismatch(
       context,
+      provenance,
       opIndex,
       `operations.${opIndex}.entity.spec.access`,
       signed.refs.get(opIndex),
       proposedClaim(entity),
+      { shape: 'creation', access: levelledSiteOf(operation, context.over) ?? {} },
     )
     if (level !== undefined) violations.push(level)
   }

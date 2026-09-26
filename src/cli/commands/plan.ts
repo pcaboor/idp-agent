@@ -3,7 +3,13 @@ import path from 'node:path'
 import { NOT_INSPECTED, draftPlan } from '../../agents/architect.js'
 import type { EventSink } from '../../agents/events.js'
 import { inspect } from '../../agents/inspector.js'
-import { repair, type Gate, type RepairAttempt, type RepairOutcome } from '../../agents/repair.js'
+import {
+  repair,
+  type Gate,
+  type KeptValue,
+  type RepairAttempt,
+  type RepairOutcome,
+} from '../../agents/repair.js'
 import { reviewPlan } from '../../agents/reviewer.js'
 import { formatSummary } from '../../agents/summary.js'
 import { buildTools } from '../../agents/tools/graph-tools.js'
@@ -15,7 +21,7 @@ import { renderUnifiedDiff, type FileEdit } from '../../core/diff/unified.js'
 import { answer, AnswerError, questionsOf, type Question } from '../../core/plan/clarify.js'
 import { deriveOwners } from '../../core/plan/derive.js'
 import { planEdits, type DroppedOperation } from '../../core/plan/edits.js'
-import { declaredLevel, natureOf } from '../../core/plan/grant.js'
+import { declaredLevel, natureOf, statesLevels } from '../../core/plan/grant.js'
 import { checkPolicies, type PolicyContext, type PolicyViolation } from '../../core/plan/policies.js'
 import type { Provenance } from '../../core/plan/provenance.js'
 import { reapplyAnswers, recordAnswers, type RecordedAnswer } from '../../core/plan/reapply.js'
@@ -267,6 +273,7 @@ function contextsOf(
   const owners = new Map<string, string>()
   const levels = new Map<string, AccessLevel | undefined>()
   const natures = new Map<string, Nature>()
+  const over = new Map<string, readonly string[]>()
   for (const file of snapshot.files) {
     for (const entity of file.entities) {
       declared.set(refOf(entity), file.path)
@@ -280,6 +287,12 @@ function contextsOf(
       // folder: where a file sits is a convention this tool computes for what
       // it writes, and says nothing about what somebody else filed.
       natures.set(refOf(entity), natureOf(entity))
+      // What a levelled right is over, as it declares it. An update names its
+      // grant and nothing else, so this is the only place the thing it
+      // reaches is read — and only a right that states a level is held, so a
+      // network flow over the same database is never read as that access
+      // (see `GrantedOver`).
+      if (statesLevels(entity)) over.set(refOf(entity), entity.spec.dependsOn ?? [])
       // Read from the entity, never inferred: `spec.owner` is required on both
       // kinds, so every entity the reader accepted contributes exactly one.
       owners.set(refOf(entity), entity.spec.owner)
@@ -303,7 +316,14 @@ function contextsOf(
       repoRoot: root,
       declared,
     },
-    policy: { vocabulary, witnesses: new Set(snapshot.witnesses), environments, levels, natures },
+    policy: {
+      vocabulary,
+      witnesses: new Set(snapshot.witnesses),
+      environments,
+      levels,
+      natures,
+      over,
+    },
   }
 }
 
@@ -561,20 +581,48 @@ export const renderQuestions = (questions: readonly Question[]): CommandResult =
   text: [
     `${plural(questions.length, 'question', 'questions')}, asked rather than guessed:`,
     '',
-    // Cleaned and kept to its one line, because the reason is up to 8 192
-    // characters the MODEL wrote and this line goes to a terminal: a newline in
-    // it would print a line of ours — a closing sentence, a `+++` header —
-    // under the question. The path beside it is the engine's.
-    ...questions.flatMap((question) => [
-      `  ${question.path}`,
-      `      ${inertLine(question.question)}`,
-    ]),
+    ...questions.flatMap(questionLines),
     '',
     'Fill them in and run this again. Nothing was previewed, and nothing was written.',
   ].join('\n'),
   found: false,
   unsupported: true,
 })
+
+/**
+ * One question as a person reads it, printed and prompted alike — the prompt
+ * in `cli/index.ts` puts these lines and `renderQuestions` prints them, so the
+ * two cannot drift into asking different things.
+ *
+ * The reason is cleaned and kept to its one line, because it is up to 8 192
+ * characters the MODEL wrote and this line goes to a terminal: a newline in it
+ * would print a line of ours — a closing sentence, a `+++` header — under the
+ * question. The path beside it is the engine's.
+ *
+ * The third line is what the engine knows and the reason does not say: what
+ * the draft had put there, labelled as the draft's so it reads as a model's
+ * proposal and never as a default, and the values the field takes. The draft's
+ * value is a model's string and is cleaned like the reason; the values are the
+ * engine's own lists or a repository's, cleaned all the same. Absent when the
+ * engine knows neither — the line a question has always been. A fourth, only
+ * when the same question is put again, names the value just refused.
+ */
+export const questionLines = (question: Question): string[] => {
+  const facts = [
+    ...(question.proposed === undefined ? [] : [`the draft says ${question.proposed}`]),
+    ...(question.accepted === undefined ? [] : [`accepted: ${question.accepted.join(', ')}`]),
+    ...(question.inUse === undefined ? [] : [`in use: ${question.inUse.join(', ')}`]),
+  ]
+  return [
+    `  ${question.path}`,
+    `      ${inertLine(question.question)}`,
+    ...(facts.length === 0 ? [] : [`      ${inertLine(facts.join(' · '))}`]),
+    // What the person just typed, when it is asked again: theirs, so cleaned.
+    ...(question.refused === undefined
+      ? []
+      : [`      ${inertLine(`not accepted: ${question.refused}`)}`]),
+  ]
+}
 
 /**
  * How a question reaches a person, and it is a function for the reason `client`
@@ -602,8 +650,12 @@ export type Ask = (question: Question) => Promise<string | undefined>
  * print exactly as they do when nobody was there to ask, and the run exits 3.
  * What it does NOT do is claim the remaining questions are unanswerable — it
  * says this build stopped asking, which is the most it can honestly report.
+ *
+ * `triesPerQuestion` bounds the other loop: a value outside a closed set is
+ * put back to the person, naming it, up to three times in all, and then the
+ * run stops on it as it always did (`fillAnswers`).
  */
-export const ASK_LIMITS = { maxRounds: 3 } as const
+export const ASK_LIMITS = { maxRounds: 3, triesPerQuestion: 3 } as const
 
 /** What the user said, and the field they said it about. */
 export interface Answer {
@@ -656,15 +708,22 @@ const provenanceOf = (request: string, answers: ReadonlyMap<string, string>): Pr
  */
 const renderRefusedAnswer = (reason: string): CommandResult => ({
   text: [
-    // Today a field's path and the rule it broke, never the value: neither zod
-    // nor `answer` quotes one. Cleaned like every reason here all the same, so
-    // a rule that one day quotes what the user typed cannot print it raw.
+    // A field's path and the rule it broke — and, for a value outside a closed
+    // set (`fillAnswers`), the value the user typed, which is why this line is
+    // cleaned: whatever they pasted at the prompt cannot print raw here.
     `the answer was refused — ${inertLine(reason)}`,
     '',
     'Nothing was previewed, and nothing was written.',
   ].join('\n'),
   found: false,
 })
+
+/** A value typed, and not a decline, that the question's closed set does not hold. */
+const outside = (question: Question, said: string | undefined): boolean =>
+  question.accepted !== undefined &&
+  said !== undefined &&
+  said.trim() !== '' &&
+  !question.accepted.includes(said.trim())
 
 /**
  * Puts one round of questions to the user and fills the plan with what comes
@@ -687,7 +746,27 @@ export async function fillAnswers(
   const answers: Answer[] = []
 
   for (const [index, question] of questions.entries()) {
-    const said = await ask(question)
+    let said = await ask(question)
+    // A closed set is refused here, at the prompt, and named. It used to
+    // travel on: the schema refused it at gate [1] on the drafted road, which
+    // handed the ARCHITECT a report about a value the person typed, and spent
+    // a paid redraft on a word only they could correct. Refused, it is asked
+    // again, not ended on: the person who guessed `lecture` has the set in
+    // front of them now, and a run that stopped would lose every answer this
+    // round and the draft they are about. Bounded, and a decline is still a
+    // decline.
+    for (let tries = 1; outside(question, said); tries += 1) {
+      const typed = said?.trim() ?? ''
+      if (tries >= ASK_LIMITS.triesPerQuestion) {
+        return {
+          outcome: 'refused',
+          reason:
+            `${question.path}: ${typed} is not one of the values this field accepts: ` +
+            (question.accepted ?? []).join(', '),
+        }
+      }
+      said = await ask({ ...question, refused: typed })
+    }
     // An empty line is a decline, not an empty value. A terminal cannot tell
     // "I do not know either" from a stray Return, and the safe reading of the
     // two is the one that writes nothing.
@@ -731,11 +810,16 @@ export async function fillAnswers(
  * than cleaned, because every string in it is one a model wrote and removing a
  * character would show a plan that is not the one refused; the escapes it adds
  * are JSON's own, so the text still parses back to that plan.
+ *
+ * `kept` is the user's values the last refusal was at, and when there are any
+ * the close says so rather than asking for a value they already gave — see
+ * `keptLines`. `--json` keeps its keys: the reason already carries the remedy.
  */
 export function renderStopped(
   plan: Plan | undefined,
   gate: Gate | undefined,
   reason: string,
+  kept: readonly KeptValue[] = [],
 ): CommandResult {
   const where = gate === undefined ? 'the plan was refused' : `refused at the ${gate} gate`
   return {
@@ -752,11 +836,58 @@ export function renderStopped(
             visible(asJson(plan.operations)),
           ]),
       '',
-      'Nothing was previewed, and nothing was written. Name the value the gate ' +
-        'could not accept and run this again.',
+      ...(kept.length === 0
+        ? [
+            'Nothing was previewed, and nothing was written. Name the value the gate ' +
+              'could not accept and run this again.',
+          ]
+        : keptLines(kept)),
     ].join('\n'),
     found: false,
   }
+}
+
+/**
+ * The close of a stop over a value the user gave.
+ *
+ * "Name the value the gate could not accept" is the wrong sentence to someone
+ * who did: they named it, the engine kept it through every redraft, and the
+ * gate refused the plans drafted around it. So the value is said to be theirs,
+ * and — for a level, where the engine knows the answer — what would pass: a
+ * grant of its own at their level. Never the level the refused grant states,
+ * which is more than they asked for.
+ */
+const keptLines = (kept: readonly KeptValue[]): string[] => {
+  // A level of a grant that has one always has this remedy, and says of it
+  // as much as is known: a grant over two things still takes a grant of its
+  // own at their level — only the thing goes unnamed. Anything else would
+  // leave "a value the gate can accept", which for a level is the grant's
+  // own, and that is more than they asked for.
+  const remedy = ({ value, level }: KeptValue): string | undefined =>
+    level === undefined
+      ? undefined
+      : [
+          `a separate grant at ${value}`,
+          ...(level.consumer === undefined ? [] : [`for ${level.consumer}`]),
+          ...(level.resource === undefined ? [] : [`over ${level.resource}`]),
+        ].join(' ')
+  return [
+    `Nothing was previewed, and nothing was written. The gate refused ${
+      kept.length === 1 ? 'a value you gave, and it was' : 'values you gave, and they were'
+    } kept rather than changed:`,
+    '',
+    // The value is what the person typed and the references are a model's, so
+    // each line is cleaned like any reason.
+    ...kept.map((one) => {
+      const pass = remedy(one)
+      const said = `${one.path} = ${one.value}`
+      return `  ${inertLine(pass === undefined ? said : `${said} — what would pass is ${pass}`)}`
+    }),
+    '',
+    kept.every((one) => remedy(one) !== undefined)
+      ? 'Run this again asking for it.'
+      : 'Run this again with a value the gate can accept.',
+  ]
 }
 
 export async function runPlan(options: PlanOptions): Promise<CommandResult> {
@@ -782,7 +913,7 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
     // the plan each round starts from is the one the user just filled, and an
     // answer about an entity two operations share stays at its path — so it
     // puts nothing back and re-keys every answer to the path it was typed at.
-    const reapplication = reapplyAnswers(plan, answers)
+    const reapplication = reapplyAnswers(plan, answers, contexts.policy.over)
     for (const one of reapplication.reapplied) options.emit?.({ type: 'reapplied', ...one })
     plan = reapplication.plan
     const provenance = provenanceOf(request, reapplication.answers)
@@ -818,7 +949,11 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
       }
     }
 
-    const questions = questionsOf(signed.plan)
+    const questions = questionsOf(signed.plan, {
+      draft: derived,
+      environments: contexts.vocabulary.environments,
+      over: contexts.policy.over,
+    })
     if (questions.length === 0 || options.ask === undefined || round >= ASK_LIMITS.maxRounds) {
       return previewPlan(signed, questions, contexts, provenance, snapshot, contents, options)
     }
@@ -841,7 +976,7 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
     if (!reparsed.success) return renderRefusedAnswer(reasonOf(reparsed.error.issues))
 
     plan = reparsed.data
-    answers.push(...recordAnswers(plan, filled.answers))
+    answers.push(...recordAnswers(plan, filled.answers, contexts.policy.over))
   }
 }
 
@@ -1130,7 +1265,7 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
       return renderOutcome({ ...outcome, ...spent, questions: filled.unanswered }, options)
     }
 
-    answers.push(...recordAnswers(filled.plan, filled.answers))
+    answers.push(...recordAnswers(filled.plan, filled.answers, contexts.policy.over))
     answered = filled.plan
   }
 }
@@ -1202,5 +1337,5 @@ function renderOutcome(
         }),
         found: false,
       }
-    : renderStopped(outcome.plan, outcome.gate, outcome.reason)
+    : renderStopped(outcome.plan, outcome.gate, outcome.reason, outcome.kept)
 }
