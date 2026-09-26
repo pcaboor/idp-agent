@@ -24,7 +24,8 @@ export const LOOP_LIMITS = {
 
 export interface AnalystOutcome {
   /**
-   * Signed: an `entities` answer names only what the tools returned. Its
+   * Signed: an `entities` answer names only what the tools returned, and a
+   * `relation` answer's entity and other end are references they returned. Its
    * `intro` and `conclusion`, when it carries them, are the model's words as
    * written and are NOT checked here — whoever prints them runs
    * `checkCommentary` first (ADR-0008), and nothing puts them on the stream.
@@ -48,6 +49,16 @@ say so, and never treat it as the entity that shares its name.
 
 Finish by calling "answer":
   entities      with the references you read, when they answer the question
+  relation      with "ref" and "relation", when asked how an entity is related:
+                what it consumes or reaches ("consumes"), who consumes or uses
+                it ("consumed-by"), what it depends on ("depends-on"), what
+                breaks or is affected if it fails ("impacts"), the APIs it
+                provides or who provides one ("provides", "provided-by"), or
+                how two entities are related ("between", the other one as
+                "to": the paths where one depends on the other, else what both
+                reach). The engine computes every path and writes it; "ref"
+                and "to" must be references a tool returned. get_relations
+                shows you those paths; read them before you conclude on them.
   nothing       when no entity matches
   overview      when asked to describe, summarise or give an overview of the
                 catalogue, SI, repository or project as a whole. The engine
@@ -57,11 +68,11 @@ Finish by calling "answer":
 
 Refusing is a valid outcome. Do not approximate to produce one.
 
-With "entities", "nothing" or "overview" you may add "intro", one short sentence
-introducing the answer, and "conclusion", at most three short sentences on what
-the result means for the question. Write both in the language of the question.
-Say only what the tool results state; where they do not say, say it is not
-declared rather than guess. Do not restate the list or its figures: the engine
+With "entities", "relation", "nothing" or "overview" you may add "intro", one
+short sentence introducing the answer, and "conclusion", at most three short
+sentences on what the result means for the question. Write both in the
+language of the question. Say only what the tool results state; where they do
+not say, say it is not declared rather than guess. Do not restate the list or its figures: the engine
 prints them. Name only entities a tool returned in this conversation: the
 engine deletes any sentence that names anything else, an identifier nobody
 returned included. Both are optional: omit them rather than pad.
@@ -71,6 +82,28 @@ talk, something about the weather — call "answer" with "unanswerable" straight
 away. Do not search first.`
 
 const unanswerable = (reason: string): Answer => ({ outcome: 'unanswerable', reason })
+
+/**
+ * The references an answer names, each of which a tool must have returned: an
+ * `entities` answer's, and a `relation`'s entity and, for `between`, its other
+ * end. What the stream's `answer:ready` carries, and nothing else.
+ */
+function referencesOf(answer: Answer): string[] {
+  switch (answer.outcome) {
+    case 'entities':
+      return [...answer.refs]
+    case 'relation':
+      return answer.to === undefined ? [answer.ref] : [answer.ref, answer.to]
+    case 'nothing':
+    case 'overview':
+    case 'unanswerable':
+      return []
+    default: {
+      const exhaustive: never = answer
+      return exhaustive
+    }
+  }
+}
 
 export async function answerQuestion(
   client: LlmClient,
@@ -242,7 +275,7 @@ async function answerFromCatalogue(
     emit({
       type: 'answer:ready',
       outcome: signed.outcome,
-      refs: signed.outcome === 'entities' ? signed.refs : [],
+      refs: referencesOf(signed),
     })
   }
 
@@ -285,8 +318,15 @@ function sign(
     )
   }
 
-  if (answer.outcome === 'entities') {
-    const invented = answer.refs.filter((ref) => !witnessed.has(ref))
+  if (answer.outcome === 'relation' && answer.relation !== 'between' && answer.to !== undefined) {
+    // Discarded, never read: only `between` has another end, and a model
+    // shown the field flat beside every relation fills it (ADR-0007).
+    const { to: _discarded, ...kept } = answer
+    return sign(kept, witnessed, said, rejected)
+  }
+
+  if (answer.outcome === 'entities' || answer.outcome === 'relation') {
+    const invented = referencesOf(answer).filter((ref) => !witnessed.has(ref))
     if (invented.length > 0) {
       return unanswerable(`the answer named ${invented.join(', ')}, which no tool returned`)
     }

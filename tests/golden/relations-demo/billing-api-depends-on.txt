@@ -1,0 +1,15 @@
+component:default/billing-api
+
+depends on (11)
+  ENTITY                                        TYPE             ENV   DEPTH  PATH
+  resource:default/billing-api-billing-db-dev   database-access  dev   1      billing-api → billing-api-billing-db-dev (readwrite)
+  resource:default/billing-api-billing-db-prod  database-access  prod  1      billing-api → billing-api-billing-db-prod (readwrite)
+  resource:default/billing-api-cache-dev        database-access  dev   1      billing-api → billing-api-cache-dev (readwrite)
+  resource:default/billing-api-to-payments      network-access   prod  1      billing-api → billing-api-to-payments
+  resource:default/billing-cache-dev            cache            dev   2      billing-api → billing-api-cache-dev (readwrite) → billing-cache-dev
+  resource:default/billing-db-dev               database         dev   2      billing-api → billing-api-billing-db-dev (readwrite) → billing-db-dev
+  resource:default/billing-db-prod              database         prod  2      billing-api → billing-api-billing-db-prod (readwrite) → billing-db-prod
+  resource:default/payments-api                 api              prod  2      billing-api → billing-api-to-payments → payments-api
+  resource:default/mysql-disi6-dev              database         dev   3      billing-api → billing-api-billing-db-dev (readwrite) → billing-db-dev → mysql-disi6-dev
+  resource:default/mysql-prod-01                database         prod  3      billing-api → billing-api-billing-db-prod (readwrite) → billing-db-prod → mysql-prod-01
+  resource:default/redis-shared-dev             cache            dev   3      billing-api → billing-api-cache-dev (readwrite) → billing-cache-dev → redis-shared-dev

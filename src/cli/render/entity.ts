@@ -64,7 +64,7 @@ function address(url: string): string {
  * and the entities that share its name when there are any. Beside, never in
  * place of: which of them the file meant, if any, is the reader's to decide.
  */
-function nowhere(unresolved: Unresolved): string {
+export function nowhere(unresolved: Unresolved): string {
   const names = unresolved.sameName.map((ref) => shown(ref))
   if (names.length === 0) return 'declared nowhere'
   const listed =

@@ -1,0 +1,13 @@
+resource:default/mysql-prod-01
+
+impacts (9)
+  ENTITY                                        TYPE             ENV   DEPTH  PATH
+  resource:default/billing-db-prod              database         prod  1      mysql-prod-01 ← billing-db-prod
+  resource:default/compliance-db-prod           database         prod  1      mysql-prod-01 ← compliance-db-prod
+  resource:default/orders-db-prod               database         prod  1      mysql-prod-01 ← orders-db-prod
+  resource:default/billing-api-billing-db-prod  database-access  prod  2      mysql-prod-01 ← billing-db-prod ← billing-api-billing-db-prod (readwrite)
+  resource:default/orders-api-orders-db-prod    database-access  prod  2      mysql-prod-01 ← orders-db-prod ← orders-api-orders-db-prod (readwrite)
+  resource:default/reporting-billing-db-prod    database-access  prod  2      mysql-prod-01 ← billing-db-prod ← reporting-billing-db-prod (read)
+  component:default/billing-api                 service          -     3      mysql-prod-01 ← billing-db-prod ← billing-api-billing-db-prod (readwrite) ← billing-api
+  component:default/orders-api                  service          -     3      mysql-prod-01 ← orders-db-prod ← orders-api-orders-db-prod (readwrite) ← orders-api
+  component:default/reporting-worker            service          -     3      mysql-prod-01 ← billing-db-prod ← reporting-billing-db-prod (read) ← reporting-worker

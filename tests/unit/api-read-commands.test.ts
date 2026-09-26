@@ -193,12 +193,12 @@ describe('show', () => {
     expect(out.startsWith('api:default/billing\n')).toBe(true)
   })
 
-  it('resolves a name an API and a Resource share as it resolves any shared name: the first', async () => {
-    // How `show` has always told two entities of one name apart: the first the
-    // graph holds, and the reference for the other.
+  it('lists the entities a name an API and a Resource share, and picks neither', async () => {
+    // A shared name names neither: the first the graph held was an accident
+    // of the order the files were read in. The reference is never ambiguous.
     const { code, out } = await run(['show', 'payments', '--repo', GOLDEN])
-    expect(code).toBe(0)
-    expect(out.startsWith('api:default/payments\n')).toBe(true)
+    expect(code).toBe(1)
+    expect(out).toBe('"payments" matches 2 entities:\n  api:default/payments\n  resource:default/payments\n')
     const resource = await run(['show', 'resource:default/payments', '--repo', GOLDEN])
     expect(resource.code).toBe(0)
     expect(resource.out.startsWith('resource:default/payments\n')).toBe(true)

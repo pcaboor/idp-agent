@@ -24,7 +24,10 @@ describe('objectRooted', () => {
       $schema: 'http://json-schema.org/draft-07/schema#',
       type: 'object',
       properties: {
-        outcome: { type: 'string', enum: ['entities', 'nothing', 'overview', 'unanswerable'] },
+        outcome: {
+          type: 'string',
+          enum: ['entities', 'nothing', 'overview', 'relation', 'unanswerable'],
+        },
         refs: {
           minItems: 1,
           maxItems: 25,
@@ -38,7 +41,7 @@ describe('objectRooted', () => {
           description:
             'One short sentence introducing the answer, in the language of the question. ' +
             'Optional. Dropped, never refused, when it is not a string or is longer than 2000 ' +
-            'characters. Only when outcome is "entities", "nothing" or "overview".',
+            'characters. Only when outcome is "entities", "nothing", "overview" or "relation".',
         },
         conclusion: {
           type: 'string',
@@ -47,7 +50,38 @@ describe('objectRooted', () => {
             'At most three short sentences on what the result means for the question, in the ' +
             'language of the question. Optional. Dropped, never refused, when it is not a ' +
             'string or is longer than 2000 characters. Only when outcome is "entities", ' +
-            '"nothing" or "overview".',
+            '"nothing", "overview" or "relation".',
+        },
+        ref: {
+          type: 'string',
+          pattern: '^[a-z]+:[a-z0-9-]+\\/[a-z0-9._-]+$',
+          description:
+            'The entity the relation is read from: a reference a tool returned. Required when ' +
+            'outcome is "relation"; omit it otherwise.',
+        },
+        relation: {
+          type: 'string',
+          enum: [
+            'consumes',
+            'consumed-by',
+            'depends-on',
+            'impacts',
+            'provides',
+            'provided-by',
+            'between',
+          ],
+          description:
+            'What to trace from "ref": "consumes" (what it reaches through its rights), ' +
+            '"consumed-by" (who reaches it), "depends-on", "impacts" (what needs it), ' +
+            '"provides", "provided-by", or "between" with "to". Required when outcome is ' +
+            '"relation"; omit it otherwise.',
+        },
+        to: {
+          type: 'string',
+          pattern: '^[a-z]+:[a-z0-9-]+\\/[a-z0-9._-]+$',
+          description:
+            'With "between" only: the other entity, a reference a tool returned. Only when ' +
+            'outcome is "relation".',
         },
         reason: {
           type: 'string',

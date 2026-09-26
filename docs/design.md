@@ -77,6 +77,16 @@ follows from the documentation of the tools involved.
   never which question may be answered. A graph query resolves one declared hop in
   either direction; reading a declaration back is not inference, and composing several
   hops is a separate, separately named walk.
+- **Relations are computed, never inferred.** What an entity consumes and who consumes it,
+  what it depends on and what fails with it, what it provides, and every path between two
+  entities — where neither depends on the other, the nearest entities both reach — are
+  walks over the declared edges above and nothing else
+  (`context/graph/relations.ts`): each answer carries its whole path, the right on it and
+  the level that right states — unstated when it states none — the environment at each
+  step, and a reference declared nowhere where the path ends. No edge is added by
+  convention (a right's name, a folder), and a flow nothing declares is not a relation
+  here. The command (`idpa relations`) and the Analyst's `relation` answer print the same
+  computation; the model only chooses which (ADR-0007).
 - **The environment is part of an access's identity.** Being authorised in dev grants
   nothing in staging: two distinct entities.
 - **Declare, never infer.** What the catalogue does not know is reported as unknown,
@@ -175,10 +185,12 @@ authorises nothing and names no value: it carries only identifiers the engine it
 returned, and the engine re-reads every one of them from the graph before printing. An
 identifier the tools never produced is refused and named. One member, `overview`, carries
 no identifier at all: the model chooses it for a request to describe the catalogue as a
-whole, and the engine writes the description from the graph.
+whole, and the engine writes the description from the graph. Another, `relation`, carries
+witnessed references and the name of a relation: the model chooses the entity and the
+relation, and the engine computes every path and writes it as `idpa relations` does.
 
 The model may frame that block in words (ADR-0008): an `intro` and a `conclusion` on
-`entities`, `nothing` and `overview`, written in the same terminal call. They are not the
+`entities`, `nothing`, `overview` and `relation`, written in the same terminal call. They are not the
 answer and authorise nothing. The engine checks every sentence before printing it — a
 sentence naming an entity no tool returned, or an identifier nobody read, is dropped whole
 — then cleans it, bounds it, and prints it marked `› ` as the model's, around the block's

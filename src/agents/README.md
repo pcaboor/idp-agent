@@ -28,7 +28,7 @@ Two consequences that look odd until you know why:
 | file | what it is |
 |---|---|
 | `supervisor.ts` | `MUTATION` or `QUESTION`, no tools, no third answer |
-| `analyst.ts` | a question against the graph, terminating in `answer`: `entities`, `nothing`, `overview` (chosen, never written — the engine describes the catalogue) or `unanswerable`; the first three may carry the model's `intro` and `conclusion` |
+| `analyst.ts` | a question against the graph, terminating in `answer`: `entities`, `nothing`, `overview` (chosen, never written — the engine describes the catalogue), `relation` (an entity and a relation chosen, the paths computed and written by the engine) or `unanswerable`; all but the last may carry the model's `intro` and `conclusion` |
 | `inspector.ts` | an application repository read into `ProjectFacts`, terminating in `report_facts` |
 | `architect.ts` | a draft into a typed buffer, terminating in `propose` |
 | `reviewer.ts` | substance, not shape: `ok` or a reason, terminating in `verdict` |
@@ -95,11 +95,43 @@ Plain data, handed in. Never a graph, never a provider, never a path.
   plan-mode recording's digest — are held byte for byte to the ones they were
   (`tests/golden/architect-tools.json`), as is every row of an entity that declares
   nothing about an API.
+- The Analyst's registry also has **`get_relations`** `{ ref, relation, to? }`: one
+  entity's relations, computed by `context/graph/relations.ts` — `consumes`,
+  `consumed-by`, `depends-on`, `impacts`, `provides`, `provided-by`, or `between` with
+  `to`, which is refused without one; a `to` that is not a reference is read as absent,
+  so it costs nothing on another relation. An unknown entity is refused naming which
+  reference it was (`no such entity: "to" …`). Each row is the entity reached with its depth and
+  its whole `path`, every step `{ ref, kind, type, env }` — `(undeclared)` when it
+  declares none — a right marked `right: true` with the `access` it states when its type
+  states one; a `between` row says which of the two depends on the other (`direction`),
+  and where no path links them, `shared` lists the nearest entities both reach, each with
+  `both` (`both depend on it` or `it depends on both`) and the path from each end.
+  Bounded at `QUERY_LIMITS.maxRows`, the cut said (`truncated`, `sharedTruncated`), and so
+  is a depth reached (`stoppedAtDepth`), a cycle met — five shown, the rest counted
+  (`moreCycles`) — and a `between` search that ran out of budget. A step declared nowhere
+  is beside the rows under `danglingReferences`, as on every other tool, with the path that
+  led to it; `between`'s near misses are listed there, never among its paths. Every entity on a path joins the witness set — the
+  rights and objects in the middle as much as the end — so a conclusion may name the right
+  a path runs through; the reference declared nowhere joins `declaredNowhere`, never
+  `witnessed`. The Architect has no such tool, and its `answer` spec — never offered to
+  it, but held to its golden — is `answerSchemaWithoutRelation`.
 - The Analyst's `answer` **discards** any field its outcome does not declare — the flat
   advertisement shows `refs` and `reason` beside every outcome, and a real model fills
   them — and never reads it (ADR-0007, amended). When every answer it sent was refused,
   the refusal says so and names the issue, rather than that nothing matched.
-- `entities`, `nothing` and `overview` also carry an optional `intro` and `conclusion`,
+- A **`relation`** answer `{ ref, relation, to? }` is chosen by the model and written by
+  the engine (ADR-0007, the relation addendum): `ref`, and `to` on a `between`, must be
+  references a tool returned, or the answer is refused naming them, as an `entities`
+  answer's are. A `between` with no `to`, or one that is not a reference, is refused at
+  the parse and handed back; a `to` on any other relation is discarded, never read,
+  whatever it holds (blank, null, a bare name). `answer:ready` carries
+  the outcome and those references. `cli/commands/ask.ts` prints it with `runRelations`,
+  so the block is `idpa relations`', byte for byte, save that a bound names the whole
+  command that goes further (`--depth` is no option of a question). The system prompt
+  names the questions it answers — what an entity consumes, what uses it, what it depends on, what
+  breaks if it fails, what it provides, how two entities are related — and says
+  `get_relations` shows the paths to read before concluding on them.
+- `entities`, `nothing`, `overview` and `relation` also carry an optional `intro` and `conclusion`,
   the model's words around the block the engine prints, written in the same call
   (ADR-0008). A malformed or oversized one is dropped at the parse, never refused and never
   worth a repair turn. The Analyst hands them back **unchecked**: the check needs every

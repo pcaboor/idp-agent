@@ -3,20 +3,24 @@
 Three layers — parsing, then commands, then rendering — each testable on its own.
 
 **Parsing.** `parseArguments(argv)` in `index.ts` turns an argv array into a resolved
-`Command`: `graph` with its `GraphOptions`, `show` with a query, `help`, or `error` with a
-message. It reads nothing and writes nothing, so `tests/unit/cli-args.test.ts` drives it
-with plain arrays and asserts on the returned object. `graph`, `show` and `ask` parse
-strictly: an option `ask` does not know is refused, never sent to the model as a word of the
+`Command`: `graph` with its `GraphOptions`, `show` with a query, `relations` with a query
+and at most one relation or a `to`, `help`, or `error` with a message. It reads nothing and writes nothing, so `tests/unit/cli-args.test.ts` drives it
+with plain arrays and asserts on the returned object. `graph`, `show`, `relations` and `ask`
+parse strictly: an option `ask` does not know is refused, never sent to the model as a word of the
 question. A first argument that is no command name is `entry`, the one gesture `idpa
 "<phrase>"`: the positionals joined are the phrase, quoted or not, and `--repo`, `--demo`,
 `--project` and `--json` are parsed as strictly and carried to whichever road it takes. Two
 things are refused, and nothing else is second-guessed: a command behind its options
 (`--repo IaC show billing-api` is `show` in the wrong order, not the phrase "show
 billing-api"), and a phrase of a single word a slip away from a command name (`grpah`,
-`shwo`, `palm`) — one edit, two for a name of four letters or more kept at its length, and
+`shwo`, `palm`, `relation`, `relatoins`) — one edit, two for a name of four letters or more kept at its length, and
 never a change of first letter, so `who`, `edit` and `hello` stay phrases. Each is an
-`error`, and neither reaches a model. `COMMANDS` is the list of names, and
-`entry.test.ts` holds it to the parser and to `HELP`.
+`error`, and neither reaches a model. A longer phrase whose first word is such a slip —
+`idpa relation billing-api` — stays a phrase, since a sentence may begin with any word;
+when no model can be opened for it, the refusal is followed by the command it looks like
+(`slipHint`: `"relation" is not a command; did you mean idpa relations? It needs no
+model`). `COMMANDS` is the list of names, and `entry.test.ts` holds it to the parser and
+to `HELP`.
 
 **The one gesture.** `commands/entry.ts`'s `runEntry` is `ask`'s `classified` with a
 different answer to a change: the Supervisor classifies the phrase once, a `QUESTION` is
@@ -41,6 +45,27 @@ proposed (design §4.1) — and an API's row has `API` in its KIND column. `show
 API as it resolves any entity: a full reference, then the first entity holding a bare name.
 An API and the Resource the demo convention models one as may share a name; the reference
 names the other.
+
+`runRelations(graph, options)` (`commands/relations.ts`) is `idpa relations`: keyless, and
+a read command like `show`, whose resolution it shares — `show.ts`'s `resolveEntity`, so a
+name means the same entity to both and an ambiguous one gets the same refusal, word for
+word, `--to`'s included. A name two entities carry exactly — a component and the Resource
+of its API — is ambiguous too, and only those two are listed: the first the graph held
+would be an accident of the order files were read in. It computes with
+`context/graph/relations.ts` and nothing else: one relation (`--consumes`, `--consumed-by`,
+`--depends-on`, `--impacts`, `--provides`, `--provided-by`, `OWN_RELATIONS`), every path to
+another entity (`--to`, never with a relation flag), or, with neither, every relation that
+holds something. `--depth` is a whole number from 1 to `RELATION_LIMITS.maxDepth`. Exit
+codes are `show`'s: `0` something was found, a row declared nowhere included, or between
+two entities an entity both reach; `1` an unknown or ambiguous name, a relation that holds
+nothing, two entities no path links and that reach nothing in common — a near miss alone is
+not a relation — an entity asked about its paths to itself; `2` the arguments — two
+relation flags, one beside `--to`, a bad `--depth`, more than one name. `ask` answers a
+`relation` answer with this same function (`asked: true`), so its block is this command's,
+byte for byte, save the way further past a bound: the whole command, `--depth` being no
+option of a question.
+`tests/unit/relations-command.test.ts` holds the owner's three questions to their bytes and
+the demo SI to `tests/golden/relations-demo/`.
 
 **Rendering.** `renderTable(headers, rows)` and `renderEntityDetail(graph, entity)` take
 data and return a string. Pure functions, asserted directly in `tests/unit/render.test.ts`.
@@ -69,6 +94,30 @@ grammar cannot split as written) sets no column: it is printed with its marker a
 Beside, never in place of: which entity was meant, if any, is the reader's to decide (design
 §4.1). A card with nothing dangling reads as it did, byte for byte
 (`tests/unit/dangling-shown.test.ts`).
+`renderRelation(result, road)` and `renderRelationsOverview(subject, results, road)`
+(`render/relations.ts`) print a relation: the entity's reference, then per relation a title
+with the number of rows found, a table, and under it every bound the walk reached — `n more
+not shown`, `stopped at depth d`, a cycle not followed (five named, the rest counted), a
+`between` search that spent its budget — never silent. `consumes` at its own depth says what
+it stops at instead: `what these depend on is not listed; --depth 3 follows it`. The `road`
+decides how the way further is named: the flag for the command, the whole command
+(`idpa relations <ref> --consumes --depth 3`) under an answer. A row is the entity reached,
+its type, its own environment, its depth and its PATH, names joined by `→` (depends on) or
+`←` (is depended on by), a right with a stated level followed by it, `(readwrite)`.
+`consumes` and `consumed-by` add ACCESS and VIA. ACCESS is the level of the right next to
+the entity the row names — the one over the object, or the one naming the consumer —
+`(undeclared)` for a right whose type states one and that states none, `-` for one whose
+type states none, and empty past the object a right is over: a right over a database
+grants nothing on its host. VIA names every right on the path with its own environment,
+`resource:default/app-db (dev)`, since a right declared in dev over a prod database is
+what the file says and the table must not paper over; `(no right)` when the path holds
+none. `between` prints each path on one line and, under it, every step with its type,
+environment and level; where there is none, `no path where one depends on the other`, then
+the nearest entities both reach (`both depend on`, `depend on both`), each with the path
+from either end and one step table; and apart from both, `near misses, declared nowhere`,
+counted in neither. A step declared nowhere ends its path with `show`'s own marker
+(`nowhere`, exported from `render/entity.ts`). Every string goes through `oneLine`, as on
+the card. `holds` says whether a result is an answer — a row, or an entity both ends reach.
 `renderOverview(overview, source)` is the text of `ask`'s `overview` answer: the model
 chose it, and every word of it is written here from `context/graph/overview.ts`'s figures —
 a headline naming the demo SI or the repository by its folder, then short sections, each list cut
@@ -90,7 +139,7 @@ what it named is one line on `err`, per answer — `! the model's commentary nam
 tool returned; that sentence was left out` — its names cleaned and bounded. `--quiet` skips
 all of it. `tests/unit/ask-commentary.test.ts` holds the bytes.
 
-**What reaches a terminal.** On `show`, `graph`, `ask` and `validate`, every string a
+**What reaches a terminal.** On `show`, `graph`, `relations`, `ask` and `validate`, every string a
 repository file or a model wrote goes through `render/plain.ts` before it is printed: `plain`
 removes what a terminal obeys, and `oneLine` also flattens it to one line, cut at the bound it
 is given. That covers every field on `show`'s card, every cell of `renderTable` (flattened,
@@ -115,7 +164,8 @@ one sentence each and quote a file's bytes. `--json` is data and is
 left as it is.
 
 **Exit codes.** `EXIT.ok` is 0, `EXIT.notFound` is 1 (the answer is negative: a filter that
-matches nothing, an ambiguous name, or a repository that does not conform — and a model call
+matches nothing, an ambiguous name, a relation that holds nothing, or a repository that does
+not conform — and a model call
 that failed, in the one line `llm/failures.ts` wrote for it), `EXIT.badUsage` is 2 (the
 arguments were refused, or no model, no key or no usable `IDP_TIMEOUT` is configured),
 `EXIT.unsupported` is 3 (understood, and this build
@@ -149,7 +199,7 @@ handed, so the directory compared is the directory read; with no project it read
 `--project` with `--from` is a parse error: that road has no Inspector.
 `tests/unit/plan-project.test.ts` holds all of it.
 
-**Where the SI comes from.** `source.ts`'s `sourceOf` decides it once, for `graph`, `show`,
+**Where the SI comes from.** `source.ts`'s `sourceOf` decides it once, for `graph`, `show`, `relations`,
 `ask`, `plan` and a phrase (which asks as `ask` does), and returns a value —
 `{ kind: 'repo', root, label, origin }` or `{ kind: 'demo', label, origin }` — that
 `providerOf` turns into a `ContextProvider` and nothing after it knows which. The read

@@ -23,7 +23,7 @@ export class RepositoryArgumentError extends Error {
  * refusals name them: `idpa` is the phrase, `idpa "<phrase>"`, which is typed
  * with no command word and is told so in none.
  */
-export type DeclarationsCommand = 'plan' | 'graph' | 'show' | 'ask' | 'idpa'
+export type DeclarationsCommand = 'plan' | 'graph' | 'show' | 'relations' | 'ask' | 'idpa'
 
 /**
  * The declarations repository a `--repo` names, as an absolute directory — the

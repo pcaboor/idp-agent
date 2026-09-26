@@ -1,0 +1,17 @@
+resource:default/billing-db-prod
+
+consumed by (2)
+  ENTITY                              TYPE     ENV  ACCESS     VIA                                                  DEPTH  PATH
+  component:default/billing-api       service  -    readwrite  resource:default/billing-api-billing-db-prod (prod)  2      billing-db-prod ← billing-api-billing-db-prod (readwrite) ← billing-api
+  component:default/reporting-worker  service  -    read       resource:default/reporting-billing-db-prod (prod)    2      billing-db-prod ← reporting-billing-db-prod (read) ← reporting-worker
+
+depends on (1)
+  ENTITY                          TYPE      ENV   DEPTH  PATH
+  resource:default/mysql-prod-01  database  prod  1      billing-db-prod → mysql-prod-01
+
+impacts (4)
+  ENTITY                                        TYPE             ENV   DEPTH  PATH
+  resource:default/billing-api-billing-db-prod  database-access  prod  1      billing-db-prod ← billing-api-billing-db-prod (readwrite)
+  resource:default/reporting-billing-db-prod    database-access  prod  1      billing-db-prod ← reporting-billing-db-prod (read)
+  component:default/billing-api                 service          -     2      billing-db-prod ← billing-api-billing-db-prod (readwrite) ← billing-api
+  component:default/reporting-worker            service          -     2      billing-db-prod ← reporting-billing-db-prod (read) ← reporting-worker

@@ -1,0 +1,15 @@
+component:default/reporting-worker
+
+paths to component:default/billing-api (0)
+  no path where one depends on the other
+
+both depend on (1)
+  resource:default/billing-db-prod
+    reporting-worker → reporting-billing-db-prod (read) → billing-db-prod
+    billing-api → billing-api-billing-db-prod (readwrite) → billing-db-prod
+    STEP                                          TYPE             ENV   ACCESS
+    component:default/reporting-worker            service          -
+    resource:default/reporting-billing-db-prod    database-access  prod  read
+    resource:default/billing-db-prod              database         prod
+    component:default/billing-api                 service          -
+    resource:default/billing-api-billing-db-prod  database-access  prod  readwrite
