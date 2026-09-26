@@ -15,14 +15,16 @@ a change decides the working directory is a service's to inspect: a `catalog-inf
 or a package manifest (`APPLICATION_MARKERS`, or a `*.csproj`) as a regular file at the root,
 and not a declarations repository.
 
-`LoadResult` pairs `entities` with `rejected: Rejection[]` — one `{ source, reason }` for every
-document `entitySchema` refused — a Component or Resource, or anything that looks like a failed
-entity — or the parser faulted (a duplicate key or an unclosed bracket, with its line and column;
-an alias bomb, which the parser stops on without a position) — and with `ignored`, the same
-`source` and `reason` plus the `kind` and the reference, for every document this tool does not
-model: a Group, an API, a `mkdocs.yml` beside the entities. Those are part of a real catalogue,
-so they are set aside rather than refused, `main` counts them in one line, and a reference to one
-is not called dangling.
+`LoadResult` pairs `entities` — the read model, `CatalogueEntity`: the Components and Resources
+this tool writes and the Backstage APIs it only reads, each file's APIs after its other entities
+— with `rejected: Rejection[]` — one `{ source, reason }` for every document `entitySchema` or
+`apiSchema` refused — a Component, a Resource or an API missing what Backstage requires of one,
+or anything that looks like a failed entity — or the parser faulted (a duplicate key or an
+unclosed bracket, with its line and column; an alias bomb, which the parser stops on without a
+position) — and with `ignored`, the same `source` and `reason` plus the `kind` and the reference,
+for every document this tool does not model: a Group, a System, a `mkdocs.yml` beside the
+entities. Those are part of a real catalogue, so they are set aside rather than refused, `main`
+counts them in one line, and a reference to one is not called dangling.
 Both readers go through `core/`'s `parseDocuments`, the one reader of entity documents, and
 `iac-fs` also rejects a file it cannot open — no permission, a link to nothing — rather than
 ending `validate` on a stack trace. Throwing would lose every valid entity because of one bad one;
@@ -31,14 +33,15 @@ and reports nothing for what it could not ingest — and a tool that inherits th
 it exists to prevent is worth nothing.
 `EntityGraph.danglingReferences()` obeys the same rule: reported, never pruned.
 
-`graph/overview.ts`'s `overviewOf(graph, unread)` is the data behind `ask`'s `overview`
-answer, computed here and rendered in `cli/`: exact counts by kind, type, environment
-(undeclared, or blank, counted apart), owner, system (none counted apart) and tag, every entity
-that describes itself with its description as the file wrote it, the rights and the level each states, the
-objects by the services and then the rights reaching them — walked as `consumersOf` walks,
-since a declarations repository's grants name services declared elsewhere — every dangling
-reference, and what the reader set aside and rejected. Exact where `summary.ts` buckets — that one is a prompt, this is read
-by a person — and every list sorted count first, then name.
+`graph/overview.ts`'s `overviewOf(graph, unread)` is the data behind `ask`'s `overview` answer,
+computed here and rendered in `cli/`: exact counts by kind, type, environment (undeclared, or
+blank, counted apart), owner, system (none counted apart) and tag, every entity that describes
+itself with its description as the file wrote it, the rights and the level each states, the
+objects by the services and then the rights reaching them — walked as `consumersOf` walks, since
+a declarations repository's grants name services declared elsewhere — every dangling reference,
+what the reader set aside and rejected — and, only where there are any, the Backstage APIs and
+how many a service provides. Exact where `summary.ts` buckets — that one is a prompt, this is
+read by a person — and every list sorted count first, then name.
 
 `EntityGraph.from(entities)` indexes them by `refOf(entity)` (`kind:default/name`) and answers
 read-only questions: `get`, `search` over `SearchCriteria` (env read from `ENV_ANNOTATION`), and
@@ -48,6 +51,18 @@ consumer, or `spec.dependencyOf` on a Resource — so `dependenciesOf(a)` contai
 present entities only, and `dependenciesOf` returns own declarations in file order, then derived
 edges sorted. `consumersOf` is the multi-hop walk: breadth-first to the `Component`s behind the
 accesses, with a visited set, because a hand-edited repository does contain cycles.
+An API is a node like any other: a right that `dependsOn` `api:…` resolves to it, so
+`consumersOf` finds its consumers through the rights over it. Providing one is a relation of
+its own, not a dependency either way: `providedApisOf(component)` reads `spec.providesApis`,
+one declared hop in file order, and `providersOf(api)` is its exact transpose, sorted. A
+`providesApis` naming nothing is a dangling reference, as a `dependsOn` one is.
+`spec.consumesApis` is never read (design §4.1): consumption is the right. `plan` builds its
+graph without the API nodes, puts their references among the documents set aside and strips
+each Component's `providesApis`, so a change is decided against the write model: an API is a
+reference that resolves, and a `providesApis` naming an API declared elsewhere is no dangling
+reference in the summary the Architect reads. What does differ from before: an API missing
+what Backstage requires is refused rather than set aside, so a right over it dangles there,
+as `validate` says.
 
 `project-fs/snapshot.ts` reads the other repository: the **application** one, the one a service
 lives in. `readProject(root)` returns the text of what it read and a `skipped` entry, with a

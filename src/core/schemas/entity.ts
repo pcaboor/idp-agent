@@ -111,11 +111,24 @@ const readDependencyRefSchema = z
         : 'expected kind:namespace/name',
   })
 
+/**
+ * `spec.providesApis`: Backstage's short form, with API the default kind. A
+ * reference that names another kind keeps it — Backstage defaults a kind, it
+ * does not overrule one. Read as `spec.system` is, and for its reason: this
+ * tool never writes the field, and a reference this grammar cannot split is
+ * kept as the file wrote it (`qualifiedSpec`) and reported as dangling, since
+ * nothing declares it. Refusing it would take the service out of every command
+ * over one line of its card. A name in upper case, which Backstage allows, is
+ * folded instead: Backstage compares references without regard to case.
+ */
+const readApiRefSchema = z.string().min(1, 'expected an API reference')
+
 interface RefFields {
   owner: string
   system?: string | undefined
   dependsOn?: string[] | undefined
   dependencyOf?: string[] | undefined
+  providesApis?: string[] | undefined
 }
 
 /**
@@ -158,21 +171,34 @@ function qualifiedSpec<S extends RefFields>(
     return `${kind.toLowerCase()}:${stated.toLowerCase()}/${name}`
   }
   // In full when it can be, as written when it cannot: see readSystemRefSchema.
-  const system = (ref: string): string => {
-    const [, kind = 'system', stated = own, name] = SHORT_REF.exec(ref) ?? []
+  const lenient = (ref: string, defaultKind: string): string => {
+    const [, kind = defaultKind, stated = own, name] = SHORT_REF.exec(ref) ?? []
     return name === undefined || stated === undefined
       ? ref
       : `${kind.toLowerCase()}:${stated.toLowerCase()}/${name}`
   }
+  // Backstage compares references without regard to case, and allows upper
+  // case in a name, which this grammar does not read: such a name is folded,
+  // as `ignoredOf` folds the reference of the API it sets aside for it, so the
+  // two meet. Anything else the grammar cannot split is kept as written.
+  const provided = (ref: string): string =>
+    !SHORT_REF.test(ref) && SHORT_REF.test(ref.toLowerCase())
+      ? lenient(ref.toLowerCase(), 'api')
+      : lenient(ref, 'api')
   return {
     ...spec,
     owner: read(spec.owner, 'group', ['owner']),
-    ...(spec.system !== undefined && { system: system(spec.system) }),
+    ...(spec.system !== undefined && { system: lenient(spec.system, 'system') }),
     ...(spec.dependsOn !== undefined && {
       dependsOn: spec.dependsOn.map((ref, at) => read(ref, undefined, ['dependsOn', at])),
     }),
     ...(spec.dependencyOf !== undefined && {
       dependencyOf: spec.dependencyOf.map((ref, at) => read(ref, undefined, ['dependencyOf', at])),
+    }),
+    // A set, as Backstage keeps relations: an API listed twice, in any
+    // spelling, is provided once, where it was first listed.
+    ...(spec.providesApis !== undefined && {
+      providesApis: [...new Set(spec.providesApis.map(provided))],
     }),
   }
 }
@@ -231,6 +257,17 @@ export const componentSchema = z
       owner: readOwnerRefSchema,
       /** Read side only, like the links: no proposal names a system. */
       system: readSystemRefSchema.optional(),
+      /**
+       * The Backstage APIs this service provides — read, and never proposed:
+       * `proposedComponentSchema` has no field for it. `spec.consumesApis` is
+       * deliberately not read, and zod strips it: in this tool, consuming
+       * something is an access right — a Resource that `dependsOn` what it
+       * reaches and lists the consumer in `dependencyOf` — because that is what
+       * gets provisioned, and a second declaration of the same fact would be a
+       * second truth to keep aligned with the first (design 4.1). Not read on a
+       * Resource either: Backstage gives a Resource no such field.
+       */
+      providesApis: z.array(readApiRefSchema).optional(),
       dependsOn: z.array(readDependencyRefSchema).optional(),
     }),
   })
@@ -295,8 +332,100 @@ export const resourceSchema = z
   })
   .transform(qualify)
 
+/**
+ * The write model: the two kinds this tool proposes, files and amends. What
+ * `propose()` can express, the serialiser writes and the plan's gates judge.
+ */
 export const entitySchema = z.discriminatedUnion('kind', [componentSchema, resourceSchema])
 
 export type Component = z.infer<typeof componentSchema>
 export type Resource = z.infer<typeof resourceSchema>
 export type Entity = z.infer<typeof entitySchema>
+
+/** What a definition is kept as: that it is there. */
+const DECLARED = 'declared'
+
+/**
+ * The `spec.definition` placeholders the catalogue resolves to text: a mapping
+ * of one key naming where the definition is. `$text` is Backstage's own, and
+ * `$openapi` and `$asyncapi` its API docs module's, which bundle the document
+ * they name into text. `$json` and `$yaml` are placeholders too, but Backstage
+ * parses what they name into structured data, and its API schema then refuses
+ * the definition, which must be a string — so they are refused here as well.
+ */
+const TEXT_PLACEHOLDERS: ReadonlySet<string> = new Set(['$text', '$openapi', '$asyncapi'])
+
+const isPlaceholder = (value: unknown): boolean => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const entries = Object.entries(value)
+  if (entries.length !== 1) return false
+  const [[key, target] = ['', undefined]] = entries
+  return TEXT_PLACEHOLDERS.has(key) && typeof target === 'string' && target !== ''
+}
+
+/**
+ * An API's contract — an OpenAPI document, a protobuf file — as Backstage
+ * requires it: text, or one placeholder the catalogue resolves to text.
+ *
+ * Kept as the literal `'declared'` and nothing else, so no reader downstream
+ * can print it, put it in a row or send it to a model: there is no field that
+ * could carry it. A definition is written by whoever owns the API, can run to
+ * thousands of lines, and says nothing a question about the catalogue needs
+ * beyond its presence. A refusal names the field and never quotes the value.
+ */
+const definitionSchema = z
+  .custom<unknown>((value) => (typeof value === 'string' && value !== '') || isPlaceholder(value), {
+    error: ({ input }) =>
+      input === undefined
+        ? 'required: Backstage refuses an API without its definition'
+        : 'expected the definition as text, or one placeholder that yields text ' +
+          '($text, $openapi or $asyncapi)',
+  })
+  .transform((): typeof DECLARED => DECLARED)
+
+/**
+ * Backstage's own API kind, read and never written: the read model is wider
+ * than the write model (design 4.1). What Backstage requires of an API, it
+ * requires here — a type (openapi, asyncapi, graphql, grpc, or any other
+ * string), a lifecycle, an owner and a definition — and an API missing one is
+ * refused with a reason, like a broken Component, because the catalogue would
+ * refuse it too. Its metadata is read as every kind's is, and its owner and
+ * system are normalised the same way.
+ *
+ * The lifecycle is Backstage's non-empty string, not the Component's closed
+ * three: this tool never writes an API, so it has no convention of its own to
+ * hold one to. The kind is `API` exactly, as Backstage's schema spells it: a
+ * `kind: api` is routed here, as `kind: component` is routed to the Component
+ * schema, and refused by the literal.
+ *
+ * Three APIs never reach this schema, and are set aside as they were before it
+ * existed (`parseDocuments`): one under another tool's apiVersion, one outside
+ * the default namespace, which the graph's `kind:default/name` keys cannot
+ * tell from its namesake, and one whose name Backstage allows and this
+ * grammar does not — upper case. A name Backstage refuses too is refused here.
+ */
+export const apiSchema = z
+  .object({
+    ...baseFields,
+    // Both versions Backstage's API schema accepts. The write model keeps the
+    // one it writes; an API is never written.
+    apiVersion: z.enum(['backstage.io/v1alpha1', 'backstage.io/v1beta1']),
+    kind: z.literal('API'),
+    spec: z.object({
+      type: z.string().min(1),
+      lifecycle: z.string().min(1),
+      owner: readOwnerRefSchema,
+      system: readSystemRefSchema.optional(),
+      definition: definitionSchema,
+    }),
+  })
+  .transform(qualify)
+
+export type Api = z.infer<typeof apiSchema>
+
+/**
+ * The read model: every entity the graph holds. The write model, and the kinds
+ * this tool reads and never proposes — today Backstage's API. The write side
+ * takes `Entity` and never meets one of these.
+ */
+export type CatalogueEntity = Entity | Api

@@ -268,7 +268,13 @@ describe('parseDocuments, the one reader of entity documents', () => {
   })
 
   it('counts a null document, which a witness is made of, and rejects nothing for it', () => {
-    expect(parseDocuments('---\n')).toEqual({ entities: [], rejections: [], ignored: [], documents: 1 })
+    expect(parseDocuments('---\n')).toEqual({
+      entities: [],
+      apis: [],
+      rejections: [],
+      ignored: [],
+      documents: 1,
+    })
   })
 })
 
@@ -278,7 +284,8 @@ describe('parseDocuments over a real Backstage catalogue', () => {
   // mkdocs.yml or renovate.yaml at the root. Refusing each of those made
   // `validate` red on a catalogue Backstage reads without complaint; dropping
   // them would be the silent ignore the tool exists to compensate for. They are
-  // set aside, and said to be.
+  // set aside, and said to be — all but the API, which is read with a schema of
+  // its own (api-reader.test.ts).
   const document = (...lines: string[]): string => ['---', ...lines, ''].join('\n')
   const read = (...lines: string[]) => parseDocuments(document(...lines))
 
@@ -291,7 +298,7 @@ describe('parseDocuments over a real Backstage catalogue', () => {
 
   it.each([
     ['Group', 'team-a', 'kind Group is not modelled by this tool; group team-a left as is'],
-    ['API', 'billing-events', 'kind API is not modelled by this tool; api billing-events left as is'],
+    ['System', 'payments', 'kind System is not modelled by this tool; system payments left as is'],
     ['User', 'jdoe', 'kind User is not modelled by this tool; user jdoe left as is'],
     ['Location', 'root', 'kind Location is not modelled by this tool; location root left as is'],
     ['Template', 'new-service', 'kind Template is not modelled by this tool; template new-service left as is'],
@@ -388,12 +395,12 @@ describe('parseDocuments over a real Backstage catalogue', () => {
           '  lifecycle: production',
           '  owner: group:default/tiger',
         ),
-        document('apiVersion: backstage.io/v1alpha1', 'kind: API', 'metadata:', '  name: billing-events'),
+        document('apiVersion: backstage.io/v1alpha1', 'kind: Group', 'metadata:', '  name: tiger'),
       ].join('\n'),
     )
     expect(entities.map((entity) => entity.metadata.name)).toEqual(['billing-api'])
     expect(rejections).toEqual([])
-    expect(ignored.map((one) => one.kind)).toEqual(['API'])
+    expect(ignored.map((one) => one.kind)).toEqual(['Group'])
     expect(documents).toBe(2)
   })
 
@@ -499,14 +506,14 @@ describe('parseDocuments over a real Backstage catalogue', () => {
   it('names the reference of a set-aside document, so a dependency on it is not dangling', () => {
     const [set] = read(
       'apiVersion: backstage.io/v1alpha1',
-      'kind: API',
+      'kind: System',
       'metadata:',
       '  name: Billing-Events',
       '  namespace: payments',
     ).ignored
     // Backstage compares references case-insensitively, and a `dependsOn` this
     // tool accepts is written in lower case.
-    expect(set?.ref).toBe('api:payments/billing-events')
+    expect(set?.ref).toBe('system:payments/billing-events')
   })
 
   it('refuses a document whose kind is not a string', () => {

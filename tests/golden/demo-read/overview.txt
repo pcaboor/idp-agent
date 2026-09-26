@@ -1,0 +1,46 @@
+Overview of the demo SI, a fictional company: 33 entities
+
+kinds
+  Resource   28
+  Component   5
+
+types
+  database         11
+  database-access   7
+  service           5
+  cache             4
+  api               3
+  +1 more
+
+environments
+  prod          15
+  dev           12
+  staging        1
+  (undeclared)   5
+
+owners
+  group:default/tiger         14
+  group:default/common        13
+  group:default/dodowarriors   5
+  group:default/elephant       1
+
+systems  none declared
+
+tags  none
+
+entities  none carries a description
+
+rights  10
+  read               3
+  readwrite          4
+  no level to state  3
+
+most reached
+  resource:default/mysql-disi6-dev    3 services, 3 rights
+  resource:default/mysql-prod-01      3 services, 3 rights
+  resource:default/billing-db-prod    2 services, 2 rights
+  resource:default/billing-cache-dev  1 service, 1 right
+  resource:default/billing-db-dev     1 service, 1 right
+  +7 more
+
+dangling references  none

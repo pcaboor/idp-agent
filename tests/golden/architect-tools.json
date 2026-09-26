@@ -1,0 +1,661 @@
+[
+  {
+    "name": "search_entities",
+    "description": "Find entities by kind, type, environment, owner or name fragment. At least one criterion is required. Returns at most 25 rows and says so when it truncated.",
+    "parameters": {
+      "def": {
+        "type": "object",
+        "shape": {
+          "kind": {
+            "def": {
+              "type": "optional",
+              "innerType": {
+                "def": {
+                  "type": "enum",
+                  "entries": {
+                    "Component": "Component",
+                    "Resource": "Resource"
+                  }
+                },
+                "type": "enum",
+                "enum": {
+                  "Component": "Component",
+                  "Resource": "Resource"
+                },
+                "options": [
+                  "Component",
+                  "Resource"
+                ]
+              }
+            },
+            "type": "optional"
+          },
+          "type": {
+            "def": {
+              "type": "optional",
+              "innerType": {
+                "def": {
+                  "type": "string",
+                  "checks": [
+                    {},
+                    {}
+                  ]
+                },
+                "type": "string"
+              }
+            },
+            "type": "optional"
+          },
+          "env": {
+            "def": {
+              "type": "optional",
+              "innerType": {
+                "def": {
+                  "type": "string",
+                  "checks": [
+                    {},
+                    {}
+                  ]
+                },
+                "type": "string"
+              }
+            },
+            "type": "optional"
+          },
+          "owner": {
+            "def": {
+              "type": "optional",
+              "innerType": {
+                "def": {
+                  "type": "string",
+                  "checks": [
+                    {}
+                  ]
+                },
+                "type": "string"
+              }
+            },
+            "type": "optional"
+          },
+          "nameContains": {
+            "def": {
+              "type": "optional",
+              "innerType": {
+                "def": {
+                  "type": "string",
+                  "checks": [
+                    {},
+                    {}
+                  ]
+                },
+                "type": "string"
+              }
+            },
+            "type": "optional"
+          }
+        },
+        "checks": [
+          {
+            "def": {
+              "type": "custom",
+              "check": "custom"
+            },
+            "type": "custom"
+          }
+        ]
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_entity",
+    "description": "Read one entity by its full reference, such as resource:default/billing-db-prod. Returns an error if no entity has that reference; it never guesses a near match.",
+    "parameters": {
+      "def": {
+        "type": "object",
+        "shape": {
+          "ref": {
+            "def": {
+              "type": "string",
+              "checks": [
+                {}
+              ]
+            },
+            "type": "string"
+          }
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_dependencies",
+    "description": "Walk one declared hop from an entity: \"dependencies\" for what it depends on, \"dependants\" for what depends on it, or \"consumers\" for the services that reach it through any chain. These are three different questions; pick deliberately.",
+    "parameters": {
+      "def": {
+        "type": "object",
+        "shape": {
+          "ref": {
+            "def": {
+              "type": "string",
+              "checks": [
+                {}
+              ]
+            },
+            "type": "string"
+          },
+          "direction": {
+            "def": {
+              "type": "enum",
+              "entries": {
+                "dependencies": "dependencies",
+                "dependants": "dependants",
+                "consumers": "consumers"
+              }
+            },
+            "type": "enum",
+            "enum": {
+              "dependencies": "dependencies",
+              "dependants": "dependants",
+              "consumers": "consumers"
+            },
+            "options": [
+              "dependencies",
+              "dependants",
+              "consumers"
+            ]
+          }
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "answer",
+    "description": "End the search. Give outcome \"entities\" with the references you actually read, \"nothing\" if no entity matches, \"overview\" when asked to describe or summarise the catalogue as a whole (the engine writes it; never \"unanswerable\" for that), or \"unanswerable\" with a reason if the question cannot be answered from this catalogue. You must call this to finish.",
+    "parameters": {
+      "def": {
+        "type": "union",
+        "options": [
+          {
+            "def": {
+              "type": "object",
+              "shape": {
+                "outcome": {
+                  "def": {
+                    "type": "literal",
+                    "values": [
+                      "entities"
+                    ]
+                  },
+                  "type": "literal",
+                  "values": {}
+                },
+                "refs": {
+                  "def": {
+                    "type": "array",
+                    "element": {
+                      "def": {
+                        "type": "string",
+                        "checks": [
+                          {}
+                        ]
+                      },
+                      "type": "string"
+                    },
+                    "checks": [
+                      {},
+                      {}
+                    ]
+                  },
+                  "type": "array",
+                  "element": {
+                    "def": {
+                      "type": "string",
+                      "checks": [
+                        {}
+                      ]
+                    },
+                    "type": "string"
+                  }
+                },
+                "intro": {
+                  "def": {
+                    "type": "catch",
+                    "innerType": {
+                      "def": {
+                        "type": "optional",
+                        "innerType": {
+                          "def": {
+                            "type": "string",
+                            "checks": [
+                              {}
+                            ]
+                          },
+                          "type": "string"
+                        }
+                      },
+                      "type": "optional"
+                    }
+                  },
+                  "type": "catch"
+                },
+                "conclusion": {
+                  "def": {
+                    "type": "catch",
+                    "innerType": {
+                      "def": {
+                        "type": "optional",
+                        "innerType": {
+                          "def": {
+                            "type": "string",
+                            "checks": [
+                              {}
+                            ]
+                          },
+                          "type": "string"
+                        }
+                      },
+                      "type": "optional"
+                    }
+                  },
+                  "type": "catch"
+                }
+              }
+            },
+            "type": "object"
+          },
+          {
+            "def": {
+              "type": "object",
+              "shape": {
+                "outcome": {
+                  "def": {
+                    "type": "literal",
+                    "values": [
+                      "nothing"
+                    ]
+                  },
+                  "type": "literal",
+                  "values": {}
+                },
+                "intro": {
+                  "def": {
+                    "type": "catch",
+                    "innerType": {
+                      "def": {
+                        "type": "optional",
+                        "innerType": {
+                          "def": {
+                            "type": "string",
+                            "checks": [
+                              {}
+                            ]
+                          },
+                          "type": "string"
+                        }
+                      },
+                      "type": "optional"
+                    }
+                  },
+                  "type": "catch"
+                },
+                "conclusion": {
+                  "def": {
+                    "type": "catch",
+                    "innerType": {
+                      "def": {
+                        "type": "optional",
+                        "innerType": {
+                          "def": {
+                            "type": "string",
+                            "checks": [
+                              {}
+                            ]
+                          },
+                          "type": "string"
+                        }
+                      },
+                      "type": "optional"
+                    }
+                  },
+                  "type": "catch"
+                }
+              }
+            },
+            "type": "object"
+          },
+          {
+            "def": {
+              "type": "object",
+              "shape": {
+                "outcome": {
+                  "def": {
+                    "type": "literal",
+                    "values": [
+                      "overview"
+                    ]
+                  },
+                  "type": "literal",
+                  "values": {}
+                },
+                "intro": {
+                  "def": {
+                    "type": "catch",
+                    "innerType": {
+                      "def": {
+                        "type": "optional",
+                        "innerType": {
+                          "def": {
+                            "type": "string",
+                            "checks": [
+                              {}
+                            ]
+                          },
+                          "type": "string"
+                        }
+                      },
+                      "type": "optional"
+                    }
+                  },
+                  "type": "catch"
+                },
+                "conclusion": {
+                  "def": {
+                    "type": "catch",
+                    "innerType": {
+                      "def": {
+                        "type": "optional",
+                        "innerType": {
+                          "def": {
+                            "type": "string",
+                            "checks": [
+                              {}
+                            ]
+                          },
+                          "type": "string"
+                        }
+                      },
+                      "type": "optional"
+                    }
+                  },
+                  "type": "catch"
+                }
+              }
+            },
+            "type": "object"
+          },
+          {
+            "def": {
+              "type": "object",
+              "shape": {
+                "outcome": {
+                  "def": {
+                    "type": "literal",
+                    "values": [
+                      "unanswerable"
+                    ]
+                  },
+                  "type": "literal",
+                  "values": {}
+                },
+                "reason": {
+                  "def": {
+                    "type": "string",
+                    "checks": [
+                      {},
+                      {}
+                    ]
+                  },
+                  "type": "string"
+                }
+              }
+            },
+            "type": "object"
+          }
+        ],
+        "discriminator": "outcome",
+        "inclusive": false
+      },
+      "type": "union",
+      "options": [
+        {
+          "def": {
+            "type": "object",
+            "shape": {
+              "outcome": {
+                "def": {
+                  "type": "literal",
+                  "values": [
+                    "entities"
+                  ]
+                },
+                "type": "literal",
+                "values": {}
+              },
+              "refs": {
+                "def": {
+                  "type": "array",
+                  "element": {
+                    "def": {
+                      "type": "string",
+                      "checks": [
+                        {}
+                      ]
+                    },
+                    "type": "string"
+                  },
+                  "checks": [
+                    {},
+                    {}
+                  ]
+                },
+                "type": "array",
+                "element": {
+                  "def": {
+                    "type": "string",
+                    "checks": [
+                      {}
+                    ]
+                  },
+                  "type": "string"
+                }
+              },
+              "intro": {
+                "def": {
+                  "type": "catch",
+                  "innerType": {
+                    "def": {
+                      "type": "optional",
+                      "innerType": {
+                        "def": {
+                          "type": "string",
+                          "checks": [
+                            {}
+                          ]
+                        },
+                        "type": "string"
+                      }
+                    },
+                    "type": "optional"
+                  }
+                },
+                "type": "catch"
+              },
+              "conclusion": {
+                "def": {
+                  "type": "catch",
+                  "innerType": {
+                    "def": {
+                      "type": "optional",
+                      "innerType": {
+                        "def": {
+                          "type": "string",
+                          "checks": [
+                            {}
+                          ]
+                        },
+                        "type": "string"
+                      }
+                    },
+                    "type": "optional"
+                  }
+                },
+                "type": "catch"
+              }
+            }
+          },
+          "type": "object"
+        },
+        {
+          "def": {
+            "type": "object",
+            "shape": {
+              "outcome": {
+                "def": {
+                  "type": "literal",
+                  "values": [
+                    "nothing"
+                  ]
+                },
+                "type": "literal",
+                "values": {}
+              },
+              "intro": {
+                "def": {
+                  "type": "catch",
+                  "innerType": {
+                    "def": {
+                      "type": "optional",
+                      "innerType": {
+                        "def": {
+                          "type": "string",
+                          "checks": [
+                            {}
+                          ]
+                        },
+                        "type": "string"
+                      }
+                    },
+                    "type": "optional"
+                  }
+                },
+                "type": "catch"
+              },
+              "conclusion": {
+                "def": {
+                  "type": "catch",
+                  "innerType": {
+                    "def": {
+                      "type": "optional",
+                      "innerType": {
+                        "def": {
+                          "type": "string",
+                          "checks": [
+                            {}
+                          ]
+                        },
+                        "type": "string"
+                      }
+                    },
+                    "type": "optional"
+                  }
+                },
+                "type": "catch"
+              }
+            }
+          },
+          "type": "object"
+        },
+        {
+          "def": {
+            "type": "object",
+            "shape": {
+              "outcome": {
+                "def": {
+                  "type": "literal",
+                  "values": [
+                    "overview"
+                  ]
+                },
+                "type": "literal",
+                "values": {}
+              },
+              "intro": {
+                "def": {
+                  "type": "catch",
+                  "innerType": {
+                    "def": {
+                      "type": "optional",
+                      "innerType": {
+                        "def": {
+                          "type": "string",
+                          "checks": [
+                            {}
+                          ]
+                        },
+                        "type": "string"
+                      }
+                    },
+                    "type": "optional"
+                  }
+                },
+                "type": "catch"
+              },
+              "conclusion": {
+                "def": {
+                  "type": "catch",
+                  "innerType": {
+                    "def": {
+                      "type": "optional",
+                      "innerType": {
+                        "def": {
+                          "type": "string",
+                          "checks": [
+                            {}
+                          ]
+                        },
+                        "type": "string"
+                      }
+                    },
+                    "type": "optional"
+                  }
+                },
+                "type": "catch"
+              }
+            }
+          },
+          "type": "object"
+        },
+        {
+          "def": {
+            "type": "object",
+            "shape": {
+              "outcome": {
+                "def": {
+                  "type": "literal",
+                  "values": [
+                    "unanswerable"
+                  ]
+                },
+                "type": "literal",
+                "values": {}
+              },
+              "reason": {
+                "def": {
+                  "type": "string",
+                  "checks": [
+                    {},
+                    {}
+                  ]
+                },
+                "type": "string"
+              }
+            }
+          },
+          "type": "object"
+        }
+      ]
+    }
+  }
+]

@@ -1,0 +1,11 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: orders-api
+  annotations:
+    company.fr/env: prod
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/lion

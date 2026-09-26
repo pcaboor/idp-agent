@@ -261,14 +261,33 @@ describe('plan "<intent>"', () => {
   })
 
   it('does not tell the Architect a reference to a set-aside document is dangling', async () => {
-    // An API the repository declares is read and not modelled: it exists.
+    // A System the repository declares is read and not modelled: it exists.
     // Counted as dangling, the summary the Architect reads called the
-    // repository broken where `validate` does not.
+    // repository broken where `validate` does not. An API is read and never
+    // proposed: a change is decided against the write model, where it is a
+    // reference that resolves, as it was when it was set aside too.
     const repo = await scaffoldedRepository()
     await mkdir(path.join(repo, 'catalog', 'apis'), { recursive: true })
     await writeFile(
       path.join(repo, 'catalog', 'apis', 'billing-events.yml'),
-      '---\napiVersion: backstage.io/v1alpha1\nkind: API\nmetadata:\n  name: billing-events\n',
+      [
+        '---',
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: API',
+        'metadata:',
+        '  name: billing-events',
+        'spec:',
+        '  type: asyncapi',
+        '  lifecycle: production',
+        '  owner: group:default/tiger',
+        '  definition: "asyncapi: 3.0.0"',
+        '---',
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: System',
+        'metadata:',
+        '  name: events',
+        '',
+      ].join('\n'),
       'utf8',
     )
     await writeFile(
@@ -286,6 +305,7 @@ describe('plan "<intent>"', () => {
         '  owner: group:default/tiger',
         '  dependsOn:',
         '    - api:default/billing-events',
+        '    - system:default/events',
         '',
       ].join('\n'),
       'utf8',
@@ -303,6 +323,81 @@ describe('plan "<intent>"', () => {
 
     const opening = openingOf(client.seen.find((request) => request.agent === 'architect'))
     expect(opening).toContain('dangling references: 0')
+    // And the API is no node of the graph the Architect is summarised.
+    expect(opening).toMatch(/kinds: Resource\n/)
+  })
+
+  it('tells the Architect of no dangling providesApis, nor of an API set aside in its namespace', async () => {
+    // A change is decided against the write model, which declares neither an
+    // API nor what provides one: a service providing an API declared in some
+    // other repository — the common case in a real catalogue — is no broken
+    // reference to the Architect, as it was not when the field was dropped.
+    // validate reports it; the summary the Architect reads does not.
+    const repo = await scaffoldedRepository()
+    await mkdir(path.join(repo, 'catalog', 'apis'), { recursive: true })
+    await writeFile(
+      path.join(repo, 'catalog', 'apis', 'billing.yml'),
+      [
+        '---',
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: API',
+        'metadata:',
+        '  name: billing',
+        '  namespace: payments',
+        'spec:',
+        '  type: openapi',
+        '  lifecycle: production',
+        '  owner: group:payments/tiger',
+        '  definition: "openapi: 3.1.0"',
+        '---',
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: Component',
+        'metadata:',
+        '  name: billing-api',
+        'spec:',
+        '  type: service',
+        '  lifecycle: production',
+        '  owner: group:default/tiger',
+        '  providesApis:',
+        '    - payments/billing',
+        '    - ghost',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+    await writeFile(
+      path.join(repo, 'catalog', 'databases', 'events-db-prod.yml'),
+      [
+        '---',
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: Resource',
+        'metadata:',
+        '  name: events-db-prod',
+        '  annotations:',
+        '    company.fr/env: prod',
+        'spec:',
+        '  type: database',
+        '  owner: group:default/tiger',
+        '  dependsOn:',
+        '    - api:payments/billing',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+    const client = converging([CREATE_DATABASE, CREATE_ACCESS])
+
+    await runIntent({
+      ask: answering('read'),
+      intent: INTENT,
+      repo,
+      project: await application(),
+      client,
+      emit: collect().emit,
+    })
+
+    const opening = openingOf(client.seen.find((request) => request.agent === 'architect'))
+    expect(opening).toContain('dangling references: 0')
+    expect(opening).toMatch(/kinds: Component, Resource\n/)
   })
 
   it('hands the Reviewer the original request, and nothing the Architect saw', async () => {

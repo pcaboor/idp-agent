@@ -11,7 +11,7 @@ import {
   type CheckedCommentary,
   type KnownEntity,
 } from '../../core/answer/commentary.js'
-import type { Entity } from '../../core/schemas/entity.js'
+import type { CatalogueEntity } from '../../core/schemas/entity.js'
 import { QUERY_LIMITS, type Answer } from '../../core/schemas/query.js'
 import type { EventSink } from '../../agents/events.js'
 import type { LlmClient } from '../../llm/client.js'
@@ -114,7 +114,9 @@ async function answered(
   vocabulary: Vocabulary,
 ): Promise<CommandResult> {
   const { graph, client, intent, emit } = options
-  const tools = buildTools(graph)
+  // The Analyst's registry: Backstage's APIs are found and read, and the
+  // Architect's, which proposes neither, stays the one it was (`buildTools`).
+  const tools = buildTools(graph, { apis: true })
   const { answer, witnessed, truncated } = await answerQuestion(
     client,
     tools,
@@ -178,7 +180,7 @@ function renderEntities(
   const found = [...refs]
     .sort()
     .map((ref) => graph.get(ref))
-    .filter((entity): entity is Entity => entity !== undefined)
+    .filter((entity): entity is CatalogueEntity => entity !== undefined)
 
   if (found.length === 0) return { text: 'No entity matches that question.', found: false }
   if (found.length === 1) {
@@ -202,9 +204,12 @@ function renderEntities(
  * An entity as the commentary check needs it: every reference and name the
  * graph holds, and what each declares that a sentence about it may quote.
  */
-function known(entity: Entity): KnownEntity {
+function known(entity: CatalogueEntity): KnownEntity {
   const env = entity.metadata.annotations[ENV_ANNOTATION]
   const access = entity.kind === 'Resource' ? entity.spec.access : undefined
+  // A Component's and an API's lifecycle both; an API's definition is not a
+  // value a sentence may quote — it is kept as `declared`, and never read.
+  const lifecycle = entity.kind === 'Resource' ? undefined : entity.spec.lifecycle
   return {
     ref: refOf(entity),
     name: entity.metadata.name,
@@ -213,7 +218,7 @@ function known(entity: Entity): KnownEntity {
       entity.spec.type,
       ...(entity.spec.system === undefined ? [] : [entity.spec.system]),
       ...(env === undefined ? [] : [env]),
-      ...(entity.kind === 'Component' ? [entity.spec.lifecycle] : []),
+      ...(lifecycle === undefined ? [] : [lifecycle]),
       ...(access === undefined ? [] : [access]),
       ...(entity.metadata.tags ?? []),
     ],

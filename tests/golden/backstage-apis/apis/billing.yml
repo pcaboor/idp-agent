@@ -1,0 +1,21 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: billing
+  namespace: default
+  title: Billing API
+  description: Invoices and credit notes, as billing-api serves them
+  tags:
+    - rest
+    - invoices
+  links:
+    - url: https://docs.example.com/billing
+      title: Reference
+spec:
+  type: openapi
+  lifecycle: production
+  owner: tiger
+  system: payments
+  definition:
+    $text: ./openapi/billing.yaml

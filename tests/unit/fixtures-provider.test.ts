@@ -19,7 +19,7 @@ describe('FixtureProvider', () => {
     await writeFile(path.join(root, 'mkdocs.yml'), 'site_name: Demo\n')
     await writeFile(
       path.join(root, 'billing.yml'),
-      'apiVersion: backstage.io/v1alpha1\nkind: API\nmetadata:\n  name: billing-events\n',
+      'apiVersion: backstage.io/v1alpha1\nkind: System\nmetadata:\n  name: billing-events\n',
     )
 
     const { entities, rejected, ignored } = await new FixtureProvider(root).load()
@@ -29,9 +29,9 @@ describe('FixtureProvider', () => {
     expect(ignored).toEqual([
       {
         source: 'billing.yml',
-        kind: 'API',
-        ref: 'api:default/billing-events',
-        reason: 'kind API is not modelled by this tool; api billing-events left as is',
+        kind: 'System',
+        ref: 'system:default/billing-events',
+        reason: 'kind System is not modelled by this tool; system billing-events left as is',
       },
       { source: 'mkdocs.yml', reason: 'not a catalogue entity: no apiVersion or kind' },
     ])

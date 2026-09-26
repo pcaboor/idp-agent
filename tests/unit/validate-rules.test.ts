@@ -21,6 +21,7 @@ const component = (name: string): Entity => ({
 const file = (path: string, entities: Entity[], over: Partial<RepositoryFile> = {}): RepositoryFile => ({
   path,
   entities,
+  apis: [],
   rejections: [],
   ignored: [],
   documents: entities.length,
@@ -185,7 +186,9 @@ describe('checkRepository', () => {
     })
     const group = (name: string): string =>
       `apiVersion: backstage.io/v1alpha1\nkind: Group\nmetadata:\n  name: ${name}\nspec:\n  type: team\n  children: []`
-    const api = 'apiVersion: backstage.io/v1alpha1\nkind: API\nmetadata:\n  name: billing-events'
+    // A System, and no longer an API: an API is read, and held to what
+    // Backstage requires of one (api-graph.test.ts).
+    const system = 'apiVersion: backstage.io/v1alpha1\nkind: System\nmetadata:\n  name: billing-events'
     const billing =
       'apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: billing-api\n' +
       'spec:\n  type: service\n  lifecycle: production\n  owner: group:default/tiger'
@@ -211,13 +214,14 @@ describe('checkRepository', () => {
     })
 
     it('does not count a set-aside document as a second entity in its file', () => {
-      // catalog-info.yaml holding a Component and the API it provides is the
-      // most common shape there is. One of the two is this tool's entity.
+      // catalog-info.yaml holding a Component beside the other kinds of its
+      // catalogue is the most common shape there is. One of the two is this
+      // tool's entity.
       const violations = checkRepository(
         snapshot({
           folders: ['components'],
           witnesses: ['components'],
-          files: [read('components/catalog-info.yaml', billing, api)],
+          files: [read('components/catalog-info.yaml', billing, system)],
         }),
       )
       expect(violations.map((violation) => violation.rule)).toEqual(['not-modelled'])
@@ -231,30 +235,34 @@ describe('checkRepository', () => {
     })
 
     it('does not call a reference dangling when the repository declares its target', () => {
-      // The API is read and set aside, not absent: "nothing declares" beside a
-      // warning naming that very API would contradict it.
-      const consumer = billing + '\n  dependsOn:\n    - api:default/billing-events\n    - api:default/ghost'
+      // The System is read and set aside, not absent: "nothing declares" beside
+      // a warning naming that very System would contradict it.
+      const consumer =
+        billing + '\n  dependsOn:\n    - system:default/billing-events\n    - system:default/ghost'
       const violations = checkRepository(
         snapshot({
           folders: ['components'],
           witnesses: ['components'],
-          files: [read('components/catalog-info.yaml', consumer, api)],
+          files: [read('components/catalog-info.yaml', consumer, system)],
         }),
       )
       expect(violations.map((violation) => [violation.rule, violation.message])).toEqual([
-        ['not-modelled', 'kind API is not modelled by this tool; api billing-events left as is'],
-        ['dangling-reference', 'component:default/billing-api names api:default/ghost, which nothing declares'],
+        ['not-modelled', 'kind System is not modelled by this tool; system billing-events left as is'],
+        [
+          'dangling-reference',
+          'component:default/billing-api names system:default/ghost, which nothing declares',
+        ],
       ])
     })
 
     it('does not read a set-aside document as a duplicate of an entity of the same name', () => {
       const violations = checkRepository(
         snapshot({
-          folders: ['components', 'apis'],
+          folders: ['components', 'systems'],
           witnesses: ['components'],
           files: [
             read('components/billing-api.yml', billing),
-            read('apis/billing-api.yml', api.replace('billing-events', 'billing-api')),
+            read('systems/billing-api.yml', system.replace('billing-events', 'billing-api')),
           ],
         }),
       )

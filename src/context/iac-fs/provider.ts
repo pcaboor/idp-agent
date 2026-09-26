@@ -21,7 +21,7 @@ export class IacFsProvider implements ContextProvider {
   async load(): Promise<LoadResult> {
     const { files } = await readRepository(this.root)
     return {
-      entities: files.flatMap((file) => file.entities),
+      entities: files.flatMap((file) => [...file.entities, ...file.apis]),
       rejected: files.flatMap((file) =>
         file.rejections.map((reason) => ({ source: file.path, reason })),
       ),

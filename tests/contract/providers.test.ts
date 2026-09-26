@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { GenerateRequest, ModelToolSpec } from '../../src/llm/client.js'
 import type { ProviderName } from '../../src/llm/providers.js'
 import { createClient } from '../../src/llm/runtime.js'
-import { offeredTools } from '../support/offered-tools.js'
+import { offeredTools, requests } from '../support/offered-tools.js'
 
 /**
  * What each adapter actually puts on the wire, checked without a key and
@@ -233,20 +233,22 @@ describe.each(Object.keys(WIRES) as ProviderName[])('the %s wire', (provider) =>
   }
 
   it('sends every tool any agent offers with an object-rooted schema', async () => {
-    const sent = serving(wire.saying('done'))
-    const result = await client().generate(request(specs, 'auto'))
+    for (const tools of requests(specs)) {
+      const sent = serving(wire.saying('done'))
+      const result = await client().generate(request(tools, 'auto'))
 
-    expect(sent).toHaveLength(1)
-    expect(sent[0]?.url).toBe(wire.url)
-    const schemas = wire.schemas(sent[0]?.body ?? {})
-    expect(schemas.map(([name]) => name)).toEqual(specs.map((each) => each.name))
-    for (const [name, schema] of schemas) {
-      expect(schema['type'], `${name} is sent with no object root`).toBe('object')
-      for (const key of ROOT_UNIONS) {
-        expect(schema, `${name} is sent with ${key} at its root`).not.toHaveProperty(key)
+      expect(sent).toHaveLength(1)
+      expect(sent[0]?.url).toBe(wire.url)
+      const schemas = wire.schemas(sent[0]?.body ?? {})
+      expect(schemas.map(([name]) => name)).toEqual(tools.map((each) => each.name))
+      for (const [name, schema] of schemas) {
+        expect(schema['type'], `${name} is sent with no object root`).toBe('object')
+        for (const key of ROOT_UNIONS) {
+          expect(schema, `${name} is sent with ${key} at its root`).not.toHaveProperty(key)
+        }
       }
+      expect(result).toEqual({ text: 'done', toolCalls: [], finishReason: 'stop' })
     }
-    expect(result).toEqual({ text: 'done', toolCalls: [], finishReason: 'stop' })
   })
 
   it.each([
@@ -270,15 +272,19 @@ describe.each(Object.keys(WIRES) as ProviderName[])('the %s wire', (provider) =>
     // with refs attached. Every schema here has optional fields, which strict
     // mode cannot express. Anthropic accepts the flag only on models that
     // support it, and otherwise ignores it; it must still never be true.
-    const sent = serving(wire.saying('done'))
-    await client().generate(request(specs, 'auto'))
+    for (const tools of requests(specs)) {
+      const sent = serving(wire.saying('done'))
+      await client().generate(request(tools, 'auto'))
 
-    for (const tool of records(sent[0]?.body['tools'])) {
-      const nested = tool['function'] as Body | undefined
-      const flag = tool['strict'] ?? nested?.['strict']
-      const name = String(tool['name'] ?? nested?.['name'])
-      expect(flag, `${name} is sent in strict mode`).not.toBe(true)
-      if (provider !== 'anthropic') expect(flag, `${name} leaves strict to a default`).toBe(false)
+      for (const tool of records(sent[0]?.body['tools'])) {
+        const nested = tool['function'] as Body | undefined
+        const flag = tool['strict'] ?? nested?.['strict']
+        const name = String(tool['name'] ?? nested?.['name'])
+        expect(flag, `${name} is sent in strict mode`).not.toBe(true)
+        if (provider !== 'anthropic') {
+          expect(flag, `${name} leaves strict to a default`).toBe(false)
+        }
+      }
     }
   })
 

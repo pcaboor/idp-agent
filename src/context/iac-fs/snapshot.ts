@@ -77,6 +77,7 @@ async function readOne(root: string, absolute: string): Promise<RepositoryFile> 
     return {
       path: where,
       entities: [],
+      apis: [],
       rejections: [`could not be read: ${why}`],
       ignored: [],
       documents: 0,

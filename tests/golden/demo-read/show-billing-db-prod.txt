@@ -1,0 +1,17 @@
+resource:default/billing-db-prod
+
+  kind         Resource
+  type         database
+  owner        group:default/tiger
+  environment  prod
+
+depends on
+  resource:default/mysql-prod-01  prod
+
+used by
+  resource:default/billing-api-billing-db-prod  prod
+  resource:default/reporting-billing-db-prod    prod
+
+reached by services
+  component:default/billing-api
+  component:default/reporting-worker

@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 1608 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 1710 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -59,8 +59,10 @@ refuses a plan once.
 A `validate` warning does not fail the build: a dangling reference is reported and exits 0,
 because a red build there pushes people to delete the declaration, which is what §4.4
 forbids. A document of a kind this tool does not model is also a warning, and exits 0: a
-declarations repository that is also the company's catalogue holds Groups and APIs, and
-they are not ours to refuse.
+declarations repository that is also the company's catalogue holds Groups and Systems, and
+they are not ours to refuse. Backstage's APIs are read, not set aside: an API missing what
+Backstage requires of one is an `invalid-entity` error, as a broken Component is, and a
+`providesApis` naming nothing is a dangling reference.
 
 ## Current state — 2026-09-22
 
@@ -200,9 +202,16 @@ changing that section first.
   plausible value. A dangling reference is surfaced, never pruned.
 - **Never ignore in silence.** An entity that fails validation is reported, never
   dropped — that silent drop is the catalogue behaviour this tool exists to compensate.
-  A document this tool does not model — a Group, an API, a `mkdocs.yml` — is not refused
+  A document this tool does not model — a Group, a System, a `mkdocs.yml` — is not refused
   either, and not dropped: it is set aside and *said* to be, a `not-modelled` warning in
   `validate`, one summary line in `graph`, `show` and `ask`.
+- **The read model is wider than the write model.** Backstage's `kind: API` is a node of
+  the graph and a Component's `spec.providesApis` an edge — `show`, `graph --kind API`, the
+  overview and the Analyst's `get_apis` read them — and neither is ever proposed: a plan is
+  decided against Components and Resources, and an API there is a reference that resolves.
+  An API's definition is kept only as `declared`, never printed or sent. `consumesApis`
+  is not read at all: consuming is an access right, and a second declaration of it would be
+  a second truth (design §4.1).
 
 **Authorisation**
 - **The merge is the act of authorisation.** The CLI opens a merge request; it never

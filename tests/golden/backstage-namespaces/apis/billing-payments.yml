@@ -1,0 +1,12 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: billing
+  namespace: payments
+spec:
+  type: openapi
+  lifecycle: production
+  owner: group:payments/tiger
+  definition:
+    $text: ./openapi.yaml

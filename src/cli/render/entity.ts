@@ -1,4 +1,4 @@
-import type { Entity } from '../../core/schemas/entity.js'
+import type { CatalogueEntity } from '../../core/schemas/entity.js'
 import { natureOf } from '../../core/schemas/resource-types.js'
 import { ENV_ANNOTATION, refOf, type EntityGraph } from '../../context/graph/entity-graph.js'
 import { oneLine } from './plain.js'
@@ -47,7 +47,7 @@ function address(url: string): string {
     : whole
 }
 
-export function renderEntityDetail(graph: EntityGraph, entity: Entity): string {
+export function renderEntityDetail(graph: EntityGraph, entity: CatalogueEntity): string {
   const { description, tags = [], links = [] } = entity.metadata
   // Each judged empty once cleaned, not before: a tag that is only a
   // clear-screen is no tag, and would print as a bare separator.
@@ -64,6 +64,17 @@ export function renderEntityDetail(graph: EntityGraph, entity: Entity): string {
     '',
     `  kind         ${entity.kind}`,
     `  type         ${shown(entity.spec.type)}`,
+    // An API's contract, after its type for the reason a right's level is: "a
+    // grpc API, experimental, its definition declared" is one statement. The
+    // definition itself is never printed — the reader keeps only that there
+    // is one (`apiSchema`) — and a Component's lifecycle is left off, as it
+    // always was, so no card but an API's moves.
+    ...(entity.kind === 'API'
+      ? [
+          `  lifecycle    ${shown(entity.spec.lifecycle)}`,
+          `  definition   ${entity.spec.definition}`,
+        ]
+      : []),
     // Only for a right, and only there: an object grants nothing, so a line
     // saying its access is undeclared would invent a question about it. On a
     // right the line is always printed — a grant whose level nobody can read
@@ -100,7 +111,7 @@ export function renderEntityDetail(graph: EntityGraph, entity: Entity): string {
   // A service lists rights from several environments at once, and being
   // authorised in dev grants nothing in prod (design 4.1). Reading that off the
   // name would be reading a convention; the annotation is the declaration.
-  const section = (title: string, entities: Entity[]): void => {
+  const section = (title: string, entities: CatalogueEntity[]): void => {
     lines.push('', title)
     if (entities.length === 0) {
       lines.push('  none')
@@ -116,6 +127,16 @@ export function renderEntityDetail(graph: EntityGraph, entity: Entity): string {
       lines.push(`  ${(refs[at] ?? '').padEnd(width)}  ${env}`.trimEnd())
     })
   }
+
+  // Who provides an API is always said of one, "none" included: an API no
+  // service provides is a fact about it. Of another kind only when a
+  // `providesApis` names it — Backstage keeps an explicit kind as written — so
+  // the relation reads at both ends. What a component provides is said only
+  // when it provides something, so a card without APIs reads as before.
+  const providers = graph.providersOf(refOf(entity))
+  if (entity.kind === 'API' || providers.length > 0) section('provided by', providers)
+  const provides = graph.providedApisOf(refOf(entity))
+  if (provides.length > 0) section('provides', provides)
 
   section('depends on', graph.dependenciesOf(refOf(entity)))
   section('used by', graph.dependantsOf(refOf(entity)))

@@ -1,0 +1,15 @@
+component:default/billing-api
+
+  kind         Component
+  type         service
+  owner        group:default/tiger
+  environment  (undeclared)
+
+depends on
+  resource:default/billing-api-billing-db-dev   dev
+  resource:default/billing-api-billing-db-prod  prod
+  resource:default/billing-api-cache-dev        dev
+  resource:default/billing-api-to-payments      prod
+
+used by
+  none

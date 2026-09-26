@@ -1,5 +1,5 @@
 import { Document, Scalar, parse, parseAllDocuments, visit, type YAMLError } from 'yaml'
-import { entitySchema, type Entity } from '../schemas/entity.js'
+import { apiSchema, entitySchema, type Api, type Entity } from '../schemas/entity.js'
 import { reasonOf } from '../schemas/reject.js'
 
 /**
@@ -44,7 +44,11 @@ const STRINGIFY_OPTIONS = {
  * after the tags and after the owner, so an entity read from a repository
  * round-trips. The engine's own writes never carry either — a proposal has no
  * field for them (plan.ts) — so nothing this tool writes changed when they
- * were added.
+ * were added. `providesApis` is the same case, after the system as Backstage
+ * writes it.
+ *
+ * An API is not written here at all: it is read and never proposed, and what
+ * is kept of its definition is that it is there, which is no document.
  */
 function ordered(entity: Entity): Record<string, unknown> {
   const metadata: Record<string, unknown> = { name: entity.metadata.name }
@@ -77,6 +81,9 @@ function ordered(entity: Entity): Record<string, unknown> {
   }
   spec.owner = entity.spec.owner
   if (entity.spec.system !== undefined) spec.system = entity.spec.system
+  if (entity.kind === 'Component' && entity.spec.providesApis !== undefined) {
+    spec.providesApis = entity.spec.providesApis
+  }
   if (entity.spec.dependsOn !== undefined) spec.dependsOn = entity.spec.dependsOn
   if (entity.kind === 'Resource' && entity.spec.dependencyOf !== undefined) {
     spec.dependencyOf = entity.spec.dependencyOf
@@ -179,8 +186,8 @@ export function readDocuments(text: string): DocumentReading[] {
 }
 
 /**
- * A document read and left alone: part of a real catalogue — a Group, an API,
- * a Location — or not catalogue at all, like a mkdocs.yml. Neither refused nor
+ * A document read and left alone: part of a real catalogue — a Group, a
+ * System, a Location — or not catalogue at all, like a mkdocs.yml. Neither refused nor
  * dropped: `validate` warns about it and the read commands count it.
  */
 export interface IgnoredDocument {
@@ -194,8 +201,20 @@ export interface IgnoredDocument {
   readonly reason: string
 }
 
-/** The two kinds this tool manages, and so the only two it holds to its schema. */
+/** The two kinds this tool manages: the write model, held to `entitySchema`. */
 const MODELLED_KINDS = new Set(['component', 'resource'])
+
+/**
+ * The kinds this tool reads and never writes, held to their own schema: the
+ * read model is wider than the write model (design 4.1). Backstage's API is the
+ * one kind a question about a catalogue cannot do without — what a service
+ * provides — and the others, a Group or a System, stay set aside.
+ */
+const READ_KINDS = new Set(['api'])
+
+/** The kind a mapping declares, lower-cased, when it declares one as a string. */
+const kindOf = (value: unknown): string | undefined =>
+  isMapping(value) && typeof value.kind === 'string' ? value.kind.toLowerCase() : undefined
 
 /** Backstage's own apiVersion: a kindless document under it is a failed entity. */
 const BACKSTAGE_API_VERSION = /^backstage\.io\//
@@ -227,6 +246,10 @@ const PLAIN_API_VERSION = /^[A-Za-z0-9][A-Za-z0-9./-]*$/
 const isMapping = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+/** Backstage's name grammar: this tool's, upper case added (`NAME_PATTERN` in entity.ts). */
+const BACKSTAGE_NAME = /^([A-Za-z0-9]+[-_.])*[A-Za-z0-9]+$/
+const BACKSTAGE_NAME_LENGTH = 63
+
 /**
  * A field from a document no schema has checked, as it may be printed. The
  * reason reaches the CI log and a terminal, so text that is not plain is
@@ -250,10 +273,12 @@ const shown = (text: string, plain: RegExp): string =>
  * over a Group, it refused it, and a declarations repository that is also the
  * company's catalogue could not pass `validate`. A Component or Resource in any
  * case — Backstage compares kinds case-insensitively, so `kind: component` is
- * one — goes to the schema, and so does what looks like a failed attempt at an
- * entity: a kind that is empty or not a string, a document that is not a
- * mapping, and a document with no kind that has Backstage's apiVersion, or a
- * `metadata` or a `spec`, which is an entity that lost its header. Setting
+ * one — goes to the schema, an API in any case to its own (`READ_KINDS`) but
+ * for the three `unreadApi` sets aside, and so does what looks like a failed
+ * attempt at an entity: a kind that is empty or not a string, a document that
+ * is not a mapping, and a document with no kind that has Backstage's
+ * apiVersion, or a `metadata` or a `spec`, which is an entity that lost its
+ * header. Setting
  * those aside would turn a broken declaration into a warning. A Helm
  * `Chart.yaml` has an apiVersion, Helm's, and no kind; it is set aside.
  *
@@ -280,8 +305,11 @@ function ignoredOf(value: unknown): IgnoredDocument | undefined {
   if (MODELLED_KINDS.has(kind.toLowerCase())) return undefined
   const metadata = isMapping(value.metadata) ? value.metadata : {}
   const { name, namespace } = metadata
-  const reason = (subject: string): string =>
-    `kind ${shown(kind, PLAIN_KIND)} is not modelled by this tool; ${subject}left as is`
+  const why = READ_KINDS.has(kind.toLowerCase())
+    ? unreadApi(value.apiVersion, name, namespace)
+    : `kind ${shown(kind, PLAIN_KIND)} is not modelled by this tool`
+  if (why === undefined) return undefined
+  const reason = (subject: string): string => `${why}; ${subject}left as is`
   if (typeof name !== 'string') return { kind, reason: reason('') }
   const space = typeof namespace === 'string' ? namespace : 'default'
   return {
@@ -289,6 +317,40 @@ function ignoredOf(value: unknown): IgnoredDocument | undefined {
     ref: `${kind}:${space}/${name}`.toLowerCase(),
     reason: reason(`${shown(kind.toLowerCase(), PLAIN_KIND)} ${shown(name, PLAIN_NAME)} `),
   }
+}
+
+/**
+ * Why a `kind: API` is set aside rather than read, or undefined when it is
+ * `apiSchema`'s to judge. Each is a document `main` set aside before this tool
+ * read APIs, and which reading would get wrong rather than refuse:
+ *
+ * - another tool's apiVersion (WSO2's gateway declares `kind: API`): not a
+ *   Backstage entity, so not this tool's to refuse — an apiVersion missing,
+ *   or not text, is a broken header, and goes to the schema;
+ * - a namespace other than `default`: every entity of the graph is keyed
+ *   `kind:default/name`, so it would take its namesake's reference, and two
+ *   of one name in two namespaces would read as a duplicate. Set aside, it
+ *   keeps its own, and a reference to it resolves;
+ * - a name Backstage allows and this tool's grammar does not, which is one in
+ *   upper case: refused, it would turn `validate` red over an API the
+ *   catalogue ingests and this tool never writes.
+ */
+function unreadApi(apiVersion: unknown, name: unknown, namespace: unknown): string | undefined {
+  if (typeof apiVersion === 'string' && !BACKSTAGE_API_VERSION.test(apiVersion)) {
+    return `kind API under ${shown(apiVersion, PLAIN_API_VERSION)} is not Backstage's`
+  }
+  if (typeof namespace === 'string' && namespace.toLowerCase() !== 'default') {
+    return `namespace ${shown(namespace, PLAIN_NAME)} is not modelled by this tool`
+  }
+  if (
+    typeof name === 'string' &&
+    name.length <= BACKSTAGE_NAME_LENGTH &&
+    BACKSTAGE_NAME.test(name) &&
+    name !== name.toLowerCase()
+  ) {
+    return 'a name in upper case is not one this tool reads'
+  }
+  return undefined
 }
 
 /**
@@ -319,6 +381,13 @@ function misdeclaredKind(value: unknown): string | undefined {
  * one, every document set aside as someone else's, and how many documents
  * there were.
  *
+ * The entities come back in two lists, by model. `entities` is the write
+ * model, and every caller on the write side — the re-check, the edits, the
+ * plan's gates — reads it and nothing else, so an API is never a file a plan
+ * amends or an entity it counts. `apis` is what the read model adds: the graph,
+ * `validate` and the read commands take both. A file's APIs are listed after its
+ * other entities, whatever order its documents are in.
+ *
  * The one reader of entity documents — `readDocuments` is its lower half, and
  * `plan/effect.ts` the only other caller of that. `context/`'s readers call it
  * on what they read from a disk, and `core/` on bytes it is about to write, so
@@ -329,12 +398,15 @@ function misdeclaredKind(value: unknown): string | undefined {
  */
 export function parseDocuments(text: string): {
   entities: Entity[]
+  /** Backstage APIs: read, never written, and never among `entities`. */
+  apis: Api[]
   rejections: string[]
   ignored: IgnoredDocument[]
   /** Documents in the stream, the null ones a witness is made of included. */
   documents: number
 } {
   const entities: Entity[] = []
+  const apis: Api[] = []
   const rejections: string[] = []
   const ignored: IgnoredDocument[] = []
   const readings = readDocuments(text)
@@ -358,10 +430,16 @@ export function parseDocuments(text: string): {
       ignored.push(foreign)
       continue
     }
+    if (READ_KINDS.has(kindOf(reading.value) ?? '')) {
+      const api = apiSchema.safeParse(reading.value)
+      if (api.success) apis.push(api.data)
+      else rejections.push(reasonOf(api.error))
+      continue
+    }
     const parsed = entitySchema.safeParse(reading.value)
     if (parsed.success) entities.push(parsed.data)
     else rejections.push(reasonOf(parsed.error))
   }
 
-  return { entities, rejections, ignored, documents: readings.length }
+  return { entities, apis, rejections, ignored, documents: readings.length }
 }
