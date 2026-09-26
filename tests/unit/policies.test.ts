@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { checkPolicies } from '../../src/core/plan/policies.js'
+import { environmentsNamedBy, namesakesOf } from '../../src/core/plan/environment.js'
 import type { PolicyContext, PolicyViolation } from '../../src/core/plan/policies.js'
 import { signPlan } from '../../src/core/plan/sign.js'
 import type { SignatureContext, SignedPlan } from '../../src/core/plan/sign.js'
@@ -75,6 +76,22 @@ const policies = (over: Partial<PolicyContext> = {}): PolicyContext => ({
     ['resource:default/payments-orders-db-prod', ['resource:default/orders-db-prod']],
     ['resource:default/legacy-orders-db-prod', ['resource:default/orders-db-prod']],
   ]),
+  // Every name the repository holds, and the environment each declares:
+  // what a request can mention (`pointedAt`).
+  namesakes: namesakesOf(
+    (
+      [
+      ['resource:default/orders-db-prod', 'prod'],
+      ['resource:default/orders-db-dev', 'dev'],
+      ['component:default/billing-api', 'prod'],
+      ['component:default/billing-api-dev', 'dev'],
+      ['resource:default/checkout-orders-db-prod', 'prod'],
+      ['resource:default/checkout-orders-db-dev', 'dev'],
+      ['resource:default/payments-orders-db-prod', 'prod'],
+      ['resource:default/legacy-orders-db-prod', 'prod'],
+      ] as const
+    ).map(([ref, env]) => ({ name: ref.slice(ref.indexOf('/') + 1), env })),
+  ),
   ...over,
 })
 
@@ -227,16 +244,171 @@ describe('cross-environment-consumer', () => {
   })
 })
 
+/**
+ * core-plan-1. The environment a right grants is the one it DECLARES, and the
+ * name is the model's to choose: reading the name's environments as part of
+ * the scope made an `env: dev` access over `orders-db-prod` pass when it was
+ * called `billing-api-orders-db-prod` — the most natural name — and refused
+ * only when it was called `…-dev`. A name that says another environment than
+ * the one declared is refused on its own, naming both.
+ */
+/**
+ * What the plan declares is declared too. A right over a database the same
+ * plan creates in prod reaches prod, and read from the repository alone, the
+ * policy compared it with nothing.
+ */
+describe('cross-environment-consumer, over what the plan itself declares', () => {
+  const REQUEST =
+    'declare the database cache-db in prod and give billing-api-dev read access to cache-db in dev'
+  const CACHE = 'resource:default/cache-db'
+  const plan = (rightEnv: string) =>
+    planSchema.parse({
+      intent: REQUEST,
+      operations: [
+        {
+          op: 'create-entity',
+          entity: {
+            kind: 'Resource',
+            metadata: { name: 'cache-db', env: 'prod' },
+            spec: { type: 'database', owner: 'group:default/tiger' },
+          },
+        },
+        {
+          op: 'create-entity',
+          entity: {
+            ...accessIn(rightEnv, [CACHE], 'component:default/billing-api-dev'),
+            metadata: { name: 'billing-api-dev-cache-db', env: rightEnv },
+          },
+        },
+      ],
+    })
+  const signed = (rightEnv: string): SignedPlan => {
+    const parsed = plan(rightEnv)
+    const result = signPlan(
+      parsed,
+      signature({ witnessed: new Set(['component:default/billing-api-dev']) }),
+      saidWithLevels(parsed),
+    )
+    if ('outcome' in result) throw new Error(`refused: ${JSON.stringify(result.refusals)}`)
+    return result
+  }
+
+  it('refuses a dev right over a database the plan declares in prod', () => {
+    const violation = of(check(signed('dev')), 'cross-environment-consumer')
+
+    expect(violation?.opIndex).toBe(1)
+    expect(violation?.message).toContain(
+      `${CACHE} lives in prod, but this declaration is scoped to dev.`,
+    )
+  })
+
+  it('says nothing of one in the same environment as what it reaches', () => {
+    // The consumer is dev and the database prod, so a prod right is refused
+    // for its consumer — never for what it reaches.
+    const violations = check(signed('prod')).filter(
+      (violation) => violation.policy === 'cross-environment-consumer',
+    )
+
+    expect(violations.map((violation) => violation.message)).toEqual([
+      'component:default/billing-api-dev lives in dev, but this declaration is scoped to prod. ' +
+        'Being authorised in one environment grants nothing in another.',
+    ])
+  })
+})
+
+describe('the environment a right declares, and the one its name says', () => {
+  const REQUEST = 'give billing-api read access to orders-db in prod'
+  /** The request names prod, and the user answered dev at the environment. */
+  const answeredDev = userSaid(REQUEST, {
+    'operations.0.entity.metadata.env': 'dev',
+    'operations.0.entity.spec.access': 'read',
+  })
+  const signedWith = (entity: unknown, stated: Provenance): SignedPlan => {
+    const parsed = planSchema.parse({
+      intent: REQUEST,
+      operations: [{ op: 'create-entity', entity }],
+    })
+    const result = signPlan(parsed, signature(), stated)
+    if ('outcome' in result) throw new Error(`refused: ${JSON.stringify(result.refusals)}`)
+    return result
+  }
+
+  it('refuses an env: dev access named billing-api-orders-db-prod over orders-db-prod', () => {
+    const entity = {
+      ...accessIn('dev', ['resource:default/orders-db-prod']),
+      metadata: { name: 'billing-api-orders-db-prod', env: 'dev' },
+    }
+
+    const violations = checkPolicies(signedWith(entity, answeredDev), policies(), answeredDev)
+
+    expect(of(violations, 'cross-environment-consumer')?.message).toContain(
+      'resource:default/orders-db-prod lives in prod, but this declaration is scoped to dev.',
+    )
+    expect(of(violations, 'environment-in-name')?.message).toBe(
+      'billing-api-orders-db-prod is declared dev, and its name says prod: ' +
+        'a name must not say another environment.',
+    )
+  })
+
+  it('refuses a name that says dev on a right declared prod, with the reason naming both', () => {
+    const entity = {
+      ...accessIn('prod'),
+      metadata: { name: 'billing-api-orders-db-dev', env: 'prod' },
+    }
+
+    const violation = of(check(sign(entity, REQUEST)), 'environment-in-name')
+
+    expect(violation?.path).toBe('operations.0.entity.metadata.name')
+    expect(violation?.message).toBe(
+      'billing-api-orders-db-dev is declared prod, and its name says dev: ' +
+        'a name must not say another environment.',
+    )
+  })
+
+  it('reads an environment in a name only as a whole part: product-api says nothing', () => {
+    const entity = {
+      ...accessIn('prod', ['resource:default/orders-db-prod'], 'component:default/product-api'),
+      metadata: { name: 'product-api-orders-db-access', env: 'dev' },
+    }
+    const signed = sign(entity, 'give product-api read access to orders-db-access in dev', {
+      witnessed: new Set([
+        'resource:default/orders-db-prod',
+        'component:default/product-api',
+      ]),
+    })
+
+    expect(of(check(signed), 'environment-in-name')).toBeUndefined()
+    expect(environmentsNamedBy('product-api', vocabulary.environments)).toEqual([])
+  })
+
+  it('reads the longest environment a name spells, and never a part of it', () => {
+    const environments = ['dev', 'prod', 'pre-prod']
+
+    expect(environmentsNamedBy('billing-api-orders-db-prod', environments)).toEqual(['prod'])
+    expect(environmentsNamedBy('orders-db-pre-prod', environments)).toEqual(['pre-prod'])
+    expect(environmentsNamedBy('orders-db-preprod', environments)).toEqual([])
+    expect(environmentsNamedBy('dev-orders-db.prod', environments)).toEqual(['dev', 'prod'])
+  })
+
+  it('says nothing when the name says the environment the right declares', () => {
+    const signed = sign(accessIn('prod'), REQUEST)
+
+    expect(check(signed)).toEqual([])
+  })
+})
+
 describe('the policies, over an update-entity', () => {
   // The operation that hands an EXISTING authorisation to someone new used to
   // travel ungated: the loop skipped anything that was not a creation, so the
   // one operation §4.1 is most about met no gate at all.
 
   it('refuses an update joining a prod grant when the request named dev', () => {
+    // The consumer is the draft's: a request mentioning billing-api, declared
+    // prod here, beside "dev" states no environment at all, and is asked.
     const signed = signUpdate(
       'resource:default/checkout-orders-db-prod',
       'component:default/billing-api',
-      'let billing-api use the checkout access to orders-db in dev',
+      'let the checkout service read orders-db in dev',
     )
 
     const violation = of(check(signed, policies()), 'environment-mismatch')
@@ -805,3 +977,108 @@ describe('declared-level-mismatch, when the level is the user\'s', () => {
 })
 
 const READ_IN_PROD_REQUEST = 'give billing-api read access to orders-db in prod'
+
+/**
+ * A request naming the thing a grant is over, which declares the grant's
+ * environment, has stated that environment (`pointedAt`) — and a gate reading
+ * it as stated holds the rest of the update to it, as it would the word. It
+ * stands in for silence alone: a request naming an environment, or an answer,
+ * says what was asked, and the thing named never adds a second scope to it.
+ */
+describe('an environment the request points at through the thing', () => {
+  const GRANT = 'resource:default/checkout-orders-db-prod'
+  const THING = 'resource:default/orders-db-prod'
+
+  it('counts as stated, and a consumer in another environment is refused against it', () => {
+    // The consumer is the draft's, read through its tools: the request names
+    // only the thing, so the one environment it names is prod.
+    const intent = `give read access to ${THING}`
+    const consumer = 'component:default/billing-api-dev'
+    const parsed = planSchema.parse({ intent, operations: [joining(GRANT, consumer, 'read')] })
+    const witnessed = new Set([...signature().witnessed, consumer])
+    const signed = signPlan(parsed, signature({ witnessed }), saidWithLevels(parsed))
+    if ('outcome' in signed) throw new Error(`refused: ${JSON.stringify(signed.refusals)}`)
+
+    const violations = check(signed)
+
+    expect(of(violations, 'environment-mismatch')).toEqual({
+      policy: 'environment-mismatch',
+      opIndex: 0,
+      path: 'operations.0.patch.consumer',
+      message:
+        `the plan touches dev, but the request named ${THING}, which is declared prod. ` +
+        'An environment is never inferred.',
+    })
+  })
+
+  it('is not stated when the request names a consumer in another environment', () => {
+    // One environment across everything the request names: billing-api-dev
+    // and orders-db-prod are two, and which one the person meant is theirs
+    // to say — asked, so this gate stays silent on it, and the pairing is
+    // still refused for what the repository declares.
+    const intent = `give component:default/billing-api-dev read access to ${THING}`
+    const signed = signUpdate(GRANT, 'component:default/billing-api-dev', intent, 'read')
+
+    const violations = check(signed)
+
+    expect(of(violations, 'environment-mismatch')).toBeUndefined()
+    expect(of(violations, 'cross-environment-consumer')?.path).toBe('operations.0.patch.consumer')
+  })
+
+  it('passes the update whose consumer is in the environment pointed at', () => {
+    const intent = `give component:default/billing-api read access to ${THING}`
+    const signed = signUpdate(GRANT, 'component:default/billing-api', intent, 'read')
+
+    expect(check(signed)).toEqual([])
+  })
+
+  it('never widens an environment the request named', () => {
+    const intent = `give read access to orders-db in dev`
+    const signed = signUpdate(GRANT, 'component:default/billing-api', intent, 'read')
+
+    const violation = of(check(signed), 'environment-mismatch')
+
+    expect(violation?.path).toBe('operations.0.entityRef')
+    expect(violation?.message).toContain('the plan touches prod, but the request named dev.')
+  })
+
+  it('reads a word beside an entity of another environment as nothing stated', () => {
+    // "in dev" and a database declared prod are two environments, and which
+    // one the person meant is theirs to say: the question asks it, so this
+    // gate measures the update against nothing yet.
+    const intent = `give component:default/billing-api read access to ${THING} in dev`
+    const signed = signUpdate(GRANT, 'component:default/billing-api', intent, 'read')
+
+    expect(of(check(signed), 'environment-mismatch')).toBeUndefined()
+  })
+
+  it.each([
+    ['a bare name', 'give read access to orders-db-prod'],
+    ['a mention of another environment’s entity in a URL', `give read access to ${THING}, see https://wiki/orders-db-dev`],
+    ['an unreadable document beside it', `give read access to ${THING}`],
+  ])('points at nothing through %s', (what, intent) => {
+    // The consumer is in dev: pointed at prod, it would be refused.
+    const consumer = 'component:default/billing-api-dev'
+    const parsed = planSchema.parse({ intent, operations: [joining(GRANT, consumer, 'read')] })
+    const witnessed = new Set([...signature().witnessed, consumer])
+    const signed = signPlan(parsed, signature({ witnessed }), saidWithLevels(parsed))
+    if ('outcome' in signed) throw new Error(`refused: ${JSON.stringify(signed.refusals)}`)
+    const context = what.startsWith('an unreadable')
+      ? policies({ namesakes: { ...policies().namesakes, unreadable: true } })
+      : policies()
+
+    expect(of(check(signed, context), 'environment-mismatch')).toBeUndefined()
+  })
+
+  it('never widens an environment the user answered', () => {
+    const intent = `give component:default/billing-api read access to ${THING}`
+    const signed = signUpdate(GRANT, 'component:default/billing-api', intent, 'read')
+
+    const violation = of(
+      checkPolicies(signed, policies(), userSaid(intent, { 'operations.0.environment': 'dev' })),
+      'environment-mismatch',
+    )
+
+    expect(violation?.message).toContain(`${GRANT} is declared prod, and dev was answered`)
+  })
+})

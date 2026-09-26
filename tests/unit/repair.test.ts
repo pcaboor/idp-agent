@@ -15,6 +15,7 @@ import type { ProjectFacts } from '../../src/agents/tools/project-tools.js'
 import { PROPOSE_TOOL } from '../../src/agents/tools/propose-tool.js'
 import { EntityGraph, refOf } from '../../src/context/graph/entity-graph.js'
 import { computeEntityPath } from '../../src/core/paths/entity-path.js'
+import { namesakesOf } from '../../src/core/plan/environment.js'
 import type { PolicyContext } from '../../src/core/plan/policies.js'
 import type { Provenance } from '../../src/core/plan/provenance.js'
 import type { SignatureContext } from '../../src/core/plan/sign.js'
@@ -153,6 +154,13 @@ const policy = (over: Partial<PolicyContext> = {}): PolicyContext => ({
   ]),
   // No grant is declared, so none is over anything.
   over: new Map(),
+  // The same four, and what each declares: what a request can mention.
+  namesakes: namesakesOf([
+    { name: 'orders-db-prod', env: 'prod' },
+    { name: 'billing-api', env: 'prod' },
+    { name: 'orders-db-dev', env: 'dev' },
+    { name: 'billing-api-dev', env: 'dev' },
+  ]),
   ...over,
 })
 

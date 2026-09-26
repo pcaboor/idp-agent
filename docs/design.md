@@ -289,7 +289,7 @@ The level is in the operation because it was nowhere else. An update joins a con
 *existing* grant, so the plan stated no level, so the signature had nothing to classify and
 the only remaining gate read the requested level out of the English in the request. A
 request arrives in whatever language the person wrote it in — `core/plan/echoes.ts` states
-that rule and the script-based word boundary it turns on — so *accès en lecture* named no
+that rule and the whole-word, script-aware boundary it turns on — so *accès en lecture* named no
 level, that gate stayed silent, and a `readwrite` grant was handed to a request for `read`
 at exit 0. Stated as a field, the level is classified like every other leaf, except that a
 word in the request never vouches for it — echoed when the user answered it for that grant,
@@ -368,6 +368,31 @@ word that names something from a word that is merely present, so `please-thanks`
 declare a database in prod, thanks" signs echoed. Every fix is a list of words that do not
 count, and a stop list works in one language and silently weakens the check in every other —
 which is a false guarantee, where a filler-word name is a cosmetic one the diff shows.
+
+**A word of the request is a whole token** (`echoes`): letters, marks and digits of any
+script, joined by `.`, `_` or `-` where one stands between two of them — the typographic
+hyphens U+2010 and U+2011 count as `-` — compared after NFKC and without regard to case.
+A letter of any other script next to a Latin one ends a token, listed or not, since several
+scripts write words with no space between them and every identifier compared is Latin. A value is named only when a whole token *is* it,
+or, for a reference like `group:default/lion`, when it stands with a boundary on each side.
+The hyphen used to be a boundary, so "non-prod", "pre-prod" and "hors-prod" named `prod`
+and `environment-mismatch` took each as a request for production, and `lion` was found in
+"lion-ops". The cost is in the safe direction and stated: "en production" names no `prod`,
+and "pre-prod" no `preprod`, so the environment is **asked**. A request naming an entity
+whose name carries its environment, "orders-db-prod", names no `prod` either — an
+environment inside a longer name or reference is not a word of the request — but it names
+the *entity*, and that entity declares one: a grant over it is not asked about when the
+request names everything the grant is over by its reference in full and each declares the
+environment the grant hands out, and nothing else it mentions is declared in another
+(`requestedEnvironment`, §6.1). The environment then follows from a declaration the person
+pointed at, and nothing is read out of the name. A bare name never points: it is not a
+reference, and two entities can carry it. Characters nobody sees — a soft hyphen, a
+zero-width space or joiner, a word joiner — are taken out before anything is read, so
+`non\u00ADprod` is `nonprod` and names no `prod`. What a word test still
+cannot do is read a negation: "anything but prod" names `prod`, and so does one attached
+across a change of script, `非prod` or `비prod`, the same limit as "non prod" with a space. A composed name is vouched for
+in runs of its segments, each a whole word of the request (`orders-db`, then `prod`), so the
+natural name of a database the catalogue does not hold yet is not turned into a question.
 
 ### 5.4 Unknown fields
 
@@ -490,23 +515,85 @@ can *vouch for* — and asks rather than refuses, because *declare, never infer*
 putting the question to the user, not guessing and not giving up — and a policy refuses
 what is expressible, vouched for, and still wrong.
 
-Five ship in v0.1:
+Six ship in v0.1:
 
 | policy | refuses |
 |---|---|
-| `environment-mismatch` | an environment the user did not state, in the request or answering for it |
+| `environment-mismatch` | an environment the user did not state, in the request or answering for it — and, for an update, a grant in another environment than the one the user answered, naming the grant of that environment as the remedy |
 | `unwitnessed-folder` | a write into a folder the repository never declared |
-| `cross-environment-consumer` | an access whose environment differs from its consumer's |
+| `cross-environment-consumer` | an access whose declared environment differs from that of what it reaches or of its consumer |
+| `environment-in-name` | a proposed name that says another environment than the one the entity declares |
 | `declared-level-mismatch` | a level the operation states that the repository does not declare |
 | `consumer-on-an-object` | an `add-dependency-of` aimed at a thing, which carries no consumers |
+
+**The environment a right grants is the one it declares**, and nothing its name says. A
+name is the model's to choose (§5.2), and `cross-environment-consumer` once counted the
+environments a name spells as part of the scope: an `env: dev` access over
+`orders-db-prod` was refused named `…-dev` and passed, on exit 0, named
+`billing-api-orders-db-prod` — the most natural name. It compares the declared environment
+alone now, and `environment-in-name` refuses a name that says another, naming both
+(*`billing-api-orders-db-prod` is declared dev, and its name says prod*). A name says an
+environment only as a whole part of it, between its ends and the `.`, `_` and `-` that join
+its parts: `product-api` says no `prod`. `environment-mismatch` still reads a name's
+environments, and deliberately: it measures what the plan touches against what the *user*
+stated, where reading more can only refuse more, and it is the one gate that sees a name
+saying prod while the entity's environment is still a question. It reads the name by the
+same whole-part rule, where it used to split on `-` alone: `.` and `_` now join parts too,
+case and NFKC are folded, and the longest environment wins, so `…-pre-prod` touches
+`pre-prod` and no longer also `prod` when both are environments — the old split read a
+false `prod` there and never saw `pre-prod`. What a right reaches is read from the
+repository and from the plan itself: a dev right over a database the same plan declares in
+prod is refused like one over a database the repository holds.
 
 **Every operation is gated, not only the creations.** `update-entity` joins a consumer to
 an *existing* grant, so it is the operation that hands out an authorisation nobody
 re-declares — and it is the one §4.1 is most about. It names its target by reference
-rather than carrying an entity, so the first three policies read the environments off the
+rather than carrying an entity, so the environment policies read the environments off the
 snapshot: the grant being extended has one, and so does the consumer being joined to it.
 `unwitnessed-folder` alone does not apply, and the absence is a rule rather than a gap —
 it is about a folder the *engine* computed a path into, and an update computes none.
+
+The patch carries no environment, so the model chose the dev grant or the prod grant and,
+when the user named neither, nothing asked. It is asked now (§7.5): when nothing the user
+said names the environment of the grant an update targets, the person is shown the grant
+the draft chose, its environment as the draft's, and the environments in use. The question
+is put at `operations.<n>.environment`, a path the operation has no field for — a field in
+the patch would change the tool every recorded run carries — so its answer is recorded and
+never written into the plan, and follows its access like a level (`reapply.ts`). An answer
+naming the grant's environment lets the plan through; one naming another is refused by
+`environment-mismatch`, and the engine never retargets the grant: the remedy names the grant
+of that environment — a right declared there and held by the same consumers, read off the
+repository and never off a name, with what it is over, since that may be another thing —
+or a separate grant. A grant that declares no environment still hands one out, that of
+what it is over, so it is asked about the same way and the answer is held to that. A
+request naming an environment is not asked: it has said what it wants, and a grant in
+another is refused against it. Nor is a request naming no environment but everything the
+grant is over by its reference in full — "…à resource:default/orders-db-prod", or
+`resource:orders-db-prod`, Backstage's short form in the default namespace, each a whole
+token — when each of those things declares the environment the grant hands out: the person
+pointed at that declaration, and the policies hold the rest of the update to it as they
+would the word, so a consumer the draft chose in another environment is still refused.
+All of it or nothing: a grant over two things with one named, a thing declaring no
+environment, a grant declaring another environment than its thing, `orders-db-dev` named
+where the grant is over `orders-db-prod`, or the reference inside a longer token, is asked.
+Both readings fail closed on one veto. Every name the repository holds is collected with
+the SET of environments any of its documents declares — an entity, an API, a document
+refused whose name can be read, a System or other kind set aside that carries a name and
+an environment, a namesake in another namespace — never the last file's. A name the request
+contains anywhere, as a plain substring after the fold, is mentioned; if a mentioned name is
+declared in another environment than the grant's, the request has not pointed, and if the
+request's environment words with the environments of the names it mentions make more than
+one, it has named none for an update. Either way the environment is asked, and so it is when
+the repository holds a refused document whose name cannot be read. The substring is crude
+on purpose: every finer reading was got past — a name after a `:` or a `/`, in a URL, after
+a full-width colon, as `namespace/name`, was taken for a reference's tail and struck out,
+and a bare name was resolved to the entity the draft's grant happened to be over. The
+cost, in the safe direction: a bare name, or a request mentioning several environments'
+entities — "orders-db-dev, not orders-db-prod", a namesake of another kind, "orders-db-dev
+in prod" — gets the question. An entity declaring no environment adds none. Pointing stands
+in for silence only — beside an environment the request names or the user answers, a thing
+named adds nothing. With nobody to ask, the question says how to answer it — the request's
+words, or a terminal — since `operations.<n>.environment` is no field a plan file can fill.
 
 `declared-level-mismatch` exists because the level of the grant being extended **is** the
 authorisation being extended, and it cannot be seen: a level is a scalar, this tool only
@@ -542,7 +629,7 @@ entity and a database's absent level looked like a right's unstated one. The two
 kept apart now, and each gate says its own thing.
 
 A configurable rule engine — `governance/`, and the `get_governance_rule` tool this
-document once gave the Architect in § 6 — is deferred past v0.1: five predicates that run
+document once gave the Architect in § 6 — is deferred past v0.1: six predicates that run
 are worth more than an extension point that does not. The tool is absent from the
 Architect's registry for the same reason, because a tool naming a feature nobody built is
 a prompt for the model to ask about one.
@@ -885,6 +972,7 @@ Every run ends on the same line, so no one mistakes submission for permission:
 |---|---|
 | Resource missing | the Architect branches: resource declaration **and** access |
 | Ambiguous name | interactive picker listing each match with its environment — never a default |
+| An existing grant extended, no environment named | the environment is asked, showing the grant the draft chose and its environment beside the environments in use — never a default; an answer naming another environment is refused, with the grant of that environment as the remedy (§6.1). Not asked when the request names everything the grant is over by its reference in full and each declares the grant's environment — the person pointed at that declaration — and no name it mentions anywhere is declared in another by any document of the repository; a bare name, or a request mentioning several environments' entities, is asked |
 | Already declared | the plan RESTATES the declaration, the edit produces bytes identical to the ones on disk, and the re-check reports `already-declared`, exit 0 |
 | No convergence | stops at 3 attempts, states what could not be determined, suggests the flag or field that would resolve it, writes nothing |
 

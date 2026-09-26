@@ -37,15 +37,14 @@ framed in the model's words, Backstage APIs, the relations view, and tracing int
 **In order**, as the owner decided on 2026-09-23, 2026-09-25 and 2026-09-26. Each line says
 what the item is for.
 
-1. **Review priority 6, the environment gates.** "An environment is never inferred" must
-   hold against a natural name: `cross-environment-consumer` reads `metadata.env` alone, the
-   environment of an extended grant is asked, and `echoes` reads whole tokens.
-2. **Review priority 7, project-fs's secret filter.** No secret reaches the provider, and no
+1. **Review priority 7, project-fs's secret filter.** No secret reaches the provider, and no
    ordinary manifest is withheld as one.
-3. **Review priority 8, an exact "already declared".** The tool never asserts on exit 0 an
+2. **Review priority 8, an exact "already declared".** The tool never asserts on exit 0 an
    access that does not exist.
-4. **Review priority 9, `init` on a real service repository.** The first onboarding gesture
+3. **Review priority 9, `init` on a real service repository.** The first onboarding gesture
    ends on a diff, not a dead end or a duplicate.
+4. **The `backstage-http` read provider: a design note and a stage plan.** Context read from a
+   Backstage catalogue, where today it comes from a configured source.
 5. **A sweep of the review.** Each finding no pull request names is classified still true,
    fixed or obsolete; the Status section is updated, and the cheap fixes still true are
    batched.
@@ -54,25 +53,22 @@ what the item is for.
 7. **Stage 5, write + local branch.** The first write, atomic and idempotent. The owner's own
    work, on branch `feat/s5-cleared`, at the owner's pace.
 
-The `backstage-http` read provider's design note and stage plan were ordered right after
-priority 9 on 2026-09-25 and earlier on 2026-09-26; the later order of 2026-09-26 (items 5 to
-7) does not place it, so its place is to be confirmed.
-
 **Not yet ordered.**
 
 - **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
   authorisation (ADR-0006).
 - **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal
   that the owner set as the project's end goal (2026-09-23).
-- **The `backstage-http` read provider**: its design note and stage plan, then the provider
-  itself.
+- **The `backstage-http` read provider itself**, once its design note and plan (item 4) are
+  agreed.
 - **Stage 8, discovery** ([the design note](stage-8-brief.md)). From any
   service repository, generate its catalog-info and discover the dependencies it already
   has, with evidence.
 
 The one order stated beyond these seven is stage 8's own, in its design note (section 11):
-priorities 6, 7, 8 and 9 as queued, and stage 5's first two tasks; then slice 1, which needs
-only priority 7 and can start as soon as it lands; then slices 2 and 3, and submission.
+priorities 6 (done, [#79](https://github.com/pcaboor/idp-agent/pull/79)), 7, 8 and 9
+as queued, and stage 5's first two tasks; then slice 1, which needs only priority 7 and can
+start as soon as it lands; then slices 2 and 3, and submission.
 Submitting rights for a Component declared in its own service repository needs the
 `backstage-http` provider, and submission needs stages 5 and 6.
 
@@ -146,6 +142,10 @@ The owner's decisions, dated, each with where it is recorded.
   fixed or obsolete, with the Status updated and the cheap fixes batched), then a check of the
   owner's stage-5 plan against the review's stage-5 readiness findings and the current
   `main`, then stage 5.
+- The `backstage-http` read provider's design note and stage plan come right after review
+  priority 9, before the sweep. The owner sees it as a major step: it widens the agents'
+  context to the whole catalogue — real owners, systems, every service repository's
+  declarations — while Backstage's content stays untrusted input.
 - No GitHub issues for now: open items are tracked in this file.
 
 ## Known debts and open items
@@ -206,6 +206,36 @@ Each was checked against `main` at `3b642fa`.
 - **`plan --repo` ignores `MainDeps.cwd`** (review `runtime-probe-15`, left open in
   [#46](https://github.com/pcaboor/idp-agent/pull/46)). A relative `--repo` is resolved
   against `process.cwd()`; the two agree in every real run.
+- **An update's environment answer follows its access, and only its access.** Answered for
+  billing-api's access to `orders-db-prod`, it does not follow a redraft that joins
+  billing-api to a grant over `orders-db-dev` — another access — so that environment is
+  asked again, naming the grant the redraft chose: the safe direction, and a second prompt
+  ([#79](https://github.com/pcaboor/idp-agent/pull/79); `src/core/plan/reapply.ts`).
+- **A stop over an update's answered environment does not say the value was the user's.**
+  It closes on "Name the value the gate could not accept": the kept block reads the refused
+  path, and the refusal is at `entityRef`, where the remedy is
+  ([#79](https://github.com/pcaboor/idp-agent/pull/79); `keptLines` in
+  `src/cli/commands/plan.ts`).
+- **A grant that declares no environment and no level is asked about, and its answer is
+  held to nothing.** Its environment is that of what it is over, and what a grant is over is
+  read for levelled grants only (`GrantedOver`), so for a network flow declaring no
+  environment the question shows none as the draft's and no policy compares the answer
+  ([#79](https://github.com/pcaboor/idp-agent/pull/79); `scopeOf` in
+  `src/core/plan/environment.ts`).
+- **A negation written with a space still names the environment.** "non prod", "hors prod"
+  or "not prod" — and "non–prod" with an en dash — leave `prod` a whole word, so an update
+  joining the prod grant is not asked and ends on a diff. The hyphenated forms are closed
+  ([#79](https://github.com/pcaboor/idp-agent/pull/79)); a negating word before an
+  environment word should withdraw it, or at least ask (`src/core/plan/echoes.ts`).
+- **The mention check does not fold confusables.** A mention written with a lookalike letter
+  (a Cyrillic `о` in `оrders-db-dev`) escapes the veto; the request must still name the target
+  by full reference, so the environment reached is the one referenced
+  (`src/core/plan/environment.ts`).
+- **A Hangul filler (U+3164), which renders as a blank, is removed like other invisible
+  characters,** so `pro<filler>d` reads `prod` (`fold` in `src/core/plan/echoes.ts`).
+- **Only the vocabulary's words are environment words.** "staging" or "development" in a
+  repository whose environments are dev and prod neither state an environment nor veto the
+  pointing (design §7.5).
 - **Every diff writes the demo company's `company.fr/env` annotation**
   (`ENV_ANNOTATION` in `src/core/schemas/vocabulary.ts`). Making it configurable is stage 8's
   question 6.

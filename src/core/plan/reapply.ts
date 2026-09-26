@@ -7,6 +7,7 @@ import {
   type GrantedOver,
   type LevelField,
 } from './grant.js'
+import { ENVIRONMENT_FIELD, environmentFieldOf, type EnvironmentField } from './environment.js'
 
 /**
  * An answer is the user's word about one field of one entity, and it outlives
@@ -97,6 +98,22 @@ import {
  *     in, though the grant — amended twice — holds neither.
  *   - A draft that states one access twice has it asked again, for the reason
  *     an entity amended twice does.
+ *
+ * **An environment is keyed the same way, for the same reason** (core-plan-3).
+ * "Which environment?" asks at which environment a consumer reaches a thing,
+ * so an answer about a grant the draft declared (`entity.metadata.env`) and
+ * one about a grant an update extends (`environment`, a field the operation
+ * does not have — see `ENVIRONMENT_FIELD`) are one answer, carried by the
+ * access (`environmentFieldOf`) to wherever the redraft states it: written
+ * into a creation's `metadata.env`, vouched for at an update's `environment`
+ * and never written there. An update's answer is held by its grant too, for
+ * the consumer it was typed for only; one held by neither — its grant amended
+ * twice, and over no one thing — stays at its path only while that path joins
+ * the same consumer to the same grant, since the operation holds no value to
+ * check it against. A redraft that reaches another thing — the dev database
+ * where the answer was about the prod one — states another access, and its
+ * environment is asked again: the safe direction, and the question names the
+ * grant it chose.
  */
 
 /** What an answer is about: an entity, and a field of the operation naming it. */
@@ -121,6 +138,16 @@ export interface RecordedAnswer {
   readonly about?: AnswerSubject
   /** A level's access, when there is exactly one. See the module comment. */
   readonly access?: AccessSubject
+  /** The access whose environment this answers, when there is exactly one. */
+  readonly environmentOf?: AccessSubject
+  /**
+   * For an update's environment held by its path alone — neither its grant
+   * nor its access is one the plan states once — the grant and the consumer
+   * the update joined. The operation has no field holding the value to check
+   * it against, so this is what the path must still hold for the answer to
+   * vouch there.
+   */
+  readonly joined?: { readonly grant: string; readonly consumer: string }
 }
 
 /** An answer this step put back into a draft, which is a decision and is said. */
@@ -220,6 +247,29 @@ function accessesOf(plan: Plan, over: GrantedOver): (LevelField | undefined)[] {
   )
 }
 
+/**
+ * The access each operation states an environment for, or undefined where it
+ * states none or another operation states the same one — `accessesOf`'s rule.
+ */
+function environmentsOf(plan: Plan, over: GrantedOver): (EnvironmentField | undefined)[] {
+  const all = plan.operations.map((operation) => environmentFieldOf(operation, over))
+  const count = new Map<string, number>()
+  for (const one of all) {
+    if (one === undefined) continue
+    const key = accessKey(one.access)
+    count.set(key, (count.get(key) ?? 0) + 1)
+  }
+  return all.map((one) =>
+    one !== undefined && count.get(accessKey(one.access)) === 1 ? one : undefined,
+  )
+}
+
+/** Whether `field` is where `operation` states, or is asked, its environment. */
+const isEnvironmentField = (operation: Operation, field: string): boolean =>
+  operation.op === 'update-entity'
+    ? field === ENVIRONMENT_FIELD
+    : operation.op === 'create-entity' && field === 'entity.metadata.env'
+
 const OPERATION_PATH = /^operations\.(\d+)\.(.+)$/
 
 /**
@@ -239,6 +289,7 @@ export function recordAnswers(
 ): RecordedAnswer[] {
   const identities = identitiesOf(plan)
   const accesses = accessesOf(plan, over)
+  const environments = environmentsOf(plan, over)
   return answers.map(({ path, value }) => {
     const match = OPERATION_PATH.exec(path)
     if (match === null) return { path, value }
@@ -246,6 +297,25 @@ export function recordAnswers(
     const field = match[2] ?? ''
     const entity = identities[index]
     const operation = plan.operations[index]
+    if (operation !== undefined && isEnvironmentField(operation, field)) {
+      // An environment: by its entity, an update's for the one consumer it
+      // was typed for, and by its access when there is exactly one.
+      const consumer = operation.op === 'update-entity' ? operation.patch.consumer : undefined
+      const reached = environments[index]
+      const environmentOf =
+        reached === undefined || reached.field !== field ? undefined : reached.access
+      return {
+        path,
+        value,
+        ...(entity === undefined
+          ? {}
+          : { about: consumer === undefined ? { entity, field } : { entity, field, consumer } }),
+        ...(environmentOf === undefined ? {} : { environmentOf }),
+        ...(operation.op !== 'update-entity' || entity !== undefined || environmentOf !== undefined
+          ? {}
+          : { joined: { grant: operation.entityRef, consumer: operation.patch.consumer } }),
+      }
+    }
     const site = operation === undefined ? undefined : levelSiteOf(operation)
     if (site === undefined || site.field !== field) {
       return entity === undefined ? { path, value } : { path, value, about: { entity, field } }
@@ -291,6 +361,20 @@ function holderOf(
   return { holder: cursor as Record<string, unknown>, key }
 }
 
+/** Whether the operation at `path` still joins that consumer to that grant. */
+function stillJoins(
+  plan: Plan,
+  path: string,
+  { grant, consumer }: { readonly grant: string; readonly consumer: string },
+): boolean {
+  const operation = plan.operations[Number(OPERATION_PATH.exec(path)?.[1] ?? -1)]
+  return (
+    operation?.op === 'update-entity' &&
+    operation.entityRef === grant &&
+    operation.patch.consumer === consumer
+  )
+}
+
 /** One answer a draft's operation is to receive, and the words for what it is about. */
 interface Placement {
   readonly one: RecordedAnswer
@@ -309,9 +393,17 @@ export function reapplyAnswers(
   const reapplied: ReappliedAnswer[] = []
 
   // Kept where they were typed: there is nothing to follow them by. First, so
-  // an answer placed by its entity below wins a path both claim.
+  // an answer placed by its entity below wins a path both claim. Not a level
+  // or an environment carried by its access, which goes where the access now
+  // is, and not an update's environment at a path that no longer joins the
+  // same consumer to the same grant: nothing in the plan holds that value to
+  // check it against, so the path would vouch for whatever grant a redraft
+  // put there, answered by nobody.
   for (const one of answers) {
-    if (one.about === undefined && one.access === undefined) vouched.set(one.path, one.value)
+    if (one.about !== undefined || one.access !== undefined) continue
+    if (one.environmentOf !== undefined) continue
+    if (one.joined !== undefined && !stillJoins(plan, one.path, one.joined)) continue
+    vouched.set(one.path, one.value)
   }
 
   // One answer per entity and field, and one per access, the latest. Only
@@ -321,6 +413,7 @@ export function reapplyAnswers(
   type Held<T> = { readonly one: T; readonly order: number }
   const byEntity = new Map<string, Held<RecordedAnswer & { about: AnswerSubject }>>()
   const byAccess = new Map<string, Held<RecordedAnswer>>()
+  const byEnvironment = new Map<string, Held<RecordedAnswer>>()
   for (const [order, one] of answers.entries()) {
     if (one.about !== undefined) {
       // A level's consumer is part of the question it answers: two rounds
@@ -330,8 +423,11 @@ export function reapplyAnswers(
       byEntity.set(key, { one: { ...one, about: one.about }, order })
     }
     if (one.access !== undefined) byAccess.set(accessKey(one.access), { one, order })
+    if (one.environmentOf !== undefined) {
+      byEnvironment.set(accessKey(one.environmentOf), { one, order })
+    }
   }
-  if (byEntity.size === 0 && byAccess.size === 0) {
+  if (byEntity.size === 0 && byAccess.size === 0 && byEnvironment.size === 0) {
     return { plan, answers: vouched, about, reapplied }
   }
 
@@ -352,6 +448,15 @@ export function reapplyAnswers(
       return level === undefined ? [] : [accessKey(level.access)]
     }),
   )
+  // The same of environments: an update's answer held by its grant goes back
+  // there only when the access it was typed for is nowhere in the redraft.
+  const environments = environmentsOf(clone, over)
+  const statedEnvironments = new Set(
+    clone.operations.flatMap((operation) => {
+      const environment = environmentFieldOf(operation, over)
+      return environment === undefined ? [] : [accessKey(environment.access)]
+    }),
+  )
   for (const [index, operation] of clone.operations.entries()) {
     // Field → the answer it receives. An entity's answers by their field, and
     // a level by its access; where both claim one field, the later answer.
@@ -365,15 +470,25 @@ export function reapplyAnswers(
     const entity = identities[index]
     const level = accesses[index]
     const carried = level === undefined ? undefined : byAccess.get(accessKey(level.access))
+    const environment = environments[index]
+    const carriedEnvironment =
+      environment === undefined ? undefined : byEnvironment.get(accessKey(environment.access))
     if (entity !== undefined) {
       const site = levelSiteOf(operation)
       for (const { one, order } of byEntity.values()) {
         if (one.about.entity !== entity) continue
         const { consumer, field } = one.about
-        // A level held by its grant: only for the consumer it was typed for,
-        // and only when its own access is nowhere in the redraft and this
-        // operation's access has no answer of its own. See the module comment.
-        if (consumer !== undefined) {
+        if (consumer !== undefined && field === ENVIRONMENT_FIELD) {
+          // An update's environment held by its grant: the same three rules
+          // as a level's, below, asked of the consumer the update joins.
+          if (operation.op !== 'update-entity' || operation.patch.consumer !== consumer) continue
+          const typedFor = one.environmentOf
+          if (typedFor !== undefined && statedEnvironments.has(accessKey(typedFor))) continue
+          if (carriedEnvironment !== undefined) continue
+        } else if (consumer !== undefined) {
+          // A level held by its grant: only for the consumer it was typed for,
+          // and only when its own access is nowhere in the redraft and this
+          // operation's access has no answer of its own. See the module comment.
           if (site?.field !== field || site.consumer !== consumer) continue
           if (one.access !== undefined && stated.has(accessKey(one.access))) continue
           if (carried !== undefined && level?.field === field) continue
@@ -384,9 +499,19 @@ export function reapplyAnswers(
     if (level !== undefined && carried !== undefined) {
       offer(level.field, { ...carried, about: accessWords(level.access) })
     }
+    if (environment !== undefined && carriedEnvironment !== undefined) {
+      offer(environment.field, { ...carriedEnvironment, about: accessWords(environment.access) })
+    }
 
     for (const [field, { one, about: what }] of placements) {
       const path = `operations.${index}.${field}`
+      if (operation.op === 'update-entity' && field === ENVIRONMENT_FIELD) {
+        // Nowhere to write it: the operation has no such field, and the
+        // answer is the user's word about the grant it extends. Vouched for
+        // here, and held to the grant by the policies.
+        vouched.set(path, one.value)
+        continue
+      }
       const found = holderOf(operation, field)
       if (found === undefined) continue
       const { holder, key } = found

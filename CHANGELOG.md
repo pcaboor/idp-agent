@@ -22,6 +22,21 @@ Where the project goes next is in [`docs/roadmap.md`](docs/roadmap.md).
 
 Each pull request adds its line here.
 
+### Fixed
+
+- An environment is never inferred, against a natural name too: a right's scope is the
+  environment it declares, and a name saying another is refused (`environment-in-name`);
+  the environment of the grant an update extends is asked when nothing the user said names
+  it, and an answer naming another is refused with the grant of that environment as the
+  remedy, a grant declaring none included; a request names a value only as a whole word, so
+  "non-prod" names no prod and "lion-ops" no lion, and "en production" or "orders-db-prod"
+  names none, so the environment is asked — unless the request names everything the grant
+  is over by its reference in full and each declares the grant's environment, which is then
+  the person's pointing, not an inference; a bare name never points, and a word or a
+  pointing is vetoed when the request mentions anywhere a name the repository declares in
+  another environment, so it is asked; invisible characters no longer split a word —
+  review priority 6 ([#79](https://github.com/pcaboor/idp-agent/pull/79)).
+
 ### Documentation
 
 - Stage 8, discovery, is designed: from a service repository, report the dependencies its

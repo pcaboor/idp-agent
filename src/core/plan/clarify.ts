@@ -1,7 +1,14 @@
 import type { Plan } from '../schemas/plan.js'
 import { findUnknowns } from '../schemas/plan.js'
-import { ACCESS_LEVELS } from '../schemas/resource-types.js'
+import { ACCESS_LEVELS, type Nature } from '../schemas/resource-types.js'
+import {
+  environmentPath,
+  requestedEnvironment,
+  scopeOf,
+  type Namesakes,
+} from './environment.js'
 import { levelledSiteOf, type GrantedOver } from './grant.js'
+import type { Provenance } from './provenance.js'
 
 /**
  * The other half of "declare, never infer": the signature turns a value nobody
@@ -46,6 +53,14 @@ export interface Question {
    * `questionsOf`: a question as the plan asks it has not been answered yet.
    */
   readonly refused?: string
+  /**
+   * A question about a fact the operation implies and has no field for: the
+   * environment an `update-entity` hands its grant out in (`ENVIRONMENT_FIELD`).
+   * The plan holds no `{unknown}` for it, so its answer is recorded and never
+   * written into the plan (`fillAnswers`) — the gates read it where the user
+   * gave it, and hold the grant to it.
+   */
+  readonly implied?: true
 }
 
 /**
@@ -63,6 +78,25 @@ export interface QuestionContext {
    * asked with no set, and nothing is refused at the prompt.
    */
   readonly over?: GrantedOver
+  /**
+   * ref → the environment each entity declares, from the repository. What an
+   * update's grant is scoped to: the patch names the grant and states none.
+   */
+  readonly declared?: ReadonlyMap<string, string>
+  /**
+   * Every name the repository holds, with the environments its documents
+   * declare: what a request can mention (`requestedEnvironment`). Without it
+   * nothing is known about what the request mentions, and every update's
+   * environment is asked.
+   */
+  readonly namesakes?: Namesakes
+  /** ref → thing or right. Only a right carries the consumers an update adds. */
+  readonly natures?: ReadonlyMap<string, Nature>
+  /**
+   * What the user stated. Without it no environment is known to be stated, and
+   * every update's environment is asked — the safe direction.
+   */
+  readonly provenance?: Provenance
 }
 
 export class AnswerError extends Error {
@@ -140,6 +174,83 @@ export function questionsOf(plan: Plan, context: QuestionContext = {}): Question
     })
   }
 
+  // After the plan's own, in operation order: `findUnknowns` walks the plan
+  // in source order, so an operation's questions stay together.
+  const implied = impliedQuestions(plan, context)
+  const opOf = (question: Question): number =>
+    Number(OPERATION_PATH.exec(question.path)?.[1] ?? -1)
+  return [...questions, ...implied].sort((one, other) => opOf(one) - opOf(other))
+}
+
+/**
+ * The environment of the grant each update extends, when nothing the user
+ * said names one (core-plan-3).
+ *
+ * An update names its grant by reference and carries no environment, so the
+ * signature has no leaf to classify and a policy measured the grant against
+ * nothing when the user stated nothing: the model extended the dev grant or
+ * the prod grant, and nobody was asked. §7.5 says an ambiguity is a picker,
+ * never a default, so the person is shown the grant the draft chose, its
+ * environment as the draft's, and the environments in use — and asked.
+ *
+ * A grant that declares no environment is asked about too, since it still
+ * hands one out: that of what it reaches, which the repository declares
+ * (`scopeOf`). Its question says so, and shows that environment as the
+ * draft's when what it reaches declares exactly one.
+ *
+ * Not asked when the request states it (`requestedEnvironment`, the one
+ * definition the policies read too). By a word — any environment the
+ * repository uses, not only the grant's: a request naming `dev` over a prod
+ * grant has said what it asks for, `environment-mismatch` refuses the grant
+ * against it, and "nothing you said names an environment" would be false. Or
+ * by pointing: "…à resource:default/orders-db-prod" names, by its reference
+ * in full, the thing the grant is over, and that thing declares the
+ * environment the grant hands out — the environment follows from a
+ * declaration rather than from the model's choice, and the policies hold the
+ * rest of the update to it as they would the word. Either one only while
+ * nothing else the request mentions is declared in another environment: a
+ * bare name, or a request mentioning several environments' entities, is
+ * asked. Not asked when the
+ * user already answered it, whatever they answered: an answer naming another
+ * environment is the policies' to refuse, with the grant of that environment
+ * as the remedy, and asking again would put the same choice to the person
+ * twice. Not asked of a thing — `consumer-on-an-object` refuses that update.
+ */
+function impliedQuestions(plan: Plan, context: QuestionContext): Question[] {
+  const questions: Question[] = []
+  const provenance = context.provenance
+  const environments = context.environments ?? []
+  const declared = context.declared ?? new Map<string, string>()
+  const over = context.over ?? new Map<string, readonly string[]>()
+  for (const [opIndex, operation] of plan.operations.entries()) {
+    if (operation.op !== 'update-entity') continue
+    const { entityRef, patch } = operation
+    if (context.natures?.get(entityRef) !== 'right') continue
+    const scope = scopeOf(entityRef, declared, over)
+    const path = environmentPath(opIndex)
+    if (provenance !== undefined) {
+      if (provenance.answers.has(path)) continue
+      const requested = requestedEnvironment(
+        entityRef,
+        environments,
+        declared,
+        over,
+        context.namesakes,
+        provenance,
+      )
+      if (requested.named.length > 0 || requested.pointed !== undefined) continue
+    }
+    const [only, ...others] = scope.environments
+    questions.push({
+      path,
+      question:
+        `the draft joins ${patch.consumer} to ${entityRef}, which ${scope.words}, and ` +
+        'nothing you said names an environment for it; which environment is this access for?',
+      ...(only === undefined || others.length > 0 ? {} : { proposed: only }),
+      ...(environments.length === 0 ? {} : { inUse: [...environments] }),
+      implied: true,
+    })
+  }
   return questions
 }
 

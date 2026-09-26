@@ -170,6 +170,56 @@ describe('the environment', () => {
     expect(env?.class).toBe('echoed')
     expect(findUnknowns(result.plan)).toEqual([])
   })
+
+  // core-plan-4: a hyphen joins a word, so each of these names no `prod`.
+  it.each([
+    'give billing-api read access to orders-db in non-prod',
+    'donne à billing-api un accès en lecture à orders-db en pre-prod',
+    'donne à billing-api un accès en lecture à orders-db hors-prod',
+    'donne à billing-api un accès en lecture à orders-db en production',
+  ])('asks which one on "%s", rather than reading prod in it', (intent) => {
+    const result = signed(plan(access, intent))
+
+    expect(result.classified.find((leaf) => leaf.path.endsWith('.env'))?.class).toBe('novel')
+    expect(findUnknowns(result.plan)).toContain('operations.0.entity.metadata.env')
+  })
+})
+
+describe('a word of the request is a whole token', () => {
+  it("vouches for a name made of the request's whole words, in runs", () => {
+    // Nothing witnessed: `orders-db` and `prod` are the request's words, and
+    // `orders` alone is not one of them.
+    const database = {
+      kind: 'Resource' as const,
+      metadata: { name: 'orders-db-prod', env: 'prod' },
+      spec: { type: 'database' as const, owner: 'group:default/tiger' },
+    }
+    const result = signed(
+      plan(database, 'declare orders-db in prod'),
+      context({ witnessed: new Set() }),
+    )
+
+    expect(result.classified.find((leaf) => leaf.path.endsWith('.name'))?.class).toBe('echoed')
+  })
+
+  it('does not vouch for a name that is only part of a word: lion in lion-ops', () => {
+    const lion = { ...component, metadata: { name: 'lion' } }
+    const result = signed(
+      plan(lion, 'declare lion-ops, a production service owned by group:default/tiger'),
+      context({ witnessed: new Set() }),
+    )
+
+    expect(result.classified.find((leaf) => leaf.path.endsWith('.name'))?.class).toBe('novel')
+  })
+
+  it('does not vouch for an owner that is only part of one', () => {
+    const owned = { ...component, spec: { ...component.spec, owner: 'group:default/lion' } }
+    const result = signed(
+      plan(owned, 'declare billing-api, a production service owned by group:default/lion-ops'),
+    )
+
+    expect(result.classified.find((leaf) => leaf.path.endsWith('.owner'))?.class).toBe('novel')
+  })
 })
 
 describe('the level a grant is for', () => {

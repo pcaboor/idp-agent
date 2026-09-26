@@ -80,10 +80,17 @@ const isUnknown = (value: unknown): boolean =>
 /**
  * A name is the one thing design 5.2 hands the model outright, and a composed
  * name is never echoed whole: nobody writes "billing-api-orders-db-prod" in a
- * request. So a name is vouched for when **every segment of it** is — each
- * hyphen-separated piece either appears in the request or is a value the
- * catalogue already uses. `billing-api-orders-db-prod` from "give billing-api
- * access to orders-db in prod" passes; `billing-api-secret-backdoor` does not.
+ * request. So a name is vouched for when **every segment of it** is — its
+ * hyphen-separated pieces, taken in runs, are each a whole word of the request
+ * or a piece of a value the catalogue already uses. `billing-api-orders-db-prod`
+ * from "give billing-api access to orders-db in prod" passes, as `billing-api`,
+ * `orders-db` and `prod`; `billing-api-secret-backdoor` does not.
+ *
+ * In runs, because a word of the request is a whole token (`echoes`): `orders`
+ * alone is no word of "orders-db in prod", and vouching piece by piece would
+ * have turned the most natural name for a database the catalogue does not hold
+ * yet into a question. A run is the request's word or it is not — `lion` is
+ * still no word of "lion-ops".
  *
  * THE LIMIT, stated rather than papered over. A word test cannot tell a word
  * that names something from a word that is merely present: on "please declare
@@ -123,7 +130,20 @@ function composed(
     ...[...witnessed].flatMap((ref) => (ref.split('/').pop() ?? '').split('-')),
   ]
 
-  return segments.every((segment) => vouches(segment) || known.includes(segment))
+  // `reached[end]`: the first `end` segments are vouched for, by runs that
+  // each begin where the last one ended.
+  const reached = [true, ...segments.map(() => false)]
+  for (let end = 1; end <= segments.length; end += 1) {
+    for (let start = 0; start < end && reached[end] !== true; start += 1) {
+      if (reached[start] !== true) continue
+      const run = segments.slice(start, end)
+      const piece = run.length === 1 ? run[0] : undefined
+      if (vouches(run.join('-')) || (piece !== undefined && known.includes(piece))) {
+        reached[end] = true
+      }
+    }
+  }
+  return reached[segments.length] === true
 }
 
 function enumerated(vocabulary: Vocabulary, path: string, value: string): boolean {
