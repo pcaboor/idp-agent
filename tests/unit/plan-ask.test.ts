@@ -791,6 +791,71 @@ describe('a derived owner does not outlive the consumer it was read off', () => 
     ])
   })
 
+  it('prints the derived owner once on stderr, however many rounds derive it', async () => {
+    // The owner's run of `idpa "<change>"`: the line "= … follows from
+    // component:default/billing-api: group:default/tiger" twice, because each
+    // round of questions runs the loop again and the loop says its derivation
+    // once per round. The stream keeps both (above: a trace span per round),
+    // and the terminal says a fact once per run.
+    const repo = await catalogued()
+    const project = await application()
+    const { ask } = answeringPath({ '.dependencyOf.0': 'component:default/billing-api' })
+    const err: string[] = []
+    const client = scripted({
+      supervisor: [{ text: 'MUTATION', toolCalls: [], finishReason: 'stop' }],
+      inspector: [turnCalling(REPORT_TOOL, FACTS)],
+      architect: [
+        turnCalling(PROPOSE_TOOL, {
+          operations: [
+            accessFor('component:default/billing-api', {
+              unknown: 'the request does not state an owner for this access',
+            }),
+          ],
+        }),
+      ],
+      reviewer: [turnCalling(VERDICT_TOOL, { verdict: 'ok' })],
+    })
+
+    const code = await main([CONSUMER_QUESTION, '--repo', repo], {
+      cwd: project,
+      client,
+      env: {},
+      ask,
+      out: () => undefined,
+      err: (chunk) => void err.push(chunk),
+    })
+
+    expect(code).toBe(0)
+    const lines = err.join('').split('\n').filter((line) => line.includes(' follows from '))
+    expect(lines).toEqual([
+      '  = operations.0.entity.spec.owner follows from component:default/billing-api: group:default/tiger',
+    ])
+  })
+
+  it('still prints a second derivation of one path when it names another owner', async () => {
+    // Deduplicated by path AND owner: lion replaced by tiger is news, and the
+    // terminal saw lion.
+    const repo = await catalogued()
+    const project = await application()
+    const { ask } = answeringPath({ '.dependencyOf.0': 'component:default/billing-api' })
+    const err: string[] = []
+
+    const code = await main(['plan', CONSUMER_QUESTION, '--repo', repo, '--project', project], {
+      client: converging([PROPOSES_PAYMENTS]),
+      env: {},
+      ask,
+      out: () => undefined,
+      err: (chunk) => void err.push(chunk),
+    })
+
+    expect(code).toBe(0)
+    const lines = err.join('').split('\n').filter((line) => line.includes(' follows from '))
+    expect(lines).toEqual([
+      '  = operations.0.entity.spec.owner follows from component:default/payments-api: group:default/lion',
+      '  = operations.0.entity.spec.owner follows from component:default/billing-api: group:default/tiger',
+    ])
+  })
+
   it('keeps an owner the user stated, through an answer that changes the consumer', async () => {
     // The rule the fix must not break. `group:default/lynx` is in the request
     // and nowhere else — not in this catalogue, not in any consumer — and the
