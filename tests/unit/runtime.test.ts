@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createClient, usageOf } from '../../src/llm/runtime.js'
+import { createClient, toMessages, usageOf } from '../../src/llm/runtime.js'
 import { openRecording } from '../../src/llm/recording.js'
 import type { Recording, RecordingStore } from '../../src/llm/recording.js'
-import type { GenerateRequest } from '../../src/llm/client.js'
+import type { GenerateRequest, Transcript } from '../../src/llm/client.js'
 
 const turn = (agent: 'supervisor' | 'analyst', index: number, content: unknown[]) => ({
   agent,
@@ -299,5 +299,89 @@ describe('a recording run the model cannot answer', () => {
       'openai gpt-6-luna: the model hit its output limit before answering',
     )
     expect(written).toEqual([])
+  })
+})
+
+describe('the messages a transcript is sent as', () => {
+  // A turn where the model said nothing and called nothing is kept in the
+  // transcript — the agent counts it and asks again — and was sent back as an
+  // assistant message with no content. Anthropic refuses one (every message
+  // but a final assistant one must have content), and Mistral is sent `""`
+  // with no tool call. It is dropped, and the two user messages it stood
+  // between become one, in order: the rule the Anthropic adapter applies to
+  // consecutive user messages itself, applied here for every provider.
+  const nudge = 'Call a tool: answer, or one of the read tools.'
+  const barren: Transcript = { role: 'assistant', text: '', toolCalls: [] }
+
+  it('drops an assistant turn that said nothing and called nothing', () => {
+    expect(toMessages([{ role: 'user', text: 'hello' }, barren, { role: 'user', text: nudge }])).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'hello' },
+          { type: 'text', text: nudge },
+        ],
+      },
+    ])
+  })
+
+  it('counts whitespace as nothing said', () => {
+    const messages = toMessages([
+      { role: 'user', text: 'hello' },
+      { role: 'assistant', text: ' \n', toolCalls: [] },
+      { role: 'user', text: nudge },
+    ])
+    expect(messages.map((message) => message.role)).toEqual(['user'])
+  })
+
+  it('never sends an assistant message with no content, whatever surrounds it', () => {
+    const messages = toMessages([
+      { role: 'user', text: 'hello' },
+      barren,
+      { role: 'user', text: nudge },
+      barren,
+      { role: 'user', text: nudge },
+      { role: 'assistant', text: '', toolCalls: [{ id: 'c1', name: 'get_entity', args: { ref: 'x' } }] },
+      { role: 'tool', id: 'c1', name: 'get_entity', result: { rows: [] } },
+      barren,
+      { role: 'user', text: nudge },
+    ])
+    for (const message of messages) {
+      if (message.role !== 'assistant') continue
+      expect(message.content).not.toEqual([])
+      expect(message.content).not.toBe('')
+    }
+    expect(messages.map((message) => message.role)).toEqual(['user', 'assistant', 'tool', 'user'])
+  })
+
+  it('leaves a transcript with no barren turn as it was sent before', () => {
+    const call = { id: 'c1', name: 'get_entity', args: { ref: 'x' } }
+    expect(
+      toMessages([
+        { role: 'user', text: 'hello' },
+        { role: 'assistant', text: 'Reading it.', toolCalls: [call] },
+        { role: 'tool', id: 'c1', name: 'get_entity', result: { rows: [] } },
+      ]),
+    ).toEqual([
+      { role: 'user', content: 'hello' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Reading it.' },
+          { type: 'tool-call', toolCallId: 'c1', toolName: 'get_entity', input: { ref: 'x' } },
+        ],
+      },
+      {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'c1',
+            toolName: 'get_entity',
+            output: { type: 'json', value: { rows: [] } },
+          },
+        ],
+      },
+    ])
   })
 })

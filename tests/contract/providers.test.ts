@@ -431,3 +431,92 @@ describe('what an agent is sent beside its request', () => {
   )
 })
 
+describe('a turn where the model said nothing and called nothing', () => {
+  // Kept in the transcript, where the agent counts it and asks again, and
+  // never sent: Anthropic refuses an assistant message with no content that is
+  // not the last one, and Mistral would be sent `""` with no tool call. What
+  // each adapter puts on the wire is checked, not only what the runtime hands
+  // it — the Anthropic adapter merges consecutive user messages on its own.
+  const MESSAGES: Record<ProviderName, (body: Body) => Body[]> = {
+    anthropic: (body) => records(body['messages']),
+    mistral: (body) => records(body['messages']).filter((message) => message['role'] !== 'system'),
+    openai: (body) => records(body['input']).filter((item) => item['role'] !== 'developer' && item['role'] !== 'system'),
+  }
+
+  it.each(Object.keys(WIRES) as ProviderName[])('is not sent to %s', async (provider) => {
+    const wire = WIRES[provider]
+    vi.stubEnv(wire.key, 'test-key-not-a-real-one')
+    for (const name of wire.moves) vi.stubEnv(name, undefined)
+    const sent = serving(wire.saying('done'))
+    const client = createClient({ mode: 'live', choice: { provider, model: wire.model } })
+
+    await client.generate({
+      ...request([spec('answer')], 'auto'),
+      transcript: [
+        { role: 'user', text: 'which databases run in prod?' },
+        { role: 'assistant', text: '', toolCalls: [] },
+        { role: 'user', text: 'Call a tool.' },
+      ],
+    })
+
+    const messages = MESSAGES[provider](sent[0]?.body ?? {})
+    expect(messages.filter((message) => message['role'] === 'assistant')).toEqual([])
+    expect(messages.map((message) => message['role'])).toEqual(['user'])
+    expect(JSON.stringify(messages)).toContain('which databases run in prod?')
+    expect(JSON.stringify(messages)).toContain('Call a tool.')
+  })
+
+  // The shape an agent's loop makes most: it reads, the model then says
+  // nothing, and the loop asks again — so the dropped turn stood between a
+  // tool result and a user message, and those two now meet. Anthropic groups
+  // them into one user message, the tool result first, as its tool_use needs;
+  // Mistral is sent a tool message and then a user one, the order the
+  // question-unanswerable-ranking tape was recorded answering on
+  // mistral-small; OpenAI, a function_call_output and then a message.
+  const AFTER_A_TOOL: Record<ProviderName, (messages: Body[]) => void> = {
+    anthropic: (messages) => {
+      expect(messages.map((message) => message['role'])).toEqual(['user', 'assistant', 'user'])
+      const types = records(messages[2]?.['content']).map((block) => block['type'])
+      expect(types).toEqual(['tool_result', 'text'])
+    },
+    mistral: (messages) =>
+      expect(messages.map((message) => message['role'])).toEqual(['user', 'assistant', 'tool', 'user']),
+    openai: (messages) =>
+      expect(messages.map((item) => item['role'] ?? item['type'])).toEqual([
+        'user',
+        'function_call',
+        'function_call_output',
+        'user',
+      ]),
+  }
+
+  it.each(Object.keys(WIRES) as ProviderName[])(
+    'is not sent to %s after a tool result, and the nudge follows the result',
+    async (provider) => {
+      const wire = WIRES[provider]
+      vi.stubEnv(wire.key, 'test-key-not-a-real-one')
+      for (const name of wire.moves) vi.stubEnv(name, undefined)
+      const sent = serving(wire.saying('done'))
+      const client = createClient({ mode: 'live', choice: { provider, model: wire.model } })
+
+      await client.generate({
+        ...request([spec('answer'), spec('get_entity')], 'auto'),
+        transcript: [
+          { role: 'user', text: 'which databases run in prod?' },
+          { role: 'assistant', text: '', toolCalls: [{ id: 'c1', name: 'get_entity', args: { ref: 'x' } }] },
+          { role: 'tool', id: 'c1', name: 'get_entity', result: { rows: [] } },
+          { role: 'assistant', text: '', toolCalls: [] },
+          { role: 'user', text: 'Call a tool.' },
+        ],
+      })
+
+      const messages = MESSAGES[provider](sent[0]?.body ?? {})
+      for (const message of messages.filter((message) => message['role'] === 'assistant')) {
+        expect(message['content'] ?? message['tool_calls']).not.toEqual([])
+        if (provider === 'mistral') expect(message['tool_calls']).not.toEqual([])
+      }
+      AFTER_A_TOOL[provider](messages)
+      expect(JSON.stringify(messages)).toContain('Call a tool.')
+    },
+  )
+})

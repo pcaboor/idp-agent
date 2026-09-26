@@ -111,35 +111,76 @@ const fromRecord = (record: TurnRecord): GenerateResult => ({
   ...withUsage(usageOf(record.result.usage)),
 })
 
-function toMessages(transcript: Transcript[]): ModelMessage[] {
-  return transcript.map((entry): ModelMessage => {
-    if (entry.role === 'user') return { role: 'user', content: entry.text }
-    if (entry.role === 'assistant') {
-      return {
-        role: 'assistant',
-        content: [
-          ...(entry.text === '' ? [] : [{ type: 'text' as const, text: entry.text }]),
-          ...entry.toolCalls.map((call) => ({
-            type: 'tool-call' as const,
-            toolCallId: call.id,
-            toolName: call.name,
-            input: call.args,
-          })),
-        ],
+/**
+ * The transcript as the SDK takes it, with no assistant message that is empty.
+ *
+ * An agent keeps a turn where the model said nothing and called nothing — it
+ * counts it, and asks again — and that turn used to be sent back as an
+ * assistant message with no content: `[]` to Anthropic, whose Messages API
+ * refuses one anywhere but last, and `""` with no tool call to Mistral. It is
+ * dropped here, and so is a text that is only whitespace, which Anthropic
+ * refuses as a text block too. Dropping one leaves the user messages either
+ * side of it adjacent; they become one message holding both texts, in order —
+ * what `@ai-sdk/anthropic` does itself with consecutive user messages
+ * (`groupIntoBlocks`), done here so every provider is sent one shape.
+ *
+ * The recording digest is taken over the transcript, never over these
+ * messages, so a tape holding such a turn would replay unchanged.
+ */
+export function toMessages(transcript: Transcript[]): ModelMessage[] {
+  const messages: ModelMessage[] = []
+  for (const entry of transcript) {
+    const message = messageOf(entry)
+    if (message === undefined) continue
+    const last = messages.at(-1)
+    if (message.role === 'user' && last?.role === 'user') {
+      messages[messages.length - 1] = {
+        role: 'user',
+        content: [...textParts(last.content), ...textParts(message.content)],
       }
+      continue
     }
+    messages.push(message)
+  }
+  return messages
+}
+
+/** A user message's content as parts; this file only ever writes text. */
+const textParts = (content: string | readonly unknown[]): { type: 'text'; text: string }[] =>
+  typeof content === 'string'
+    ? [{ type: 'text', text: content }]
+    : (content as { type: 'text'; text: string }[])
+
+/** One entry, or nothing for an assistant turn that said and called nothing. */
+function messageOf(entry: Transcript): ModelMessage | undefined {
+  if (entry.role === 'user') return { role: 'user', content: entry.text }
+  if (entry.role === 'assistant') {
+    const said = entry.text.trim() !== ''
+    if (!said && entry.toolCalls.length === 0) return undefined
     return {
-      role: 'tool',
+      role: 'assistant',
       content: [
-        {
-          type: 'tool-result',
-          toolCallId: entry.id,
-          toolName: entry.name,
-          output: { type: 'json', value: entry.result as never },
-        },
+        ...(said ? [{ type: 'text' as const, text: entry.text }] : []),
+        ...entry.toolCalls.map((call) => ({
+          type: 'tool-call' as const,
+          toolCallId: call.id,
+          toolName: call.name,
+          input: call.args,
+        })),
       ],
     }
-  })
+  }
+  return {
+    role: 'tool',
+    content: [
+      {
+        type: 'tool-result',
+        toolCallId: entry.id,
+        toolName: entry.name,
+        output: { type: 'json', value: entry.result as never },
+      },
+    ],
+  }
 }
 
 /**
