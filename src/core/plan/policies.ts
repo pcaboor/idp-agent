@@ -23,11 +23,11 @@ import type { SignedPlan } from './sign.js'
  * what cannot be expressed, the signature asks about what nobody can vouch
  * for, and a policy refuses what is expressible, vouched for, and still wrong.
  *
- * Four ship in v0.1, and the count went DOWN when the level moved into the
+ * Five ship in v0.1. The count once went DOWN, when the level moved into the
  * operation: `level-mismatch` and `unamendable-level` asked the same question
  * of two shapes and answered a level-less declaration in opposite directions,
  * so they are one predicate here. A configurable rule engine — `governance/`,
- * and the `get_governance_rule` tool of §6 — is deferred: four predicates that
+ * and the `get_governance_rule` tool of §6 — is deferred: five predicates that
  * run are worth more than an extension point that does not.
  *
  * **Every operation is gated, not only the creations.** This loop once skipped

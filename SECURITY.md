@@ -1,121 +1,172 @@
 # Security
 
-The project's whole point is to write to an infrastructure repository on someone's
-behalf. So the threat model is stated here rather than left to be asked about.
+The project's whole point is to change an infrastructure repository on someone's behalf,
+so the threat model is stated here rather than left to be asked about.
 
-**Read this first:** the repository is at **stage 1 of 7**. It ships two read-only
-commands. There is no model, no network call, no write path and no token handling in
-the code yet. This file separates what is **guaranteed and tested today** from what is
-**designed and not yet built** — a guarantee that is not enforced by a test is not
-claimed here.
+**Where it stands: stage 4 of 7.** It reads, it asks a model, and it previews; it does not
+yet write a branch or open a pull request. This file separates what is **guaranteed and
+tested today** from what is **designed and not yet built**, and names what is **known to
+be incomplete**. A guarantee that is not enforced by a test is not claimed here: each one
+names the test that fails if it stops being true.
 
-## Guaranteed today, with the test that proves it
+## What the tool does today
+
+- **Reads a declarations repository** — Backstage `catalog-info` YAML in a Git
+  repository — named by `--repo`, found where you stand, or configured with `IDP_REPO` or
+  the personal `config.yml`; with none of those, the read commands read the fictional demo
+  SI shipped in `fixtures/si-demo/`.
+- **For a change, may read an application repository**: the Inspector reads the one
+  `--project` names, or the directory you stand in when it is one (a `catalog-info.yaml`
+  or a package manifest at its root). Anywhere else it reads nothing and says so.
+- **Calls one model provider** — Anthropic, Mistral or OpenAI, the one `IDP_PROVIDER`
+  names — over HTTPS, with your key, for `idpa "<phrase>"`, `ask`, `plan "<intent>"` and
+  `init`. `graph`, `show`, `relations`, `validate`, `init platform` and `plan --from` call
+  no model and read no key.
+- **Exports a trace, only when asked**: to the MLflow server `IDP_MLFLOW_TRACKING_URI`
+  names, or as a file in the directory `IDP_TRACE_DIR` names.
+- **Writes nothing, except** the files `init platform` scaffolds into the directory it is
+  handed, and a trace file when `IDP_TRACE_DIR` is set. (A contributor's
+  `IDP_RECORDING=record` also writes a tape into `tests/recordings/`.)
+
+## What leaves your machine
+
+| to | when | what |
+|---|---|---|
+| the model provider | a model-backed command | your request; the agents' instructions; a summary of the declarations repository (kinds, types, environments, owners in use); the entities the agents' tools read from it; for a change or `init`, the files the Inspector reads from the application repository — at most 200 files, 64 KiB each, 1 MiB in all, minus what `project-fs` withholds (below); and your key, in the header that provider reads it from |
+| an MLflow server | `IDP_MLFLOW_TRACKING_URI` is set | one trace per model-backed run, holding the full prompts and answers above — never the key |
+
+The endpoint is the SDK's default for that provider, unless `ANTHROPIC_BASE_URL` or
+`OPENAI_BASE_URL` is set in your environment: the SDK reads those itself, and the key then
+goes to the URL they name. [`.env.example`](.env.example) lists them with every variable
+this tool reads. Retention is the provider's: this tool sends no retention option, so each
+provider's default applies — on OpenAI's Responses API, that default is to store the
+response.
+
+## The threat model
+
+**Prompt injection from a repository file.** Any file the Inspector reads, and any entity
+the catalogue holds — a description, a name — reaches the model, and can tell it to do
+something else. What an injection can reach is fixed at build time: the model fills a typed
+`Plan`, never YAML and never a path; `Operation` is a closed union with no delete; every
+value the model *chooses* must be traced to your words, to your answers or to the
+repository, or it becomes a question; and five gates run before a diff is shown. An
+injection can still steer a proposal toward values the request or the repository already
+vouches for — an existing owner, an existing grant. It cannot make the tool propose an act
+outside the union, choose a file, or hand out a level nobody answered for. The diff is
+there to be read, and at stage 6 the merge will be the authorisation.
+
+**A model inventing values.** The same signature is the defence: an owner, an environment,
+a name segment or a type nobody can vouch for is asked, never guessed, and the level of a
+grant is always asked. On the read side, an answer may name only what the engine's tools
+returned (ADR-0007), and the model's sentences around it are checked the same way and
+marked `›` (ADR-0008).
+
+**Terminal escapes.** Text a model or a repository file wrote is printed with nothing a
+terminal obeys: removed, or spelled out where the bytes are the point (a diff, `--json`).
+A model's `{unknown}` reason carrying `ESC[2J` once cleared the screen and printed a fake
+diff under the tool's own closing line. The cleaning is applied where each such text is
+printed, not on the output stream as a whole, so what is guaranteed is what the tests
+below cover.
+
+**Secrets in an inspected repository.** `context/project-fs` decides what leaves an
+application repository for the provider: environment files, key material, credential
+folders, hidden files, binaries, links out of the project and files over the caps are
+withheld, and each is listed as skipped by its class, never by its value. **That filter is
+incomplete** — see *Known to be incomplete*.
+
+**The key.** It is read from the provider's own variable, never from a repository or a
+configuration file, and neither `.idp-agent.yml` nor the personal `config.yml` has a
+field that could hold one. It reaches the provider in its header and nothing else.
+
+**Traces.** A trace carries the full prompts: the summary, what the tools read from the
+catalogue, and what the Inspector read from the application repository, with what
+`project-fs` withholds still withheld and nothing further redacted. A tracking server is
+therefore one more place your repositories' content goes; the compose file this project
+ships (`tools/mlflow/compose.yml`) publishes it on `127.0.0.1` only. MLflow's own
+`MLFLOW_TRACKING_URI` is never read: it is routinely exported for other tools, and
+honouring it would send this tool's prompts there without anyone asking for a trace. Keep
+`IDP_TRACE_DIR` outside the application repository, or in a hidden folder inside it:
+`project-fs` skips hidden folders, so a trace kept anywhere else there is read back by the
+next run's Inspector.
+
+## Guaranteed today, with the test that enforces it
 
 | Guarantee | Enforced by |
 |---|---|
-| No path outside the repository is reachable | `tests/invariants/core.test.ts` — *every computed path stays inside the repository* (property-based, `fast-check`) |
-| A traversing or nested entity name is refused, not sanitised | `tests/unit/entity-path.test.ts` — `PathEscapeError` on `../../etc/passwd`, `a/b`, `.hidden` |
-| A `Plan` carrying an unknown field cannot be applied | `tests/unit/plan.test.ts` — `isApplicable` is false and the dotted path is reported |
-| A `Plan` is bounded: 50 operations, 32 levels of nesting, 10 000 nodes, 8 KB values, a 2 000-character intent | `tests/unit/plan.test.ts`, `describe('plan limits')` |
-| A deeply nested structure cannot exhaust the stack | `tests/unit/plan.test.ts` — `findUnknowns` walks 50 000 levels iteratively |
-| `__proto__` from parsed JSON is dropped, not merged into the prototype | `tests/unit/plan.test.ts` |
-| `core/` never reaches the network | `tests/architecture/dependencies.test.ts` |
-| An entity that fails validation is reported, never dropped in silence | `tests/unit/fixtures-provider.test.ts`, `tests/unit/main.test.ts` |
-| The suite needs no API key, no network and no Docker | it is the whole of CI: five commands, offline |
-| A duplicate entity is refused before the merge, naming **both** files | `tests/unit/validate-rules.test.ts` — the catalogue would keep the first and say nothing |
-| An entity filed where its type and name do not put it is refused | same, `misplaced-entity`, compared against `resolveEntityPath` |
-| A folder holding entities with no witness is refused | same — a pattern with no match must fail, not return an empty set |
-| `init platform` never overwrites and never deletes | `tests/unit/scaffold-write.test.ts` — `flag: 'wx'`, and a hand-edited `CODEOWNERS` survives a re-run byte for byte |
-| A model cannot make the tool state an unread fact | `tests/unit/analyst.test.ts` — every reference an answer names must be in the witness set of what the tools returned |
-
-These were written before the directories they guard existed, and passed vacuously until
-stage 2 filled them. They now hold over real code:
-
-- **Agents get no write access.** No module **reachable from** `agents/` may import `fs`,
-  `child_process`, a git client or the network — the test walks the transitive import
-  closure, so `agents/` to `llm/client` to `recording` to `node:fs` fails the build rather
-  than passing a grep. It is why `llm/client.ts` holds types only and the recording store
-  lives in `cli/`. Verified non-vacuous against exactly that shape before being relied on.
-- **`core/` stays free of the model.** It may not import `agents/`, `llm/`, the disk, the
-  network or the model SDK, and only `llm/` may import the SDK at all.
-- **One module writes.** In `scaffold/`, only `write.ts` imports a writing function — the
-  seam a future applier replaces, kept to one file so it stays reviewable.
-- **The suite cannot reach the network.** `tests/setup/offline.ts` replaces
-  `globalThis.fetch` with a thrower unless `IDP_RECORDING=record`. Structural, not a
-  convention: a forgotten recording fails loudly instead of quietly calling a provider on
-  whoever's key is in the shell.
-- **A model cannot make the tool state an unread fact.** Every reference an answer names
-  must be in the witness set of what the tools actually returned, or the answer is refused
-  and the reference named (`tests/unit/analyst.test.ts`). Model-authored text that does
-  reach a terminal is stripped of everything a terminal obeys first
-  (`src/cli/render/plain.ts`): a `{unknown}` reason is up to 8 192 characters the model
-  wrote, and one carrying `ESC[2J` cleared the screen and printed a fake diff under the
-  tool's own closing line.
+| Only `signPlan` makes a `SignedPlan`, and what it signed cannot be changed or re-aimed afterwards (ADR-0002) | `tests/unit/sign.test.ts` — *the brand*: *cannot be forged, even with every field in place*, *cannot be changed after it is minted…*, *cannot be aimed somewhere else after it is minted* |
+| A value nobody can vouch for becomes a question, not a value | `tests/unit/sign.test.ts` — *turns an owner nobody can vouch for into a question, not a value* |
+| The level of a grant is always asked, never read from the request's words | `tests/unit/sign.test.ts` — *asks even when the request names the level*; `tests/unit/plan-answered-level.test.ts` — *(c) asks the level of an English request too* |
+| The model cannot request an unmodelled act, or aim at a file | `tests/unit/plan.test.ts` — *rejects an operation that is not modelled*; `tests/unit/proposal-schema.test.ts` — *has nowhere to carry an annotation, so the model cannot aim at a path*; `tests/unit/sign.test.ts` — *computes the path itself, whatever else the proposal says* |
+| Five gates, in order — schema, signature, policy, Reviewer, re-check — and a clean stop after three attempts | `tests/unit/repair.test.ts` — *the five gates of §6.1*, *three attempts, then a clean stop* |
+| An answer names only what a tool returned (ADR-0007) | `tests/unit/analyst.test.ts` — *refuses an answer naming a reference no tool returned, and names it* |
+| The model's sentences around an answer are dropped whole when they name what nobody read, and marked `›` (ADR-0008) | `tests/unit/commentary.test.ts` — *drops a sentence naming an entity the graph holds and no tool returned*; `tests/unit/ask-commentary.test.ts` — *marks every line of the model with a sign no engine line starts with* |
+| No computed path leaves the repository; a traversing name or annotation is refused, not sanitised | `tests/invariants/core.test.ts` — *every computed path stays inside the repository* (property-based); `tests/unit/entity-path.test.ts` — *refuses a traversal escape*, *refuses an annotation that traverses out of the repository* |
+| The Inspector reads nothing outside the application repository, links included | `tests/unit/project-fs.test.ts` — *refuses a symlink pointing outside the project*, *an alias is not a disguise* |
+| Environment files and key material are withheld from the model | `tests/unit/project-fs.test.ts` — *excludes every environment file, whatever its case or suffix*, *excludes key material by name, whatever the case*, *skips a private key hiding behind an innocent name* |
+| What a model or a repository file wrote reaches the terminal with nothing a terminal obeys, on `plan`, `relations`, `show`, `graph`, `validate` and `ask` | `tests/unit/plain.test.ts`; `tests/unit/plan-project.test.ts` — *what plan prints that a model or a file wrote*; `tests/unit/relations-command.test.ts` — *a hostile type, environment and name reach no terminal*; `tests/unit/read-commands-hostile.test.ts` — *… reaches no terminal with a byte it obeys*, one per command, and *ask: the overview it prints and the model sentences around it …* |
+| A preview writes nothing: both repositories are byte for byte as they were | `tests/unit/plan-command.test.ts` — *leaves the repository byte-identical*; `tests/unit/plan-intent.test.ts` — *leaves the declarations repository byte-identical*, *leaves the application repository byte-identical too*; `pnpm smoke`, on the built binary |
+| No module reachable from `agents/` touches the disk or the network; one module in `scaffold/` writes | `tests/architecture/dependencies.test.ts` — *no module reachable from agents/ touches the disk or the network*, *nothing in scaffold/ but write.ts imports a writing function* |
+| `init platform` never overwrites and never deletes | `tests/unit/scaffold-write.test.ts` — *leaves a hand-edited file byte for byte*, *does not delete anything that was already there* |
+| The key reaches its provider, in its header, and nothing else: no request body, no trace, no tracking server, no output — on each of the three providers, for a question and for a change | `tests/contract/key-reach.test.ts` — *the {anthropic, mistral, openai} key on a real run*: *reaches its provider in its header, and nothing else, on a question*, *… on a change* |
+| A missing key is refused with exit 2, naming the variable, before any agent runs | `tests/unit/model-failures.test.ts` — *is refused for … with exit 2, naming …, before any agent runs*, one per provider |
+| Nothing is traced unless this tool's variable asks; MLflow's own is ignored; a trace file is its owner's alone | `tests/unit/trace-wiring.test.ts` — *traces nothing, and says nothing about a trace, when none is configured*, *traces nothing when only MLflow’s own MLFLOW_TRACKING_URI is set*; `tests/unit/trace-sink.test.ts` — *writes a file only its owner can read* |
+| A `Plan` is bounded — 50 operations, 32 levels, 10 000 nodes, 8 KB values, a 2 000-character intent — and a `__proto__` key is refused | `tests/unit/plan.test.ts` — *plan limits*, *refuses a __proto__ key outright, rather than dropping it quietly* |
+| Every `fetch` in the suite throws, so no provider SDK call can leave it: recordings replay offline. (`node:http`, `node:net` and the like are not blocked; the adapters send through `fetch`, which is where `key-reach.test.ts` catches every request) | `tests/setup/offline.ts`, asserted by `tests/unit/offline.test.ts` — *refuses a network call from inside the suite* |
 
 ## What the architecture rules are, and are not
 
-They walk **string-literal imports** across the transitive closure. That catches the
-threat they name — a contributor who adds an import without noticing where it lands — and
-it is not a sandbox. `globalThis.fetch`, `process.binding`, `eval` and
-``import(`node:${name}`)`` need no import at all, and a specifier the regexes do not list
-(`node:dns`, `node:vm`, `ws`, an `ai/` subpath) passes. Read them as a build-time
-convention with teeth, never as a boundary that contains hostile code in this repository.
+`tests/architecture/` walks **string-literal imports** across the transitive closure. That
+catches the threat it names — a contributor who adds an import without noticing where it
+lands — and it is not a sandbox. `globalThis.fetch`, `process.binding`, `eval` and
+``import(`node:${name}`)`` need no import at all, and a specifier the rules do not list
+passes. Read them as a build-time convention with teeth, never as a boundary that contains
+hostile code in this repository. The boundary that does contain something is
+`context/project-fs`, enforced at runtime.
 
-The boundary that does contain something is `context/project-fs`: it decides what leaves
-a user's own repository for a third-party model, and it is enforced at runtime rather than
-at build time.
+## Known to be incomplete
 
-## What a trace sends, and where
+Each is a finding of [the 2026-09-23 review](docs/reviews/2026-09-23-deep-review.md), still
+open.
 
-Tracing is off unless this tool's environment turns it on. With `IDP_MLFLOW_TRACKING_URI`
-set, each agent-backed run sends one trace to that server; with `IDP_TRACE_DIR` set, it
-writes one to that directory. MLflow's own `MLFLOW_TRACKING_URI` is never read: it is
-routinely exported for other tools — a Databricks workspace, a team's tracking server — and
-honouring it would send this tool's prompts there without anyone asking for a trace.
-
-A trace carries **the full prompts**: the SI summary, what the agents' tools read from the
-catalogue, and the snapshots `context/project-fs` takes of the application repository —
-with what project-fs already withholds from the model still withheld, and nothing further
-redacted. A tracking server is therefore one more place your repositories' content goes. The
-compose file this project ships (`tools/mlflow/compose.yml`) publishes it on `127.0.0.1`
-only. No provider credential enters a trace: the decorator sees `GenerateRequest` and
-`GenerateResult`, never the adapter. With neither variable set nothing is traced, which
-`tests/unit/trace-wiring.test.ts` asserts.
-
-A trace file is written `0600`, readable by its owner alone. Keep `IDP_TRACE_DIR` outside the
-application repository, or in a hidden folder inside it: `project-fs` skips hidden folders
-and nothing else, so a trace kept anywhere else in that repository is read back by the next
-run's Inspector — the prompts of one run sent as the context of the next.
+- **The secret filter of `project-fs`** (review priority 7: security-1, security-2,
+  security-3, gap-init-real-repos-4). A file assigning several secrets is judged by its
+  first match only, so a substituted value first lets a literal one after it through; the
+  key patterns miss common formats, among them `sk-ant-`, `sk-proj-` and `github_pat_`;
+  files git does not track are read as tracked ones are; and a few ordinary manifests are
+  withheld for a false positive. Until it is fixed, do not point the Inspector — `--project`,
+  or a change run from inside a service — at a repository holding literal secrets in
+  files that are not environment or key files.
+- **Confinement in the declarations repository is lexical** (security-8,
+  runtime-probe-11). `iac-fs` follows a symbolic link to a file, wherever it points, and
+  `init platform` writes through a linked folder. Both act on a repository you chose; the
+  project-fs rules above do not apply there.
+- **What the agents read from the declarations repository is sent as written.** Nothing
+  there is filtered: it is the catalogue the question is about.
 
 ## Designed, not yet built
 
 Claimed by `docs/design.md`, not by the code. Do not rely on them today.
 
-- **The merge is the act of authorisation** — the CLI opens a merge request and never
-  writes to the main branch (stage 5-6).
-- **Separate tokens per capability** — the token that opens a merge request cannot merge
-  it, and a negative test will assert that this action *fails* (stage 6).
-- **No secret reaches the model** — the Inspector is confined to the current repository;
-  escaping paths refused, `.env`, `.git/` and key files excluded, size capped (stage 4).
-- **Every anti-destruction check is repeated engine-side**, at the moment of acting. A
-  control that only lives in the client controls nothing.
+- **The merge is the act of authorisation.** The CLI will open a merge request and never
+  write to the main branch: writing a branch is stage 5, the merge request stage 6.
+- **One token per capability.** The token that opens a merge request will not be able to
+  merge it, and a test will assert that this action *fails* (stage 6).
+- **Every anti-destruction check repeated engine-side, at the moment of writing**, against
+  the repository as it is then (stage 5). Today the re-check runs at preview time.
 
 ## Not guaranteed, by design
 
-- **Content proposed by the model may be wrong.** Review decides. The tool exists to
-  produce a reviewable merge request, not to be trusted unread.
-- **A prompt injection carried in a repository file can steer a proposal** — but it
-  cannot widen permissions. The action surface is fixed at build time: `Operation` is a
-  closed discriminated union with no delete operation, the model emits a structure and
-  never a line of YAML, and the engine — not the model — chooses the file path. An
-  injection can produce a bad proposal; it cannot produce an unmodelled act.
+- **Content proposed by the model may be wrong.** The signature says where a value came
+  from, never whether it is right: an owner that exists and is the wrong team signs
+  cleanly. Review decides; the tool exists to produce a reviewable change, not to be
+  trusted unread.
 - **The catalogue lags the repository** by about two minutes. The repository, not the
   catalogue, is the source of truth at write time.
 
 ## Reporting a vulnerability
 
-Open a private security advisory through the repository's **Security** tab
-(*Report a vulnerability*). Please do not open a public issue for something exploitable.
-
-Since there is no deployed service and no write path yet, the interesting surface today
-is the path handling in `src/core/paths/` and the bounds in `src/core/schemas/plan.ts`.
+Open a private security advisory through the repository's **Security** tab (*Report a
+vulnerability*). Please do not open a public issue for something exploitable. There is no
+deployed service; the surfaces worth a look are `context/project-fs` (what leaves an
+application repository), `core/plan/` (the signature and the policies), `core/paths/` and
+`cli/render/plain.ts`.

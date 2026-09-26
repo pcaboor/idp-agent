@@ -19,10 +19,11 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 2077 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 2108 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
-pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
+pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does,
+                      # pnpm demo and every example in examples/README.md's table
 ```
 
 CI runs exactly those five, on Node 22 and 24. A suite that demands a key is a
@@ -85,12 +86,11 @@ they are not ours to refuse. Backstage's APIs are read, not set aside: an API mi
 Backstage requires of one is an `invalid-entity` error, as a broken Component is, and a
 `providesApis` naming nothing is a dangling reference.
 
-## Current state — 2026-09-22
+## Current state — 2026-09-26
 
-`main` carries stages 0 through 3 and the stage 4 plan; history is linear, no merge
-commits. Stage 4 itself is a stack of branches, one per task of
-`docs/plans/stage-4-preview-only.md`, rebased and merged bottom-up — **none of them on
-`main` yet**.
+`main` carries stages 0 through 4; history is linear, no merge commits. Each stage lands
+as a stack of branches, one per task of its plan in `docs/plans/`, rebased and merged
+bottom-up. Stage 5 is in progress and none of it is on `main`.
 
 | # | Stage | State |
 |---|---|---|
@@ -98,8 +98,8 @@ commits. Stage 4 itself is a stack of branches, one per task of
 | 1 | Read-only — `graph`, `show <entity>` over fixtures | done |
 | 2 | Question mode — Supervisor, recordings | done |
 | 3 | `init platform` — scaffold, CI, CODEOWNERS, witnesses, `validate` | done |
-| 4 | Preview only — Inspector, Architect, `Plan`, diff; writes nothing | on a branch |
-| 5 | Write + local branch — `ForgeProvider`, atomicity, idempotence | |
+| 4 | Preview only — Inspector, Architect, `Plan`, diff; writes nothing | done |
+| 5 | Write + local branch — `ForgeProvider`, atomicity, idempotence | in progress |
 | 6 | GitHub merge request — real forge, negative token test | |
 | 7 | Polish — Ink TUI, README, asciinema, npm publish | |
 
@@ -125,7 +125,7 @@ idpa "<phrase>" [--repo <dir> | --demo] [--project <dir>] [--json] [--quiet]  # 
 idp-agent relations <name-or-ref> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --to <name-or-ref>] [--depth <n>] [--repo <dir> | --demo]  # no model
 idp-agent plan --from <plan.json> --repo <dir>   # no model, and none is possible
 idp-agent plan "<intent>" --repo <dir> [--json]  # Inspector, Architect, five gates
-idp-agent init [--repo <dir>]                    # the catalog-info.yml it would write
+idp-agent init [--repo <dir>]                    # the catalog-info.yaml it would write
 ```
 
 **`init platform` is still the only command that writes into a repository**, and only into

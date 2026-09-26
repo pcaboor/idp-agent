@@ -24,6 +24,11 @@ Each pull request adds its line here.
 
 ### Documentation
 
+- The first two minutes work and tell the truth: a keyless README first screen whose outputs
+  a test holds, `SECURITY.md` rewritten for today with the test behind each guarantee, a
+  `.env.example` that cannot drift from the code, `pnpm demo` and the examples checked by
+  smoke, and the key shown to reach only its provider's header
+  ([#78](https://github.com/pcaboor/idp-agent/pull/78)).
 - `CHANGELOG.md`, `docs/roadmap.md` and the review's Status section record what was done,
   what is next and the owner's decisions; `AGENTS.md` says each pull request keeps them
   ([#77](https://github.com/pcaboor/idp-agent/pull/77)).

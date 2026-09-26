@@ -1,0 +1,22 @@
+{
+  "intent": "declare the cache orders-cache-dev in dev, owned by group:default/tiger, on resource:default/redis-shared-dev",
+  "operations": [
+    {
+      "op": "create-entity",
+      "entity": {
+        "kind": "Resource",
+        "metadata": {
+          "name": "orders-cache-dev",
+          "env": "dev"
+        },
+        "spec": {
+          "type": "cache",
+          "owner": "group:default/tiger",
+          "dependsOn": [
+            "resource:default/redis-shared-dev"
+          ]
+        }
+      }
+    }
+  ]
+}

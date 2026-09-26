@@ -1,34 +1,136 @@
 <h1 align="center">idp-agent</h1>
 
 <p align="center">
-  <strong>An AI agent for platform engineering that turns plain-English requests into
-  reviewed Backstage catalog and GitOps pull requests.</strong><br>
-  It never writes to <code>main</code>: the merge is the approval.
+  <strong>An AI agent for platform teams whose infrastructure is declared as Backstage
+  catalogue entities — the <code>catalog-info</code> YAML in a Git repository.</strong><br>
+  Ask it a question in plain words and the engine answers from those declarations; ask it
+  for a change and it returns a checked plan, rendered as a unified diff of the YAML it
+  would add. Nothing is written yet: the branch and the pull request, whose merge is the
+  approval, are stages 5 and 6.
 </p>
 
 <p align="center">
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 2077, no API key" src="https://img.shields.io/badge/tests-2077%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 2108, no API key" src="https://img.shields.io/badge/tests-2108%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
-<p align="center">
-  <!-- TODO: replace with the asciinema recording planned for stage 7 -->
-  <img alt="idp-agent demo: a plain-English request becomes a reviewed diff" src="docs/assets/demo.gif" width="760">
-</p>
+<!-- TODO: the asciinema recording planned for stage 7 goes here -->
 
-```text
-$ idpa "give billing-api read access to the orders database in prod"
-$ idpa "which services use billing-db?"
-$ idpa relations mysql-prod-01 --impacts
+## Try it in 60 seconds, without a key
+
+```bash
+git clone https://github.com/pcaboor/idp-agent && cd idp-agent
+pnpm install && pnpm build     # Node 22 or later, pnpm 10
+pnpm demo                      # the steps below, end to end
 ```
 
-One gesture, from any directory: a sentence about your platform. A question is answered
-from your catalogue; a change is previewed. **What you get for a change:** a typed plan,
-checked by five gates, rendered as a unified diff of YAML declarations. If a value can't be
-traced to your request or your repository, it asks you instead of guessing.
+Each command reads a fictional company, the demo SI in `fixtures/si-demo/` (33
+entities), and none calls a model. What breaks if the database server `mysql-prod-01`
+fails — every path, from the declarations:
+
+```text
+$ node dist/cli/bin.js relations mysql-prod-01 --impacts --demo
+reading the demo SI, a fictional company; pass --repo <directory> to read your own declarations repository
+resource:default/mysql-prod-01
+
+impacts (9)
+  ENTITY                                        TYPE             ENV   DEPTH  PATH
+  resource:default/billing-db-prod              database         prod  1      mysql-prod-01 ← billing-db-prod
+  resource:default/compliance-db-prod           database         prod  1      mysql-prod-01 ← compliance-db-prod
+  resource:default/orders-db-prod               database         prod  1      mysql-prod-01 ← orders-db-prod
+  resource:default/billing-api-billing-db-prod  database-access  prod  2      mysql-prod-01 ← billing-db-prod ← billing-api-billing-db-prod (readwrite)
+  resource:default/orders-api-orders-db-prod    database-access  prod  2      mysql-prod-01 ← orders-db-prod ← orders-api-orders-db-prod (readwrite)
+  resource:default/reporting-billing-db-prod    database-access  prod  2      mysql-prod-01 ← billing-db-prod ← reporting-billing-db-prod (read)
+  component:default/billing-api                 service          -     3      mysql-prod-01 ← billing-db-prod ← billing-api-billing-db-prod (readwrite) ← billing-api
+  component:default/orders-api                  service          -     3      mysql-prod-01 ← orders-db-prod ← orders-api-orders-db-prod (readwrite) ← orders-api
+  component:default/reporting-worker            service          -     3      mysql-prod-01 ← billing-db-prod ← reporting-billing-db-prod (read) ← reporting-worker
+```
+
+`show billing-api --demo` says what one entity is and what it depends on. A change comes
+back as the diff it would make. Here the plan is read from a file that stands where the
+model's draft would, so no model is involved; it still goes through the signature, the
+policies and the re-check against the repository, and the repository is left byte for
+byte as it was:
+
+```text
+$ node dist/cli/bin.js plan --from examples/declare-cache.json --repo fixtures/si-demo
+--- /dev/null
++++ b/catalog/caches/orders-cache-dev.yml
+@@ -0,0 +1,12 @@
++---
++apiVersion: backstage.io/v1alpha1
++kind: Resource
++metadata:
++  name: orders-cache-dev
++  annotations:
++    company.fr/env: dev
++spec:
++  type: cache
++  owner: group:default/tiger
++  dependsOn:
++    - resource:default/redis-shared-dev
+
+1 file · nothing written
+Nothing is provisioned yet. The merge is what authorises it.
+```
+
+`company.fr/env` is the demo company's annotation for an environment, and this build
+reads and writes that same annotation in every repository: it is not configurable yet.
+
+A value nobody can vouch for — in the request, or in the repository — is asked, never
+guessed. In a terminal the question comes at a prompt; piped or in CI, as here, it is
+printed and the run exits 3. [`examples/`](examples) lists every plan with its exit code.
+
+```text
+$ node dist/cli/bin.js plan --from examples/needs-an-owner.json --repo fixtures/si-demo
+1 question, asked rather than guessed:
+
+  operations.0.entity.spec.owner
+      nothing vouches for this owner; which one is it?
+      the draft says group:default/platform-wizards
+
+Fill them in and run this again. Nothing was previewed, and nothing was written.
+```
+
+## With your own key
+
+`idpa "<phrase>"` takes a question or a change, and the model decides which. It needs one
+provider, which you choose; none is the default.
+
+| `IDP_PROVIDER` | key variable | recorded with (`tests/recordings/`) |
+|---|---|---|
+| `openai` | `OPENAI_API_KEY` | `gpt-6-luna` — the plan tapes |
+| `mistral` | `MISTRAL_API_KEY` | `mistral-small-2603` — the question tapes |
+| `anthropic` | `ANTHROPIC_API_KEY` | no tape yet; what it is sent is checked by `tests/contract/providers.test.ts` |
+
+```bash
+pnpm link --global              # from the clone: idpa on your PATH (pnpm may ask for `pnpm setup` first; then open a new terminal)
+export IDP_PROVIDER=openai      # or mistral, anthropic
+export IDP_MODEL=<model id>
+export OPENAI_API_KEY=<your key>
+
+idpa "which databases are in prod?" --demo
+
+cp -R fixtures/si-demo ~/demo-iac && cd ~/demo-iac
+idpa "give reporting-worker read access to orders-db-prod in prod"
+```
+
+A question prints the engine's answer, with the model's sentences around it marked `›`. A
+change is decided against the declarations repository you stand in — a copy of the demo
+SI here, because a change is never previewed against the demo itself. What nobody can
+vouch for is asked at a prompt, the level of a grant always, and the diff follows.
+Neither writes anything. The CLI reads its environment and never loads a `.env` file:
+[`.env.example`](.env.example) lists every variable it reads, for
+`node --env-file=.env dist/cli/bin.js "<question>" --demo` from the clone. For a change,
+stand in the declarations repository and name the clone by path —
+`cd ~/demo-iac && node --env-file=<clone>/.env <clone>/dist/cli/bin.js "<change>"` — or
+pass `--project`: run from the clone, whose root holds a `package.json`, the Inspector
+would take idp-agent itself for the service and read it. A missing key is refused before
+any agent starts — `no key for openai: set OPENAI_API_KEY`, exit 2 — and the key is sent
+to its provider and nowhere else ([`SECURITY.md`](SECURITY.md)).
 
 ---
 
@@ -49,83 +151,12 @@ idp-agent sits between the two:
   your request or to what your repository already holds. Anything else becomes a question.
 - ✂️ **Minimal diffs.** It edits the text surgically and never reformats a file, so a
   reviewer sees one added line, not a reshuffled file.
-- 🧪 **Reproducible without an API key.** 2077 tests run offline from recordings: no
-  network, no cost, no flaky model.
+- 🧪 **Reproducible without an API key.** The whole suite runs offline from recordings:
+  no network, no cost, no flaky model.
 
 > Platform GitOps is the use case. The real subject is **how to build a reliable
 > multi-agent LLM system**: deterministic orchestration, structural guardrails, a closed
 > repair loop, and tests that never reach a model.
-
-## Demo
-
-<!-- TODO: replace with a screenshot or recording of the interactive run -->
-![Interactive plan preview](docs/assets/plan-preview.png)
-
-Try it in two minutes. No API key is needed, because `plan --from` reads a plan from a file
-and never calls a model:
-
-```bash
-git clone https://github.com/pcaboor/idp-agent && cd idp-agent
-pnpm install && pnpm build
-
-node dist/cli/bin.js init platform /tmp/my-iac --owner @acme/platform
-node dist/cli/bin.js plan --from examples/declare-database.json --repo /tmp/my-iac
-```
-
-```diff
---- /dev/null
-+++ b/catalog/databases/orders-db-prod.yml
-@@ -0,0 +1,10 @@
-+---
-+apiVersion: backstage.io/v1alpha1
-+kind: Resource
-+metadata:
-+  name: orders-db-prod
-+  annotations:
-+    company.fr/env: prod
-+spec:
-+  type: database
-+  owner: group:default/tiger
-
-1 file · nothing written
-Nothing is provisioned yet. The merge is what authorises it.
-```
-
-When it can't vouch for a value, it asks instead:
-
-```text
-$ idp-agent plan --from examples/needs-an-owner.json --repo /tmp/my-iac
-1 question, asked rather than guessed:
-
-  operations.0.entity.spec.owner
-      nothing vouches for this owner; which one is it?
-
-Fill them in and run this again. Nothing was previewed, and nothing was written.
-```
-
-Explore the dependency graph of a fictional information system (33 entities) without any
-model:
-
-```text
-$ idp-agent show billing-db-prod
-resource:default/billing-db-prod
-
-  kind         Resource
-  type         database
-  owner        group:default/tiger
-  environment  prod
-
-depends on
-  resource:default/mysql-prod-01  prod
-
-used by
-  resource:default/billing-api-billing-db-prod  prod
-  resource:default/reporting-billing-db-prod    prod
-
-reached by services
-  component:default/billing-api
-  component:default/reporting-worker
-```
 
 ## Relations
 
@@ -134,28 +165,12 @@ rights and who consumes it, what it depends on and what breaks if it fails, the 
 provides, and how two entities are related. Each row carries its whole path, the right on
 it and the level that right states, and the entity's own environment; a reference declared
 nowhere is shown where the path ends, beside the entity that has its name. No model and no
-key: try it on the fictional demo SI straight after `pnpm install && pnpm build`, with
-`node dist/cli/bin.js` standing for `idpa` until `pnpm link --global` puts it on your PATH.
-
-```text
-$ node dist/cli/bin.js relations mysql-prod-01 --impacts --demo
-resource:default/mysql-prod-01
-
-impacts (9)
-  ENTITY                                        TYPE             ENV   DEPTH  PATH
-  resource:default/billing-db-prod              database         prod  1      mysql-prod-01 ← billing-db-prod
-  resource:default/compliance-db-prod           database         prod  1      mysql-prod-01 ← compliance-db-prod
-  resource:default/orders-db-prod               database         prod  1      mysql-prod-01 ← orders-db-prod
-  resource:default/billing-api-billing-db-prod  database-access  prod  2      mysql-prod-01 ← billing-db-prod ← billing-api-billing-db-prod (readwrite)
-  resource:default/orders-api-orders-db-prod    database-access  prod  2      mysql-prod-01 ← orders-db-prod ← orders-api-orders-db-prod (readwrite)
-  resource:default/reporting-billing-db-prod    database-access  prod  2      mysql-prod-01 ← billing-db-prod ← reporting-billing-db-prod (read)
-  component:default/billing-api                 service          -     3      mysql-prod-01 ← billing-db-prod ← billing-api-billing-db-prod (readwrite) ← billing-api
-  component:default/orders-api                  service          -     3      mysql-prod-01 ← orders-db-prod ← orders-api-orders-db-prod (readwrite) ← orders-api
-  component:default/reporting-worker            service          -     3      mysql-prod-01 ← billing-db-prod ← reporting-billing-db-prod (read) ← reporting-worker
-```
+key; `--impacts` is on the first screen above, and `node dist/cli/bin.js` stands for `idpa`
+until `pnpm link --global` puts it on your PATH.
 
 ```text
 $ node dist/cli/bin.js relations reporting-worker --to mysql-prod-01 --demo
+reading the demo SI, a fictional company; pass --repo <directory> to read your own declarations repository
 component:default/reporting-worker
 
 paths to resource:default/mysql-prod-01 (1)
@@ -172,6 +187,7 @@ Two services neither of which depends on the other are still related when the fi
 
 ```text
 $ node dist/cli/bin.js relations reporting-worker --to billing-api --demo
+reading the demo SI, a fictional company; pass --repo <directory> to read your own declarations repository
 component:default/reporting-worker
 
 paths to component:default/billing-api (0)
@@ -268,6 +284,9 @@ pnpm install && pnpm build
 pnpm link --global          # exposes `idp-agent` and the short alias `idpa`
 ```
 
+`pnpm link --global` needs a global bin directory on your PATH; pnpm says so and names
+`pnpm setup`, which makes one, when there is none.
+
 <!-- TODO: once published
 ```bash
 npx idp-agent               # guided tour, no setup, no API key
@@ -275,18 +294,13 @@ npm install -g idp-agent
 ```
 -->
 
-**Requirements:** Node ≥ 22, pnpm 10. No Docker, no database, no API key.
-
-The model-backed commands (`idpa "<phrase>"`, `ask`, `plan "<intent>"`, `init`) need a
-provider. **None is configured by default**, and none is preferred:
-
-```bash
-export IDP_PROVIDER=anthropic   # or mistral, openai
-export IDP_MODEL=<model-id>
-export ANTHROPIC_API_KEY=...    # or MISTRAL_API_KEY, OPENAI_API_KEY: the provider's own
-export IDP_TIMEOUT=120          # optional: seconds one model call may take, 120 by default
-export IDP_SUPERVISOR_MODEL=<model-id>  # optional: the Supervisor's model, same provider; IDP_MODEL by default
-```
+**Requirements:** Node ≥ 22, pnpm 10. No Docker, no database, and no API key for anything
+but the model-backed commands (`idpa "<phrase>"`, `ask`, `plan "<intent>"`, `init`). Those
+need `IDP_PROVIDER`, `IDP_MODEL` and the provider's key, as [above](#with-your-own-key);
+**none is configured by default**, and none is preferred. Two settings are optional:
+`IDP_TIMEOUT`, the seconds one model call may take (120 by default), and
+`IDP_SUPERVISOR_MODEL`, the Supervisor's model on the same provider (`IDP_MODEL` by
+default). [`.env.example`](.env.example) explains every variable.
 
 The key is read from the provider's own variable and never from the repository. A missing
 key, an `IDP_TIMEOUT` that is not a positive number of seconds, or an `IDP_SUPERVISOR_MODEL`
@@ -329,7 +343,7 @@ idp-agent init platform <dir> --owner @org/team    # the only command that write
 idp-agent plan --from <plan.json> [--repo <dir>]   # no model, and none is possible
 idp-agent plan "<intent>" [--repo <dir>] [--json]  # needs IDP_PROVIDER, IDP_MODEL and its key
     [--project <dir>]                              # the service's repository, if not where you stand
-idp-agent init [--repo <dir>]                      # the catalog-info.yml it would write
+idp-agent init [--repo <dir>]                      # the catalog-info.yaml it would write
 ```
 
 | Command | What it does |
@@ -404,8 +418,8 @@ exists; its token will come from the environment, never from this file.
 
 The full doctrine is in [`docs/design.md`](docs/design.md) §4, and it isn't negotiable:
 
-- **The merge is the act of authorisation.** The CLI opens a pull request. It never writes
-  to the main branch.
+- **The merge is the act of authorisation.** The CLI will open a pull request (stage 6)
+  and never write to the main branch.
 - **Textual surgery, never a reparse.** A reviewer must see an added line, not a
   reformatted file.
 - **Declare, never infer.** What is unknown is reported as unknown. An automaton reports;
@@ -429,27 +443,30 @@ firewall automation and ticketing) and adds the multi-agent layer that system ne
 | 7 | Polish: Ink TUI, asciinema, npm publish | |
 
 The order follows the doctrine: read first, validate before the first write, preview
-before the pull request. Today **nothing is written**: the test suite and `pnpm smoke` hash
-every byte around a full run to prove it.
+before the pull request. Today **no preview writes anything** — the test suite and
+`pnpm smoke` hash every byte around a full run to prove it — and `init platform` writes
+only into the directory it is handed.
 
 What comes next and the owner's decisions: [`docs/roadmap.md`](docs/roadmap.md). What each pull request changed: [`CHANGELOG.md`](CHANGELOG.md).
 
 ## FAQ
 
 **Is this a Backstage plugin?**
-No. It's a standalone CLI that reads and writes Backstage-compatible `catalog-info` YAML in
-a Git repository. It doesn't need a running Backstage instance.
+No. It's a standalone CLI that reads Backstage-compatible `catalog-info` YAML in a Git
+repository, and previews what it would add; writing it is stage 5. It doesn't need a
+running Backstage instance.
 
 **Which LLMs does it support?**
 Anthropic, Mistral and OpenAI, chosen with `IDP_PROVIDER` and `IDP_MODEL`. None is the
 default.
 
 **Can the AI change my infrastructure on its own?**
-No. At most it proposes a diff. A human merges the pull request, and the merge is what
-triggers provisioning.
+No. At most it proposes a diff. Once stage 6 opens the pull request, a human merges it,
+and the merge is what triggers provisioning.
 
 **Do I need an API key to try it?**
-No. The tests, `graph`, `show` and `plan --from` all run without a model.
+No. `pnpm demo`, the tests, `graph`, `show`, `relations`, `validate`, `init platform` and
+`plan --from` all run without a model. A question or a change in words needs one.
 
 ## Documentation
 
