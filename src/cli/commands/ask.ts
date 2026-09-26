@@ -127,7 +127,7 @@ async function answered(
   if (answer.outcome === 'unanswerable' || options.quiet === true) return result
 
   const commentary = checkCommentary(answer, {
-    entities: graph.all().map(known),
+    entities: graph.all().map((entity) => known(graph, entity, tools.declaredNowhere)),
     witnessed,
     vocabulary: [
       ...vocabulary.kinds,
@@ -203,8 +203,25 @@ function renderEntities(
 /**
  * An entity as the commentary check needs it: every reference and name the
  * graph holds, and what each declares that a sentence about it may quote.
+ *
+ * A reference it declares and nothing answers to is one of those values once
+ * a result showed it, marked `declared: false` (`shown`, the tools'
+ * `declaredNowhere`), so "the right names component:default/payments-api,
+ * which is declared nowhere" says what was read. Not before: an entity is
+ * witnessed without its row being read — as an API's provider, or as what
+ * declares another reference — and a value is quoted by its bare name too,
+ * which is the name of the entity it is mistaken for; allowing it unread
+ * would let a sentence name that entity with no tool having returned it. A
+ * result that shows the reference returns those entities with it
+ * (`sameName`). The references that DO resolve are not values at all: each
+ * names an entity of the graph, and a sentence may name one only once a tool
+ * returned it — which a row of the declaring entity does not do.
  */
-function known(entity: CatalogueEntity): KnownEntity {
+function known(
+  graph: EntityGraph,
+  entity: CatalogueEntity,
+  shown: ReadonlySet<string>,
+): KnownEntity {
   const env = entity.metadata.annotations[ENV_ANNOTATION]
   const access = entity.kind === 'Resource' ? entity.spec.access : undefined
   // A Component's and an API's lifecycle both; an API's definition is not a
@@ -221,6 +238,9 @@ function known(entity: CatalogueEntity): KnownEntity {
       ...(lifecycle === undefined ? [] : [lifecycle]),
       ...(access === undefined ? [] : [access]),
       ...(entity.metadata.tags ?? []),
+      ...graph
+        .unresolvedOf(refOf(entity))
+        .flatMap(({ to }) => (shown.has(to) ? [to] : [])),
     ],
   }
 }

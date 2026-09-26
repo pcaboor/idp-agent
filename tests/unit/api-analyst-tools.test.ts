@@ -129,6 +129,17 @@ describe("the Analyst's registry", () => {
         env: 'prod',
         owner: 'group:default/tiger',
         provides: ['api:default/billing'],
+        // Declared, and naming no API: said apart from what it provides, and
+        // marked, so it is never read as a second API.
+        danglingReferences: [
+          {
+            ref: 'api:default/ghost',
+            declared: false,
+            field: 'providesApis',
+            declaredBy: 'component:default/billing-api',
+            sameName: [],
+          },
+        ],
       },
     ])
     // Returned by the engine, so it may be answered with; the dangling one was not.

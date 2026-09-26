@@ -27,12 +27,56 @@ const dependsOnOf = (entity: CatalogueEntity): string[] =>
 const providesOf = (entity: CatalogueEntity): string[] =>
   entity.kind === 'Component' ? (entity.spec.providesApis ?? []) : []
 
+/** The consumers a Resource declares it is a dependency of. Nothing else declares one. */
+const dependencyOfOf = (entity: CatalogueEntity): string[] =>
+  entity.kind === 'Resource' ? (entity.spec.dependencyOf ?? []) : []
+
+/** The three fields a reference to another entity is declared in. */
+export type DeclaredField = 'dependsOn' | 'dependencyOf' | 'providesApis'
+
+/**
+ * A reference an entity declares and nothing in the catalogue answers to: a
+ * dangling reference, with what the graph can say about it and no more.
+ */
+export interface Unresolved {
+  /** The entity whose file declares it. */
+  readonly from: string
+  readonly field: DeclaredField
+  /** The reference as the reader normalised it (`entitySchema`), never corrected. */
+  readonly to: string
+  /**
+   * The entities whose name is the reference's own, under another kind or
+   * namespace, sorted — none, one or several. Said beside it, never put in
+   * its place: that `component:` meant `resource:` is a guess (design 4.1).
+   */
+  readonly sameName: readonly string[]
+}
+
+/**
+ * The name part of a reference: after the `/` of `kind:namespace/name`, or
+ * the `:` of `kind:name`. A `providesApis` the grammar could not split is kept
+ * as written, and is its own name.
+ */
+const nameOf = (ref: string): string => {
+  const slash = ref.lastIndexOf('/')
+  if (slash !== -1) return ref.slice(slash + 1)
+  return ref.slice(ref.indexOf(':') + 1)
+}
+
 export class EntityGraph {
   private readonly byRef: Map<string, CatalogueEntity>
   private readonly dependants: Map<string, Set<string>>
   private readonly derived: Map<string, Set<string>>
   /** API reference → the components that declare they provide it. */
   private readonly providers: Map<string, Set<string>>
+  /**
+   * Every reference declared that resolves to nothing, entity by entity in the
+   * order given, and each entity's in file order, field by field: the one
+   * reading of "dangling" every command shares. `unresolved` indexes it.
+   */
+  private readonly dangling: Unresolved[]
+  /** Entity reference → its own entries of `dangling`, the entity `get` returns. */
+  private readonly unresolved: Map<string, Unresolved[]>
 
   private constructor(
     private readonly entities: CatalogueEntity[],
@@ -42,6 +86,8 @@ export class EntityGraph {
     this.dependants = new Map()
     this.derived = new Map()
     this.providers = new Map()
+    this.dangling = []
+    this.unresolved = new Map()
 
     // A dependency is declared from either side: `dependsOn` on the consumer, or
     // `dependencyOf` on the access. Which side wrote the edge down decides which
@@ -63,6 +109,33 @@ export class EntityGraph {
           this.link(this.derived, consumer, ref)
         }
       }
+    }
+
+    // What declares a name, whatever its kind: said beside a reference that
+    // resolves to nothing, so the reader sees the near miss and decides.
+    const byName = new Map<string, string[]>()
+    for (const ref of this.byRef.keys()) {
+      const name = nameOf(ref)
+      byName.set(name, [...(byName.get(name) ?? []), ref])
+    }
+    for (const entity of entities) {
+      const from = refOf(entity)
+      const declared: Array<[DeclaredField, string[]]> = [
+        ['dependsOn', dependsOnOf(entity)],
+        ['dependencyOf', dependencyOfOf(entity)],
+        ['providesApis', providesOf(entity)],
+      ]
+      const found: Unresolved[] = []
+      for (const [field, targets] of declared) {
+        for (const to of targets) {
+          if (this.byRef.has(to) || this.aside.has(to)) continue
+          const sameName = [...(byName.get(nameOf(to)) ?? [])].sort()
+          found.push({ from, field, to, sameName })
+        }
+      }
+      this.dangling.push(...found)
+      // Keyed as `byRef` is, so a duplicate is read as `get` reads it: the last.
+      this.unresolved.set(from, found)
     }
   }
 
@@ -193,18 +266,56 @@ export class EntityGraph {
    * must never be answered by an entity that no longer exists (design 4.4).
    */
   danglingReferences(): Array<{ from: string; to: string }> {
-    const dangling: Array<{ from: string; to: string }> = []
-    for (const entity of this.entities) {
-      const from = refOf(entity)
-      const targets = [
-        ...dependsOnOf(entity),
-        ...(entity.kind === 'Resource' ? (entity.spec.dependencyOf ?? []) : []),
-        ...providesOf(entity),
-      ]
-      for (const to of targets) {
-        if (!this.byRef.has(to) && !this.aside.has(to)) dangling.push({ from, to })
+    return this.dangling.map(({ from, to }) => ({ from, to }))
+  }
+
+  /**
+   * What an entity declares that resolves to nothing, in file order — all of
+   * it, or one field's. Shown where the entity's relations are shown, marked
+   * as declared nowhere: a relation the file states is part of what the
+   * entity says, broken or not, and leaving it off a card makes the card
+   * answer "nothing declared" about a file that declares something.
+   *
+   * Nothing here is resolved: no edge is added, and no query above answers
+   * with it.
+   */
+  unresolvedOf(ref: string, field?: DeclaredField): Unresolved[] {
+    const all = this.unresolved.get(ref) ?? []
+    return field === undefined ? [...all] : all.filter((found) => found.field === field)
+  }
+
+  /**
+   * The services declared along the walk `consumersOf` takes that nothing
+   * declares: the `dependencyOf` of the target and of every right or object
+   * reached through it, in the order met. A service named by a right and
+   * declared nowhere is still named — as reaching nothing, since nothing is
+   * there to reach. Only a `component:` one: what `consumersOf` would list
+   * if it resolved. A missing Resource would be walked through, not listed,
+   * and saying it reaches the target as a service is a statement no file
+   * makes; it is shown where its right's own `dependencyOf` is.
+   */
+  unresolvedConsumersOf(ref: string): Unresolved[] {
+    if (!this.byRef.has(ref)) return []
+    const seen = new Set<string>([ref])
+    const queue = [ref]
+    const found: Unresolved[] = []
+
+    while (queue.length > 0) {
+      const current = queue.shift()
+      if (current === undefined) break
+      found.push(
+        ...this.unresolvedOf(current, 'dependencyOf').filter(({ to }) =>
+          to.startsWith('component:'),
+        ),
+      )
+      for (const dependant of this.dependantsOf(current)) {
+        const dependantRef = refOf(dependant)
+        if (seen.has(dependantRef)) continue
+        seen.add(dependantRef)
+        if (dependant.kind !== 'Component') queue.push(dependantRef)
       }
     }
-    return dangling
+
+    return found
   }
 }

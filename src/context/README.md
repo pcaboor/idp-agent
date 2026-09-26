@@ -31,7 +31,21 @@ ending `validate` on a stack trace. Throwing would lose every valid entity becau
 swallowing is what the catalogue does — it ignores duplicates in silence (design.md § 4.4)
 and reports nothing for what it could not ingest — and a tool that inherits the failure mode
 it exists to prevent is worth nothing.
-`EntityGraph.danglingReferences()` obeys the same rule: reported, never pruned.
+`EntityGraph.danglingReferences()` obeys the same rule: reported, never pruned — and shown
+where the relations it breaks are shown, never resolved by guess. The graph keeps, per
+entity, each reference it declares in `dependsOn`, `dependencyOf` or `providesApis` that
+resolves to nothing — no entity, no document set aside — as an `Unresolved`: who declares
+it, the field, the reference as the reader normalised it, and `sameName`, the entities whose
+name is its own under another kind or namespace (an exact name; none, one or several).
+`unresolvedOf(ref, field?)` reads an entity's, and `unresolvedConsumersOf(ref)` the
+services the rights and objects on `consumersOf`'s walk name and nothing declares — a
+service that walk cannot reach, since nothing is there. Only `component:` references: what
+`consumersOf` would list if they resolved; a missing Resource would be walked through, and
+stays on its right's own `dependencyOf`. `danglingReferences()` is that
+list flattened, so the summary, `graph`, the overview, `show`'s card and the Analyst's rows
+share one definition. No edge is added and no query answers differently: a
+`component:default/payments-api` beside a `resource:default/payments-api` is named, not
+corrected.
 
 `graph/overview.ts`'s `overviewOf(graph, unread)` is the data behind `ask`'s `overview` answer,
 computed here and rendered in `cli/`: exact counts by kind, type, environment (undeclared, or

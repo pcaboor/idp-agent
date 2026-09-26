@@ -81,6 +81,15 @@ follows from the documentation of the tools involved.
   nothing in staging: two distinct entities.
 - **Declare, never infer.** What the catalogue does not know is reported as unknown,
   never filled in with a plausible value.
+- **A reference naming nothing is shown, never resolved by guess.** A declaration's
+  `dependsOn`, `dependencyOf` or `providesApis` naming no entity is part of what the file
+  says: it is listed where that entity's relations are listed — `show`'s card, the
+  Analyst's rows — marked as declared nowhere, beside the entities that share its name
+  under another kind or namespace, if any. Leaving it off made a card read "nothing
+  declared" of a file that declared something, and an answer built on that card say "no
+  dependency" when a right named a consumer that does not exist. Naming the homonym is
+  as far as the engine goes: that `component:default/payments-api` meant the
+  `resource:default/payments-api` beside it is a guess, and the reviewer's to make.
 - **The read model is wider than the write model.** This tool proposes and files two
   kinds, Component and Resource, and a catalogue holds more. Backstage's own `kind: API`
   is **read**: a node of the graph, held to what Backstage requires of one — a type, a

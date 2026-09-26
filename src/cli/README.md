@@ -56,6 +56,19 @@ included; the rights over it and the services they reach are listed as for any o
 Component's card has a `provides` section only when it provides an API, and another kind's a
 `provided by` only when a `providesApis` names it — Backstage keeps an explicit kind as
 written — so every other card reads as it did.
+A reference the entity declares and nothing in the catalogue answers to — a dangling one,
+as `graph` and `validate` count them — is listed in the section of its relation, after what
+resolves, one per line and marked where an environment would be: `declared nowhere`, and
+`; resource:default/payments-api has this name` when entities of its name exist under
+another kind or namespace. A `dependsOn` in `depends on`, a `dependencyOf` in `used by`, a
+`providesApis` in `provides` (which then appears for it alone), and every service the
+rights reaching an object name and nothing declares in `reached by services`, once each —
+a `component:` one only, since a missing Resource is not a service and stays under its
+right's `used by`. A reference longer than an entity's can be (`providesApis` keeps one the
+grammar cannot split as written) sets no column: it is printed with its marker after it.
+Beside, never in place of: which entity was meant, if any, is the reader's to decide (design
+§4.1). A card with nothing dangling reads as it did, byte for byte
+(`tests/unit/dangling-shown.test.ts`).
 `renderOverview(overview, source)` is the text of `ask`'s `overview` answer: the model
 chose it, and every word of it is written here from `context/graph/overview.ts`'s figures —
 a headline naming the demo SI or the repository by its folder, then short sections, each list cut
