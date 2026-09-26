@@ -285,14 +285,19 @@ export IDP_PROVIDER=anthropic   # or mistral, openai
 export IDP_MODEL=<model-id>
 export ANTHROPIC_API_KEY=...    # or MISTRAL_API_KEY, OPENAI_API_KEY: the provider's own
 export IDP_TIMEOUT=120          # optional: seconds one model call may take, 120 by default
+export IDP_SUPERVISOR_MODEL=<model-id>  # optional: the Supervisor's model, same provider; IDP_MODEL by default
 ```
 
 The key is read from the provider's own variable and never from the repository. A missing
-key, or an `IDP_TIMEOUT` that is not a positive number of seconds, is refused with exit 2
-before any agent starts. A model call that cannot succeed ends the run with one line and
-exit 1: it did not answer within `IDP_TIMEOUT`, the provider refused the key, rate-limited
-the call or failed, the request outgrew the model's context window, or the model hit its
-output limit or a content filter before answering.
+key, an `IDP_TIMEOUT` that is not a positive number of seconds, or an `IDP_SUPERVISOR_MODEL`
+holding a space or a control character, is refused with exit 2 before any agent starts.
+The Supervisor only classifies a phrase as a question or a change, so its calls ask for a
+low reasoning effort where the model takes one (an OpenAI reasoning model; the rule is in
+[`src/llm/README.md`](src/llm/README.md)), and `IDP_SUPERVISOR_MODEL` can give it a
+lighter model of the same provider and key. A model call that cannot succeed ends the run
+with one line and exit 1: it did not answer within `IDP_TIMEOUT`, the provider refused the
+key, rate-limited the call or failed, the request outgrew the model's context window, or
+the model hit its output limit or a content filter before answering.
 
 ## Commands
 
@@ -358,9 +363,10 @@ directory, is a declarations repository, is the `--repo` directory or one of its
 
 **Exit codes:** `0` success · `1` negative answer (nothing matched, the repository doesn't
 conform, or a gate refused the plan), or a model call that failed · `2` bad arguments, or no
-model, no key or no usable `IDP_TIMEOUT` configured · `3` understood but not acted on: a
-change request put to `ask`, a question the model refused, or a value nobody can vouch
-for. An ambiguous name resolves to nothing rather than to the first candidate.
+model, no key or no usable `IDP_TIMEOUT` or `IDP_SUPERVISOR_MODEL` configured · `3`
+understood but not acted on: a change request put to `ask`, a question the model refused,
+or a value nobody can vouch for. An ambiguous name resolves to nothing rather than to the
+first candidate.
 
 ### Use it from anywhere
 

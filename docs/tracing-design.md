@@ -241,7 +241,8 @@ interface TraceSink { name: string; export(trace: Trace): Promise<void> }
   sequences — a diff may be coloured, and MLflow's preview prints them as they are — or
   `{ exitCode, error }`.
 - `openSession` hands the root its attributes: `idp.mode`, plus `idp.scenario`, `idp.provider`
-  and `idp.model` when it knows them.
+  and `idp.model` when it knows them, and `idp.supervisor.model` when `IDP_SUPERVISOR_MODEL`
+  gave the Supervisor a model of its own — `idp.model` is then every other call's.
 - The root's `inputs` carry the resolved repositories: `plan`'s `repo` and `project`, and
   `entry`'s when it found them. When `plan` skips the Inspector — the working directory is not a
   service's — there is no `project` key, and the root says so: `idp.inspector: 'skipped'`, with

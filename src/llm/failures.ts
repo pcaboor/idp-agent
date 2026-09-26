@@ -28,7 +28,8 @@ export interface Callee {
 }
 
 /**
- * The model comes from IDP_MODEL, or from a tape, and is in every line below:
+ * The model comes from IDP_MODEL — IDP_SUPERVISOR_MODEL for a Supervisor call
+ * that was given one — or from a tape, and is in every line below:
  * printed as it came, a value carrying an escape would reach the terminal.
  */
 const nameOf = (callee: Callee): string => printable(`${callee.provider} ${callee.model}`)

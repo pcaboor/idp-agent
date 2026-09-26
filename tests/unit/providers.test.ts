@@ -5,6 +5,7 @@ import {
   ModelSettingError,
   NoModelConfiguredError,
   PROVIDER_NAMES,
+  agentModelsOf,
   chooseModel,
   timeoutOf,
 } from '../../src/llm/providers.js'
@@ -110,6 +111,46 @@ describe('timeoutOf', () => {
       message = error instanceof Error ? error.message : ''
     }
     expect(message).toContain('IDP_TIMEOUT')
+    expect(message).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/)
+    expect(message).toContain('\\u001b[2J\\nx\\u009b1m')
+  })
+})
+
+describe('agentModelsOf', () => {
+  // The Supervisor answers one word, and a run may give it a lighter model of
+  // the same provider. Unset, it is IDP_MODEL's, like every other agent: no
+  // model name is chosen here on anyone's behalf.
+  const choice = { provider: 'openai' as const, model: 'the-default-model' }
+
+  it('gives no agent a model of its own when IDP_SUPERVISOR_MODEL is unset or empty', () => {
+    expect(agentModelsOf({}, choice)).toEqual({})
+    expect(agentModelsOf({ IDP_SUPERVISOR_MODEL: '' }, choice)).toEqual({})
+  })
+
+  it("gives the Supervisor IDP_SUPERVISOR_MODEL, on IDP_PROVIDER's provider, and no one else", () => {
+    expect(agentModelsOf({ IDP_SUPERVISOR_MODEL: 'a-lighter-model' }, choice)).toEqual({
+      supervisor: { provider: 'openai', model: 'a-lighter-model' },
+    })
+  })
+
+  it.each([' ', 'a model', 'model\n', '\tmodel'])(
+    'refuses IDP_SUPERVISOR_MODEL=%j as a bad setting, naming the variable',
+    (raw) => {
+      expect(() => agentModelsOf({ IDP_SUPERVISOR_MODEL: raw }, choice)).toThrow(ModelSettingError)
+      expect(() => agentModelsOf({ IDP_SUPERVISOR_MODEL: raw }, choice)).toThrow(
+        /IDP_SUPERVISOR_MODEL/,
+      )
+    },
+  )
+
+  it('quotes a refused value so it cannot write to the terminal', () => {
+    let message = ''
+    try {
+      agentModelsOf({ IDP_SUPERVISOR_MODEL: 'm\u001b[2J\nx\u009b1m' }, choice)
+    } catch (error) {
+      message = error instanceof Error ? error.message : ''
+    }
+    expect(message).toContain('IDP_SUPERVISOR_MODEL')
     expect(message).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/)
     expect(message).toContain('\\u001b[2J\\nx\\u009b1m')
   })

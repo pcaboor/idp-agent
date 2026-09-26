@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent } from '../../src/agents/events.js'
 import { main, type MainDeps } from '../../src/cli/index.js'
 import type { LlmClient } from '../../src/llm/client.js'
+import { memorySink, onlyTrace } from '../support/trace.js'
 
 /**
  * A model call that cannot succeed, seen from the command line: one line on
@@ -60,6 +61,7 @@ const failureLines = (err: string): string[] =>
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
+  vi.restoreAllMocks()
 })
 
 describe('a missing key', () => {
@@ -139,6 +141,100 @@ describe('IDP_TIMEOUT', () => {
       'openai gpt-6-luna did not answer within 0.05 s; set IDP_TIMEOUT=<seconds> to wait longer',
     ])
     expect(calls).toBe(1)
+  })
+})
+
+describe('IDP_SUPERVISOR_MODEL', () => {
+  const configured = {
+    IDP_PROVIDER: 'openai',
+    IDP_MODEL: 'gpt-6-luna',
+    OPENAI_API_KEY: 'test-key-not-a-real-one',
+  }
+
+  it('is refused with exit 2, naming itself, before any agent runs', async () => {
+    const { code, err, events } = await run(['ask', 'which databases are in prod?'], {
+      env: { ...configured, IDP_SUPERVISOR_MODEL: 'a lighter model' },
+    })
+
+    expect(code).toBe(2)
+    expect(err).toContain('IDP_SUPERVISOR_MODEL')
+    expect(events).toEqual([])
+  })
+
+  /** A live `ask` of a change: the Supervisor's is the only call of the run. */
+  const classifying = async (env: Record<string, string>) => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-key-not-a-real-one')
+    vi.stubEnv('OPENAI_BASE_URL', undefined)
+    const models: unknown[] = []
+    vi.stubGlobal('fetch', async (_: unknown, init?: { body?: unknown }): Promise<Response> => {
+      models.push((JSON.parse(String(init?.body)) as { model?: unknown }).model)
+      return new Response(
+        JSON.stringify({
+          id: 'resp_01',
+          object: 'response',
+          created_at: 0,
+          status: 'completed',
+          model: 'whichever',
+          output: [
+            {
+              type: 'message',
+              id: 'msg_01',
+              role: 'assistant',
+              status: 'completed',
+              content: [{ type: 'output_text', text: 'MUTATION', annotations: [] }],
+            },
+          ],
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    })
+    const sink = memorySink()
+    const { code } = await run(['ask', 'give billing-api read access to billing-db'], {
+      env: { ...configured, ...env },
+      traceSinks: [sink],
+    })
+    const root = onlyTrace(sink).spans.find((span) => span.parentId === undefined)
+    return { code, models, attributes: root?.attributes }
+  }
+
+  it("is the model the Supervisor's call goes to, and the trace says so beside IDP_MODEL", async () => {
+    const { code, models, attributes } = await classifying({
+      IDP_SUPERVISOR_MODEL: 'gpt-6-luna-mini',
+    })
+
+    expect(code).toBe(3)
+    expect(models).toEqual(['gpt-6-luna-mini'])
+    expect(attributes).toMatchObject({
+      'idp.model': 'gpt-6-luna',
+      'idp.supervisor.model': 'gpt-6-luna-mini',
+    })
+  })
+
+  it('prints no SDK warning when the Supervisor calls a model that does not reason', async () => {
+    // The SDK prints what its adapter drops as a Node process warning, on
+    // stderr, unless AI_SDK_LOG_WARNINGS says otherwise — and the CLI leaves
+    // it alone. gpt-4o was handed a low effort it would drop, and every run
+    // printed "The feature "reasoningEffort" is not supported" for it.
+    vi.stubGlobal('AI_SDK_LOG_WARNINGS', undefined)
+    const warned: string[] = []
+    vi.spyOn(process, 'emitWarning').mockImplementation((warning: string | Error) => {
+      warned.push(String(warning))
+    })
+    const { code, models } = await classifying({ IDP_MODEL: 'gpt-4o' })
+
+    expect(code).toBe(3)
+    expect(models).toEqual(['gpt-4o'])
+    expect(warned).toEqual([])
+  })
+
+  it("leaves the Supervisor on IDP_MODEL when it is unset, and the trace with one model", async () => {
+    const { code, models, attributes } = await classifying({})
+
+    expect(code).toBe(3)
+    expect(models).toEqual(['gpt-6-luna'])
+    expect(attributes).toMatchObject({ 'idp.model': 'gpt-6-luna' })
+    expect(attributes).not.toHaveProperty('idp.supervisor.model')
   })
 })
 
