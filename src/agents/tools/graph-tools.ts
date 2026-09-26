@@ -3,10 +3,12 @@ import type { CatalogueEntity } from '../../core/schemas/entity.js'
 import {
   QUERY_LIMITS,
   answerSchema,
+  answerSchemaWithoutRelation,
   apiSearchCriteriaSchema,
   getApisInputSchema,
   getDependenciesInputSchema,
   getEntityInputSchema,
+  getRelationsInputSchema,
   searchCriteriaSchema,
   type SearchCriteria,
 } from '../../core/schemas/query.js'
@@ -18,6 +20,15 @@ import {
   type EntityGraph,
   type Unresolved,
 } from '../../context/graph/entity-graph.js'
+import {
+  RELATION_LIMITS,
+  reachedBy,
+  relationsOf,
+  type Meeting,
+  type RelationResult,
+  type RelationRow,
+  type Step,
+} from '../../context/graph/relations.js'
 import type { ModelToolCall, ModelToolSpec } from '../../llm/client.js'
 
 export interface ToolOutcome {
@@ -249,6 +260,93 @@ function unusedCriteria(graph: EntityGraph, criteria: SearchCriteria): string[] 
   return unused
 }
 
+/**
+ * One step of a path as the Analyst reads it: the entity, its environment —
+ * `(undeclared)` when it declares none, as a row says it — and, on a right,
+ * that it is one and the level it states when its type states one
+ * (`accessOf`'s rule: a `network-access` has no level to state).
+ */
+interface PathStep {
+  ref: string
+  kind: string
+  type: string
+  env: string
+  right?: true
+  access?: string
+}
+
+/** A row of `get_relations`: what was reached, how far, and the whole path to it. */
+interface RelationReading {
+  ref: string
+  kind: string
+  type: string
+  env: string
+  access?: string
+  depth: number
+  path: PathStep[]
+  /** `between` only: which of the two depends on the other. */
+  direction?: string
+}
+
+const pathStepOf = (step: Step): PathStep => ({
+  ref: step.ref,
+  kind: step.kind ?? UNDECLARED,
+  type: step.type ?? UNDECLARED,
+  env: step.env ?? UNDECLARED,
+  ...(step.right === undefined ? {} : { right: true as const }),
+  ...(step.right?.levelled === true ? { access: step.right.level ?? UNDECLARED } : {}),
+})
+
+const FORWARD = 'the first entity depends on the last'
+const BACKWARD = 'the last entity depends on the first'
+
+/** `between`'s entity both ends reach, as the Analyst reads it: which way, and the path from each end. */
+interface SharedReading {
+  both: string
+  ref: string
+  kind: string
+  type: string
+  env: string
+  access?: string
+  paths: [PathStep[], PathStep[]]
+}
+
+const BOTH: Record<Meeting['relation'], string> = {
+  'depends-on': 'both depend on it',
+  impacts: 'it depends on both',
+}
+
+function sharedOf(meeting: Meeting): SharedReading {
+  const [mine, theirs] = meeting.paths
+  const { ref, kind, type, env, access } = pathStepOf(reachedBy(mine))
+  return {
+    both: BOTH[meeting.relation],
+    ref,
+    kind,
+    type,
+    env,
+    ...(access === undefined ? {} : { access }),
+    paths: [mine.steps.map(pathStepOf), theirs.steps.map(pathStepOf)],
+  }
+}
+
+function readingOf(result: RelationResult, row: RelationRow): RelationReading {
+  const path = row.steps.map(pathStepOf)
+  const { ref, kind, type, env, access } = path[path.length - 1] as PathStep
+  return {
+    ref,
+    kind,
+    type,
+    env,
+    ...(access === undefined ? {} : { access }),
+    depth: row.steps.length - 1,
+    path,
+    ...(result.relation === 'between'
+      ? { direction: row.backward === true ? BACKWARD : FORWARD }
+      : {}),
+  }
+}
+
 export function buildTools(
   graph: EntityGraph,
   options: {
@@ -372,6 +470,76 @@ export function buildTools(
     }
   }
 
+  /**
+   * A relation's rows, bounded as every result is, with what the walk could
+   * not follow said beside them. Every entity on a path is one the engine
+   * returned, so every one is witnessed — the rights and objects in the
+   * middle of a path as much as its end. A step declared nowhere is beside
+   * the rows, under `danglingReferences` as a row's are, with the path that
+   * led to it; its reference joins `declaredNowhere`, never `witnessed`.
+   * `between`'s near misses are such steps, and are listed there too, never
+   * among the paths. The cycles are bounded as the rows are, and only what
+   * the model is shown is witnessed.
+   */
+  const related = (result: RelationResult): ToolOutcome => {
+    witnessed.add(result.subject.ref)
+    if (result.to !== undefined) witnessed.add(result.to.ref)
+    const rows: RelationReading[] = []
+    const dangling: Array<Dangling & { path: PathStep[] }> = []
+    for (const row of [...result.rows, ...(result.nearMisses?.rows ?? [])]) {
+      const reached = reachedBy(row)
+      const before = reached.nowhere === undefined ? row.steps : row.steps.slice(0, -1)
+      for (const step of before) witnessed.add(step.ref)
+      if (reached.nowhere === undefined) {
+        rows.push(readingOf(result, row))
+        continue
+      }
+      const shown = danglingOf(reached.nowhere)
+      declaredNowhere.add(shown.ref)
+      for (const entity of [shown.declaredBy, ...shown.sameName]) witnessed.add(entity)
+      dangling.push({ ...shown, path: before.map(pathStepOf) })
+    }
+    const shared = result.shared?.rows ?? []
+    for (const meeting of shared) {
+      for (const row of meeting.paths) for (const step of row.steps) witnessed.add(step.ref)
+    }
+    // A cycle names entities of the graph too, each one the walk returned.
+    const cycles = result.cycles.slice(0, RELATION_LIMITS.cycles)
+    for (const cycle of cycles) for (const ref of cycle) witnessed.add(ref)
+    const truncated = result.total - result.rows.length
+    const cut = (list: { rows: readonly unknown[]; total: number } | undefined): number =>
+      list === undefined ? 0 : list.total - list.rows.length
+    const moreCycles = result.cycles.length - cycles.length
+    return {
+      result: {
+        relation: result.relation,
+        subject: pathStepOf(result.subject),
+        ...(result.to === undefined ? {} : { to: pathStepOf(result.to) }),
+        rows,
+        ...(truncated > 0 ? { truncated: `${truncated} more not shown` } : {}),
+        ...(shared.length === 0 ? {} : { shared: shared.map(sharedOf) }),
+        ...(cut(result.shared) > 0
+          ? { sharedTruncated: `${cut(result.shared)} more not shown` }
+          : {}),
+        ...(result.stopped
+          ? { stoppedAtDepth: `${result.depth}: hops further than this were not followed` }
+          : {}),
+        ...(result.exhausted === true
+          ? { searchExhausted: 'the search stopped before it finished; there may be more paths' }
+          : {}),
+        ...(cycles.length === 0 ? {} : { cycles: cycles.map((cycle) => [...cycle]) }),
+        ...(moreCycles > 0 ? { moreCycles: `${moreCycles} more cycles not shown` } : {}),
+        ...(dangling.length === 0 ? {} : { danglingReferences: dangling }),
+        ...(cut(result.nearMisses) > 0
+          ? { nearMissesTruncated: `${cut(result.nearMisses)} more not shown` }
+          : {}),
+      },
+      rows: rows.length,
+      truncated,
+      ...(dangling.length === 0 ? {} : { dangling: dangling.length }),
+    }
+  }
+
   const search = apis ? apiSearchCriteriaSchema : searchCriteriaSchema
   const specs: ModelToolSpec[] = [
     {
@@ -399,6 +567,20 @@ export function buildTools(
     ...(apis
       ? [
           {
+            name: 'get_relations',
+            description:
+              "Trace one entity's relations through the declarations, several hops deep. Each " +
+              'row is an entity reached, with its depth and its whole path: every step with its ' +
+              'environment, and each right on it with the level it states. "consumes": what it ' +
+              'reaches through its access rights; "consumed-by": the services that reach it; ' +
+              '"depends-on": everything it needs; "impacts": everything that needs it, what is ' +
+              'affected if it fails; "provides" / "provided-by": Backstage APIs; "between" with ' +
+              '"to": every path where one depends on the other, and where there is none, the ' +
+              'nearest entities both reach ("shared"). A step declared nowhere is listed beside ' +
+              'the rows. Returns at most 25 rows and says so when it cut them or stopped at a depth.',
+            parameters: getRelationsInputSchema,
+          },
+          {
             name: 'get_apis',
             description:
               'Read who provides a Backstage API: "provides" for the APIs a component ' +
@@ -409,16 +591,32 @@ export function buildTools(
           },
         ]
       : []),
-    {
-      name: 'answer',
-      description:
-        'End the search. Give outcome "entities" with the references you actually read, ' +
-        '"nothing" if no entity matches, "overview" when asked to describe or summarise ' +
-        'the catalogue as a whole (the engine writes it; never "unanswerable" for that), ' +
-        'or "unanswerable" with a reason if the question cannot be answered from this ' +
-        'catalogue. You must call this to finish.',
-      parameters: answerSchema,
-    },
+    // The Analyst's answer can name a relation; the one on the Architect's
+    // registry is the one its golden holds (`answerSchemaWithoutRelation`).
+    apis
+      ? {
+          name: 'answer',
+          description:
+            'End the search. Give outcome "entities" with the references you actually read, ' +
+            '"relation" with "ref" and "relation" (and "to" for "between") when asked what an ' +
+            'entity consumes, what uses it, what it depends on, what breaks if it fails, what ' +
+            'it provides or how two entities are related (the engine writes every path), ' +
+            '"nothing" if no entity matches, "overview" when asked to describe or summarise ' +
+            'the catalogue as a whole (the engine writes it; never "unanswerable" for that), ' +
+            'or "unanswerable" with a reason if the question cannot be answered from this ' +
+            'catalogue. You must call this to finish.',
+          parameters: answerSchema,
+        }
+      : {
+          name: 'answer',
+          description:
+            'End the search. Give outcome "entities" with the references you actually read, ' +
+            '"nothing" if no entity matches, "overview" when asked to describe or summarise ' +
+            'the catalogue as a whole (the engine writes it; never "unanswerable" for that), ' +
+            'or "unanswerable" with a reason if the question cannot be answered from this ' +
+            'catalogue. You must call this to finish.',
+          parameters: answerSchemaWithoutRelation,
+        },
   ]
 
   return {
@@ -474,6 +672,24 @@ export function buildTools(
         }
         const _exhaustive: never = direction
         return _exhaustive
+      }
+
+      if (call.name === 'get_relations' && apis) {
+        const parsed = getRelationsInputSchema.safeParse(call.args)
+        if (!parsed.success) return failed('get_relations', parsed.error)
+        const { ref, relation, to } = parsed.data
+        const result = relationsOf(graph, ref, relation, {
+          rows: QUERY_LIMITS.maxRows,
+          ...(relation === 'between' && to !== undefined ? { to } : {}),
+        })
+        // No nearest match, as `get_entity`: an entity is named or it is not.
+        // Which of the two references named nothing is said, so the model
+        // knows which one to fix.
+        if (result === undefined) {
+          const missing = graph.get(ref) === undefined ? `"ref" ${ref}` : `"to" ${to ?? ''}`
+          return refused(`no such entity: ${missing}`)
+        }
+        return related(result)
       }
 
       if (call.name === 'get_apis' && apis) {

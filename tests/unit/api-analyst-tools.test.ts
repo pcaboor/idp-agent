@@ -58,20 +58,23 @@ describe("the Architect's registry", () => {
 describe("the Analyst's registry", () => {
   const analyst = async (root?: string) => buildTools(await load(root), { apis: true })
 
-  it('adds one tool, get_apis, before the terminal one', async () => {
+  it('adds two tools, get_relations and get_apis, before the terminal one', async () => {
     expect((await analyst()).specs.map((spec) => spec.name)).toEqual([
       'search_entities',
       'get_entity',
       'get_dependencies',
+      'get_relations',
       'get_apis',
       'answer',
     ])
   })
 
-  it('shares every spec with the Architect but the search and the new tool', async () => {
+  it('shares every spec with the Architect but the search, the new tools and the answer', async () => {
     const architect = buildTools(await load(), { refuseUnusedValues: false })
     const own = (await analyst()).specs
-    for (const name of ['get_entity', 'get_dependencies', 'answer']) {
+    // The answer differs by one outcome, `relation`, which the Architect is
+    // never offered: it drafts plans and answers no question.
+    for (const name of ['get_entity', 'get_dependencies']) {
       expect(asDigested(own.find((spec) => spec.name === name))).toEqual(
         asDigested(architect.specs.find((spec) => spec.name === name)),
       )

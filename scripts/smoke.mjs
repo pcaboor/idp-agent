@@ -164,6 +164,33 @@ check({ args: ['graph', '--env', 'prod'], code: 0, stdout: /billing-db-prod/ })
 check({ args: ['show', 'billing-db-prod'], code: 0, stdout: /reached by services/ })
 check({ args: ['show', 'billing-api'], code: 0, stdout: /billing-api-billing-db-prod/ })
 check({ args: ['show', 'no-such-entity'], code: 1, stdout: /No entity named/ })
+// The relations of one entity, computed from the declarations: keyless, so
+// with nothing configured it answers rather than refusing for want of a model.
+check({
+  args: ['relations', 'billing-db-prod', '--demo'],
+  code: 0,
+  stdout: /consumed by \(2\)[\s\S]*component:default\/billing-api +service +- +readwrite +resource:default\/billing-api-billing-db-prod \(prod\)/,
+  absentFromStderr: /no model configured/,
+})
+check({
+  args: ['relations', 'mysql-prod-01', '--impacts', '--demo'],
+  code: 0,
+  stdout: /mysql-prod-01 ← billing-db-prod ← reporting-billing-db-prod \(read\) ← reporting-worker/,
+})
+check({ args: ['relation'], code: 2, stderr: /did you mean relations\?/, absentFromStderr: /no model configured/ })
+// A slip followed by a name is a phrase, and with no model the refusal says
+// which keyless command it looks like.
+check({
+  args: ['relation', 'billing-api', '--demo'],
+  code: 2,
+  stderr: /no model configured[\s\S]*did you mean idpa relations\? It needs no model/,
+})
+// Two services neither of which depends on the other: what both reach.
+check({
+  args: ['relations', 'reporting-worker', '--to', 'billing-api', '--demo'],
+  code: 0,
+  stdout: /both depend on \(1\)\n {2}resource:default\/billing-db-prod\n/,
+})
 check({ args: ['graph', '--env', 'nowhere'], code: 1 })
 check({ args: ['graph', '--wat', 'x'], code: 2 })
 // A first word that is no command is a phrase for the Supervisor, so with

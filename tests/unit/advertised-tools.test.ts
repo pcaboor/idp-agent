@@ -36,13 +36,19 @@ describe('every tool an agent hands the client', () => {
     expect(advertised.properties.outcome.enum).toContain('overview')
     // `intro` and `conclusion` frame the block the engine writes (ADR-0008);
     // the overview has nothing else, and the engine still writes all of it.
+    // `ref`, `relation` and `to` are the relation's, which the engine writes
+    // too (ADR-0007, the relation addendum).
     expect(Object.keys(advertised.properties).sort()).toEqual([
       'conclusion',
       'intro',
       'outcome',
       'reason',
+      'ref',
       'refs',
+      'relation',
+      'to',
     ])
+    expect(advertised.properties.outcome.enum).toContain('relation')
   })
 
   it('is still validated by its own Zod schema, not by what is advertised', async () => {

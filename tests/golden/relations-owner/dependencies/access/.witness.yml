@@ -1,0 +1,2 @@
+# Declares nothing. Its absence would make a glob return an empty set
+# instead of failing, and an empty set reads as "nothing to do".

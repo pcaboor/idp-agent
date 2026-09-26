@@ -1,0 +1,9 @@
+component:default/reporting-worker
+
+paths to resource:default/mysql-prod-01 (1)
+  reporting-worker → reporting-billing-db-prod (read) → billing-db-prod → mysql-prod-01
+    STEP                                        TYPE             ENV   ACCESS
+    component:default/reporting-worker          service          -
+    resource:default/reporting-billing-db-prod  database-access  prod  read
+    resource:default/billing-db-prod            database         prod
+    resource:default/mysql-prod-01              database         prod

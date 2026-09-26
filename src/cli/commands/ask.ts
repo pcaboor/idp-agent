@@ -19,6 +19,7 @@ import { renderEntityDetail } from '../render/entity.js'
 import { renderOverview, type OverviewSource } from '../render/overview.js'
 import { inertLine, oneLine } from '../render/plain.js'
 import { renderTable } from '../render/table.js'
+import { runRelations } from './relations.js'
 import type { CommandResult } from './result.js'
 
 /**
@@ -162,6 +163,21 @@ function block(options: AskOptions, answer: Answer, truncated: number): CommandR
       return { text: renderOverview(overviewOf(graph, source), source), found: true }
     case 'entities':
       return renderEntities(graph, answer.refs, truncated)
+    case 'relation':
+      // Chosen by the model, computed and written by the engine: the entity
+      // and the relation are references a tool returned (the Analyst's
+      // witness check), every row and path comes from the declarations, and
+      // the block is the one `idpa relations` prints, byte for byte — save
+      // that a bound names the whole command where the command names a flag,
+      // `--depth` being no option of a question. What the search cut on the
+      // way is not part of it; the block states its own bounds.
+      return runRelations(graph, {
+        query: answer.ref,
+        ...(answer.relation === 'between'
+          ? { to: answer.to ?? answer.ref }
+          : { relation: answer.relation }),
+        asked: true,
+      })
     default: {
       const exhaustive: never = answer
       return exhaustive

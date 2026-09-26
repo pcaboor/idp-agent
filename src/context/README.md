@@ -78,6 +78,36 @@ reference in the summary the Architect reads. What does differ from before: an A
 what Backstage requires is refused rather than set aside, so a right over it dangles there,
 as `validate` says.
 
+`graph/relations.ts`'s `relationsOf(graph, ref, relation, options)` is every relation of one
+entity, computed from the declarations and never inferred: `depends-on` and `impacts`, every
+hop along `dependenciesOf` and `dependantsOf`, transitively; `consumes`, what a consumer
+reaches through its rights — the objects each right is over, and onward when a depth is
+asked; `consumed-by`, the services behind an object, walked as `consumersOf` walks;
+`provides` and `provided-by`, one declared hop of `providesApis`; and `between`, every simple
+path where one of two entities depends on the other, whichever it is. Where there is none,
+`shared` holds the nearest entities both reach (`Meeting`): what both depend on, or what
+depends on both, each with the shortest path from either end — two services one right
+names meet at the right, two consumers of a database at the database and not again at its
+host. Apart from both, `nearMisses` holds any declaration on the way that names nothing and
+carries the other end's name: it reaches nothing, so it is never counted as a path. Each row is a path of `Step`s from the
+entity asked about: every entity with its kind, type and environment, a right with what it
+grants (`Grant`: whether its type states a level, and the level declared), and a reference
+declared nowhere as its last step, the `Unresolved` the graph already keeps. It defines no
+edge, right, level or dangling reference of its own — it composes `dependenciesOf`,
+`dependantsOf`, `providedApisOf`, `providersOf`, `natureOf`, `levelledOf`, `declaredLevel`
+and `unresolvedOf` — and `relations.test.ts` holds `consumed-by` to `consumersOf` and
+`unresolvedConsumersOf` for every entity of four repositories. Breadth-first with a visited
+set: every declared edge from an entity walked through is a row when the relation lists its
+end, so a consumer with two rights over one object is two rows; an edge back onto its own
+path is not followed. The cycles are found on the edges the walk followed, depth-first, and
+reported as the path from the entity asked about that closes on itself — not on the walk's
+paths, since two entities reached along two branches and depending on each other close on
+neither. Bounded by a depth and a row count (`RELATION_LIMITS`), `between` by a budget of
+steps too, and each bound says when it was reached (`stopped`, `total`, `exhausted`; each
+`Bounded` list its own `total`). Ordered by depth, then the reference reached, then
+the path, so the answer does not depend on the order files were read in. `cli/`'s
+`relations` prints it and the Analyst's `get_relations` returns it; neither computes.
+
 `project-fs/snapshot.ts` reads the other repository: the **application** one, the one a service
 lives in. `readProject(root)` returns the text of what it read and a `skipped` entry, with a
 reason, for every single thing it did not — a file dropped without a word is a file the user

@@ -27,6 +27,9 @@ import { exportTrace, sinksFromEnv, type TraceSink } from './trace-sink.js'
 import { EntityGraph } from '../context/graph/entity-graph.js'
 import { runGraph, type GraphOptions } from './commands/graph.js'
 import { runShow } from './commands/show.js'
+import { runRelations } from './commands/relations.js'
+import { RELATION_LIMITS } from '../context/graph/relations.js'
+import { OWN_RELATIONS, type OwnRelation } from '../core/schemas/query.js'
 import { runValidate } from './commands/validate.js'
 import { PlanInputError, questionLines, runIntent, runPlan, type Ask } from './commands/plan.js'
 import { wantsColour } from './render/diff.js'
@@ -85,6 +88,18 @@ export type Command =
   | ({ name: 'graph'; options: GraphOptions } & ReadFrom)
   | ({ name: 'show'; query: string } & ReadFrom)
   /**
+   * `relation` absent is every relation that holds something; `to` is every
+   * path to another entity, and never comes with a relation. `depth` absent
+   * is each relation's own bound (`RELATION_LIMITS`).
+   */
+  | ({
+      name: 'relations'
+      query: string
+      relation?: OwnRelation
+      to?: string
+      depth?: number
+    } & ReadFrom)
+  /**
    * `quiet`, present only when `--quiet` was given: the verified block alone,
    * without the model's commentary around it (ADR-0008).
    */
@@ -126,6 +141,7 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
 
   idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource|API] [--repo <directory> | --demo]
   idp-agent show <name-or-reference> [--repo <directory> | --demo]
+  idp-agent relations <name-or-reference> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --to <name-or-reference>] [--depth <n>] [--repo <directory> | --demo]
   idp-agent ask "<question>" [--repo <directory> | --demo] [--quiet]
   idp-agent validate <directory>
   idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json]
@@ -133,14 +149,21 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   idp-agent init [--repo <directory>]
   idp-agent init platform <directory> --owner @org/team
 
+  relations traces an entity's declared relations, each with its whole path
+  and the rights and levels on it: what it consumes through its rights and
+  who consumes it, what it depends on and what depends on it, the APIs it
+  provides, or every path to another entity with --to. Without a flag, every
+  relation that holds something. It needs no model and no key.
+
   idpa is idp-agent. Every command but init and validate finds the
   declarations repository the same way: --repo, else the current directory
   when it is one, else IDP_REPO, else repo in the personal config.yml
   ($XDG_CONFIG_HOME/idp-agent/, else ~/.config/idp-agent/). With none, graph,
-  show and a question read the fictional demo SI, as --demo does, and a change
-  is refused. A change inspects the service --project names, or the current
-  directory when it is an application repository (a catalog-info.yaml or a
-  package manifest at its root), and otherwise drafts from the catalogue alone.
+  show, relations and a question read the fictional demo SI, as --demo does,
+  and a change is refused. A change inspects the service --project names, or
+  the current directory when it is an application repository (a
+  catalog-info.yaml or a package manifest at its root), and otherwise drafts
+  from the catalogue alone.
   A phrase, ask, plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL, and
   none of them writes. Every model-backed command also needs that provider's
   key (ANTHROPIC_API_KEY, MISTRAL_API_KEY or OPENAI_API_KEY); IDP_TIMEOUT
@@ -322,6 +345,8 @@ export function parseArguments(argv: string[]): Command {
     }
   }
 
+  if (commandName === 'relations') return parseRelations(rest)
+
   if (commandName === 'graph') {
     try {
       const { values } = parseArgs({
@@ -362,7 +387,16 @@ export function parseArguments(argv: string[]): Command {
  * `parseArguments`' if-chain, which `entry.test.ts` holds this list to, and to
  * HELP's.
  */
-export const COMMANDS = ['graph', 'show', 'ask', 'validate', 'plan', 'init', 'help'] as const
+export const COMMANDS = [
+  'graph',
+  'show',
+  'relations',
+  'ask',
+  'validate',
+  'plan',
+  'init',
+  'help',
+] as const
 
 const isCommand = (word: string): word is (typeof COMMANDS)[number] =>
   COMMANDS.some((name) => name === word)
@@ -435,6 +469,25 @@ function parsePhrase(argv: string[]): Command {
   }
 }
 
+/** The commands that read the declarations and call no model. */
+const KEYLESS: ReadonlySet<string> = new Set(['graph', 'show', 'relations', 'validate', 'help'])
+
+/**
+ * What to say after a phrase could not reach a model, when its first word is
+ * a slip of a command — `idpa relation billing-api` is `relations`, typed
+ * one letter short, followed by a name. Said only then: parsing is not
+ * changed by it, for a sentence may begin with any word, and a phrase that
+ * reached a model was the model's to classify. A first word that IS a
+ * command is not a slip; `show me the databases` is a sentence.
+ */
+function slipHint(phrase: string): string | undefined {
+  const first = phrase.split(/\s+/)[0] ?? ''
+  if (isCommand(first)) return undefined
+  const meant = nearestCommand(first)
+  if (meant === undefined) return undefined
+  return `"${first}" is not a command; did you mean idpa ${meant}?${KEYLESS.has(meant) ? ' It needs no model' : ''}`
+}
+
 /**
  * The command a word is a slip away from, or `undefined`. Case is not a slip.
  *
@@ -478,6 +531,81 @@ function edits(a: string, b: string): number {
   return rows[a.length]![b.length]!
 }
 
+/** A relation flag, and the relation it asks for: `--consumed-by` is `consumed-by`. */
+const RELATION_FLAGS = OWN_RELATIONS
+
+/**
+ * `relations <name-or-reference>`: one name, as `show` takes it; at most one
+ * relation flag, or `--to` and none; a depth that is a whole number within
+ * the bound. Each refusal is the arguments', exit 2, before anything is read.
+ */
+function parseRelations(rest: string[]): Command {
+  try {
+    const { values, positionals } = parseArgs({
+      args: rest,
+      options: {
+        ...Object.fromEntries(RELATION_FLAGS.map((flag) => [flag, { type: 'boolean' as const }])),
+        to: { type: 'string' },
+        depth: { type: 'string' },
+        ...READ_OPTIONS,
+      },
+      allowPositionals: true,
+      strict: true,
+    })
+    const query = positionals[0]
+    if (query === undefined) {
+      return { name: 'error', message: 'relations needs a name or a reference' }
+    }
+    if (positionals.length > 1) {
+      return {
+        name: 'error',
+        message: `relations takes one name or reference, not ${positionals.length}: ${positionals.join(', ')}`,
+      }
+    }
+    const flags = values as Record<string, unknown>
+    const chosen = RELATION_FLAGS.filter((flag) => flags[flag] === true)
+    if (chosen.length > 1) {
+      return {
+        name: 'error',
+        message:
+          `relations takes one of ${RELATION_FLAGS.map((flag) => `--${flag}`).join(', ')}, ` +
+          `not ${chosen.map((flag) => `--${flag}`).join(' and ')}`,
+      }
+    }
+    const [relation] = chosen
+    const to = typeof flags['to'] === 'string' ? flags['to'] : undefined
+    if (to !== undefined && relation !== undefined) {
+      return {
+        name: 'error',
+        message: `--to asks for the paths between two entities, and takes no relation: drop --${relation}`,
+      }
+    }
+    const typed = typeof flags['depth'] === 'string' ? flags['depth'] : undefined
+    const depth = typed === undefined ? undefined : Number(typed)
+    if (
+      typed !== undefined &&
+      (!/^\d+$/.test(typed) || depth === undefined || depth < 1 || depth > RELATION_LIMITS.maxDepth)
+    ) {
+      return {
+        name: 'error',
+        message: `--depth takes a whole number from 1 to ${RELATION_LIMITS.maxDepth}`,
+      }
+    }
+    const from = readFrom('relations', values)
+    if ('message' in from) return from
+    return {
+      name: 'relations',
+      query,
+      ...(relation !== undefined ? { relation } : {}),
+      ...(to !== undefined ? { to } : {}),
+      ...(depth !== undefined ? { depth } : {}),
+      ...from,
+    }
+  } catch (error) {
+    return { name: 'error', message: (error as Error).message }
+  }
+}
+
 /** The two options that say where a read command's SI comes from. */
 const READ_OPTIONS = { repo: { type: 'string' }, demo: { type: 'boolean' } } as const
 
@@ -487,7 +615,7 @@ const READ_OPTIONS = { repo: { type: 'string' }, demo: { type: 'boolean' } } as 
  * and there is no answer to which one they meant.
  */
 function readFrom(
-  command: 'graph' | 'show' | 'ask' | 'idpa',
+  command: 'graph' | 'show' | 'relations' | 'ask' | 'idpa',
   values: { repo?: string | undefined; demo?: boolean | undefined },
 ): ReadFrom | { name: 'error'; message: string } {
   if (values.demo === true && values.repo !== undefined) {
@@ -937,6 +1065,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
       return failed(error, err)
     }
     const ask = askOf(deps)
+    const hint = slipHint(command.phrase)
     return agentBacked(
       deps,
       err,
@@ -944,6 +1073,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
       {
         command: 'entry',
         scenario: 'entry',
+        ...(hint === undefined ? {} : { hint }),
         // Resolved, as `plan`'s are: the repositories a change would read,
         // when there are any, whichever road the Supervisor then takes.
         inputs: {
@@ -1007,9 +1137,27 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     )
   }
 
-  const result =
-    command.name === 'graph' ? runGraph(graph, command.options) : runShow(graph, command.query)
-  return report(result, out)
+  switch (command.name) {
+    case 'graph':
+      return report(runGraph(graph, command.options), out)
+    case 'show':
+      return report(runShow(graph, command.query), out)
+    case 'relations':
+      // Keyless: computed from the declarations, and no model is chosen.
+      return report(
+        runRelations(graph, {
+          query: command.query,
+          ...(command.relation !== undefined ? { relation: command.relation } : {}),
+          ...(command.to !== undefined ? { to: command.to } : {}),
+          ...(command.depth !== undefined ? { depth: command.depth } : {}),
+        }),
+        out,
+      )
+    default: {
+      const exhaustive: never = command
+      return exhaustive
+    }
+  }
 }
 
 /** What a read command reads, and where that came from (`source.ts`). */
@@ -1258,7 +1406,9 @@ async function agentBacked(
   try {
     session = await openSession(deps, err, run.scenario)
   } catch (error) {
-    return failed(error, err)
+    const code = failed(error, err)
+    if (run.hint !== undefined) err(`${run.hint}\n`)
+    return code
   }
 
   const shown = deps.events ?? progress(err)
@@ -1324,6 +1474,8 @@ interface AgentRun {
   readonly inputs: Readonly<Record<string, unknown>>
   /** What the command decided before a model was chosen, for the trace's root. */
   readonly attributes?: Attributes
+  /** Said after the refusal when no model could be opened (`slipHint`). */
+  readonly hint?: string
 }
 
 /** The model, the tape, and what a trace's root says about where the answers came from. */

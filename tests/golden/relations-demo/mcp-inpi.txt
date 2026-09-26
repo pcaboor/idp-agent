@@ -1,0 +1,15 @@
+component:default/mcp-inpi
+
+consumes (2)
+  ENTITY                        TYPE      ENV   ACCESS  VIA                                           DEPTH  PATH
+  resource:default/inpi-api     api       prod  -       resource:default/mcp-inpi-to-inpi-api (prod)  2      mcp-inpi → mcp-inpi-to-inpi-api → inpi-api
+  resource:default/inpi-db-dev  database  dev   read    resource:default/mcp-inpi-db-dev (dev)        2      mcp-inpi → mcp-inpi-db-dev (read) → inpi-db-dev
+  what these depend on is not listed; --depth 3 follows it
+
+depends on (5)
+  ENTITY                                 TYPE             ENV   DEPTH  PATH
+  resource:default/mcp-inpi-db-dev       database-access  dev   1      mcp-inpi → mcp-inpi-db-dev (read)
+  resource:default/mcp-inpi-to-inpi-api  network-access   prod  1      mcp-inpi → mcp-inpi-to-inpi-api
+  resource:default/inpi-api              api              prod  2      mcp-inpi → mcp-inpi-to-inpi-api → inpi-api
+  resource:default/inpi-db-dev           database         dev   2      mcp-inpi → mcp-inpi-db-dev (read) → inpi-db-dev
+  resource:default/mysql-disi6-dev       database         dev   3      mcp-inpi → mcp-inpi-db-dev (read) → inpi-db-dev → mysql-disi6-dev

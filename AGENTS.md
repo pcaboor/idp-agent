@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 1902 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 2012 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does
@@ -52,19 +52,23 @@ worse than no figure, because it is read as evidence. Re-run the command and cor
 number in the same commit as the change.
 
 **Exit codes:** `0` succeeded — a diff rendered, or a run with nothing to change · `1` the
-answer is negative — nothing matched, a name was ambiguous, **the repository does not
-conform**, a gate refused a plan, the repair loop stopped at three attempts, or something
-failed unexpectedly · `2` the arguments were refused — a bad flag, a plan file that is not
-a plan, a `--repo`, a `--project` or a configured repository that is not a directory, a
-`--project` that is a declarations repository or the one the change is decided against, a
-change with no declarations repository to decide against, a single word one slip away
-from a command name (`idpa grpah`), a command typed after its options, a `.idp-agent.yml`
-or a personal `config.yml` that does not parse — or no model, no key or no usable
-`IDP_TIMEOUT` is configured · `3` the request was understood and this build will not act
-on it: a change request put to `ask` (which names `idpa "<phrase>"` as the gesture that
-previews it), a question the model refused, or a plan holding values nobody can vouch
-for, **asked rather than guessed**. A command returns
-`{ text, found, unsupported? }`; only `cli/index.ts` turns that into a code.
+answer is negative — nothing matched, a name was ambiguous (two entities sharing it
+included), a relation holds nothing, two entities are linked by no declared path and reach
+nothing in common (a near miss alone does not count), an entity was asked about its paths
+to itself, **the repository does not conform**, a gate refused a
+plan, the repair loop stopped at three attempts, or something failed unexpectedly · `2`
+the arguments were refused — a bad flag, a plan file that is not a plan, a `--repo`, a
+`--project` or a configured repository that is not a directory, a `--project` that is a
+declarations repository or the one the change is decided against, a change with no
+declarations repository to decide against, a single word one slip away from a command name
+(`idpa grpah`, `idpa relation`), a command typed after its options, two relation flags or
+one beside `--to`, a `--depth` that is not a whole number from 1 to 100, a
+`.idp-agent.yml` or a personal `config.yml` that does not parse — or no model, no key or
+no usable `IDP_TIMEOUT` is configured · `3` the request was understood and this build will
+not act on it: a change request put to `ask` (which names `idpa "<phrase>"` as the gesture
+that previews it), a question the model refused, or a plan holding values nobody can vouch
+for, **asked rather than guessed**. A command returns `{ text, found, unsupported? }`;
+only `cli/index.ts` turns that into a code.
 
 The one that is not obvious is a **stop**: three attempts, still refused, exit `1`. Not
 `3`, because `3` is a boundary the user cannot move by typing anything, and a stop is the
@@ -103,15 +107,22 @@ The order is imposed by the doctrine: read first, validate before the first writ
 preview before the merge request. Writing arrives only at stage 5.
 
 Shipped and working: `idpa "<phrase>"`, the one gesture of §7.4, from any directory — the
-Supervisor classifies the phrase once, a question takes `ask`'s road and a change
-`plan "<intent>"`'s (`cli/commands/entry.ts`); `graph` and `show` over a fixture SI of 33
-entities; `ask`, answered by the Supervisor and the Analyst against recordings with no API
-key; `validate`, seven
-rules over an IaC repository; `init platform`, which writes twelve files and clobbers
-nothing; and stage 4's two previews, which write nothing to a repository:
+Supervisor classifies the phrase once, a question takes `ask`'s road and a change `plan
+"<intent>"`'s (`cli/commands/entry.ts`); `graph` and `show` over a fixture SI of 33
+entities; `relations`, which traces an entity's relations from the declarations —
+multi-hop, both directions, each row with its whole path, the rights on it and their
+levels, the environment at each step, and a reference declared nowhere marked where the
+path ends; between two entities, the paths where one depends on the other, else the
+nearest entities both reach — with no model (`context/graph/relations.ts`, rendered by
+`cli/render/relations.ts`); `ask`, answered by the Supervisor and the Analyst against
+recordings with no API key, a relation question included: the model chooses the entity and
+the relation, and the engine writes `relations`' block; `validate`, seven rules over an
+IaC repository; `init platform`, which writes twelve files and clobbers nothing; and stage
+4's two previews, which write nothing to a repository:
 
 ```bash
 idpa "<phrase>" [--repo <dir> | --demo] [--project <dir>] [--json] [--quiet]  # question or change
+idp-agent relations <name-or-ref> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --to <name-or-ref>] [--depth <n>] [--repo <dir> | --demo]  # no model
 idp-agent plan --from <plan.json> --repo <dir>   # no model, and none is possible
 idp-agent plan "<intent>" --repo <dir> [--json]  # Inspector, Architect, five gates
 idp-agent init [--repo <dir>]                    # the catalog-info.yml it would write
@@ -128,19 +139,19 @@ and `pnpm smoke` makes the same assertion about the built binary.
 The two `--repo` flags name different repositories, which is the first thing that trips
 someone up. `plan --repo` is the **declarations** repository the preview is decided
 against; `init --repo` is the **application** repository being declared. `idpa
-"<phrase>"`, `graph`, `show`, `ask` and `plan` take `--repo` in `plan`'s sense, through
-the same guard, and find it the same way without it: the working directory when its root
-carries the markers `init platform` writes — a witnessed folder under `catalog/` or
-`dependencies/`, looked for there and never by walking — then `IDP_REPO`, then `repo` in
-the personal `config.yml`. With none of them the read commands and a question read the
-fictional `fixtures/si-demo/`, as `--demo` makes them (`--demo` with `--repo` is refused),
-and a change is refused, naming all four ways, because a write preview is never decided
-against a demo. So `cd IaC && idpa "<intent>"` decides against IaC. Every road but
-`--repo` is said in one line on stderr, naming the folder and what named it — because an
-answer about an invented company that does not say so is read as one about the user's
-own; a repository is named by its folder, never as the `.` it was typed as. One function
-decides all of it, `cli/source.ts`'s `sourceOf`, and a Backstage source is one more
-`kind` there.
+"<phrase>"`, `graph`, `show`, `relations`, `ask` and `plan` take `--repo` in `plan`'s
+sense, through the same guard, and find it the same way without it: the working directory
+when its root carries the markers `init platform` writes — a witnessed folder under
+`catalog/` or `dependencies/`, looked for there and never by walking — then `IDP_REPO`,
+then `repo` in the personal `config.yml`. With none of them the read commands and a
+question read the fictional `fixtures/si-demo/`, as `--demo` makes them (`--demo` with
+`--repo` is refused), and a change is refused, naming all four ways, because a write
+preview is never decided against a demo. So `cd IaC && idpa "<intent>"` decides against
+IaC. Every road but `--repo` is said in one line on stderr, naming the folder and what
+named it — because an answer about an invented company that does not say so is read as one
+about the user's own; a repository is named by its folder, never as the `.` it was typed
+as. One function decides all of it, `cli/source.ts`'s `sourceOf`, and a Backstage source
+is one more `kind` there.
 
 A change — `plan "<intent>"`, or a phrase the Supervisor calls a `MUTATION` — may read the
 application repository too, and the **Inspector is optional**: it reads the directory
@@ -266,10 +277,13 @@ ends today.
 
 One object crosses **per direction of authority** (design §5.1, ADR-0007). The **`Plan`**
 crosses when the AI side asks for a change. The **`Answer`** crosses when it reports a
-read — a union of `entities` / `nothing` / `overview` / `unanswerable` that authorises
-nothing and carries only references the engine's own tools returned, each re-read before
-printing. An `overview` carries no identifier at all: the model chooses it, and the engine
-writes the description of the catalogue from the graph. Around that block the model may
+read — a union of `entities` / `nothing` / `overview` / `relation` / `unanswerable` that
+authorises nothing and carries only references the engine's own tools returned, each
+re-read before printing. An `overview` carries no identifier at all: the model chooses it,
+and the engine writes the description of the catalogue from the graph. A `relation`
+carries witnessed references and the name of a relation: the model chooses which entity
+and which relation, and the engine computes every path and writes it as `idpa relations`
+prints it. Around that block the model may
 write an `intro` and a `conclusion` (ADR-0008): it frames the answer and never is it. The
 engine drops, whole, every sentence that names an entity no tool returned or an identifier
 nobody read, cleans and bounds the rest, and prints each line marked `› ` as the model's —

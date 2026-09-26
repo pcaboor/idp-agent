@@ -107,7 +107,7 @@ describe('the answer tool, as a model is shown it', () => {
       expect(property?.type).toBe('string')
       expect(property?.maxLength).toBe(QUERY_LIMITS.maxCommentary)
       expect(property?.description).toMatch(/dropped, never refused/i)
-      expect(property?.description).toMatch(/"entities", "nothing" or "overview"/)
+      expect(property?.description).toMatch(/"entities", "nothing", "overview" or "relation"/)
       expect(advertised.required).not.toContain(field)
     }
   })

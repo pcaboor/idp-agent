@@ -10,7 +10,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 1902, no API key" src="https://img.shields.io/badge/tests-1902%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 2012, no API key" src="https://img.shields.io/badge/tests-2012%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -22,6 +22,7 @@
 ```text
 $ idpa "give billing-api read access to the orders database in prod"
 $ idpa "which services use billing-db?"
+$ idpa relations mysql-prod-01 --impacts
 ```
 
 One gesture, from any directory: a sentence about your platform. A question is answered
@@ -48,7 +49,7 @@ idp-agent sits between the two:
   your request or to what your repository already holds. Anything else becomes a question.
 - ✂️ **Minimal diffs.** It edits the text surgically and never reformats a file, so a
   reviewer sees one added line, not a reshuffled file.
-- 🧪 **Reproducible without an API key.** 1902 tests run offline from recordings: no
+- 🧪 **Reproducible without an API key.** 2012 tests run offline from recordings: no
   network, no cost, no flaky model.
 
 > Platform GitOps is the use case. The real subject is **how to build a reliable
@@ -124,6 +125,93 @@ used by
 reached by services
   component:default/billing-api
   component:default/reporting-worker
+```
+
+## Relations
+
+Every dependency, traced from the declarations: what an entity consumes through its access
+rights and who consumes it, what it depends on and what breaks if it fails, the APIs it
+provides, and how two entities are related. Each row carries its whole path, the right on
+it and the level that right states, and the entity's own environment; a reference declared
+nowhere is shown where the path ends, beside the entity that has its name. No model and no
+key: try it on the fictional demo SI straight after `pnpm install && pnpm build`, with
+`node dist/cli/bin.js` standing for `idpa` until `pnpm link --global` puts it on your PATH.
+
+```text
+$ node dist/cli/bin.js relations mysql-prod-01 --impacts --demo
+resource:default/mysql-prod-01
+
+impacts (9)
+  ENTITY                                        TYPE             ENV   DEPTH  PATH
+  resource:default/billing-db-prod              database         prod  1      mysql-prod-01 ← billing-db-prod
+  resource:default/compliance-db-prod           database         prod  1      mysql-prod-01 ← compliance-db-prod
+  resource:default/orders-db-prod               database         prod  1      mysql-prod-01 ← orders-db-prod
+  resource:default/billing-api-billing-db-prod  database-access  prod  2      mysql-prod-01 ← billing-db-prod ← billing-api-billing-db-prod (readwrite)
+  resource:default/orders-api-orders-db-prod    database-access  prod  2      mysql-prod-01 ← orders-db-prod ← orders-api-orders-db-prod (readwrite)
+  resource:default/reporting-billing-db-prod    database-access  prod  2      mysql-prod-01 ← billing-db-prod ← reporting-billing-db-prod (read)
+  component:default/billing-api                 service          -     3      mysql-prod-01 ← billing-db-prod ← billing-api-billing-db-prod (readwrite) ← billing-api
+  component:default/orders-api                  service          -     3      mysql-prod-01 ← orders-db-prod ← orders-api-orders-db-prod (readwrite) ← orders-api
+  component:default/reporting-worker            service          -     3      mysql-prod-01 ← billing-db-prod ← reporting-billing-db-prod (read) ← reporting-worker
+```
+
+```text
+$ node dist/cli/bin.js relations reporting-worker --to mysql-prod-01 --demo
+component:default/reporting-worker
+
+paths to resource:default/mysql-prod-01 (1)
+  reporting-worker → reporting-billing-db-prod (read) → billing-db-prod → mysql-prod-01
+    STEP                                        TYPE             ENV   ACCESS
+    component:default/reporting-worker          service          -
+    resource:default/reporting-billing-db-prod  database-access  prod  read
+    resource:default/billing-db-prod            database         prod
+    resource:default/mysql-prod-01              database         prod
+```
+
+Two services neither of which depends on the other are still related when the files say so:
+`--to` then prints the nearest entities both reach, with the path from each end.
+
+```text
+$ node dist/cli/bin.js relations reporting-worker --to billing-api --demo
+component:default/reporting-worker
+
+paths to component:default/billing-api (0)
+  no path where one depends on the other
+
+both depend on (1)
+  resource:default/billing-db-prod
+    reporting-worker → reporting-billing-db-prod (read) → billing-db-prod
+    billing-api → billing-api-billing-db-prod (readwrite) → billing-db-prod
+    STEP                                          TYPE             ENV   ACCESS
+    component:default/reporting-worker            service          -
+    resource:default/reporting-billing-db-prod    database-access  prod  read
+    resource:default/billing-db-prod              database         prod
+    component:default/billing-api                 service          -
+    resource:default/billing-api-billing-db-prod  database-access  prod  readwrite
+```
+
+`--consumes`, `--consumed-by`, `--depends-on`, `--impacts`, `--provides` and
+`--provided-by` pick one relation; with none, every relation that holds something is
+printed. `--depth <n>` follows more hops (`--consumes` stops at what each right is over),
+and every bound the walk reaches is said under the table, never left for you to assume the
+list complete.
+
+The same answer is one question away. Asked in words, the model only **chooses** the
+entity and the relation, from references a tool returned; the engine computes the paths
+and prints them with the renderer above, so the block is the command's. The lines marked
+`›` are the model's (the ones below are illustrative):
+
+```console
+$ idpa "which services use billing-db-prod?"
+› Two services reach billing-db-prod, each through its own right.
+
+resource:default/billing-db-prod
+
+consumed by (2)
+  ENTITY                              TYPE     ENV  ACCESS     VIA                                                  DEPTH  PATH
+  component:default/billing-api       service  -    readwrite  resource:default/billing-api-billing-db-prod (prod)  2      billing-db-prod ← billing-api-billing-db-prod (readwrite) ← billing-api
+  component:default/reporting-worker  service  -    read       resource:default/reporting-billing-db-prod (prod)    2      billing-db-prod ← reporting-billing-db-prod (read) ← reporting-worker
+
+› Only billing-api may write to it.
 ```
 
 ## How it works
@@ -229,6 +317,7 @@ classifies and only answers, declining a change.
 ```bash
 idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource|API] [--repo <dir> | --demo]
 idp-agent show <name-or-reference> [--repo <dir> | --demo]
+idp-agent relations <name-or-reference> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --to <name-or-reference>] [--depth <n>] [--repo <dir> | --demo]
 idp-agent ask "<question>" [--repo <dir> | --demo] [--quiet]  # needs IDP_PROVIDER, IDP_MODEL and its key
 idp-agent validate <directory>                     # what the generated CI runs
 idp-agent init platform <dir> --owner @org/team    # the only command that writes
@@ -240,6 +329,7 @@ idp-agent init [--repo <dir>]                      # the catalog-info.yml it wou
 
 | Command | What it does |
 |---|---|
+| `relations` | Trace one entity's relations, several hops deep, each with its path, the rights on it and their levels: `--consumes`, `--consumed-by`, `--depends-on`, `--impacts`, `--provides`, `--provided-by`, or `--to <entity>` for every path between two. No model. |
 | `graph`, `show` | Walk the dependency graph: who depends on what, which services reach a database. `show` also says what an entity is — its description, system, tags and links, when its file declares them. A Backstage `kind: API` is read too — `graph --kind API`, and on `show` who provides it (`spec.providesApis`) and the rights that reach it — though no plan ever declares one. No model. |
 | `idpa "<phrase>"` | A question is answered, a change is previewed; the classification is said on stderr (`· question`, `· mutation`). Needs a model. |
 | `ask` | Answers a question about your platform. The model picks the queries; the engine answers them, and prints the model's short introduction and conclusion around the answer, checked and marked `›`. Asked about the catalogue as a whole — *talk about this project* — it prints an overview the engine writes: counts by kind, type, environment, owner, system and tag, a few entities in their own descriptions, rights and their levels, the most-reached resources, dangling references, and what it could not read. |
@@ -248,7 +338,7 @@ idp-agent init [--repo <dir>]                      # the catalog-info.yml it wou
 | `plan` | Turns an intent, or a `Plan` file, into a checked and previewed diff. |
 
 `plan --repo` names the **declarations** repository. `init --repo` names the
-**application** repository being declared. `graph`, `show` and `ask` take the first kind;
+**application** repository being declared. `graph`, `show`, `relations` and `ask` take the first kind;
 without `--repo` they read the directory you are standing in when it is a declarations
 repository (a folder under `catalog/` or `dependencies/` holding a `.witness.yml`, as
 `init platform` writes them), then the one you configured (below), and the fictional demo
@@ -275,7 +365,7 @@ for. An ambiguous name resolves to nothing rather than to the first candidate.
 ### Use it from anywhere
 
 `init platform` creates your declarations repository once; after that, name it once too,
-and `idpa "<phrase>"`, `graph`, `show`, `ask` and `plan` read it from any directory
+and `idpa "<phrase>"`, `graph`, `show`, `relations`, `ask` and `plan` read it from any directory
 without `--repo`. Either set `IDP_REPO`, or write a personal configuration file — never
 committed, and holding no credential — at `$XDG_CONFIG_HOME/idp-agent/config.yml`, else
 `~/.config/idp-agent/config.yml` (`%APPDATA%\idp-agent\config.yml` on Windows):
@@ -290,7 +380,7 @@ write `repo: "~"` for the home directory itself.
 
 Every command takes the first of: `--repo` (or `--demo`) · the directory you stand in,
 when it is a declarations repository · `IDP_REPO` · `repo` in that file. With none of them,
-`graph`, `show` and a question read the fictional demo SI; a change is refused, naming
+`graph`, `show`, `relations` and a question read the fictional demo SI; a change is refused, naming
 those four ways, because a write preview is decided against your repository, never a
 demo. So `cd IaC && idpa "<intent>"` decides against IaC. Whatever was not typed is said
 in one line on stderr, naming the folder and where it came from:

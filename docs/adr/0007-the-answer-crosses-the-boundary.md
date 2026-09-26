@@ -80,3 +80,37 @@ An `unanswerable` answer's reason is the model's own prose, unchecked, and reach
 (`cannot answer: …`), as it always has — never stdout, so the consequence above is untouched.
 `ask-real-model.test.ts` replays those calls verbatim and asserts the invented reference and
 the reason reach neither stdout, stderr nor the event stream.
+
+## Addendum — 2026-09-26: the relation
+
+"Que consomme payments-api ?" printed a table of payments-api and the right over
+billing-db-dev, and never the database; "which services use billing-db-dev?" printed the
+services, the right and the database in one table with nothing linking them. The answer
+could name entities, not the paths between them, and a path is what the question asked.
+The union gains `relation`: `{ ref, relation, to? }`, a reference, the name of a relation
+(`consumes`, `consumed-by`, `depends-on`, `impacts`, `provides`, `provided-by`, `between`),
+and for `between` the other end. The model only chooses them; the engine computes the
+relation from the declarations (`context/graph/relations.ts`) and writes every row, path,
+right and level with the renderer `idpa relations` prints (`cli/render/relations.ts`), so
+the block is that command's, byte for byte — save that a bound names the whole command that
+goes further where the command names `--depth`, no option of a question — and nothing new
+in it is model-authored. `between` is every path where one end depends on the other and,
+where there is none, the nearest entities both reach: two services one right names are
+related although neither depends on the other. A declaration naming nothing that carries
+one end's name is printed apart from both and counted in neither.
+
+It crosses under this decision rather than beside it, as the overview did, and for the
+same reason with one difference: a relation does carry identifiers, and they are held to
+the rule the `entities` answer is. `ref` and `to` must be references a tool returned, or
+the answer is refused and the references named; each is re-read from the graph before
+anything is computed. A `to` on a relation other than `between` is discarded, never read,
+whatever it holds — blank, null, a bare name: the flat advertisement shows it beside every
+relation, a model fills what it is shown, and an overview once lost three turns to a blank
+field it had no use for — and a `between` without a reference there is refused at the
+parse and handed back. What the model can
+still get wrong is the choice, as with the overview: `impacts` for a question that wanted
+`consumed-by` prints a true answer to the wrong question, never a false one. The Analyst
+reads the same computation through `get_relations` before writing its `intro` and
+`conclusion`, and every entity a path shows joins the witness set, so a sentence may name
+the right a path runs through; those sentences are checked and marked as ADR-0008 says,
+unchanged.
