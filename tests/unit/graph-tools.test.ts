@@ -4,6 +4,8 @@ import { FixtureProvider } from '../../src/context/fixtures/index.js'
 import { EntityGraph } from '../../src/context/graph/entity-graph.js'
 import { buildTools, type ToolOutcome } from '../../src/agents/tools/graph-tools.js'
 import type { Entity } from '../../src/core/schemas/entity.js'
+import { runAsk } from '../../src/cli/commands/ask.js'
+import type { AgentName, GenerateResult, LlmClient } from '../../src/llm/client.js'
 import { QUERY_LIMITS } from '../../src/core/schemas/query.js'
 
 const ROOT = path.resolve(import.meta.dirname, '../../fixtures/si-demo')
@@ -279,6 +281,97 @@ describe('get_dependencies', () => {
       call('get_dependencies', { ref: 'resource:default/billing-db-prod', direction: 'sideways' }),
     )
     expect(text(outcome.result)).toMatch(/get_dependencies/)
+  })
+})
+
+describe('the entity a walk starts from', () => {
+  // Found by the relations verification: the Analyst asked get_dependencies
+  // about resource:default/billing-db-dev, answered with it and the right it
+  // found, and was refused — "which no tool returned" — although the engine
+  // had looked the entity up to walk from it. On the Analyst's registry the
+  // start of a walk the graph holds is witnessed; the Architect's witness set,
+  // which its provenance is measured against, is what it was.
+  const DEV = 'resource:default/billing-db-dev'
+  const graph = async () => EntityGraph.from((await new FixtureProvider(ROOT).load()).entities)
+
+  it.each(['dependencies', 'dependants', 'consumers'])(
+    "witnesses the entity it walked from on the Analyst's registry (%s)",
+    async (direction) => {
+      const built = buildTools(await graph(), { apis: true })
+      built.run(call('get_dependencies', { ref: DEV, direction }))
+      expect(built.witnessed.has(DEV)).toBe(true)
+    },
+  )
+
+  it("leaves the Architect's witness set as it was", async () => {
+    const built = buildTools(await graph(), { refuseUnusedValues: false })
+    for (const direction of ['dependencies', 'dependants', 'consumers']) {
+      built.run(call('get_dependencies', { ref: DEV, direction }))
+    }
+    expect(built.witnessed.has(DEV)).toBe(false)
+  })
+
+  it('witnesses nothing for a reference the graph does not hold', async () => {
+    const built = buildTools(await graph(), { apis: true })
+    const ghost = 'resource:default/billing-db-staging'
+    for (const direction of ['dependencies', 'dependants', 'consumers']) {
+      built.run(call('get_dependencies', { ref: ghost, direction }))
+    }
+    expect(built.witnessed.has(ghost)).toBe(false)
+    expect([...built.witnessed]).toEqual([])
+  })
+
+  it('is witnessed by get_relations too, which had no such gap', async () => {
+    const built = buildTools(await graph(), { apis: true })
+    built.run(call('get_relations', { ref: DEV, relation: 'impacts' }))
+    expect(built.witnessed.has(DEV)).toBe(true)
+  })
+
+  it('lets the Analyst answer with the entity it walked from', async () => {
+    const saying = (said: string): GenerateResult => ({
+      text: said,
+      toolCalls: [],
+      finishReason: 'stop',
+    })
+    const calling = (name: string, args: unknown): GenerateResult => ({
+      text: '',
+      toolCalls: [{ id: `c-${name}`, name, args }],
+      finishReason: 'tool-calls',
+    })
+    const turns: Partial<Record<AgentName, GenerateResult[]>> = {
+      supervisor: [saying('QUESTION')],
+      analyst: [
+        calling('get_dependencies', { ref: DEV, direction: 'dependants' }),
+        calling('answer', {
+          outcome: 'entities',
+          refs: [DEV, 'resource:default/billing-api-billing-db-dev'],
+        }),
+      ],
+    }
+    const spent = new Map<AgentName, number>()
+    const client: LlmClient = {
+      generate: async (request) => {
+        const index = spent.get(request.agent) ?? 0
+        spent.set(request.agent, index + 1)
+        return turns[request.agent]?.[index] ?? saying('')
+      },
+    }
+    const errors: string[] = []
+
+    const result = await runAsk({
+      graph: await graph(),
+      client,
+      intent: 'which rights are declared over billing-db-dev?',
+      source: { ignored: [], rejected: 0 },
+      emit: () => {},
+      err: (chunk) => void errors.push(chunk),
+    })
+
+    expect(errors.join('')).not.toContain('which no tool returned')
+    expect(result.found).toBe(true)
+    const names = result.text.split('\n').map((line) => line.split(/\s+/)[0])
+    expect(names).toContain('billing-db-dev')
+    expect(names).toContain('billing-api-billing-db-dev')
   })
 })
 

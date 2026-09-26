@@ -661,6 +661,14 @@ export function buildTools(
         const parsed = getDependenciesInputSchema.safeParse(call.args)
         if (!parsed.success) return failed('get_dependencies', parsed.error)
         const { ref, direction } = parsed.data
+        // The entity walked from is one the engine looked up, so on the
+        // Analyst's registry an answer may name it, as `get_relations` lets it
+        // name its subject. Not on the Architect's: its witness set is what a
+        // proposed value's provenance is measured against, and its plan-mode
+        // tapes were recorded against that set as it was. A reference the graph
+        // does not hold witnesses nothing.
+        const start = apis ? graph.get(ref) : undefined
+        if (start !== undefined) witnessed.add(refOf(start))
         if (direction === 'dependencies') {
           return report(graph.dependenciesOf(ref), graph.unresolvedOf(ref, 'dependsOn'))
         }
