@@ -319,11 +319,17 @@ export function signPlan(
       // write look asked for — and "read replica", a database term in a
       // database-access tool, named a level nobody asked for.
       //
-      // So the only provenance a level has is the user answering for it — for
-      // THIS grant's level, at this path. That is one question per grant, and
-      // an access level is worth a question: granting write where read was
-      // asked for is the accident this whole design exists around, and an
-      // answer about one grant settling another's is that accident again.
+      // So the only provenance a level has is the user answering for it, at
+      // this path. The answer is about one ACCESS — this consumer reaching
+      // this thing — and an access level is worth a question: granting write
+      // where read was asked for is the accident this whole design exists
+      // around, and an answer about one access settling another's is that
+      // accident again. It may settle a different GRANT for that same access
+      // — the person answered billing-api's level on orders-api's grant, and
+      // the plan that honours it is a grant of billing-api's own — but never
+      // another consumer's or another thing's. How an answer follows its
+      // access across grants, and where it is asked again instead, is
+      // `reapply.ts`'s.
       leafClass = answered(provenance, path, text) ? 'echoed' : 'novel'
     } else if (creates.has(text)) {
       // A reference to an entity this same plan declares. Derived, not echoed:

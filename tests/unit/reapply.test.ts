@@ -90,6 +90,7 @@ describe('recordAnswers', () => {
         about: {
           entity: 'resource:default/billing-api-orders-db-prod',
           field: 'patch.access',
+          consumer: 'component:default/billing-api',
         },
       },
     ])
@@ -268,12 +269,16 @@ describe('reapplyAnswers', () => {
       ['operations.1.patch.consumer', 'component:default/billing-api'],
     ])
     expect(kept.reapplied).toEqual([])
+    // Vouched where it stands, and never said to be put back into every draft:
+    // it is not, and the repair report reads `about` as exactly that.
+    expect(kept.about.size).toBe(0)
   })
 
   it('keeps an answer with nothing to follow at the path it was typed at', () => {
     const plan = planOf(database('orders-db-prod', TIGER))
     const result = reapplyAnswers(plan, [{ path: OWNER_0, value: TIGER }])
     expect([...result.answers]).toEqual([[OWNER_0, TIGER]])
+    expect(result.about.size).toBe(0)
   })
 
   it('takes the later of two answers to the same field', () => {
@@ -332,5 +337,289 @@ describe('reapplyAnswers', () => {
     const before = structuredClone(redraft)
     reapplyAnswers(redraft, ownerAnswered())
     expect(redraft).toEqual(before)
+  })
+})
+
+/**
+ * A level is the user's word about an ACCESS — who reaches what — and not
+ * about the grant a draft happened to carry it in.
+ *
+ * The owner's run: the draft joined billing-api to orders-api's grant over
+ * orders-db-prod, the person answered `read`, and the only plan that honours
+ * that is a grant of billing-api's own. Keyed by the grant, the answer stayed
+ * behind on orders-api's grant when the redraft declared that one, and the
+ * level was asked a second time about the same access.
+ */
+describe('an answered level follows the access, not the grant that carried it', () => {
+  const BILLING = 'component:default/billing-api'
+  const PAYMENTS = 'component:default/payments-api'
+  const DATABASE = 'resource:default/orders-db-prod'
+  const ORDERS_GRANT = 'resource:default/orders-api-orders-db-prod'
+  const OVER = new Map<string, readonly string[]>([[ORDERS_GRANT, [DATABASE]]])
+  const JOINED_AT = 'operations.0.patch.access'
+  const DECLARED_AT = 'operations.0.entity.spec.access'
+  const THE_ACCESS = `${BILLING}'s access to ${DATABASE}`
+
+  const joining = (level: unknown, consumer = BILLING) => ({
+    op: 'update-entity' as const,
+    entityRef: ORDERS_GRANT,
+    patch: {
+      patch: 'add-dependency-of' as const,
+      consumer,
+      ...(level === undefined ? {} : { access: level }),
+    },
+  })
+
+  /** The answer the owner typed, against the draft it filled. */
+  const answeredRead = (): RecordedAnswer[] =>
+    recordAnswers(planOf(joining('read')), [{ path: JOINED_AT, value: 'read' }], OVER)
+
+  it('records a level by the access it states, when the repository says what it is over', () => {
+    // And by its grant and its one consumer as well: see the test of a
+    // redraft that changes what the grant is over.
+    expect(answeredRead()).toEqual([
+      {
+        path: JOINED_AT,
+        value: 'read',
+        about: { entity: ORDERS_GRANT, field: 'patch.access', consumer: BILLING },
+        access: { consumer: BILLING, resource: DATABASE },
+      },
+    ])
+    // And a creation's by its one consumer and its one thing, with no map at all.
+    expect(
+      recordAnswers(planOf(access({ access: 'read' })), [{ path: DECLARED_AT, value: 'read' }]),
+    ).toEqual([
+      {
+        path: DECLARED_AT,
+        value: 'read',
+        about: {
+          entity: 'resource:default/billing-api-orders-db-prod',
+          field: 'entity.spec.access',
+          consumer: BILLING,
+        },
+        access: { consumer: BILLING, resource: DATABASE },
+      },
+    ])
+  })
+
+  it('carries no level onto a join to a grant that states none', () => {
+    // `GrantedOver` holds only the rights that state a level. A network flow
+    // over the same database is billing-api reaching it too, but not at a
+    // level: nothing is written into that join, and it is not a second
+    // statement of the access that would have the answer asked again.
+    const network = 'resource:default/billing-api-to-orders-db-prod'
+    const joinNetwork = {
+      op: 'update-entity' as const,
+      entityRef: network,
+      patch: { patch: 'add-dependency-of' as const, consumer: BILLING },
+    }
+    const redraft = planOf(access({ access: { unknown: 'which level?' } }), joinNetwork)
+
+    const result = reapplyAnswers(redraft, answeredRead(), OVER)
+
+    expect(result.plan.operations).toEqual([access({ access: 'read' }), joinNetwork])
+    expect(result.reapplied).toEqual([
+      { path: DECLARED_AT, value: 'read', entity: THE_ACCESS, answeredAt: JOINED_AT },
+    ])
+  })
+
+  it('carries the level to a grant of its own that the redraft declares, and says so', () => {
+    const redraft = planOf(access({ access: { unknown: 'which level?' } }))
+
+    const result = reapplyAnswers(redraft, answeredRead(), OVER)
+
+    expect(result.plan.operations[0]).toEqual(access({ access: 'read' }))
+    expect([...result.answers]).toEqual([[DECLARED_AT, 'read']])
+    expect(result.reapplied).toEqual([
+      { path: DECLARED_AT, value: 'read', entity: THE_ACCESS, answeredAt: JOINED_AT },
+    ])
+  })
+
+  it('carries it back the other way, onto an existing grant the redraft joins', () => {
+    const answered = recordAnswers(
+      planOf(access({ access: 'read' })),
+      [{ path: DECLARED_AT, value: 'read' }],
+    )
+
+    const result = reapplyAnswers(planOf(joining('readwrite')), answered, OVER)
+
+    expect(result.plan.operations[0]).toEqual(joining('read'))
+    expect(result.reapplied).toEqual([
+      expect.objectContaining({ path: JOINED_AT, value: 'read', replaced: 'readwrite' }),
+    ])
+  })
+
+  it("puts nothing on another consumer's access through the same grant", () => {
+    // Keyed by the grant, this answer set payments-api's level: a value the
+    // user gave about billing-api, vouched for about somebody else.
+    const redraft = planOf(joining({ unknown: 'which level?' }, PAYMENTS))
+
+    const result = reapplyAnswers(redraft, answeredRead(), OVER)
+
+    expect(result.plan).toEqual(redraft)
+    expect(result.answers.size).toBe(0)
+    expect(result.reapplied).toEqual([])
+  })
+
+  it('keeps a level typed into a grant whose thing it cannot tell for that consumer alone', () => {
+    // Over two databases, the grant names no one access, so the answer is held
+    // by the grant — and by the consumer it was typed for. The same consumer
+    // joined to the same grant again is the same question and is not asked;
+    // another consumer joined to it is another access, and is.
+    const twoThings = new Map([[ORDERS_GRANT, [DATABASE, 'resource:default/orders-db-dev']]])
+    const answered = recordAnswers(
+      planOf(joining('read')),
+      [{ path: JOINED_AT, value: 'read' }],
+      twoThings,
+    )
+    expect(answered).toEqual([
+      {
+        path: JOINED_AT,
+        value: 'read',
+        about: { entity: ORDERS_GRANT, field: 'patch.access', consumer: BILLING },
+      },
+    ])
+
+    const other = planOf(joining({ unknown: 'which level?' }, PAYMENTS))
+    const refused = reapplyAnswers(other, answered, twoThings)
+    expect(refused.plan).toEqual(other)
+    expect(refused.answers.size).toBe(0)
+    expect(refused.reapplied).toEqual([])
+
+    const same = reapplyAnswers(planOf(joining({ unknown: 'which level?' })), answered, twoThings)
+    expect(same.plan.operations[0]).toEqual(joining('read'))
+    expect(same.reapplied).toEqual([
+      { path: JOINED_AT, value: 'read', entity: ORDERS_GRANT, answeredAt: JOINED_AT },
+    ])
+  })
+
+  it('asks again a level typed for a grant of two consumers, which is no one access', () => {
+    const shared = {
+      op: 'create-entity' as const,
+      entity: {
+        kind: 'Resource' as const,
+        metadata: { name: 'billing-api-orders-db-prod', env: 'prod' },
+        spec: {
+          type: 'database-access',
+          access: 'read',
+          owner: TIGER,
+          dependsOn: [DATABASE],
+          dependencyOf: [BILLING, PAYMENTS],
+        },
+      },
+    }
+    const answered = recordAnswers(planOf(shared), [{ path: DECLARED_AT, value: 'read' }], OVER)
+    expect(answered).toEqual([{ path: DECLARED_AT, value: 'read' }])
+
+    const redraft = planOf(access({ access: { unknown: 'which level?' } }))
+    const result = reapplyAnswers(redraft, answered, OVER)
+    expect(result.plan).toEqual(redraft)
+    expect(result.reapplied).toEqual([])
+  })
+
+  it('keeps a level with its grant and consumer when the redraft changes what it is over', () => {
+    // The `link-db-missing` tape: the first draft declared billing-api's grant
+    // over `resource:default/orders-db`, the level was answered, and the
+    // redraft declared the same grant over `resource:prod/orders-db`. No draft
+    // states the access the answer was typed for any more, and the grant and
+    // its one consumer are the ones the person answered about: not asked twice.
+    const over = (thing: string, level: unknown) => ({
+      op: 'create-entity' as const,
+      entity: {
+        kind: 'Resource' as const,
+        metadata: { name: 'billing-api-orders-db', env: 'prod' },
+        spec: {
+          type: 'database-access',
+          access: level,
+          owner: TIGER,
+          dependsOn: [thing],
+          dependencyOf: [BILLING],
+        },
+      },
+    })
+    const answered = recordAnswers(
+      planOf(database('orders-db', TIGER), over('resource:default/orders-db', 'read')),
+      [{ path: 'operations.1.entity.spec.access', value: 'read' }],
+      OVER,
+    )
+
+    const result = reapplyAnswers(
+      planOf(over('resource:prod/orders-db', { unknown: 'which level?' })),
+      answered,
+      OVER,
+    )
+
+    expect(result.plan.operations[0]).toEqual(over('resource:prod/orders-db', 'read'))
+    expect(result.reapplied).toEqual([
+      {
+        path: DECLARED_AT,
+        value: 'read',
+        entity: 'resource:default/billing-api-orders-db',
+        answeredAt: 'operations.1.entity.spec.access',
+      },
+    ])
+    // Another consumer in that same grant is another access, and is asked.
+    const payments = planOf({
+      ...over('resource:prod/orders-db', { unknown: 'which level?' }),
+      entity: {
+        ...over('resource:prod/orders-db', { unknown: 'which level?' }).entity,
+        spec: {
+          ...over('resource:prod/orders-db', { unknown: 'which level?' }).entity.spec,
+          dependencyOf: [PAYMENTS],
+        },
+      },
+    })
+    expect(reapplyAnswers(payments, answered, OVER).reapplied).toEqual([])
+  })
+
+  it("follows each consumer of one grant by its own access, in the redraft's order", () => {
+    const plan = planOf(joining('read'), joining('readwrite', PAYMENTS))
+    const answered = recordAnswers(
+      plan,
+      [
+        { path: JOINED_AT, value: 'read' },
+        { path: 'operations.1.patch.access', value: 'readwrite' },
+      ],
+      OVER,
+    )
+    expect(answered.map((one) => one.access)).toEqual([
+      { consumer: BILLING, resource: DATABASE },
+      { consumer: PAYMENTS, resource: DATABASE },
+    ])
+
+    const swapped = planOf(
+      joining({ unknown: 'which level?' }, PAYMENTS),
+      joining({ unknown: 'which level?' }),
+    )
+    const result = reapplyAnswers(swapped, answered, OVER)
+
+    expect(result.plan.operations).toEqual([joining('readwrite', PAYMENTS), joining('read')])
+    expect(result.reapplied.map(({ path, value, entity }) => ({ path, value, entity }))).toEqual([
+      { path: JOINED_AT, value: 'readwrite', entity: `${PAYMENTS}'s access to ${DATABASE}` },
+      { path: 'operations.1.patch.access', value: 'read', entity: THE_ACCESS },
+    ])
+  })
+
+  it('carries nothing into a draft that states the same access twice', () => {
+    const redraft = planOf(
+      joining({ unknown: 'which level?' }),
+      access({ access: { unknown: 'which level?' } }),
+    )
+
+    const result = reapplyAnswers(redraft, answeredRead(), OVER)
+
+    expect(result.plan).toEqual(redraft)
+    expect(result.answers.size).toBe(0)
+  })
+
+  it('records nothing by an access the plan it filled states twice', () => {
+    const plan = planOf(joining('read'), access({ access: 'read' }))
+    expect(recordAnswers(plan, [{ path: JOINED_AT, value: 'read' }], OVER)).toEqual([
+      {
+        path: JOINED_AT,
+        value: 'read',
+        about: { entity: ORDERS_GRANT, field: 'patch.access', consumer: BILLING },
+      },
+    ])
   })
 })

@@ -242,6 +242,14 @@ describe('plan "<intent>"', () => {
       expect(await hashTree(repo)).toBe(before)
       endedWell(code, out)
       reachedTheModel(events)
+      // One consumer, one database: its level is one question, whatever the
+      // redraft names the database. The tape's redraft keeps the grant and its
+      // consumer and moves its `dependsOn` to another reference, and an answer
+      // held by the access alone was lost there and asked a second time.
+      const levels = events.filter(
+        (event) => event.type === 'ask' && event.question.path.endsWith('.access'),
+      )
+      expect(levels.length).toBeLessThanOrEqual(1)
     },
     TIMEOUT,
   )

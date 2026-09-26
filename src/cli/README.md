@@ -179,6 +179,18 @@ nothing at all otherwise, because a script has nobody to ask and blocking on a r
 worst thing a CLI in a pipeline can do — the questions print and the run exits 3, as it
 always has. `undefined` is a decline, and so is an empty line.
 
+Printed and prompted, a question is the same lines (`questionLines`): the path, the reason
+the plan carries, and — when the engine knows them — what the draft had put there and what
+the field takes: `the draft says readwrite · accepted: read, readwrite` for the level of a
+grant whose type states one, or `in use: dev, prod` for an environment, whose set is shown
+and never closed. They are the `Question`'s optional `proposed`, `accepted` and `inUse`, so
+`--json` carries them too; the `{unknown}` in the plan, which the Reviewer and the repair
+loop read, is not reworded. An answer outside an `accepted` set is refused at the prompt,
+before any gate — it used to reach the schema at gate [1] and spend a redraft on a word only
+the user could fix — and the same question is put again with `not accepted: <value>` under
+it. A decline is still a decline; a third value outside the set ends the run on it, exit 1
+(`ASK_LIMITS.triesPerQuestion`).
+
 Both roads then run **all the gates again** on the filled plan, bounded by
 `ASK_LIMITS.maxRounds`. An answer is not exempted from any gate: it joins what the user
 stated, and the derivation, the signature and the policies all read that one
@@ -195,9 +207,17 @@ answers to that plan's paths; `provenanceOf` builds the one `Provenance` from th
 is what stops a moved or reopened field being asked about twice. An answer it wrote into a
 redraft is said on stderr, one line per path, naming the entity rather than a path the
 user no longer sees, and what the draft said when the user's answer replaced it:
-`  = <path> is <value>, as answered for <entity>; the draft said <value>`. What it does
-not follow — a renamed entity, a moved consumer, an entity two operations amend — is asked
-again; `reapply.ts` lists it.
+`  = <path> is <value>, as answered for <entity>; the draft said <value>`. A level is also
+recorded by its **access** — the consumer and the thing — so an answer typed for
+billing-api joined to orders-api's grant follows the redraft that declares a grant of
+billing-api's own, and the line names the access rather than a grant.
+What it does not follow — a renamed entity, a moved consumer, an entity two operations
+amend, an access stated twice — is asked again; `reapply.ts` lists it.
+
+A stop over a value the user gave does not end on "name the value the gate could not
+accept": it names the value as theirs, kept through every redraft, and for a level what
+would pass — a separate grant at their level, for whom and over what as far as the engine
+knows (`renderStopped`, `RepairOutcome.kept`).
 
 **Tracing.** `trace-sink.ts` is the only way a trace leaves the process: `mlflowSink` posts
 OTLP/JSON to `IDP_MLFLOW_TRACKING_URI`'s `/v1/traces` — never `MLFLOW_TRACKING_URI`'s, which

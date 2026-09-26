@@ -90,7 +90,16 @@ entity; a list element and a consumer are never written — their position is no
 identity — and vouch only where the same entity still holds that value; a value the schema
 would refuse at the redraft's field is not written; and an entity two operations of one
 plan amend has no identity at all, because two updates of one grant ask two levels and
-those are two answers, not one given twice. What keeps the old limit is only what has no
+those are two answers, not one given twice. A level is keyed by its access as well as its
+entity — the consumer and the thing it reaches — because "which level?" asks at what
+level billing-api reaches orders-db-prod, not what orders-api's grant declares: the answer
+follows the redraft that gives billing-api a grant of its own, and two updates of one grant
+for two consumers each follow their own access. Held by its grant, a level goes back only
+to the consumer it was typed for, and only where no operation states its access — never to
+a different consumer joined to the grant it was typed into; a level typed for a grant of
+two consumers is no one consumer's, and stays at its path. Only the rights whose type
+states a level are accesses here (`GrantedOver`): a network flow over the same database is
+never written into nor counted as the access twice. What keeps the old limit is only what has no
 entity to follow — an answer about an operation with no name to know it by, or about an
 entity two operations share, and one a caller vouches for at a fixed path — which still
 vouches for the same value at the same field of whatever operation sits there.
