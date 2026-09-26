@@ -1,0 +1,10 @@
+si:
+  entities: 10-99
+  components: 1-9
+  resources: 10-99
+  dangling references: 0
+vocabulary:
+  kinds: Component, Resource
+  types: api, cache, database, database-access, network-access, service
+  environments: dev, prod, staging
+  owners: group:default/common, group:default/dodowarriors, group:default/elephant, group:default/tiger

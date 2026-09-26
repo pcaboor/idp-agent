@@ -59,6 +59,21 @@ Plain data, handed in. Never a graph, never a provider, never a path.
   finding (`type: database-access` finding no grant is how it learns one must be
   proposed), and an error there changes what it is told on a normal path. Until that is
   decided, `plan` and `init` share the same opt-out.
+- The Analyst's registry is built with `apis: true` (`cli/commands/ask.ts`): Backstage's
+  APIs are part of the read model (design §4.1), so its search takes `kind: "API"`
+  (`apiSearchCriteriaSchema`), a fifth tool, `get_apis`, reads `provides` (the APIs a
+  component declares in `spec.providesApis`) or `providedBy` (the components that declare
+  an API), and a row says what its entity declares about APIs — what `show`'s card prints
+  of an API: its lifecycle, that its definition is `declared` (never its text), its
+  description, system, tags and links, and its providers; a component's `provides`, only
+  when it provides one. A tool of its own rather than a
+  direction of `get_dependencies`, because providing is not depending, and who *consumes*
+  an API is a right over it, which `get_dependencies` `consumers` already walks. Every
+  reference a row names joins the witness set. The Architect's registry has none of it:
+  it proposes neither an API nor what provides one, and its specs — part of every
+  plan-mode recording's digest — are held byte for byte to the ones they were
+  (`tests/golden/architect-tools.json`), as is every row of an entity that declares
+  nothing about an API.
 - The Analyst's `answer` **discards** any field its outcome does not declare — the flat
   advertisement shows `refs` and `reason` beside every outcome, and a real model fills
   them — and never reads it (ADR-0007, amended). When every answer it sent was refused,

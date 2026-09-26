@@ -1,0 +1,11 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: billing
+  namespace: ledger
+spec:
+  type: grpc
+  lifecycle: experimental
+  owner: group:ledger/lion
+  definition: 'syntax = "proto3";'

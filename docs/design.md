@@ -81,6 +81,32 @@ follows from the documentation of the tools involved.
   nothing in staging: two distinct entities.
 - **Declare, never infer.** What the catalogue does not know is reported as unknown,
   never filled in with a plausible value.
+- **The read model is wider than the write model.** This tool proposes and files two
+  kinds, Component and Resource, and a catalogue holds more. Backstage's own `kind: API`
+  is **read**: a node of the graph, held to what Backstage requires of one — a type, a
+  lifecycle, an owner and a definition — and refused with a reason when it lacks one,
+  like a broken Component. Its definition is kept as the fact that it is declared, never
+  its text: it is printed nowhere and sent to no model. A Component's
+  `spec.providesApis` is read too, as a relation of its own — providing is not
+  depending, either way — and a reference in it naming nothing is dangling, as a
+  `dependsOn` one is. Neither is ever **proposed**: a proposal has no API kind and no
+  `providesApis`, and a change is decided against the write model, where an API is a
+  reference that resolves and never a node. **`spec.consumesApis` is deliberately not
+  read.** Here, consuming something is an access right — a Resource that `dependsOn`
+  what it reaches and lists the consumer in `dependencyOf` — because the right is what
+  gets provisioned; a second declaration of the same fact would be a second truth to
+  keep aligned with the first. So the rights over an API are how its consumers are
+  found, walked as for any object. Every other kind — Group, System, Domain, User — is
+  still set aside, and said to be. So are three APIs, as they were before any was read,
+  because reading them would get them wrong rather than refuse them: a `kind: API` under
+  another tool's apiVersion, which is no Backstage entity; one outside the `default`
+  namespace, which the graph's `kind:default/name` keys would confuse with its namesake;
+  and one whose name is in upper case, which Backstage allows and this tool's name grammar
+  does not read — a known gap, closed with namespaces. A `providesApis` reference is
+  never a reason to refuse its Component: a name in upper case is folded, since Backstage
+  compares references without regard to case, and so names the API set aside for it; one
+  the grammar cannot split even so is kept as written, and reported dangling. The `schemas/entity.schema.json` that `init platform` ships describes
+  the reader, so a Component there may carry `providesApis`, and nothing `consumesApis`.
 - **Downstream systems are destinations, not sources.** Mirroring their configuration
   would turn the catalogue into a copy to keep aligned, with no added value.
 - **An application never declares its own dependencies** in a repository nobody reviews.
@@ -259,22 +285,25 @@ refused against a grant that declares one.
 asymmetry is the point. `entitySchema` READS the Components and Resources of a real
 Backstage catalogue, whose files legitimately carry fields this tool does not model, so
 making it strict would break the reader on any real repository. Those two kinds are the
-only ones it reads. The rest of a real catalogue — Groups, Users, APIs, Systems, Locations,
-Templates — and a YAML file that is no catalogue entry at all, a `mkdocs.yml` beside the
-entities, are set aside by `parseDocuments` before the schema runs: reported, as a
-`not-modelled` warning in `validate` and one summary line in the read commands, and never
-refused, because refusing them turned a catalogue Backstage reads without complaint into a
-red build. A mistyped kind is told from a custom one by where it is declared, never by
-guessing what was meant: Backstage's own `backstage.io/` apiVersion defines a closed set of
-kinds, so `kind: Resouce` under it is refused with the list of the kinds that group
-defines, while a kind of somebody's own lives under their own apiVersion and is set aside.
-A PROPOSAL travels the other way: an unmodelled field there is either an invention, or a
-field the deterministic serialiser will drop in silence. Both are unacceptable.
+only ones it proposes. Backstage's API is read beside them, through a schema of its own,
+`apiSchema`, that no proposal can reach (§4.1). The rest of a real catalogue — Groups,
+Users, Systems, Locations, Templates — and a YAML file that is no catalogue entry at all, a
+`mkdocs.yml` beside the entities, are set aside by `parseDocuments` before the schema runs:
+reported, as a `not-modelled` warning in `validate` and one summary line in the read
+commands, and never refused, because refusing them turned a catalogue Backstage reads
+without complaint into a red build. A mistyped kind is told from a custom one by where it
+is declared, never by guessing what was meant: Backstage's own `backstage.io/` apiVersion
+defines a closed set of kinds, so `kind: Resouce` under it is refused with the list of the
+kinds that group defines, while a kind of somebody's own lives under their own apiVersion
+and is set aside. A PROPOSAL travels the other way: an unmodelled field there is either an
+invention, or a field the deterministic serialiser will drop in silence. Both are
+unacceptable.
 
 References follow the same asymmetry. A real catalogue writes `owner: team-a` and
 `resource:orders-db`, and Backstage fills in the omitted kind and namespace by documented
 defaults — the referring entity's namespace, and per field a default kind (Group for an
-owner, none at all for `dependsOn` and `dependencyOf`, where the kind must be written).
+owner, API for `providesApis`, none at all for `dependsOn` and `dependencyOf`, where the
+kind must be written).
 `entitySchema` applies those same defaults and yields `kind:namespace/name`, so everything
 downstream compares one spelling while the file keeps the one a person wrote. That is
 reading what Backstage reads, not inferring: a `dependsOn` with no kind is still refused.
@@ -374,7 +403,7 @@ one call that ends the agent's turn — is the last in each row.
 | Agent | Input | Tools | Output |
 |---|---|---|---|
 | Supervisor | the request + a bucketed SI summary | none | `MUTATION` or `QUESTION` |
-| Analyst | a question + the SI summary | `search_entities`, `get_entity`, `get_dependencies`, `answer` | an `Answer` |
+| Analyst | a question + the SI summary | `search_entities`, `get_entity`, `get_dependencies`, `get_apis`, `answer` | an `Answer` |
 | Inspector | a project snapshot, already read and capped | `list_files`, `read_file`, `report_facts` | `ProjectFacts` |
 | Architect | `ProjectFacts` + the SI summary + the repair report | `search_entities`, `get_entity`, `get_dependencies`, `propose` | `Plan` |
 | Reviewer | the `Plan` + the original request | `verdict` | `ok` or a rejection reason |

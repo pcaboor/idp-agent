@@ -36,6 +36,11 @@ does nothing and says nothing. The refusals name
 **Commands.** `runGraph(graph, options)` and `runShow(graph, query)` take an `EntityGraph`
 and return a `CommandResult` — `text` plus `found`. No I/O and no process, so
 `tests/unit/commands.test.ts` builds a graph and asserts on the value that comes back.
+`graph --kind` takes `Component`, `Resource` or `API` — Backstage's API is read, never
+proposed (design §4.1) — and an API's row has `API` in its KIND column. `show` resolves an
+API as it resolves any entity: a full reference, then the first entity holding a bare name.
+An API and the Resource the demo convention models one as may share a name; the reference
+names the other.
 
 **Rendering.** `renderTable(headers, rows)` and `renderEntityDetail(graph, entity)` take
 data and return a string. Pure functions, asserted directly in `tests/unit/render.test.ts`.
@@ -45,12 +50,20 @@ has none or nothing is left of it once cleaned. A description is cut at `ENTITY_
 and ends in `…` when it is; a tag is cut at Backstage's 63 (`TAG_LENGTH`); the tags and the
 links stop at a count, and what was left out is counted. A URL is never cut — a shortened
 address is a wrong one — and one longer than `ENTITY_LIMITS.url` is replaced by a line saying so.
+An API's card adds its lifecycle and `definition   declared` after its type — the text of the
+definition is never kept, so it cannot be printed — and a `provided by` section, `none`
+included; the rights over it and the services they reach are listed as for any object. A
+Component's card has a `provides` section only when it provides an API, and another kind's a
+`provided by` only when a `providesApis` names it — Backstage keeps an explicit kind as
+written — so every other card reads as it did.
 `renderOverview(overview, source)` is the text of `ask`'s `overview` answer: the model
 chose it, and every word of it is written here from `context/graph/overview.ts`'s figures —
 a headline naming the demo SI or the repository by its folder, then short sections, each list cut
 at five with the remainder counted (`tests/unit/render-overview.test.ts`). Among them,
 systems, tags, and up to five entities with their description on one line each — what the
-catalogue contains in the words its repository wrote. `runAsk` gets the
+catalogue contains in the words its repository wrote. An `apis` section — how many, and
+how many a service provides — appears only where the repository declares one, and an API a
+right reaches is counted among the most reached objects. `runAsk` gets the
 source and what the reader set aside and rejected from `main`, which already has them.
 
 **An answer's commentary (ADR-0008).** `runAsk` prints the model's `intro` above the

@@ -105,6 +105,7 @@ export function renderOverview(overview: Overview, source: OverviewSource): stri
       tagged(named(overview.tags)),
       described(overview.described, overview.entities),
       rights(overview.rights),
+      ...apis(overview.apis),
       reached(overview.reached),
       dangling(overview.dangling),
     )
@@ -189,6 +190,26 @@ function rights(counts: Overview['rights']): string[] {
   return [
     `rights  ${String(counts.total)}`,
     ...rows(levels.filter(([, count]) => count > 0).map(([name, count]) => [name, String(count)])),
+  ]
+}
+
+/**
+ * Backstage's APIs, and whether a service says it provides each — a block only
+ * where there are any: a catalogue with none has nothing to say of them, and a
+ * line saying so would be one more line in every overview of the demo SI.
+ */
+function apis(counts: Overview['apis']): string[][] {
+  if (counts.total === 0) return []
+  const unprovided = counts.total - counts.provided
+  const lines: Array<readonly [string, number]> = [
+    ['provided by a service', counts.provided],
+    ['provided by none', unprovided],
+  ]
+  return [
+    [
+      `apis  ${String(counts.total)}`,
+      ...rows(lines.filter(([, count]) => count > 0).map(([name, count]) => [name, String(count)])),
+    ],
   ]
 }
 

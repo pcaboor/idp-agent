@@ -1,4 +1,4 @@
-import type { Entity } from '../schemas/entity.js'
+import type { Api, Entity } from '../schemas/entity.js'
 import { resolveEntityPath } from '../paths/entity-path.js'
 import type { IgnoredDocument } from '../yaml/serialize.js'
 
@@ -31,10 +31,16 @@ export interface Violation {
 export interface RepositoryFile {
   readonly path: string
   readonly entities: readonly Entity[]
+  /**
+   * Backstage APIs: read, validated for what the reader requires of one, and
+   * never among `entities` — the write side reads that list alone, so no plan
+   * amends, counts or files an API (see `parseDocuments`).
+   */
+  readonly apis: readonly Api[]
   /** One message per document the schema refused. Reported, never dropped. */
   readonly rejections: readonly string[]
   /**
-   * Documents set aside as someone else's — a Group, an API, a mkdocs.yml.
+   * Documents set aside as someone else's — a Group, a System, a mkdocs.yml.
    * Reported, never refused, and never an entity to any other rule.
    */
   readonly ignored: readonly IgnoredDocument[]
@@ -50,7 +56,7 @@ export interface RepositorySnapshot {
   readonly files: readonly RepositoryFile[]
 }
 
-const refOf = (entity: Entity): string =>
+const refOf = (entity: Entity | Api): string =>
   `${entity.kind.toLowerCase()}:default/${entity.metadata.name}`
 
 const folderOfFile = (path: string): string => {
@@ -61,6 +67,7 @@ const folderOfFile = (path: string): string => {
 const referencesOf = (entity: Entity): string[] => [
   ...(entity.spec.dependsOn ?? []),
   ...(entity.kind === 'Resource' ? (entity.spec.dependencyOf ?? []) : []),
+  ...(entity.kind === 'Component' ? (entity.spec.providesApis ?? []) : []),
 ]
 
 export function checkRepository(snapshot: RepositorySnapshot): Violation[] {
@@ -72,8 +79,13 @@ export function checkRepository(snapshot: RepositorySnapshot): Violation[] {
   // there: a reference to it is not dangling, only to something not modelled.
   const aside = new Set<string>()
 
+  // An API is declared like any entity — a reference to it resolves, and two
+  // of one name are a duplicate — and is subject to no other rule: this tool
+  // never files one, so it has no path to be misplaced from, no witness to
+  // demand and no one-per-file to hold it to. A catalog-info.yaml holding a
+  // service and the API it provides is the commonest shape a catalogue has.
   for (const file of snapshot.files) {
-    for (const entity of file.entities) {
+    for (const entity of [...file.entities, ...file.apis]) {
       const ref = refOf(entity)
       declared.add(ref)
       byRef.set(ref, [...(byRef.get(ref) ?? []), file.path])
@@ -105,7 +117,7 @@ export function checkRepository(snapshot: RepositorySnapshot): Violation[] {
 
   for (const file of snapshot.files) {
     // Warning, not error: a repository that is also the company's catalogue
-    // declares Groups and APIs beside the entities this tool manages, and a
+    // declares Groups and Systems beside the entities this tool manages, and a
     // red build there would push people to move them out — or to delete them.
     // Named, because a document read and never mentioned is one the user
     // believes was checked.

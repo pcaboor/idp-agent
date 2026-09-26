@@ -1,0 +1,6 @@
+NAME               KIND       TYPE     ENV  OWNER
+billing-api        Component  service  -    group:default/tiger
+mcp-eu-compliance  Component  service  -    group:default/common
+mcp-inpi           Component  service  -    group:default/dodowarriors
+orders-api         Component  service  -    group:default/tiger
+reporting-worker   Component  service  -    group:default/common

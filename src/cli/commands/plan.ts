@@ -21,6 +21,7 @@ import type { Provenance } from '../../core/plan/provenance.js'
 import { reapplyAnswers, recordAnswers, type RecordedAnswer } from '../../core/plan/reapply.js'
 import { recheckPlan, type Recheck } from '../../core/plan/recheck.js'
 import { signPlan, type SignatureContext, type SignedPlan } from '../../core/plan/sign.js'
+import type { Entity } from '../../core/schemas/entity.js'
 import { planSchema, type Plan } from '../../core/schemas/plan.js'
 import type { AccessLevel, Nature } from '../../core/schemas/resource-types.js'
 import { ENV_ANNOTATION, type Vocabulary } from '../../core/schemas/vocabulary.js'
@@ -200,14 +201,36 @@ interface Contexts {
  */
 const graphOf = (snapshot: RepositorySnapshot): EntityGraph =>
   EntityGraph.from(
-    snapshot.files.flatMap((file) => [...file.entities]),
-    // A document set aside — an API, a System — still exists, so a reference
+    snapshot.files.flatMap((file) => file.entities.map(unprovided)),
+    // A document set aside — a Group, a System — still exists, so a reference
     // to it resolves. Left out, the summary the agents read counted it
-    // dangling where `validate` does not.
-    snapshot.files.flatMap((file) =>
-      file.ignored.flatMap(({ ref }) => (ref === undefined ? [] : [ref])),
-    ),
+    // dangling where `validate` does not. A Backstage API is put there too,
+    // and not among the nodes: a change is decided against the write model,
+    // which proposes neither an API nor what provides one (design 4.1).
+    snapshot.files.flatMap((file) => [
+      ...file.ignored.flatMap(({ ref }) => (ref === undefined ? [] : [ref])),
+      ...file.apis.map(refOf),
+    ]),
   )
+
+/**
+ * A Component without the APIs it provides, which the write model has no
+ * field for. Kept, a `providesApis` naming an API declared in some other
+ * repository — the common case in a real catalogue — would be a dangling
+ * reference in the summary the Supervisor and the Architect read, where it was
+ * none when the reader dropped the field. `validate` reports it; a plan has
+ * nothing to decide about it.
+ *
+ * What still differs from a repository read before APIs were: an API missing
+ * what Backstage requires is refused, not set aside, so a reference to it
+ * dangles here as it does in `validate`.
+ */
+const unprovided = (entity: Entity): Entity => {
+  if (entity.kind !== 'Component' || entity.spec.providesApis === undefined) return entity
+  const spec = { ...entity.spec }
+  delete spec.providesApis
+  return { ...entity, spec }
+}
 
 /**
  * Both gates read the same repository, so they are built together and the

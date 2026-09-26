@@ -20,7 +20,12 @@ export async function runValidate(
   const snapshot = await read(root)
   const violations = checkRepository(snapshot)
 
-  const entities = snapshot.files.reduce((total, file) => total + file.entities.length, 0)
+  // The APIs read are entities too: validated for what the reader requires of
+  // one, and counted with the kinds this tool writes.
+  const entities = snapshot.files.reduce(
+    (total, file) => total + file.entities.length + file.apis.length,
+    0,
+  )
   const errors = violations.filter((violation) => violation.severity === 'error')
 
   // A path and a message both carry what a file wrote — its name, a key the

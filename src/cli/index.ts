@@ -119,7 +119,7 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   frame it with a sentence before and a few after, each checked by the engine
   and marked with ›; --quiet prints the verified answer alone.
 
-  idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource] [--repo <directory> | --demo]
+  idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource|API] [--repo <directory> | --demo]
   idp-agent show <name-or-reference> [--repo <directory> | --demo]
   idp-agent ask "<question>" [--repo <directory> | --demo] [--quiet]
   idp-agent validate <directory>
@@ -330,8 +330,8 @@ export function parseArguments(argv: string[]): Command {
         strict: true,
       })
       const kind = values.kind
-      if (kind !== undefined && kind !== 'Component' && kind !== 'Resource') {
-        return { name: 'error', message: 'kind must be Component or Resource' }
+      if (kind !== undefined && kind !== 'Component' && kind !== 'Resource' && kind !== 'API') {
+        return { name: 'error', message: 'kind must be Component, Resource or API' }
       }
       const from = readFrom('graph', values)
       if ('message' in from) return from

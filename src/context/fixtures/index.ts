@@ -1,6 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { Entity } from '../../core/schemas/entity.js'
+import type { CatalogueEntity } from '../../core/schemas/entity.js'
 import { parseDocuments } from '../../core/yaml/serialize.js'
 import type { ContextProvider, Ignored, LoadResult, Rejection } from '../provider.js'
 
@@ -34,7 +34,7 @@ export class FixtureProvider implements ContextProvider {
   constructor(private readonly rootDir: string) {}
 
   async load(): Promise<LoadResult> {
-    const entities: Entity[] = []
+    const entities: CatalogueEntity[] = []
     const rejected: Rejection[] = []
     const ignored: Ignored[] = []
 
@@ -45,7 +45,7 @@ export class FixtureProvider implements ContextProvider {
       // The one reader of entity documents: a document the parser faulted is
       // a rejection here too, never the value `toJS()` would have guessed.
       const read = parseDocuments(content)
-      entities.push(...read.entities)
+      entities.push(...read.entities, ...read.apis)
       rejected.push(...read.rejections.map((reason) => ({ source, reason })))
       ignored.push(...read.ignored.map((document) => ({ source, ...document })))
     }

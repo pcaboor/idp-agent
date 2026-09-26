@@ -1,0 +1,15 @@
+resource:default/inpi-api
+
+  kind         Resource
+  type         api
+  owner        group:default/dodowarriors
+  environment  prod
+
+depends on
+  none
+
+used by
+  resource:default/mcp-inpi-to-inpi-api  prod
+
+reached by services
+  component:default/mcp-inpi

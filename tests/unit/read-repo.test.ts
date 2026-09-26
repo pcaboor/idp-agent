@@ -228,23 +228,23 @@ describe('graph and show with --repo', () => {
     })
 
     it('does not call dangling a reference to a document it set aside', async () => {
-      // The API is in the repository and counted as not loaded; "dangling"
-      // would say it is not there at all.
+      // The System is in the repository and counted as not loaded; "dangling"
+      // would say it is not there at all. (An API is read, and is a node.)
       const ledger = LEDGER.replace(
         '    - resource:default/mysql-prod-01\n',
-        '    - resource:default/mysql-prod-01\n    - api:default/ledger-events\n',
+        '    - resource:default/mysql-prod-01\n    - system:default/ledger\n',
       )
       const cwd = await workspace({
         'ledger.yml': ledger,
-        'ledger-events.yml':
-          '---\napiVersion: backstage.io/v1alpha1\nkind: API\nmetadata:\n  name: ledger-events\n',
+        'ledger-system.yml':
+          '---\napiVersion: backstage.io/v1alpha1\nkind: System\nmetadata:\n  name: ledger\n',
       })
 
       const { code, out, err } = await run(['graph', '--env', 'prod', '--repo', 'iac'], { cwd })
 
       expect(code).toBe(0)
       expect(out).toContain('ledger-db-prod')
-      expect(err).toContain('not loaded: 1 document this tool does not model (API ×1)')
+      expect(err).toContain('not loaded: 1 document this tool does not model (System ×1)')
       expect(out).not.toMatch(/dangling/)
     })
 

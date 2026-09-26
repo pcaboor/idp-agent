@@ -1,0 +1,13 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: payments
+spec:
+  type: grpc
+  lifecycle: experimental
+  owner: group:default/lion
+  definition: |
+    syntax = "proto3";
+    // DEFINITION-BODY-NEVER-PRINTED
+    service Payments { rpc Charge (Charge) returns (Receipt); }

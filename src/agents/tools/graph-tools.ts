@@ -1,8 +1,10 @@
 import type { z } from 'zod'
-import type { Entity } from '../../core/schemas/entity.js'
+import type { CatalogueEntity } from '../../core/schemas/entity.js'
 import {
   QUERY_LIMITS,
   answerSchema,
+  apiSearchCriteriaSchema,
+  getApisInputSchema,
   getDependenciesInputSchema,
   getEntityInputSchema,
   searchCriteriaSchema,
@@ -58,6 +60,27 @@ interface Row {
 }
 
 /**
+ * The Analyst's row, which also says what an entity declares about Backstage's
+ * APIs (`buildTools`' `apis`). An API's row carries what `show`'s card prints
+ * of it — its lifecycle, that its definition is declared (never the
+ * definition), what its file says it is (description, system, tags, links)
+ * and the components that provide it: the Architect never reads an API row,
+ * so it is free to say all of that. A Component's row carries the APIs it
+ * provides, and only when it provides one, so every other row is the
+ * Architect's row, byte for byte.
+ */
+interface ApiRow extends Row {
+  lifecycle?: string
+  definition?: string
+  description?: string
+  system?: string
+  tags?: string[]
+  links?: Array<{ url: string; title?: string }>
+  provides?: string[]
+  providedBy?: string[]
+}
+
+/**
  * What a row says about the level a right grants.
  *
  * Only a levelled type gets the field at all. An object grants nothing, and a
@@ -74,12 +97,12 @@ interface Row {
  * What is never written is a level nobody declared: that is the guess
  * `serialize.ts` refuses on the write side, refused here on the read side.
  */
-const accessOf = (entity: Entity): { access: string } | Record<string, never> =>
+const accessOf = (entity: CatalogueEntity): { access: string } | Record<string, never> =>
   entity.kind === 'Resource' && levelledOf(entity.spec.type)
     ? { access: entity.spec.access ?? UNDECLARED }
     : {}
 
-const rowOf = (entity: Entity): Row => ({
+const rowOf = (entity: CatalogueEntity): Row => ({
   ref: refOf(entity),
   name: entity.metadata.name,
   kind: entity.kind,
@@ -129,7 +152,7 @@ function unusedCriteria(graph: EntityGraph, criteria: SearchCriteria): string[] 
     label: string,
     plural: string,
     value: string | undefined,
-    of: (entity: Entity) => string,
+    of: (entity: CatalogueEntity) => string,
   ): void => {
     if (value === undefined) return
     const inUse = new Set(entities.map(of))
@@ -180,6 +203,16 @@ export function buildTools(
      * option.
      */
     refuseUnusedValues?: boolean
+    /**
+     * The Analyst's registry: Backstage's APIs are found and read. A search
+     * may ask for kind `API`, `get_apis` reads who provides what, and a row
+     * says what its entity declares about APIs (`ApiRow`). Off for the
+     * Architect (`plan` and `init`), whose specs, and whose rows for any entity
+     * that declares nothing about an API, are the ones its plan-mode tapes were
+     * recorded against — and which proposes neither an API nor what provides
+     * one, so has nothing to look one up for.
+     */
+    apis?: boolean
   } = {},
 ): {
   specs: ModelToolSpec[]
@@ -189,16 +222,62 @@ export function buildTools(
   // What the ENGINE returned. The answer tool never adds to it: a model that
   // could witness its own invention would defeat the check entirely.
   const witnessed = new Set<string>()
+  const apis = options.apis ?? false
 
-  const report = (entities: Entity[]): ToolOutcome => {
+  /**
+   * A row, and every reference it names: the entity's own, and — on the
+   * Analyst's row — the APIs and providers it lists, which are present
+   * entities the engine returned and so may be answered with.
+   */
+  const read = (entity: CatalogueEntity): { row: Row | ApiRow; refs: string[] } => {
+    const row = rowOf(entity)
+    if (!apis) return { row, refs: [row.ref] }
+    if (entity.kind === 'API') {
+      const providedBy = graph.providersOf(row.ref).map(refOf)
+      const { ref, name, kind, type, env, owner } = row
+      const { description, tags, links } = entity.metadata
+      return {
+        row: {
+          ref,
+          name,
+          kind,
+          type,
+          lifecycle: entity.spec.lifecycle,
+          definition: entity.spec.definition,
+          env,
+          owner,
+          ...(description === undefined ? {} : { description }),
+          ...(entity.spec.system === undefined ? {} : { system: entity.spec.system }),
+          ...(tags === undefined || tags.length === 0 ? {} : { tags }),
+          ...(links === undefined || links.length === 0
+            ? {}
+            : {
+                links: links.map(({ url, title }) => ({
+                  url,
+                  ...(title === undefined ? {} : { title }),
+                })),
+              }),
+          providedBy,
+        },
+        refs: [ref, ...providedBy],
+      }
+    }
+    const provides = graph.providedApisOf(row.ref).map(refOf)
+    return provides.length === 0
+      ? { row, refs: [row.ref] }
+      : { row: { ...row, provides }, refs: [row.ref, ...provides] }
+  }
+
+  const report = (entities: CatalogueEntity[]): ToolOutcome => {
     const shown = entities.slice(0, QUERY_LIMITS.maxRows)
     const truncated = entities.length - shown.length
-    for (const entity of shown) witnessed.add(refOf(entity))
+    const readings = shown.map(read)
+    for (const { refs } of readings) for (const ref of refs) witnessed.add(ref)
     return {
       // Truncation is stated, never silent: a model that believed it had seen
       // everything would answer "those are all of them" and be wrong.
       result: {
-        rows: shown.map(rowOf),
+        rows: readings.map(({ row }) => row),
         ...(truncated > 0 ? { truncated: `${truncated} more not shown` } : {}),
       },
       rows: shown.length,
@@ -206,13 +285,14 @@ export function buildTools(
     }
   }
 
+  const search = apis ? apiSearchCriteriaSchema : searchCriteriaSchema
   const specs: ModelToolSpec[] = [
     {
       name: 'search_entities',
       description:
         'Find entities by kind, type, environment, owner or name fragment. At least one ' +
         'criterion is required. Returns at most 25 rows and says so when it truncated.',
-      parameters: searchCriteriaSchema,
+      parameters: search,
     },
     {
       name: 'get_entity',
@@ -229,6 +309,19 @@ export function buildTools(
         'it through any chain. These are three different questions; pick deliberately.',
       parameters: getDependenciesInputSchema,
     },
+    ...(apis
+      ? [
+          {
+            name: 'get_apis',
+            description:
+              'Read who provides a Backstage API: "provides" for the APIs a component ' +
+              'provides (Backstage\'s providesApi relation), "providedBy" for the components ' +
+              'that provide an API (apiProvidedBy). Who consumes an API is an access right ' +
+              'over it: get_dependencies "consumers" walks those.',
+            parameters: getApisInputSchema,
+          },
+        ]
+      : []),
     {
       name: 'answer',
       description:
@@ -247,7 +340,7 @@ export function buildTools(
 
     run(call: ModelToolCall): ToolOutcome {
       if (call.name === 'search_entities') {
-        const parsed = searchCriteriaSchema.safeParse(call.args)
+        const parsed = search.safeParse(call.args)
         if (!parsed.success) return failed('search_entities', parsed.error)
         const { kind, type, env, owner, nameContains } = parsed.data
         if (options.refuseUnusedValues ?? true) {
@@ -287,6 +380,22 @@ export function buildTools(
         if (direction === 'consumers') return report(graph.consumersOf(ref))
         const _exhaustive: never = direction
         return _exhaustive
+      }
+
+      if (call.name === 'get_apis' && apis) {
+        const parsed = getApisInputSchema.safeParse(call.args)
+        if (!parsed.success) return failed('get_apis', parsed.error)
+        const { ref, direction } = parsed.data
+        switch (direction) {
+          case 'provides':
+            return report(graph.providedApisOf(ref))
+          case 'providedBy':
+            return report(graph.providersOf(ref))
+          default: {
+            const _exhaustive: never = direction
+            return _exhaustive
+          }
+        }
       }
 
       if (call.name === 'answer') {

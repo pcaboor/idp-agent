@@ -13,6 +13,7 @@ const EMPTY: Overview = {
   tags: [],
   described: [],
   rights: { total: 0, read: 0, readwrite: 0, undeclared: 0, unlevelled: 0 },
+  apis: { total: 0, provided: 0 },
   reached: [],
   dangling: [],
   setAside: { total: 0, kinds: [], unkinded: 0 },

@@ -27,6 +27,24 @@ export const searchCriteriaSchema = z
   })
   .refine((criteria) => Object.keys(criteria).length > 0, 'a search needs at least one criterion')
 
+/**
+ * The Analyst's search: the same criteria, and Backstage's API among the kinds.
+ *
+ * A schema of its own rather than a wider `kind` on the one above, which the
+ * Architect is handed too: a tool's parameters are part of every request a
+ * recording's digest is taken over, so the Architect's stay byte for byte what
+ * they were, and it is never offered a kind it cannot propose.
+ */
+export const apiSearchCriteriaSchema = z
+  .object({
+    kind: z.enum(['Component', 'Resource', 'API']).optional(),
+    type: z.string().min(1).max(QUERY_LIMITS.maxName).optional(),
+    env: z.string().min(1).max(QUERY_LIMITS.maxName).optional(),
+    owner: ownerRefSchema.optional(),
+    nameContains: z.string().min(1).max(QUERY_LIMITS.maxName).optional(),
+  })
+  .refine((criteria) => Object.keys(criteria).length > 0, 'a search needs at least one criterion')
+
 export const getEntityInputSchema = z.object({ ref: entityRefSchema })
 
 /**
@@ -37,6 +55,20 @@ export const getEntityInputSchema = z.object({ ref: entityRefSchema })
 export const getDependenciesInputSchema = z.object({
   ref: entityRefSchema,
   direction: z.enum(['dependencies', 'dependants', 'consumers']),
+})
+
+/**
+ * Providing an API, read from either end: `provides` is what a component
+ * declares in `spec.providesApis`, `providedBy` the components that declare
+ * an API — Backstage's `providesApi` and `apiProvidedBy`, named as this tool's
+ * other directions are (`dependencies`, `dependants`), and the Backstage names
+ * given in the tool's description. Not a direction of `get_dependencies`: providing is not depending,
+ * and a relation named apart is one a model cannot pick by accident. Who
+ * consumes an API is a right over it, walked by `get_dependencies`.
+ */
+export const getApisInputSchema = z.object({
+  ref: entityRefSchema,
+  direction: z.enum(['provides', 'providedBy']),
 })
 
 /**
@@ -114,4 +146,5 @@ export const answerSchema = z.discriminatedUnion('outcome', [
 ])
 
 export type Answer = z.infer<typeof answerSchema>
-export type SearchCriteria = z.infer<typeof searchCriteriaSchema>
+/** Either search's criteria: the Analyst's is the wider. */
+export type SearchCriteria = z.infer<typeof apiSearchCriteriaSchema>

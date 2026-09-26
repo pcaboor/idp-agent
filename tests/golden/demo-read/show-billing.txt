@@ -1,0 +1,10 @@
+"billing" matches 9 entities:
+  resource:default/billing-cache-dev
+  resource:default/billing-db-dev
+  resource:default/billing-db-prod
+  component:default/billing-api
+  resource:default/billing-api-billing-db-dev
+  resource:default/billing-api-billing-db-prod
+  resource:default/billing-api-cache-dev
+  resource:default/reporting-billing-db-prod
+  resource:default/billing-api-to-payments

@@ -19,14 +19,26 @@ import type { GenerateResult, LlmClient, ModelToolSpec } from '../../src/llm/cli
  * calls anything, so every loop runs to its bound — the forced last turn
  * included — and stops on its own.
  *
- * Deduplicated by name, first seen wins: the Analyst and the Architect are
- * each handed their own `buildTools`, and a `ToolSet` is keyed by name anyway.
+ * Deduplicated by what a provider is sent — the name, the description and
+ * the parameters — and not by name alone: the Analyst and the Architect are
+ * each handed their own `buildTools`, the Analyst's with `apis` as `ask`
+ * builds it, so two `search_entities` differ in the kinds they take, and each
+ * is a spec some request carries. The Architect's is the one the plan-mode
+ * recordings were made against; keyed by name, the first seen would hide it.
+ * One request never carries two tools of one name — a `ToolSet` is keyed by
+ * name — so a caller sending them all at once sends `requests(specs)`.
  */
 export async function offeredTools(): Promise<ModelToolSpec[]> {
-  const seen = new Map<string, ModelToolSpec>()
+  const seen: ModelToolSpec[] = []
   const barren: LlmClient = {
     generate: async (request): Promise<GenerateResult> => {
-      for (const spec of request.tools) if (!seen.has(spec.name)) seen.set(spec.name, spec)
+      for (const spec of request.tools) {
+        const same = (known: ModelToolSpec): boolean =>
+          known.name === spec.name &&
+          known.description === spec.description &&
+          known.parameters === spec.parameters
+        if (!seen.some(same)) seen.push(spec)
+      }
       return { text: '', toolCalls: [], finishReason: 'stop' }
     },
   }
@@ -41,7 +53,12 @@ export async function offeredTools(): Promise<ModelToolSpec[]> {
 
   await settle(classify(barren, { intent, summary: '' }, emit))
   await settle(
-    answerQuestion(barren, buildTools(graph), { intent, summary: '', vocabulary: '' }, emit),
+    answerQuestion(
+      barren,
+      buildTools(graph, { apis: true }),
+      { intent, summary: '', vocabulary: '' },
+      emit,
+    ),
   )
   const facts = await inspect(
     barren,
@@ -63,5 +80,20 @@ export async function offeredTools(): Promise<ModelToolSpec[]> {
   })
   await settle(reviewPlan(barren, { plan, intent, derived: [], targets: [], effects: [] }, emit))
 
-  return [...seen.values()]
+  return seen
+}
+
+/**
+ * `specs` as the fewest requests that each carry a name once, in the order
+ * they were offered: every first spec of a name in the first, the variants
+ * after it.
+ */
+export function requests(specs: readonly ModelToolSpec[]): ModelToolSpec[][] {
+  const batches: ModelToolSpec[][] = []
+  for (const spec of specs) {
+    const free = batches.find((batch) => batch.every((taken) => taken.name !== spec.name))
+    if (free === undefined) batches.push([spec])
+    else free.push(spec)
+  }
+  return batches
 }

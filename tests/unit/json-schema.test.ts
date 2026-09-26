@@ -75,6 +75,23 @@ describe('entityJsonSchema', () => {
     expect(entityJsonSchema().$comment).toMatch(/metadata\.namespace/)
   })
 
+  it("describes a Component's providesApis, which the reader reads, and no consumesApis", () => {
+    // The file an editor checks a repository against says what the reader
+    // accepts: a service may list the APIs it provides. consumesApis is not
+    // read — consuming is an access right (design 4.1) — so it is not offered
+    // either, and a Resource provides no API in Backstage.
+    const [component, resource] = (entityJsonSchema() as {
+      oneOf: { properties: { spec: { properties: Record<string, unknown> } } }[]
+    }).oneOf
+    const provided = component?.properties.spec.properties
+    expect(provided?.['providesApis']).toEqual({
+      type: 'array',
+      items: { type: 'string', minLength: 1 },
+    })
+    expect(provided).not.toHaveProperty('consumesApis')
+    expect(resource?.properties.spec.properties).not.toHaveProperty('providesApis')
+  })
+
   it('is a real JSON Schema document', () => {
     expect(entityJsonSchema()).toHaveProperty('$schema')
   })

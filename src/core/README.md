@@ -22,21 +22,35 @@ and nothing here can be steered by what it validates. Hence the property tests r
   kept as written, because a field that is only printed must not take its entity out of
   every command. Before it was read, zod stripped it, so a system that is not a string now
   rejects an entity that read before: one the catalogue itself would refuse.
+  The read model is wider than the write model (design §4.1): `apiSchema` reads Backstage's
+  `kind: API` — a type, a lifecycle, an owner and a definition, as Backstage requires, and
+  refused with a reason without one — and keeps of the definition only the literal
+  `declared`, so no reader downstream has its text to print or send. `CatalogueEntity` is
+  `Entity | Api`, the read model; the write side takes `Entity` and never meets an API.
+  A Component's `spec.providesApis` is read, a short reference taking API as its kind and the
+  entity's namespace, and no proposal schema has a field for it. `spec.consumesApis` is not
+  read — zod strips it — because consuming something is an access right here, and a second
+  declaration of it would be a second truth.
 - **Entity paths** — `computeEntityPath`, `resolveEntityPath`, `assertInsideRepo`,
   `PathEscapeError`. The engine, not the model, decides where a file lands, and containment is
   re-checked here rather than trusted to whichever caller eventually writes.
 - **The serialiser** — `serializeEntity`, `parseEntity`. The one place a structure becomes YAML,
   so `no` or `123` survive as strings for the YAML 1.1 readers that also read the repository.
-  It writes links and a system when an entity read from a file carries them, so that entity
-  round-trips; the engine's own writes never do.
-  `parseDocuments` is the matching one place YAML becomes entities, for `context/`'s readers
-  and for the bytes a plan would write: a document the parser faults is a rejection, never
-  the value `toJS()` would have guessed. It sorts before it judges: a Component or Resource
-  goes to the strict `entitySchema`, while another kind — a Group, an API — or a mapping
-  with no kind that is plainly another tool's, like a `mkdocs.yml` or a Helm `Chart.yaml`,
-  is `ignored`, returned with a reason and never refused. Anything that looks like a failed
-  entity — an empty kind, Backstage's `apiVersion` or a `metadata` with no kind, a document
-  that is not a mapping — is still a rejection.
+  It writes links, a system and `providesApis` when an entity read from a file carries them,
+  so that entity round-trips; the engine's own writes never do, and it never writes an API.
+  `parseDocuments` is the matching one place YAML becomes entities, for `context/`'s readers and
+  for the bytes a plan would write: a document the parser faults is a rejection, never the value
+  `toJS()` would have guessed. It sorts before it judges: a Component or Resource goes to the
+  strict `entitySchema` and comes back in `entities`, an API — in any case, as every kind — goes
+  to `apiSchema` and comes back in `apis`, apart, so every caller on the write side (the
+  re-check, the edits, the gates) reads `entities` and cannot amend, count or file an API. Three
+  APIs are set aside as before (`unreadApi`): one under another tool's apiVersion, one outside
+  the `default` namespace, and one named in upper case, which Backstage allows and this grammar
+  does not read. Another kind — a Group, a System — or a mapping with no kind that is plainly
+  another tool's, like a `mkdocs.yml` or a Helm `Chart.yaml`, is `ignored`, returned with a
+  reason and never refused. Anything that looks like a failed entity — an empty kind,
+  Backstage's `apiVersion` or a `metadata` with no kind, a document that is not a mapping — is
+  still a rejection.
 - **Textual surgery** — `insertDocument`, `removeDocument`, `appendSequenceItem`,
   `listDocumentNames`. Line edits, because a reviewer must see an added line, not an AST
   round-trip's reformat. Locating a document by lines is a heuristic, so what it cannot

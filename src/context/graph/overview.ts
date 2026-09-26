@@ -1,4 +1,4 @@
-import type { Entity } from '../../core/schemas/entity.js'
+import type { CatalogueEntity } from '../../core/schemas/entity.js'
 import { levelledOf, natureOf } from '../../core/schemas/resource-types.js'
 import { ENV_ANNOTATION } from '../../core/schemas/vocabulary.js'
 import type { Ignored } from '../provider.js'
@@ -56,11 +56,17 @@ export interface Overview {
    */
   rights: { total: number; read: number; readwrite: number; undeclared: number; unlevelled: number }
   /**
+   * Backstage's APIs, and how many a service declares it provides. Zero where
+   * the repository declares none, and then the renderer says nothing of them.
+   */
+  apis: { total: number; provided: number }
+  /**
    * Objects by what reaches them through any chain: the services, as
    * `consumersOf` walks them for `show`, then the rights on the way. Both,
    * because a declarations repository names services another repository
    * declares — its grants reach every database and no declared service does.
-   * Objects only: a right is how an object is reached, not what is. Objects
+   * Objects only: a right is how an object is reached, not what is — and a
+   * Backstage API is an object a right reaches like any other. Objects
    * nothing reaches are left out; they are not "most reached" at any rank.
    */
   reached: Array<{ ref: string; services: number; rights: number }>
@@ -92,7 +98,7 @@ function tally(values: Iterable<string>): Tally[] {
 }
 
 /** A blank annotation declares nothing: counted with the undeclared, never named "". */
-const envOf = (entity: Entity): string | undefined => {
+const envOf = (entity: CatalogueEntity): string | undefined => {
   const env = entity.metadata.annotations[ENV_ANNOTATION]
   return env === undefined || env.trim() === '' ? undefined : env
 }
@@ -115,7 +121,9 @@ function reachersOf(graph: EntityGraph, ref: string): { services: number; rights
         counts.services += 1
         continue
       }
-      if (natureOf(dependant.spec.type) === 'right') counts.rights += 1
+      if (dependant.kind === 'Resource' && natureOf(dependant.spec.type) === 'right') {
+        counts.rights += 1
+      }
       queue.push(dependantRef)
     }
   }
@@ -127,10 +135,15 @@ export function overviewOf(graph: EntityGraph, unread: Unread): Overview {
   const declared = entities.flatMap((entity) => envOf(entity) ?? [])
 
   const rights = { total: 0, read: 0, readwrite: 0, undeclared: 0, unlevelled: 0 }
+  const apis = { total: 0, provided: 0 }
   const reached: Overview['reached'] = []
   for (const entity of entities) {
-    if (entity.kind !== 'Resource') continue
-    if (natureOf(entity.spec.type) === 'object') {
+    if (entity.kind === 'Component') continue
+    if (entity.kind === 'API') {
+      apis.total += 1
+      if (graph.providersOf(refOf(entity)).length > 0) apis.provided += 1
+    }
+    if (entity.kind === 'API' || natureOf(entity.spec.type) === 'object') {
       const { services, rights } = reachersOf(graph, refOf(entity))
       if (services + rights > 0) reached.push({ ref: refOf(entity), services, rights })
       continue
@@ -161,6 +174,7 @@ export function overviewOf(graph: EntityGraph, unread: Unread): Overview {
     tags: tally(entities.flatMap((entity) => [...new Set(entity.metadata.tags ?? [])])),
     described,
     rights,
+    apis,
     reached: reached.sort(
       (left, right) =>
         right.services - left.services ||

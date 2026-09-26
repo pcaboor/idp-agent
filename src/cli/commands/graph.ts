@@ -1,11 +1,13 @@
 import { ENV_ANNOTATION, type EntityGraph } from '../../context/graph/entity-graph.js'
+import type { CatalogueEntity } from '../../core/schemas/entity.js'
 import { renderTable } from '../render/table.js'
 import type { CommandResult } from './result.js'
 
 export interface GraphOptions {
   env?: string
   type?: string
-  kind?: 'Component' | 'Resource'
+  /** Backstage's API among them: the read model's kinds, not only those this tool writes. */
+  kind?: CatalogueEntity['kind']
 }
 
 export function runGraph(graph: EntityGraph, options: GraphOptions): CommandResult {

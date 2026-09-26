@@ -52,7 +52,8 @@ export type UnknownValue = z.infer<typeof unknownSchema>
  * `entitySchema` READS the Components and Resources of a real Backstage
  * repository, whose files legitimately carry fields this tool does not model —
  * making it strict would break `readRepository` on any real catalogue, whose
- * other kinds never reach the schema: `parseDocuments` sets them aside. A
+ * other kinds never reach the schema: `parseDocuments` reads an API with its
+ * own, `apiSchema` — read, and never proposable — and sets the rest aside. A
  * PROPOSAL is the other direction: an unmodelled field there is either an
  * invention or a field that will be dropped in silence when `ordered()`
  * serialises it. Both are unacceptable. The same holds for references:

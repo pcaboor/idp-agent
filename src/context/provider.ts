@@ -1,4 +1,4 @@
-import type { Entity } from '../core/schemas/entity.js'
+import type { CatalogueEntity } from '../core/schemas/entity.js'
 
 /** Where an entity came from, and why it could not be used. */
 export interface Rejection {
@@ -8,7 +8,7 @@ export interface Rejection {
 
 /**
  * Where a document this tool does not model came from, and what it was: a
- * Group, an API, a mkdocs.yml. Not a failure, so declared apart from
+ * Group, a System, a mkdocs.yml. Not a failure, so declared apart from
  * `Rejection` and printed apart from it: one line for all of them, where a
  * rejection gets a `skipped` line of its own.
  */
@@ -29,7 +29,12 @@ export interface Ignored {
  * this tool has no business judging — and is returned so it can be said.
  */
 export interface LoadResult {
-  entities: Entity[]
+  /**
+   * The read model: the Components and Resources this tool manages, and the
+   * Backstage APIs it reads and never writes — each file's in document order,
+   * its APIs after its other entities.
+   */
+  entities: CatalogueEntity[]
   rejected: Rejection[]
   ignored: Ignored[]
 }
