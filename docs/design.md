@@ -820,6 +820,11 @@ than assuming it" is a human reading that diff. The signature says a proposed va
 matches what the inspection established; the Inspector is a model reading files, so it
 says nothing about whether the inspection was right.
 
+**Stage 8 extends this command** to the dependencies a service's configuration already
+states: extracted by the engine, re-read before they vouch, matched only on identifiers the
+catalogue declares, levels still asked. The design note is
+[`docs/stage-8-brief.md`](stage-8-brief.md).
+
 ### 7.4 `idp-agent "<intent>"` — the daily gesture
 
 ```

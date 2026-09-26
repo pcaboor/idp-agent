@@ -441,6 +441,7 @@ firewall automation and ticketing) and adds the multi-agent layer that system ne
 | 5 | Write + local branch: atomicity, idempotence | 🚧 |
 | 6 | GitHub pull request: real forge, negative token test | |
 | 7 | Polish: Ink TUI, asciinema, npm publish | |
+| 8 | [Discovery](docs/stage-8-brief.md): catalogue an existing service and its dependencies; preview-only until 5–6 land, submission after 6 | |
 
 The order follows the doctrine: read first, validate before the first write, preview
 before the pull request. Today **no preview writes anything** — the test suite and
