@@ -15,15 +15,30 @@ not touch the working tree, which carried an uncommitted fix in progress
 The report below is the audit as it was delivered and is **not edited to match the code**:
 a finding rewritten after the fact stops being evidence. This table is the only part that
 moves. `docs/audit-attacks/` is the oracle — a test there **passing** means the defect still
-reproduces, and **failing** means it is closed — and it currently reports **13 of 21
-failing**.
+reproduces, and **failing** means it is closed — and it currently reports **12 of 21
+failing**, each by an assertion. It runs in place, never under `pnpm test`:
+`pnpm vitest run --config docs/audit-attacks/vitest.config.ts`.
 
 That number was 15 until the fixtures in `core-attacks.test.ts` were repaired. They predate
 `84fde41` and `SignatureContext` has gained two fields since, so eight of those tests were
 THROWING rather than asserting — and a crash counts as a failure, which in this folder reads
 as a closure. The oracle was lying in the safe direction, which is the worst direction for
-an oracle to lie in. Of the eight that pass today, five are descriptive probes with nothing
-to close, one is the `--json` limit `88f68ad` documented, and two are F12's first bullet.
+an oracle to lie in.
+
+It lied again at 13 (review tests-11). `turn-usage` and `schema-drift` read a
+`docs/recordings` that never existed and crashed; test A's Reviewer fixture crashed on
+`input.targets`, a field the Reviewer gained with F9; and `plan-outcomes`, which asserted
+nothing, passed on the same missing folder. The three now read `tests/recordings`, the
+fixture carries `targets` and `effects`, and `plan-outcomes` builds each fixture as its
+scenario does — the configuration in the application repository, the level and the
+environment answered — so its five tapes replay with no prompt changed, and a stale one is a
+crash. Its F6 half asks `readRepository` whether a hidden `.idp-agent.yml` or `.gitlab-ci.yml`
+at the root is read as a file: the re-check's refusal it used to look for is a warning today,
+and would not be seen even with F6 reverted. It is not read, and with the hidden-file skip
+reverted the test passes. A crash is no longer a closure: `oracle.ts` skips the test, with
+`[AUDIT-CRASHED]` and the error, so it counts as neither open nor closed. Of the nine that
+pass, six are descriptive probes with nothing to close, one is the `--json` limit `88f68ad`
+documented, and two are F12's first bullet.
 
 | | Finding | State | Where |
 |---|---|---|---|

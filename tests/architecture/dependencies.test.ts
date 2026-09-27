@@ -1,4 +1,5 @@
-import { readdir, readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -9,30 +10,43 @@ interface Import {
   specifier: string
 }
 
+/** What TypeScript compiles: `.ts`, and the `.mts` and `.cts` that NodeNext reads as ESM and CommonJS. */
+const SOURCE = /\.[mc]?ts$/
+
+/**
+ * Every source file under `dir`. A folder that is not there throws, as does
+ * every read below: each rule is a filter over what these return, and an empty
+ * read passes every filter, so a renamed layer used to leave its rules green.
+ */
 async function sourceFiles(dir: string): Promise<string[]> {
-  const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
+  const entries = await readdir(dir, { withFileTypes: true })
   const nested = await Promise.all(
     entries.map(async (entry) => {
       const full = path.join(dir, entry.name)
       if (entry.isDirectory()) return sourceFiles(full)
-      return entry.name.endsWith('.ts') ? [full] : []
+      return SOURCE.test(entry.name) ? [full] : []
     }),
   )
   return nested.flat()
 }
 
-/** Static imports and re-exports, plus dynamic import() and require(). */
+/**
+ * Static imports and re-exports, plus dynamic import() and require(). The
+ * static pattern stops at `from`: it used to read on to the next quote, so
+ * `export const CONFIG_FILE = '.idp-agent.yml'` was an import of a file, which
+ * only a rule that resolves imports could notice.
+ */
 const PATTERNS = [
-  /^\s*(?:import|export)\b[^'"]*['"]([^'"]+)['"]/gm,
+  /^\s*(?:import|export)\b[^'";]*?\bfrom\s*['"]([^'"]+)['"]|^\s*import\s*['"]([^'"]+)['"]/gm,
   /\b(?:import|require)\s*\(\s*['"]([^'"]+)['"]/g,
 ]
 
 async function importsOf(file: string): Promise<Import[]> {
-  const content = await readFile(file, 'utf8').catch(() => '')
+  const content = await readFile(file, 'utf8')
   const found: Import[] = []
   for (const pattern of PATTERNS) {
     for (const match of content.matchAll(pattern)) {
-      const specifier = match[1]
+      const specifier = match[1] ?? match[2]
       if (specifier !== undefined) {
         found.push({ file: path.relative(SOURCE_ROOT, file), specifier })
       }
@@ -44,6 +58,21 @@ async function importsOf(file: string): Promise<Import[]> {
 async function importsUnder(dir: string): Promise<Import[]> {
   const nested = await Promise.all((await sourceFiles(dir)).map(importsOf))
   return nested.flat()
+}
+
+/**
+ * The file a relative specifier names — `.js` written for the `.ts` it is
+ * compiled from, `.mjs` for `.mts`, `.cjs` for `.cts` — or an error naming
+ * both ends. An import that resolves nowhere used to be walked as an empty
+ * file, and whatever it would have reached was never seen.
+ */
+async function resolved(from: string, specifier: string): Promise<string> {
+  const target = path.resolve(path.dirname(from), specifier.replace(/\.([mc]?)js$/, '.$1ts'))
+  const found = await stat(target).catch(() => undefined)
+  if (found?.isFile() !== true) {
+    throw new Error(`${path.relative(SOURCE_ROOT, from)} imports ${specifier}, which is no file`)
+  }
+  return target
 }
 
 /**
@@ -61,11 +90,59 @@ async function closureOf(entry: string, seen = new Set<string>()): Promise<Impor
   for (const imported of await importsOf(entry)) {
     found.push(imported)
     if (!imported.specifier.startsWith('.')) continue
-    const resolved = path.resolve(path.dirname(entry), imported.specifier.replace(/\.js$/, '.ts'))
-    found.push(...(await closureOf(resolved, seen)))
+    found.push(...(await closureOf(await resolved(entry, imported.specifier), seen)))
   }
   return found
 }
+
+const FS_OR_PROCESS = /^(node:)?(fs|fs\/promises|child_process|module|worker_threads)$/
+
+/**
+ * Names that hand over the whole module: fs's `promises`, a `default` taken by
+ * name, and anything from `module` or `worker_threads` — a `createRequire` or a
+ * `Worker` loads fs at run time, with no specifier left to read.
+ */
+const whole = (specifier: string, name: string): boolean =>
+  name === 'promises' || name === 'default' || /(^|:)(module|worker_threads)$/.test(specifier)
+
+/**
+ * What a module takes from fs and child_process, name by name, `*` for the
+ * whole module — a namespace, a default import, a re-export of everything, a
+ * dynamic import or a require, and the names `whole` lists. Types are left out: `import type` is erased.
+ *
+ * The specifier alone cannot tell `readFile` from `writeFile`, and the rule
+ * that names who may write needs exactly that.
+ */
+async function diskNamesOf(file: string): Promise<{ specifier: string; name: string }[]> {
+  const content = await readFile(file, 'utf8')
+  const found: { at: number; specifier: string; name: string }[] = []
+  // The clause never crosses into another statement: `export type X = {…}`
+  // holds no quote, and was read as the clause of the import after it.
+  const statement =
+    /^\s*(?:import|export)\s+(type\s+)?((?:(?!\b(?:import|export)\b)[^'";])*?)\s*from\s*['"]([^'"]+)['"]/gm
+  for (const match of content.matchAll(statement)) {
+    const [, typeOnly, clause = '', specifier = ''] = match
+    if (typeOnly !== undefined || !FS_OR_PROCESS.test(specifier)) continue
+    const braces = /\{([^}]*)\}/.exec(clause)
+    const outside = clause.replace(/\{[^}]*\}/, '').replace(/,/g, ' ').trim()
+    // `* as fs`, `disk` or `export *`: the whole module.
+    if (outside !== '') found.push({ at: match.index, specifier, name: '*' })
+    for (const part of braces?.[1]?.split(',') ?? []) {
+      const name = part.trim().split(/\s+as\s+/)[0]?.trim() ?? ''
+      if (name === '' || name.startsWith('type ')) continue
+      found.push({ at: match.index, specifier, name: whole(specifier, name) ? '*' : name })
+    }
+  }
+  for (const match of content.matchAll(/\b(?:import|require)\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) {
+    const specifier = match[1] ?? ''
+    if (FS_OR_PROCESS.test(specifier)) found.push({ at: match.index, specifier, name: '*' })
+  }
+  return found.sort((a, b) => a.at - b.at).map(({ specifier, name }) => ({ specifier, name }))
+}
+
+/** Every fs function that can change the disk, `open` included: its flags decide. */
+const WRITING =
+  /^(writeFile|appendFile|mkdir|mkdtemp|rm|rmdir|unlink|rename|cp|copyFile|symlink|link|truncate|chmod|lchmod|chown|lchown|utimes|lutimes|createWriteStream|open|write|writev)(Sync)?$/
 
 const MODEL_SDK = /^ai$|^@ai-sdk\//
 const DISK =
@@ -177,6 +254,58 @@ describe('architecture', () => {
     expect(offending).toEqual([])
   })
 
+  it('only the named modules of cli/ touch the disk', async () => {
+    // cli/ reads both repositories too — the plan a `--from` names, the
+    // configuration in the application repository, whether a `--repo` is a
+    // directory — so "only context/ reads a repository" was never the whole
+    // truth. Each module is named, with what it touches.
+    const allowed = new Set([
+      'cli/commands/plan.ts', // reads the plan file `plan --from` names
+      'cli/config.ts', // reads `.idp-agent.yml`
+      'cli/personal.ts', // reads the personal configuration
+      'cli/recording-fs.ts', // reads and writes a tape
+      'cli/repository.ts', // stats and resolves a `--repo`
+      'cli/source.ts', // stats a configured source
+      'cli/trace-sink.ts', // writes a trace under IDP_TRACE_DIR
+    ])
+    const offending = (await importsUnder(path.join(SOURCE_ROOT, 'cli'))).filter(
+      ({ file, specifier }) => DISK.test(specifier) && !allowed.has(file),
+    )
+    expect(offending).toEqual([])
+  })
+
+  it('only the named modules write, and only one starts a process', async () => {
+    // Every module in src/, and so every closure: what stage 5 adds as a
+    // writer has to be named here, with the functions it writes with. A
+    // module taking the whole of fs, by a namespace, a default import or at
+    // run time, can write with anything, so it counts as writing.
+    const writes: Record<string, readonly string[]> = {
+      'scaffold/write.ts': ['mkdir', 'writeFile'], // `init platform`'s scaffold
+      'cli/recording-fs.ts': ['mkdir', 'writeFile'], // a tape, when recording
+      'cli/trace-sink.ts': ['mkdir', 'writeFile'], // a trace, under IDP_TRACE_DIR
+      // `open` is the one call that can do both; this one opens a file
+      // O_RDONLY | O_NOFOLLOW, to read it.
+      'context/project-fs/snapshot.ts': ['open'],
+    }
+    // `git ls-files`, and nothing else starts a process.
+    const spawns = new Set(['context/project-fs/snapshot.ts'])
+    const offending: string[] = []
+    for (const file of await sourceFiles(SOURCE_ROOT)) {
+      const name = path.relative(SOURCE_ROOT, file)
+      for (const { specifier, name: imported } of await diskNamesOf(file)) {
+        if (/child_process$/.test(specifier)) {
+          if (!spawns.has(name)) offending.push(`${name} imports ${specifier}`)
+        } else if (
+          (imported === '*' || WRITING.test(imported)) &&
+          !(writes[name] ?? []).includes(imported)
+        ) {
+          offending.push(`${name} imports ${imported} from ${specifier}`)
+        }
+      }
+    }
+    expect(offending).toEqual([])
+  })
+
   it('core/ imports nothing from context/, cli/ or scaffold/', async () => {
     // core/ is the deterministic half: schemas, paths, serialisation, rules.
     // A dependency on a layer that reads a disk would make it one by proxy,
@@ -212,10 +341,9 @@ describe('architecture', () => {
     // `fetch` needs no import, so trace/'s source is read for the name too —
     // the limit SECURITY.md states for the rules above.
     //
-    // Not PATTERNS: its static pattern reads on to the next quote, which is
-    // harmless for a rule that tests a specifier against a list and a false
-    // offence for this one, which refuses every specifier but its own. And a
-    // dynamic import is refused whatever its argument, not only a literal.
+    // Not PATTERNS: this rule tells `import type` from an import of values,
+    // and reads the source with its comments taken out. And a dynamic import
+    // is refused whatever its argument, not only a literal.
     const statement =
       /^\s*(?:import|export)(\s+type)?\b[\w\s{},*$]*?\bfrom\s*['"]([^'"]+)['"]|^\s*import\s*['"]([^'"]+)['"]/gm
     const dynamic = /\b(?:import|require)\s*\(([^)]*)\)/g
@@ -257,5 +385,89 @@ describe('architecture', () => {
       }
     }
     expect(offending).toEqual([])
+  })
+})
+
+describe('the architecture rules themselves', () => {
+  // Every rule above is a filter over what the helpers read, and an empty read
+  // passes every filter: a renamed folder, a file the walk skips or an import
+  // that resolves nowhere used to leave the rules green over nothing.
+
+  /** A scratch source tree holding `files`, by path relative to its root. */
+  const tree = async (files: Record<string, string>): Promise<string> => {
+    const root = await mkdtemp(path.join(tmpdir(), 'idp-architecture-'))
+    for (const [relative, text] of Object.entries(files)) {
+      await mkdir(path.dirname(path.join(root, relative)), { recursive: true })
+      await writeFile(path.join(root, relative), text, 'utf8')
+    }
+    return root
+  }
+
+  it('fails on a folder that is not there, rather than reading it as empty', async () => {
+    await expect(sourceFiles(path.join(SOURCE_ROOT, 'no-such-layer'))).rejects.toThrow()
+    await expect(importsOf(path.join(SOURCE_ROOT, 'no-such-file.ts'))).rejects.toThrow()
+  })
+
+  it('reads every layer it has a rule about, and the tree as a whole', async () => {
+    for (const layer of ['agents', 'cli', 'context', 'core', 'llm', 'scaffold', 'trace']) {
+      expect((await sourceFiles(path.join(SOURCE_ROOT, layer))).length, layer).toBeGreaterThan(0)
+    }
+    expect((await sourceFiles(SOURCE_ROOT)).length).toBeGreaterThan(40)
+  })
+
+  it('reads .mts and .cts sources, not only .ts', async () => {
+    const root = await tree({ 'a.ts': '', 'b.mts': '', 'c.cts': '', 'd.md': '' })
+    const names = (await sourceFiles(root)).map((file) => path.basename(file)).sort()
+    expect(names).toEqual(['a.ts', 'b.mts', 'c.cts'])
+  })
+
+  it('fails on a relative import that resolves to no file', async () => {
+    const root = await tree({
+      'entry.ts': "import { gone } from './gone.js'\n",
+      'module.mts': "import { here } from './here.mjs'\n",
+      'here.mts': "import { readFile } from 'node:fs/promises'\n",
+    })
+    await expect(closureOf(path.join(root, 'entry.ts'))).rejects.toThrow(/gone\.js/)
+    // `.mjs` names the `.mts` it compiles from, as `.js` names a `.ts`.
+    const closure = await closureOf(path.join(root, 'module.mts'))
+    expect(closure.map(({ specifier }) => specifier)).toEqual(['./here.mjs', 'node:fs/promises'])
+  })
+
+  it('every relative import in src/ resolves to a file', async () => {
+    const unresolved: string[] = []
+    for (const { file, specifier } of await importsUnder(SOURCE_ROOT)) {
+      if (!specifier.startsWith('.')) continue
+      await resolved(path.join(SOURCE_ROOT, file), specifier).catch((error: unknown) => {
+        unresolved.push(String(error))
+      })
+    }
+    expect(unresolved).toEqual([])
+  })
+
+  it('reads what a module takes from fs and child_process, whatever the import form', async () => {
+    const root = await tree({
+      'named.ts': "import { readFile, writeFile as put } from 'node:fs/promises'\n",
+      'types.ts': "import type { Dirent } from 'node:fs'\nimport { type Stats, stat } from 'fs'\n",
+      'whole.ts': "import * as fs from 'node:fs'\nimport disk from 'fs/promises'\n",
+      'passed.ts': "export { rm } from 'node:fs/promises'\nexport * from 'node:child_process'\n",
+      'late.ts': "const cp = await import('node:child_process')\nrequire('fs')\n",
+      // The whole writing API under a name WRITING does not list.
+      'aliased.ts':
+        "import { promises as fsp } from 'node:fs'\nimport { default as whole } from 'node:fs/promises'\n",
+      // A require made at run time loads fs with no specifier to read.
+      'loader.ts': "import { createRequire } from 'node:module'\nimport { Worker } from 'worker_threads'\n",
+      // A statement with no quote before an import is not the import's clause.
+      'after.ts': "export type Shape = { a: number }\nimport { writeFile } from 'node:fs'\n",
+    })
+    const names = async (file: string): Promise<string[]> =>
+      (await diskNamesOf(path.join(root, file))).map(({ specifier, name }) => `${specifier} ${name}`)
+    expect(await names('named.ts')).toEqual(['node:fs/promises readFile', 'node:fs/promises writeFile'])
+    expect(await names('types.ts')).toEqual(['fs stat'])
+    expect(await names('whole.ts')).toEqual(['node:fs *', 'fs/promises *'])
+    expect(await names('passed.ts')).toEqual(['node:fs/promises rm', 'node:child_process *'])
+    expect(await names('late.ts')).toEqual(['node:child_process *', 'fs *'])
+    expect(await names('aliased.ts')).toEqual(['node:fs *', 'node:fs/promises *'])
+    expect(await names('loader.ts')).toEqual(['node:module *', 'worker_threads *'])
+    expect(await names('after.ts')).toEqual(['node:fs writeFile'])
   })
 })

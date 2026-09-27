@@ -10,7 +10,8 @@
 import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
+import { it } from './oracle.js'
 import { readProject } from '../../src/context/project-fs/snapshot.js'
 
 interface Candidate {

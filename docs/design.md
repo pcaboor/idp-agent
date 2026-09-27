@@ -449,7 +449,7 @@ the model's to write (§ 5.3).
 
 ### 5.5 Dependency rules, enforced in CI
 
-Two rules were written here first; **fourteen** are enforced today, in
+Two rules were written here first; **sixteen** are enforced today, in
 `tests/architecture/dependencies.test.ts`. The two founding ones:
 
 1. `core/` never imports `agents/` or `llm/`.

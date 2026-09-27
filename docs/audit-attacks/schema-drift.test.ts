@@ -1,12 +1,13 @@
 import { cp, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { expect, it } from 'vitest'
+import { expect } from 'vitest'
+import { it } from './oracle.js'
 import { main } from '../../src/cli/index.js'
 import { runInitPlatform } from '../../src/cli/commands/init.js'
 import type { AgentEvent } from '../../src/agents/events.js'
 
-const RECORDINGS = path.resolve(import.meta.dirname, '../recordings')
+const RECORDINGS = path.resolve(import.meta.dirname, '../../tests/recordings')
 const declarations = async (entities: Record<string, string>): Promise<string> => {
   const root = path.join(await mkdtemp(path.join(tmpdir(), 'idp-audit-')), 'iac')
   await runInitPlatform({ root, owner: '@acme/platform', version: '0.0.0-test' })

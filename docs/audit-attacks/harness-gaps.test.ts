@@ -1,4 +1,4 @@
-import { it } from 'vitest'
+import { it } from './oracle.js'
 import { openRecording, type Recording, type RecordingStore } from '../../src/llm/recording.js'
 import { createClient } from '../../src/llm/runtime.js'
 

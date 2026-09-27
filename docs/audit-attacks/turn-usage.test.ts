@@ -1,7 +1,8 @@
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, vi } from 'vitest'
+import { it } from './oracle.js'
 
 /** Every replay() the harness performs, by scenario and key, with digest match. */
 const log: { scenario: string; key: string; hit: boolean; digestMatch: boolean }[] = []
@@ -37,7 +38,7 @@ vi.mock('../../src/llm/recording.js', async (importOriginal) => {
 const { main } = await import('../../src/cli/index.js')
 const { runInitPlatform } = await import('../../src/cli/commands/init.js')
 
-const RECORDINGS = path.resolve(import.meta.dirname, '../recordings')
+const RECORDINGS = path.resolve(import.meta.dirname, '../../tests/recordings')
 const FIXTURES = path.resolve(import.meta.dirname, '../../fixtures/si-demo')
 
 const declarations = async (entities: Record<string, string> = {}): Promise<string> => {

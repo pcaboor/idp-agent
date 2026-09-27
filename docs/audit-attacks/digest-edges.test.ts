@@ -1,4 +1,4 @@
-import { it } from 'vitest'
+import { it } from './oracle.js'
 import { z } from 'zod'
 const S = (v: unknown) => JSON.stringify(v)
 it('audit: which Zod changes JSON.stringify can and cannot see', () => {
