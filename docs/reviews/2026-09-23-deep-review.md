@@ -173,16 +173,20 @@ Review ids that a later pull request names as fixed, outside the ids the priorit
 - cli-ux-8 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - cli-ux-11 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - cli-ux-14 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
+- core-plan-10 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4, at `planEdits`, the signature, the policies and the re-check
 - core-plan-13 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2
 - core-yaml-9 → [#50](https://github.com/pcaboor/idp-agent/pull/50), found while stacking #49
 - docs-3 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
 - docs-9 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
 - domain-backstage-9 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3, for the comment; registry-built schemas are product-gap-8's, and wait for the owner
+- domain-backstage-10 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4
 - gap-init-real-repos-6 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - gap-init-real-repos-8 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - gap-provider-matrix-2 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
 - gap-provider-matrix-3 → [#75](https://github.com/pcaboor/idp-agent/pull/75), seen and left in #44
 - gap-provider-matrix-4 → [#59](https://github.com/pcaboor/idp-agent/pull/59), for the request timeout; calls are still not streamed (`generateText` in `src/llm/runtime.ts`)
+- gap-stage5-readiness-2 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4
+- gap-stage5-readiness-7 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4, for the list a failure loses; the writer still neither modifies, renames, deletes nor syncs, which is stage 5's
 - gap-stage5-readiness-9 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2
 - gap-stage5-readiness-14 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
 - product-gap-14 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
@@ -198,6 +202,11 @@ Review ids that a later pull request names as fixed, outside the ids the priorit
 - tests-11 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2
 - tests-12 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2
 - tests-13 → [#56](https://github.com/pcaboor/idp-agent/pull/56), for the temp directories; the 10-minute scenario timeout is unchanged
+- wip-diff-1 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4; the policy refuses a right in `dependsOn` rather than requiring an object, so a reference of no known nature passes it
+- wip-diff-4 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4
+- wip-diff-8 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4
+- wip-diff-9 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4; the vocabulary holds every annotation the repository declares, so what keeps a planted one from the Reviewer is that an environment is one word
+- wip-diff-10 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4; the already-declared update is an `it.fails` until wip-diff-2
 
 Named as left open, and still open: runtime-probe-15, `plan --repo` resolved against
 `process.cwd()` rather than `MainDeps.cwd` ([#46](https://github.com/pcaboor/idp-agent/pull/46);
@@ -271,7 +280,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | agents-llm-8 | still true | medium | small |  | re-record | Carry the refused operations' JSON into the repair report, or the last proposal into the next opening message. |
 | agents-llm-9 | partly fixed | medium | medium | B2 (part) | re-record, owner | Record from an empty map, clone the transcript at call time, digest the JSON Schema, assert every turn replayed. |
 | architecture-1 | still true | medium | medium |  | owner | One pure `evaluatePlan()` in `core/plan` called by repair, `--from` and `init`, with a parity test; `contextsOf` out of `cli/`. |
-| architecture-6 | partly fixed | medium | medium | A4 (part) |  | `never` defaults or a `HANDLERS` table at the 44 remaining `op ===` branches; a switch on `patch.patch`. |
+| architecture-6 | partly fixed | medium | medium | A4 (part), in [#90](https://github.com/pcaboor/idp-agent/pull/90): `planEdits`, the signature, the policies and the re-check |  | `never` defaults or a `HANDLERS` table at the 44 remaining `op ===` branches; a switch on `patch.patch`. |
 | architecture-7 | still true | medium | large |  | owner | `Policy` and `Rule` objects enabled per repository, factory tables for providers, a `./plugin` export — after the foundation. |
 | architecture-8 | partly fixed | medium | medium |  | owner | Same fix as agents-llm-4. |
 | architecture-9 | partly fixed | medium | large |  | owner | A structured Preview/PlanReport apart from rendering, a signal through the commands, a session ADR before stage 5 freezes confirmation. |
@@ -304,7 +313,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | gap-init-real-repos-5 | still true | medium | small |  | owner | Place an Inspector fact only when its value occurs in a file it read; otherwise ask. Same fix as security-5. |
 | gap-init-real-repos-6 | still true | medium | trivial | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) |  | Same fix as cli-ux-8. |
 | gap-init-real-repos-7 | still true | medium | medium |  | re-record, owner | CODEOWNERS and `.idp-agent.yml` from the git root for a sub-folder; `auth` out of the directory stems; one Component per run documented. |
-| gap-stage5-readiness-2 | still true | medium | small | A4 |  | Refine `repoPath`: relative, no `..`, no hidden segment, basename `catalog-info.y(a)ml`; test both probe paths. |
+| gap-stage5-readiness-2 | still true | medium | small | A4, fixed in [#90](https://github.com/pcaboor/idp-agent/pull/90) |  | Refine `repoPath`: relative, no `..`, no hidden segment, basename `catalog-info.y(a)ml`; test both probe paths. |
 | gap-stage5-readiness-3 | still true | medium | large |  | owner | Decide in the stage-5 plan that the base is a commit, read through git, and the contracts without git. |
 | gap-stage5-readiness-4 | still true | medium | medium | B3 |  | The iac-fs walk turns a symbolic link into a named rejection; same primitive as core-yaml-5. |
 | gap-stage5-readiness-6 | partly fixed | medium | medium | stage 5 |  | Stage 5's writer re-reads each target and compares it with `before`, refusing on a mismatch. |
@@ -330,8 +339,8 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | tests-8 | still true | medium | small | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | Delete `IDP_PROVIDER`, `IDP_MODEL`, `IDP_*_MODEL` and `*_API_KEY` in the setup unless recording; record only with a scenario. |
 | tests-9 | still true | medium | small | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | `tests/README.md` on the tape lifecycle, linked from CONTRIBUTING. |
 | tests-11 | still true | medium | trivial | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | Same fix as core-plan-13, plus a sentinel so a crash counts as neither open nor closed. |
-| wip-diff-1 | still true | medium | small | A4 |  | `created()` per operation, leaving the walked one out and counting only creations with a path; a policy that `dependsOn` names an object. |
-| wip-diff-4 | still true | medium | small | A4 |  | Same change as wip-diff-1: `created()` only counts creations the engine places. |
+| wip-diff-1 | still true | medium | small | A4, fixed in [#90](https://github.com/pcaboor/idp-agent/pull/90) (the policy, `right-over-a-right`, refuses a right in `dependsOn` rather than requiring an object: an allow list would refuse a gateway-route over a set-aside `api:` entity) |  | `created()` per operation, leaving the walked one out and counting only creations with a path; a policy that `dependsOn` names an object. |
+| wip-diff-4 | still true | medium | small | A4, fixed in [#90](https://github.com/pcaboor/idp-agent/pull/90) |  | Same change as wip-diff-1: `created()` only counts creations the engine places. |
 | wip-diff-6 | still true | medium | medium |  | owner | Freshness as its own test after the invariants, a record-from-the-first-stale-turn mode, one stated policy. |
 | wip-diff-7 | partly fixed | medium | small |  | owner | Pin each scenario's replayed exit code and outcome line; a golden diff for a creation and an add-dependency-of. |
 | agents-llm-10 | partly fixed | low | small | A5 |  | An optional `signal` on `generate()`, outside the digest, joined to the timeout's controller in `within()`; streaming stays stage 7's. |
@@ -346,13 +355,13 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | cli-ux-8 | still true | low | trivial | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) |  | `initRoot` refuses a path that is not a directory, exit 2, before a model is chosen. |
 | cli-ux-13 | still true | low | trivial |  | owner | `iacRepo` optional while nothing reads it; `plan --from` reads the config for its environments. |
 | cli-ux-14 | partly fixed | low | trivial | A3, fixed in [#89](https://github.com/pcaboor/idp-agent/pull/89) |  | Reword `src/cli/README.md:44-45`, which says `show` takes "the first entity holding a bare name": `resolveEntity` refuses a shared name since [#74](https://github.com/pcaboor/idp-agent/pull/74). `withAnswers` is gone ([#78](https://github.com/pcaboor/idp-agent/pull/78)); the gate order goes with architecture-12. |
-| core-plan-10 | partly fixed | low | small | A4 |  | Switches with `never` defaults in `planEdits` and at the filter sites in sign and policies; a switch on `patch.patch`. |
+| core-plan-10 | partly fixed | low | small | A4, fixed in [#90](https://github.com/pcaboor/idp-agent/pull/90) (`planEdits`, the signature, the policies and the re-check; the other dispatch sites are architecture-6's) |  | Switches with `never` defaults in `planEdits` and at the filter sites in sign and policies; a switch on `patch.patch`. |
 | core-plan-13 | partly fixed | low | trivial | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | Point the three audit attacks at `tests/recordings` and give `plan-outcomes` assertions. |
 | docs-9 | partly fixed | low | trivial | A3, fixed in [#89](https://github.com/pcaboor/idp-agent/pull/89) |  | The Reviewer's real inputs, two scaffold modules read and one writes, `plan/`, `validate/`, `diff/` in core's README. |
 | docs-10 | still true | low | small |  | owner | Name the PR or commit on `main` for "this branch", say `c1bb7d8` is unreachable, drop the `rtk` prefixes, fix test G. |
 | domain-backstage-8 | still true | low | small | slice 1 |  | Cap each vocabulary list at 30 in `formatSummary` — planned as `backstage-http` slice 1. |
 | domain-backstage-9 | still true | low | trivial | A3, fixed in [#89](https://github.com/pcaboor/idp-agent/pull/89) |  | Rewrite the registry comment: static by decision for v1, configurable only through schema factories. |
-| domain-backstage-10 | partly fixed | low | small | A4 |  | `EntityGraph` keeps the first declaration of a duplicate, as the plan does, with a test tying them. |
+| domain-backstage-10 | partly fixed | low | small | A4, fixed in [#90](https://github.com/pcaboor/idp-agent/pull/90) |  | `EntityGraph` keeps the first declaration of a duplicate, as the plan does, with a test tying them. |
 | gap-ask-grounding-5 | partly fixed | low | trivial |  | re-record | Reword `consumers` (point at `impacts`), and compare `nameContains` case-insensitively. |
 | gap-ask-grounding-6 | still true | low | small | A5 |  | Flatten line breaks and control characters, and bound the length, of every vocabulary value in `formatSummary`. |
 | gap-ask-grounding-8 | partly fixed | low | small |  | re-record, owner | Let `ask` force the read road, as `plan` forces the change road. |
@@ -365,7 +374,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | gap-provider-matrix-6 | still true | low | trivial | A5 |  | Always send `store: false` to OpenAI, merged with the reasoning effort; pin it in the contract test. |
 | gap-provider-matrix-7 | still true | low | medium |  | re-record, owner | Tool errors as `error-json`; reasoning parts carried for the providers that need them. |
 | gap-stage5-readiness-5 | still true | low | medium |  | owner | Same as core-plan-9: an `ApprovedChange` carrying the edits and their before-hashes. |
-| gap-stage5-readiness-7 | still true | low | small | A4 |  | A `ScaffoldWriteError {written, failed}` so `init platform` says what it left. |
+| gap-stage5-readiness-7 | still true | low | small | A4, fixed in [#90](https://github.com/pcaboor/idp-agent/pull/90) |  | A `ScaffoldWriteError {written, failed}` so `init platform` says what it left. |
 | gap-stage5-readiness-12 | still true | low | small |  | owner | Reword design §4.3 for shared grant files; a plan identity for branch names in the stage-5 plan. |
 | gap-stage5-readiness-14 | partly fixed | low | trivial | A3, fixed in [#89](https://github.com/pcaboor/idp-agent/pull/89) |  | Gate order in AGENTS.md (twice) and the `Gate` union as the code runs: recheck, then reviewer. |
 | product-gap-10 | partly fixed | low | small | A5 |  | Usage on the event stream and one stderr line per run with calls and tokens. |
@@ -378,9 +387,9 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | tests-7 | still true | low | small | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | Stub `http`, `https`, `net`, `tls` and `WebSocket` in the offline setup; delete `*_API_KEY`. |
 | tests-12 | still true | low | trivial | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | Let the reads throw, a minimum file count, `.mts`/`.cts`, fail on an unresolved import. |
 | wip-diff-5 | still true | low | small |  | re-record | The Reviewer's SYSTEM lists its four inputs and says targets and effects are not for re-judging; with wip-diff-3's re-record. |
-| wip-diff-8 | still true | low | trivial | A4 |  | `ReviewInput = ReviewFacts & {plan; intent}` and the two comments fixed. |
-| wip-diff-9 | still true | low | small | A4 |  | Render an environment only when the vocabulary holds it; otherwise say it is outside the vocabulary. |
-| wip-diff-10 | still true | low | small | A4 |  | `sign.test` cases for a self `dependsOn` and a Component `dependsOn`; a repair test of an already-declared update, `it.fails` until wip-diff-2. |
+| wip-diff-8 | still true | low | trivial | A4, fixed in [#90](https://github.com/pcaboor/idp-agent/pull/90) |  | `ReviewInput = ReviewFacts & {plan; intent}` and the two comments fixed. |
+| wip-diff-9 | still true | low | small | A4, fixed in [#90](https://github.com/pcaboor/idp-agent/pull/90) |  | Render an environment only when the vocabulary holds it; otherwise say it is outside the vocabulary. |
+| wip-diff-10 | still true | low | small | A4, fixed in [#90](https://github.com/pcaboor/idp-agent/pull/90) (the repair test of an already-declared update is an `it.fails` until wip-diff-2) |  | `sign.test` cases for a self `dependsOn` and a Component `dependsOn`; a repair test of an already-declared update, `it.fails` until wip-diff-2. |
 | wip-diff-12 | still true | low | small | B2 | owner | Digest over each tool's `z.toJSONSchema` plus `toolChoice`; rewrite the tapes' digests offline in the same PR. |
 
 ## 3. Findings by theme

@@ -82,7 +82,19 @@ export class EntityGraph {
     private readonly entities: CatalogueEntity[],
     private readonly aside: ReadonlySet<string>,
   ) {
-    this.byRef = new Map(entities.map((entity) => [refOf(entity), entity]))
+    // A reference two documents declare is the FIRST of them, whole: its
+    // fields and the references it declares. That is how the catalogue
+    // resolves a duplicate (design 4.4), and how the plan does — `planEdits`
+    // amends the first, the re-check names it, the Reviewer is told it — so
+    // `show`, the Analyst and the relations describe the declaration a plan
+    // would touch. The graph kept the last (domain-backstage-10). The second
+    // is still in `all()`: the duplicate is `validate`'s to report, never
+    // this graph's to drop in silence.
+    this.byRef = new Map()
+    for (const entity of entities) {
+      if (!this.byRef.has(refOf(entity))) this.byRef.set(refOf(entity), entity)
+    }
+    const declarations = [...this.byRef.values()]
     this.dependants = new Map()
     this.derived = new Map()
     this.providers = new Map()
@@ -99,7 +111,7 @@ export class EntityGraph {
     // from the API by `providersOf`. Who CONSUMES an API is a right over it —
     // a Resource that `dependsOn` the API — so `consumersOf` walks it as it
     // walks any object, and `spec.consumesApis` is not read at all (design 4.1).
-    for (const entity of entities) {
+    for (const entity of declarations) {
       const ref = refOf(entity)
       for (const target of dependsOnOf(entity)) this.link(this.dependants, target, ref)
       for (const api of providesOf(entity)) this.link(this.providers, api, ref)
@@ -118,7 +130,7 @@ export class EntityGraph {
       const name = nameOf(ref)
       byName.set(name, [...(byName.get(name) ?? []), ref])
     }
-    for (const entity of entities) {
+    for (const entity of declarations) {
       const from = refOf(entity)
       const declared: Array<[DeclaredField, string[]]> = [
         ['dependsOn', dependsOnOf(entity)],
@@ -134,7 +146,7 @@ export class EntityGraph {
         }
       }
       this.dangling.push(...found)
-      // Keyed as `byRef` is, so a duplicate is read as `get` reads it: the last.
+      // Keyed as `byRef` is, so a duplicate is read as `get` reads it: the first.
       this.unresolved.set(from, found)
     }
   }

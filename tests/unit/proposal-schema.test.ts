@@ -144,7 +144,13 @@ describe('a proposal is stricter than an entity read from disk', () => {
     expect(
       planSchema.safeParse({
         intent: 'declare billing-api',
-        operations: [{ op: 'create-catalog-info', repoPath: 'apps/billing', entity: component }],
+        operations: [
+          {
+            op: 'create-catalog-info',
+            repoPath: 'apps/billing/catalog-info.yaml',
+            entity: component,
+          },
+        ],
       }).success,
     ).toBe(true)
   })
@@ -255,5 +261,76 @@ describe('an update states the level it is extending', () => {
 
     expect(parsed.success).toBe(false)
     expect(JSON.stringify(parsed.error?.issues)).toContain('access')
+  })
+})
+
+/**
+ * `create-catalog-info.repoPath` is the one path a Plan carries, and a Plan is
+ * untrusted input on the `--from` road: nothing the model writes reaches it,
+ * but a file anybody hands `plan --from` does, and the signature vouched for
+ * whatever it said. The brief's §9.4 test — "a Plan carrying a path outside
+ * the repository is rejected" — is asked of it here (gap-stage5-readiness-2).
+ */
+describe('the path a create-catalog-info names', () => {
+  const component = {
+    kind: 'Component',
+    metadata: { name: 'billing-api' },
+    spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
+  }
+  const parses = (repoPath: string): boolean =>
+    planSchema.safeParse({
+      intent: 'declare billing-api',
+      operations: [{ op: 'create-catalog-info', repoPath, entity: component }],
+    }).success
+
+  it.each([
+    ['a climb out of the repository', '../../../../etc/cron.d/x'],
+    ['a git hook', '.git/hooks/post-checkout'],
+    ['a catalog-info under a climb', '../catalog-info.yaml'],
+    ['a catalog-info under a hidden folder', '.git/catalog-info.yaml'],
+    ['a climb in the middle', 'apps/../../catalog-info.yaml'],
+    ['an absolute path', '/etc/catalog-info.yaml'],
+    ['a Windows path', 'C:\\repo\\catalog-info.yaml'],
+    ['a folder and no file', 'apps/billing'],
+    ['another file', 'apps/billing/package.json'],
+    ['a catalog-info of another name', 'apps/billing/catalog-info.json'],
+    ['an empty segment', 'apps//catalog-info.yaml'],
+    ['a current-folder segment', './catalog-info.yaml'],
+  ])('refuses %s: %s', (_, repoPath) => {
+    expect(parses(repoPath)).toBe(false)
+  })
+
+  // Named without the path: each is a character a terminal would act on, or
+  // hide, and the preview's `+++` header prints the path.
+  it.each([
+    ['a line break', 'apps/bill\ning/catalog-info.yaml'],
+    ['a C1 control', 'apps/bill\u0085ing/catalog-info.yaml'],
+    ['a right-to-left override', '\u202eevil/catalog-info.yaml'],
+    ['a zero-width space', 'apps/bill\u200bing/catalog-info.yaml'],
+    ['a line separator', 'apps/bill\u2028ing/catalog-info.yaml'],
+    ['a paragraph separator', 'apps/bill\u2029ing/catalog-info.yaml'],
+  ])('refuses a path holding %s', (_, repoPath) => {
+    expect(parses(repoPath)).toBe(false)
+  })
+
+  it.each([
+    'catalog-info.yaml',
+    'catalog-info.yml',
+    'apps/billing/catalog-info.yaml',
+    'services/billing/Catalog-Info.YML',
+  ])('accepts a catalog-info inside the repository: %s', (repoPath) => {
+    expect(parses(repoPath)).toBe(true)
+  })
+
+  it('names what it refused, for the report a caller hands back', () => {
+    const parsed = planSchema.safeParse({
+      intent: 'declare billing-api',
+      operations: [
+        { op: 'create-catalog-info', repoPath: '.git/hooks/post-checkout', entity: component },
+      ],
+    })
+
+    expect(parsed.success).toBe(false)
+    expect(JSON.stringify(parsed.error?.issues)).toContain('repoPath')
   })
 })

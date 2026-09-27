@@ -117,184 +117,207 @@ export function planEdits(signed: SignedPlan, before: ReadonlyMap<string, string
       continue
     }
 
-    if (operation.op === 'create-entity') {
-      const path = signed.paths.get(opIndex)
-      if (path === undefined) {
-        dropped.push({ opIndex, reason: 'the engine computed no path for it' })
-        continue
-      }
-      const entity = materialise(operation.entity)
-      if (entity === undefined) {
-        dropped.push({ opIndex, reason: 'the proposal could not be read as an entity' })
-        continue
-      }
-
-      const existing = contentOf(path)
-      // Parsed and resolved by REFERENCE, the same way `declaredAt` above is
-      // and for the same reason: a name is not a reference, and a document the
-      // entity schema refuses is not a declaration of anything —
-      // `checkRepository` is what reports that.
-      const there =
-        existing === undefined
-          ? undefined
-          : parseDocuments(existing).entities.find(
-              (candidate) => refOf(candidate) === refOf(entity),
-            )
-
-      // Already declared there means the file says EVERYTHING the proposal
-      // says (`grant.ts`), never merely a document of the same name. Asked by
-      // name, then by level alone, a plan against a file granting the same
-      // level to another consumer produced an edit whose two sides were equal
-      // — an empty diff, and a run reporting "the repository already says it"
-      // about an access nobody had.
-      //
-      // When they disagree there is no honest edit to show: appending cannot
-      // rewrite a declaration (§4.3), so the operation produces no bytes and
-      // NAMES what differs. The `declared-level-mismatch` and
-      // `declared-otherwise` policies refuse such a plan before a preview is
-      // offered at all; this is the same fact where the bytes are computed, so
-      // a caller reaching here without those gates still cannot be told
-      // "nothing to change".
-      const restatement = there === undefined ? undefined : restatementOf(there, operation.entity)
-      if (there !== undefined && restatement?.restates === false) {
-        const onlyLevel = restatement.differs.every((one) => one.field === 'access')
-        dropped.push({
-          opIndex,
-          reason: onlyLevel
-            ? // Kept word for word: the one difference this sentence covered
-              // before every other field was compared.
-              `${path} already declares ${refOf(entity)} and ${statedAs(declaredLevel(there))}, ` +
-              `while this plan ${statedAs(proposedLevel(operation.entity))}; a level is not ` +
-              `something an append can rewrite`
-            : `${path} already declares ${refOf(entity)}, and says otherwise: ` +
-              `${restatement.differs.map(differenceWords).join('; ')}. A declaration is not ` +
-              `something an append can rewrite`,
-        })
-        continue
-      }
-
-      // Already declared, identically: an edit whose two sides are equal, so
-      // the diff comes out empty rather than absent. "Nothing to do" and "the
-      // operation was dropped" are different answers, and the caller has to
-      // tell them apart — absent means already done (§4.3), but only if it is
-      // visible.
-      const after =
-        there !== undefined && existing !== undefined
-          ? existing
-          : insertDocument(existing ?? '', serializeEntity(entity))
-      const wrong = after === existing ? undefined : insertedOnly(existing, after, entity)
-      if (wrong !== undefined) {
-        dropped.push({ opIndex, reason: `could not add ${refOf(entity)} to ${path}: ${wrong}` })
-        continue
-      }
-      touch(path, after)
-      // Declared by THIS plan now, so a later operation can patch it. Without
-      // this an update naming an entity the same plan creates was dropped in
-      // silence, and the preview showed the creation without the grant.
-      if (!declaredAt.has(refOf(entity))) declaredAt.set(refOf(entity), path)
-      continue
-    }
-
-    if (operation.op === 'update-entity') {
-      // The file is found in the bytes, because that is the only place this
-      // function is allowed to look: `signed.paths` holds the paths the engine
-      // COMPUTED, and an entity that already exists was filed by whoever wrote
-      // it — possibly not where convention would have put it (design 5.2).
-      const path = declaredAt.get(operation.entityRef)
-      if (path === undefined) {
-        dropped.push({
-          opIndex,
-          reason: `${operation.entityRef} is declared in no file this plan can see`,
-        })
-        continue
-      }
-      const existing = contentOf(path)
-      if (existing === undefined) {
-        dropped.push({ opIndex, reason: `${path} holds no bytes to amend` })
-        continue
-      }
-
-      const { entityRef: ref, patch } = operation
-      const failed = (why: string): void => {
-        dropped.push({
-          opIndex,
-          reason: `could not add ${patch.consumer} to ${ref} in ${path}: ${why}`,
-        })
-      }
-
-      // Already listed is the parser's answer, never the surgery's: a flow
-      // sequence the surgery would refuse to split can hold the consumer, and
-      // an unchanged file is then the truth rather than a failure to find it.
-      if (listsConsumer(existing, ref, patch.consumer)) {
-        // Listed, and "already done" only if at the level the operation
-        // states: listed at another is not something an append can make
-        // true, and an unchanged file would read as done. The level is the
-        // one field this compares — the consumer is listed, and the
-        // environment is the policies' to hold (`consumerRestatement`).
-        const target = parseDocuments(existing).entities.find(
-          (candidate) => refOf(candidate) === ref,
-        )
-        const restatement =
-          target === undefined
-            ? undefined
-            : consumerRestatement(target, patch.consumer, patch.access)
-        if (restatement?.restates === false) {
-          failed(
-            `it is already listed there, and ${restatement.differs.map(differenceWords).join('; ')}`,
-          )
+    // A switch, and every case ends in `continue`: an operation added to the
+    // union is a compile error at `default` rather than one this function
+    // reports with a reason invented for another (core-plan-10).
+    switch (operation.op) {
+      case 'create-entity': {
+        const path = signed.paths.get(opIndex)
+        if (path === undefined) {
+          dropped.push({ opIndex, reason: 'the engine computed no path for it' })
           continue
         }
-        touch(path, existing)
-        continue
-      }
+        const entity = materialise(operation.entity)
+        if (entity === undefined) {
+          dropped.push({ opIndex, reason: 'the proposal could not be read as an entity' })
+          continue
+        }
 
-      const name = ref.slice(ref.lastIndexOf('/') + 1)
-      let after: string
-      try {
-        // One line, appended — and refused loudly on a shape the surgery
-        // cannot edit textually, which is caught here so one unamendable file
-        // does not lose the rest of the plan.
+        const existing = contentOf(path)
+        // Parsed and resolved by REFERENCE, the same way `declaredAt` above is
+        // and for the same reason: a name is not a reference, and a document the
+        // entity schema refuses is not a declaration of anything —
+        // `checkRepository` is what reports that.
+        const there =
+          existing === undefined
+            ? undefined
+            : parseDocuments(existing).entities.find(
+                (candidate) => refOf(candidate) === refOf(entity),
+              )
+
+        // Already declared there means the file says EVERYTHING the proposal
+        // says (`grant.ts`), never merely a document of the same name. Asked by
+        // name, then by level alone, a plan against a file granting the same
+        // level to another consumer produced an edit whose two sides were equal
+        // — an empty diff, and a run reporting "the repository already says it"
+        // about an access nobody had.
         //
-        // `patch.access` writes NOTHING, and that is not an oversight. §5.3
-        // put the level in the operation so the signature can classify it and
-        // `declared-level-mismatch` can compare it to the declaration; it is a
-        // claim about the grant being extended, and the grant already states
-        // its level. Appending cannot rewrite that scalar (§4.3), so the level
-        // is also the one thing this edit cannot show a reviewer: `access:`
-        // sits further from the inserted line than the three lines of context
-        // a hunk carries, and it stays an unchanged line.
-        after = appendSequenceItem(existing, name, 'dependencyOf', patch.consumer)
-      } catch (error) {
-        if (!(error instanceof SurgeryError)) throw error
-        failed(error.message)
+        // When they disagree there is no honest edit to show: appending cannot
+        // rewrite a declaration (§4.3), so the operation produces no bytes and
+        // NAMES what differs. The `declared-level-mismatch` and
+        // `declared-otherwise` policies refuse such a plan before a preview is
+        // offered at all; this is the same fact where the bytes are computed, so
+        // a caller reaching here without those gates still cannot be told
+        // "nothing to change".
+        const restatement = there === undefined ? undefined : restatementOf(there, operation.entity)
+        if (there !== undefined && restatement?.restates === false) {
+          const onlyLevel = restatement.differs.every((one) => one.field === 'access')
+          dropped.push({
+            opIndex,
+            reason: onlyLevel
+              ? // Kept word for word: the one difference this sentence covered
+                // before every other field was compared.
+                `${path} already declares ${refOf(entity)} and ${statedAs(declaredLevel(there))}, ` +
+                `while this plan ${statedAs(proposedLevel(operation.entity))}; a level is not ` +
+                `something an append can rewrite`
+              : `${path} already declares ${refOf(entity)}, and says otherwise: ` +
+                `${restatement.differs.map(differenceWords).join('; ')}. A declaration is not ` +
+                `something an append can rewrite`,
+          })
+          continue
+        }
+
+        // Already declared, identically: an edit whose two sides are equal, so
+        // the diff comes out empty rather than absent. "Nothing to do" and "the
+        // operation was dropped" are different answers, and the caller has to
+        // tell them apart — absent means already done (§4.3), but only if it is
+        // visible.
+        const after =
+          there !== undefined && existing !== undefined
+            ? existing
+            : insertDocument(existing ?? '', serializeEntity(entity))
+        const wrong = after === existing ? undefined : insertedOnly(existing, after, entity)
+        if (wrong !== undefined) {
+          dropped.push({ opIndex, reason: `could not add ${refOf(entity)} to ${path}: ${wrong}` })
+          continue
+        }
+        touch(path, after)
+        // Declared by THIS plan now, so a later operation can patch it. Without
+        // this an update naming an entity the same plan creates was dropped in
+        // silence, and the preview showed the creation without the grant.
+        if (!declaredAt.has(refOf(entity))) declaredAt.set(refOf(entity), path)
         continue
       }
 
-      // The parser said the consumer is not listed, so an unchanged file is a
-      // surgery that found nothing to amend — the exact shape of "nothing to
-      // change" that granted nothing. And a changed one is checked for what
-      // it changed: the surgery finds documents by name, not by reference.
-      const wrong =
-        after === existing
-          ? 'the edit left the file as it was'
-          : appendedOnly(existing, after, ref, patch.consumer)
-      if (wrong !== undefined) {
-        failed(wrong)
+      case 'update-entity': {
+        // The file is found in the bytes, because that is the only place this
+        // function is allowed to look: `signed.paths` holds the paths the engine
+        // COMPUTED, and an entity that already exists was filed by whoever wrote
+        // it — possibly not where convention would have put it (design 5.2).
+        const path = declaredAt.get(operation.entityRef)
+        if (path === undefined) {
+          dropped.push({
+            opIndex,
+            reason: `${operation.entityRef} is declared in no file this plan can see`,
+          })
+          continue
+        }
+        const existing = contentOf(path)
+        if (existing === undefined) {
+          dropped.push({ opIndex, reason: `${path} holds no bytes to amend` })
+          continue
+        }
+
+        const { entityRef: ref, patch } = operation
+        // One patch today, and everything below appends. A second — a
+        // `remove-dependency-of` carries a consumer too — would be applied as
+        // an addition without this switch (core-plan-10).
+        switch (patch.patch) {
+          case 'add-dependency-of':
+            break
+          default: {
+            const exhaustive: never = patch.patch
+            return exhaustive
+          }
+        }
+        const failed = (why: string): void => {
+          dropped.push({
+            opIndex,
+            reason: `could not add ${patch.consumer} to ${ref} in ${path}: ${why}`,
+          })
+        }
+
+        // Already listed is the parser's answer, never the surgery's: a flow
+        // sequence the surgery would refuse to split can hold the consumer, and
+        // an unchanged file is then the truth rather than a failure to find it.
+        if (listsConsumer(existing, ref, patch.consumer)) {
+          // Listed, and "already done" only if at the level the operation
+          // states: listed at another is not something an append can make
+          // true, and an unchanged file would read as done. The level is the
+          // one field this compares — the consumer is listed, and the
+          // environment is the policies' to hold (`consumerRestatement`).
+          const target = parseDocuments(existing).entities.find(
+            (candidate) => refOf(candidate) === ref,
+          )
+          const restatement =
+            target === undefined
+              ? undefined
+              : consumerRestatement(target, patch.consumer, patch.access)
+          if (restatement?.restates === false) {
+            failed(
+              `it is already listed there, and ${restatement.differs.map(differenceWords).join('; ')}`,
+            )
+            continue
+          }
+          touch(path, existing)
+          continue
+        }
+
+        const name = ref.slice(ref.lastIndexOf('/') + 1)
+        let after: string
+        try {
+          // One line, appended — and refused loudly on a shape the surgery
+          // cannot edit textually, which is caught here so one unamendable file
+          // does not lose the rest of the plan.
+          //
+          // `patch.access` writes NOTHING, and that is not an oversight. §5.3
+          // put the level in the operation so the signature can classify it and
+          // `declared-level-mismatch` can compare it to the declaration; it is a
+          // claim about the grant being extended, and the grant already states
+          // its level. Appending cannot rewrite that scalar (§4.3), so the level
+          // is also the one thing this edit cannot show a reviewer: `access:`
+          // sits further from the inserted line than the three lines of context
+          // a hunk carries, and it stays an unchanged line.
+          after = appendSequenceItem(existing, name, 'dependencyOf', patch.consumer)
+        } catch (error) {
+          if (!(error instanceof SurgeryError)) throw error
+          failed(error.message)
+          continue
+        }
+
+        // The parser said the consumer is not listed, so an unchanged file is a
+        // surgery that found nothing to amend — the exact shape of "nothing to
+        // change" that granted nothing. And a changed one is checked for what
+        // it changed: the surgery finds documents by name, not by reference.
+        const wrong =
+          after === existing
+            ? 'the edit left the file as it was'
+            : appendedOnly(existing, after, ref, patch.consumer)
+        if (wrong !== undefined) {
+          failed(wrong)
+          continue
+        }
+        touch(path, after)
         continue
       }
-      touch(path, after)
-      continue
+
+      // create-catalog-info contributes nothing to THIS repository, and the
+      // omission is the rule rather than a gap: its `repoPath` names a file in
+      // the service's own repository, not in the declarations repository these
+      // edits describe. It is still reported, because an operation that
+      // produces no bytes must never be invisible.
+      case 'create-catalog-info':
+        dropped.push({
+          opIndex,
+          reason: 'writes into the service repository, which this preview does not cover',
+        })
+        continue
+
+      default: {
+        const exhaustive: never = operation
+        return exhaustive
+      }
     }
-
-    // create-catalog-info contributes nothing to THIS repository, and the
-    // omission is the rule rather than a gap: its `repoPath` names a file in
-    // the service's own repository, not in the declarations repository these
-    // edits describe. It is still reported, because an operation that
-    // produces no bytes must never be invisible.
-    dropped.push({
-      opIndex,
-      reason: 'writes into the service repository, which this preview does not cover',
-    })
   }
 
   const edits: FileEdit[] = order.map((path) => ({

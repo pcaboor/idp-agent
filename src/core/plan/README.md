@@ -26,7 +26,7 @@ schema rejects what cannot be requested. The signature turns a value nobody can 
 into a question rather than a refusal — *declare, never infer* means asking, not guessing
 and not giving up. A policy refuses what is expressible, vouched for, and still wrong; the
 design named that gate four times and defined it nowhere, so `policies.ts` opens with the
-definition. Eight ship, and **every operation is gated** — `update-entity` joins a consumer
+definition. Nine ship, and **every operation is gated** — `update-entity` joins a consumer
 to an *existing* grant, so it is the one operation that hands out an authorisation nobody
 re-declares, and the loop once skipped it. The re-check exists because the catalogue lags
 the repository by about two minutes (§4.4): what was true when the plan was drafted may not
@@ -280,6 +280,10 @@ already says it" prints, so a reader can check it. For an update that is the gra
 environment, owner and what it is over too, which the operation does not state: they are how
 a reader tells the grant the draft extended from the one the request asked for. An empty diff
 exits 0 only when every operation is `already-declared`, in prose and in `--json` alike.
+
+A right whose `dependsOn` names a right — another grant, or itself — is refused
+(`right-over-a-right`): a grant is over a thing (§4.1), and the schema asks only that it
+name something.
 
 Two operations of one plan aimed at one reference are refused too (`same-reference-twice`),
 naming both: two creations of one entity, a creation and an update of it, or two updates of

@@ -1332,3 +1332,78 @@ describe('same-reference-twice', () => {
     expect(of(check(signed, policies()), 'same-reference-twice')).toBeUndefined()
   })
 })
+
+/**
+ * A right is over a thing (§4.1). The schema asks that a grant name what it
+ * is over and never what that is, so a grant over another grant — or over
+ * itself, which is how wip-diff-1 found it — reached the diff as an
+ * authorisation over an authorisation.
+ */
+describe('right-over-a-right', () => {
+  it('refuses a grant whose dependsOn names a right the repository declares', () => {
+    const signed = sign(
+      accessIn('prod', ['resource:default/checkout-orders-db-prod']),
+      'give billing-api read access to orders-db in prod',
+    )
+
+    const violation = of(check(signed, policies()), 'right-over-a-right')
+
+    expect(violation?.path).toBe('operations.0.entity.spec.dependsOn.0')
+    expect(violation?.message).toContain('resource:default/checkout-orders-db-prod')
+  })
+
+  it('refuses a grant whose dependsOn names a right the same plan declares', () => {
+    const parsed = planSchema.parse({
+      intent: 'give billing-api read access to orders-db in prod',
+      operations: [
+        { op: 'create-entity', entity: accessIn('prod') },
+        {
+          op: 'create-entity',
+          entity: {
+            ...accessIn('prod', ['resource:default/billing-api-orders-db-prod']),
+            metadata: { name: 'billing-api-orders-db-prod-copy', env: 'prod' },
+          },
+        },
+      ],
+    })
+    const signed = signPlan(parsed, signature(), saidInFull(parsed))
+    if ('outcome' in signed) throw new Error(`refused: ${JSON.stringify(signed.refusals)}`)
+
+    const violation = of(check(signed, policies()), 'right-over-a-right')
+
+    expect(violation?.path).toBe('operations.1.entity.spec.dependsOn.0')
+  })
+
+  it('says nothing of a grant over a thing, or of a thing that depends on another', () => {
+    const grant = sign(accessIn('prod'), 'give billing-api read access to orders-db in prod')
+    const database = sign(
+      {
+        kind: 'Resource',
+        metadata: { name: 'orders-replica-prod', env: 'prod' },
+        spec: {
+          type: 'database',
+          owner: 'group:default/tiger',
+          dependsOn: ['resource:default/orders-db-prod'],
+        },
+      },
+      'declare orders-replica-prod, a database over orders-db in prod',
+    )
+
+    expect(of(check(grant, policies()), 'right-over-a-right')).toBeUndefined()
+    expect(of(check(database, policies()), 'right-over-a-right')).toBeUndefined()
+  })
+
+  it('says nothing of a grant over a reference whose nature nobody knows', () => {
+    // It refuses a right; it does not require a thing. The review's sketch
+    // asked that `dependsOn` name an object, and an allow list would refuse a
+    // gateway-route over an `api:` entity the repository sets aside, which is
+    // legitimate — so an entity of no known nature, a Group here, is left to
+    // the other gates, and this one says nothing of it.
+    const signed = sign(
+      accessIn('prod', ['group:default/tiger']),
+      'give billing-api read access to group:default/tiger in prod',
+    )
+
+    expect(of(check(signed, policies()), 'right-over-a-right')).toBeUndefined()
+  })
+})

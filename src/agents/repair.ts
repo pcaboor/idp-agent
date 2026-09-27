@@ -1,5 +1,5 @@
 import { questionsOf, type Question } from '../core/plan/clarify.js'
-import { deriveOwners, type DerivedOwner } from '../core/plan/derive.js'
+import { deriveOwners } from '../core/plan/derive.js'
 import { planEdits, type DroppedOperation } from '../core/plan/edits.js'
 import { checkPolicies, type PolicyContext } from '../core/plan/policies.js'
 import type { Provenance } from '../core/plan/provenance.js'
@@ -15,7 +15,7 @@ import { ENV_ANNOTATION } from '../core/schemas/vocabulary.js'
 import type { RepositorySnapshot } from '../core/validate/rules.js'
 import type { ArchitectOutcome } from './architect.js'
 import type { EventSink } from './events.js'
-import type { OperationEffect, UpdateTarget, Verdict } from './reviewer.js'
+import type { OperationEffect, ReviewFacts, UpdateTarget, Verdict } from './reviewer.js'
 
 /**
  * The repair loop of design §6.1, and it is **plain TypeScript**.
@@ -57,17 +57,12 @@ export const REPAIR_LIMITS = { maxAttempts: 3 } as const
 export type Gate = 'zod' | 'signature' | 'policy' | 'recheck' | 'reviewer'
 
 /**
- * What the engine established about a plan, handed to the gate that judges it.
- *
- * One object rather than three arguments, because the list grew once already
- * and will again: a new fact should break every caller's build, not slip in
- * behind a default.
+ * What the engine established about a plan, handed to the gate that judges it:
+ * one object rather than three arguments, because the list grew once already
+ * and will again. Declared in `reviewer.ts`, once, beside the input it is part
+ * of (wip-diff-8).
  */
-export interface ReviewFacts {
-  readonly derived: readonly DerivedOwner[]
-  readonly targets: readonly UpdateTarget[]
-  readonly effects: readonly OperationEffect[]
-}
+export type { ReviewFacts } from './reviewer.js'
 
 export interface RepairAttempt {
   readonly attempt: 1 | 2 | 3
@@ -645,7 +640,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       gates.push('reviewer')
       const verdict = await input.review(signed.plan, {
         derived: derivation.derived,
-        targets: targetsOf(signed.plan, input.snapshot),
+        targets: targetsOf(signed.plan, input.snapshot, input.signature.vocabulary.environments),
         effects: effectsOf(signed.plan, dropped, recheck),
       })
       if (verdict.verdict === 'no-opinion') {
@@ -748,7 +743,11 @@ const dedupe = (kept: readonly KeptValue[]): KeptValue[] =>
  * name a moment later, and inventing a row of blanks for it would tell a
  * reviewer that a grant exists with nothing stated about it.
  */
-function targetsOf(plan: Plan, snapshot: RepositorySnapshot): UpdateTarget[] {
+function targetsOf(
+  plan: Plan,
+  snapshot: RepositorySnapshot,
+  environments: readonly string[],
+): UpdateTarget[] {
   // The FIRST declaration wins, as the catalogue resolves a duplicate (§4.4),
   // `planEdits` finds the file an update amends and the re-check names it
   // (core-plan-12). The last one used to, so the Reviewer was told the level,
@@ -770,13 +769,39 @@ function targetsOf(plan: Plan, snapshot: RepositorySnapshot): UpdateTarget[] {
       opIndex,
       entityRef: operation.entityRef,
       level: declaredLevel(entity),
-      environment: entity.metadata.annotations[ENV_ANNOTATION],
+      environment: environmentOf(entity.metadata.annotations[ENV_ANNOTATION], environments),
       owner: entity.spec.owner,
       consumers: entity.kind === 'Resource' ? (entity.spec.dependencyOf ?? []) : [],
     })
   }
   return targets
 }
+
+/**
+ * An environment is a word of the vocabulary, or it is not repeated.
+ *
+ * The annotation is free text from the repository — unbounded, line breaks
+ * included — and the Reviewer reads it under the heading of what the engine
+ * established (wip-diff-9). Held to both tests, and the second is the one that
+ * bites: the vocabulary is empirical (`summariseGraph` reads every annotation
+ * the repository holds), so a planted value is IN it, and what keeps one out
+ * is that an environment is one word — letters, digits, `.`, `_` or `-`,
+ * starting with a letter or a digit, at most 63 characters. Only the length is
+ * the bound `.idp-agent.yml` puts on one; the character rule is this
+ * function's own, so an environment the configuration accepts and this does
+ * not — one with a space or a slash, or starting with `-` — is told to the
+ * Reviewer as outside the vocabulary. `prod`, `dev` and `staging` read as they
+ * did, so what a recorded run sent is unchanged.
+ */
+const environmentOf = (
+  declared: string | undefined,
+  environments: readonly string[],
+): UpdateTarget['environment'] =>
+  declared === undefined
+    ? undefined
+    : environments.includes(declared) && /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/.test(declared)
+      ? declared
+      : { outside: true }
 
 /**
  * One line per operation, saying what it would do — including the ones that do
@@ -794,8 +819,10 @@ function targetsOf(plan: Plan, snapshot: RepositorySnapshot): UpdateTarget[] {
  * repository". Saying "changes nothing" there changes the message the
  * Reviewer is sent in the recorded `link-already-declared` scenario, whose
  * tape is exactly that update, so the tape would go stale; it waits for a
- * re-record, and `docs/roadmap.md` carries it. A creation's
- * `already-declared` was already said, and still is.
+ * re-record, and `docs/roadmap.md` carries it — and `repair.test.ts` states
+ * the sentence it should be, as an `it.fails` that turns red the day it is
+ * (wip-diff-10). A creation's `already-declared` was already said, and still
+ * is.
  */
 function effectsOf(
   plan: Plan,

@@ -15,6 +15,16 @@ export const UNENFORCED_BY_JSON_SCHEMA: readonly string[] = [
 ]
 
 /**
+ * What only the plan's validator enforces: the one path a Plan carries is a
+ * refinement, and a JSON Schema reader sees a bare string.
+ */
+export const UNENFORCED_BY_PLAN_JSON_SCHEMA: readonly string[] = [
+  ...UNENFORCED_BY_JSON_SCHEMA,
+  "a create-catalog-info's repoPath names a catalog-info.yaml or .yml inside the repository, " +
+    'relative and in no hidden folder',
+]
+
+/**
  * What only the reader enforces. A proposal names every reference in full and
  * has no `metadata.namespace`, so this is said of the entity schema alone.
  */
@@ -38,4 +48,4 @@ function exported(schema: z.ZodType, unenforced: readonly string[]): Record<stri
 export const entityJsonSchema = (): Record<string, unknown> =>
   exported(entitySchema, UNENFORCED_BY_ENTITY_JSON_SCHEMA)
 export const planJsonSchema = (): Record<string, unknown> =>
-  exported(planSchema, UNENFORCED_BY_JSON_SCHEMA)
+  exported(planSchema, UNENFORCED_BY_PLAN_JSON_SCHEMA)

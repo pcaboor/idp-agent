@@ -211,7 +211,9 @@ names the first by a reference that is in no witness set, because a witness set 
 read tools returned. That reference is grounded in the plan the reviewer reads before
 merging, so it classifies as derived. It is not a way in: a *name* is classified on its
 own, so a name the model invented is a question already and the plan cannot be applied —
-the reference inherits the name's standing rather than manufacturing its own.
+the reference inherits the name's standing rather than manufacturing its own. Only
+*another* operation's creation counts, and only one the engine files — a Resource: an
+operation naming itself, or a Component `planEdits` drops, is in no diff, and signs novel.
 
 ```
 ┌───────────────────── AI ZONE (untrusted) ─────────────────────────┐
@@ -553,7 +555,7 @@ can *vouch for* — and asks rather than refuses, because *declare, never infer*
 putting the question to the user, not guessing and not giving up — and a policy refuses
 what is expressible, vouched for, and still wrong.
 
-Eight ship in v0.1:
+Nine ship in v0.1:
 
 | policy | refuses |
 |---|---|
@@ -565,6 +567,7 @@ Eight ship in v0.1:
 | `consumer-on-an-object` | an `add-dependency-of` aimed at a thing, which carries no consumers |
 | `declared-otherwise` | a creation of a reference the repository declares that says something else about it — another consumer, owner, environment, type or target — the level being `declared-level-mismatch`'s |
 | `same-reference-twice` | two operations aimed at one reference: two creations of it, a creation and an update of it, or two updates of one grant for one consumer or stating two levels — naming both |
+| `right-over-a-right` | a right whose `dependsOn` names a right — another grant, or itself — where the thing it is over belongs |
 
 **The environment a right grants is the one it declares**, and nothing its name says. A
 name is the model's to choose (§5.2), and `cross-environment-consumer` once counted the
@@ -672,7 +675,7 @@ entity and a database's absent level looked like a right's unstated one. The two
 kept apart now, and each gate says its own thing.
 
 A configurable rule engine — `governance/`, and the `get_governance_rule` tool this
-document once gave the Architect in § 6 — is deferred past v0.1: eight predicates that run
+document once gave the Architect in § 6 — is deferred past v0.1: nine predicates that run
 are worth more than an extension point that does not. The tool is absent from the
 Architect's registry for the same reason, because a tool naming a feature nobody built is
 a prompt for the model to ask about one.

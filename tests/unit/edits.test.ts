@@ -4,7 +4,8 @@ import { planEdits } from '../../src/core/plan/edits.js'
 import type { SignatureContext } from '../../src/core/plan/sign.js'
 import { signPlan } from '../../src/core/plan/sign.js'
 import { findUnknowns, planSchema, type Plan } from '../../src/core/schemas/plan.js'
-import { parseEntity } from '../../src/core/yaml/serialize.js'
+import { parseDocuments, parseEntity } from '../../src/core/yaml/serialize.js'
+import { EntityGraph } from '../../src/context/graph/entity-graph.js'
 import { listDocumentNames } from '../../src/core/yaml/surgery.js'
 import { saidInFull } from '../support/provenance.js'
 
@@ -459,11 +460,11 @@ describe('create-catalog-info', () => {
     // which this edit set does not describe, and signPlan computes no path for
     // it. Dropped on purpose, not for want of an answer: nothing here is asked.
     const signed = sign(
-      'add a catalog-info at apps/checkout-web for the production checkout-web service',
+      'add apps/checkout-web/catalog-info.yaml for the production checkout-web service',
       [
         {
           op: 'create-catalog-info',
-          repoPath: 'apps/checkout-web',
+          repoPath: 'apps/checkout-web/catalog-info.yaml',
           entity: {
             kind: 'Component',
             metadata: { name: 'checkout-web' },
@@ -859,5 +860,32 @@ describe('planEdits, amending an entity that carries no consumers', () => {
     expect(first.dropped[0]?.reason).toContain(path)
     expect(first.dropped[0]?.reason).toContain('only a Resource lists its consumers')
     expect(planEdits(signed, repository([[path, file]]))).toEqual(first)
+  })
+})
+
+describe('a reference two files declare', () => {
+  it('is amended where the graph says it is declared: the first declaration', () => {
+    // The one resolution, tied: what `show`, the Analyst and the relations
+    // read of a duplicate is what a plan amends (domain-backstage-10).
+    const before = repository([
+      [AMEND_PATH, AMEND_FILE],
+      [
+        'dependencies/access/zzz-second.yml',
+        document('checkout-orders-db-prod', ['component:default/payments-api']),
+      ],
+    ])
+    const signed = sign(AMEND_INTENT, [addConsumer('component:default/billing-api')])
+    const graph = EntityGraph.from(
+      [...before.values()].flatMap((content) => parseDocuments(content).entities),
+    )
+
+    const { edits } = planEdits(signed, before)
+
+    expect(edits.map((edit) => edit.path)).toEqual([AMEND_PATH])
+    const amended = parseDocuments(at(edits, 0).before ?? '').entities[0]
+    const read = graph.get('resource:default/checkout-orders-db-prod')
+    expect(read?.kind === 'Resource' && read.spec.dependencyOf).toEqual(
+      amended?.kind === 'Resource' && amended.spec.dependencyOf,
+    )
   })
 })

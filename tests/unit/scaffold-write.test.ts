@@ -2,7 +2,7 @@ import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { writeScaffold } from '../../src/scaffold/write.js'
+import { ScaffoldWriteError, writeScaffold } from '../../src/scaffold/write.js'
 import { scaffoldLayout } from '../../src/scaffold/layout.js'
 import { loadTemplates } from '../../src/scaffold/templates.js'
 import type { FileIO } from '../../src/scaffold/write.js'
@@ -67,6 +67,55 @@ describe('writeScaffold', () => {
     }
     await expect(writeScaffold(root, await files(), failing)).rejects.toThrow(/CODEOWNERS/)
     expect(written.some((file) => file.endsWith('CODEOWNERS'))).toBe(false)
+  })
+
+  it('says what it wrote and kept before the file it could not write', async () => {
+    // A failure part-way used to lose the list: the error named the file that
+    // failed and nothing of the ones already on disk, so `init platform` could
+    // not say what it had left behind (gap-stage5-readiness-7).
+    const root = await temp()
+    const failing: FileIO = {
+      mkdir: async () => {},
+      writeNew: async (file) => {
+        if (file.endsWith('CODEOWNERS')) throw new Error('disk full')
+        return !file.endsWith('plan.schema.json')
+      },
+    }
+
+    const error = await writeScaffold(root, await files(), failing).then(
+      () => undefined,
+      (thrown: unknown) => thrown,
+    )
+
+    expect(error).toBeInstanceOf(ScaffoldWriteError)
+    if (!(error instanceof ScaffoldWriteError)) return
+    expect(error.failed).toBe('CODEOWNERS')
+    expect(error.message).toContain('disk full')
+    expect(error.written).toContain('.github/workflows/validate.yml')
+    expect(error.written).not.toContain('CODEOWNERS')
+    expect(error.kept).toEqual(['schemas/plan.schema.json'])
+    // Nothing after the failure was attempted, so nothing after it is listed.
+    expect(error.written).not.toContain('README.md')
+  })
+
+  it('reports a folder it could not create the same way', async () => {
+    const root = await temp()
+    const failing: FileIO = {
+      mkdir: async (directory) => {
+        if (directory.endsWith('workflows')) throw new Error('not a directory')
+      },
+      writeNew: async () => true,
+    }
+
+    const error = await writeScaffold(root, await files(), failing).then(
+      () => undefined,
+      (thrown: unknown) => thrown,
+    )
+
+    expect(error).toBeInstanceOf(ScaffoldWriteError)
+    if (!(error instanceof ScaffoldWriteError)) return
+    expect(error.failed).toBe('.github/workflows/validate.yml')
+    expect(error.written).toContain('schemas/plan.schema.json')
   })
 
   it('refuses a file that would land outside the root', async () => {

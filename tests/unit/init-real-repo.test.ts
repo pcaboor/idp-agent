@@ -504,6 +504,24 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
     expect(result.text).not.toContain('test/fixtures/catalog-info.yaml')
   })
 
+  it('never files the service in a hidden folder\'s catalog-info', async () => {
+    // `.github` is the one hidden folder the walk reads, and a plan naming a
+    // path in a hidden folder is refused at the schema (gap-stage5-readiness-2):
+    // the file init chooses is one a Plan may carry, or the run would end on
+    // "the composed plan is not a plan".
+    const root = await tree({
+      ...SIGNALS,
+      '.github/catalog-info.yaml': componentDoc('gh-svc'),
+    })
+
+    const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
+
+    expect(result.found).toBe(true)
+    expect(result.text).toContain('--- /dev/null')
+    expect(result.text).toContain('+++ b/catalog-info.yaml')
+    expect(result.text).not.toContain('b/.github/catalog-info.yaml')
+  })
+
   it('never files the service in a workspace\'s catalog-info', async () => {
     const root = await tree({
       ...SIGNALS,
