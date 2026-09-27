@@ -579,6 +579,43 @@ describe('idpa "<phrase>" on a change', () => {
     // Only the Supervisor ran: the demo SI is never a change's repository.
     expect(agentsOf(client)).toEqual(['supervisor'])
   })
+
+  // What a change is decided against is resolved apart from what the run
+  // reads (`declarationsFor`), so each flag is passed to it on its own: these
+  // two rows are what fails if one is dropped from that call.
+  it('with --demo and IDP_REPO set: refused, never decided against IDP_REPO', async () => {
+    const client = changing()
+
+    const { code, out, err } = await run([INTENT, '--demo'], {
+      client,
+      cwd: await temp(),
+      env: { IDP_REPO: await scaffolded() },
+    })
+
+    expect(code).toBe(2)
+    expect(out).toBe('')
+    expect(err).toContain('needs a declarations repository')
+    expect(agentsOf(client)).toEqual(['supervisor'])
+  })
+
+  it('with --repo and IDP_REPO naming two repositories: decided against --repo', async () => {
+    const repo = await scaffolded()
+    // A directory with no declarations at all: a change decided against it
+    // could not produce the diff below.
+    const configured = await temp()
+    const client = changing()
+
+    const { code, out } = await run([INTENT, '--repo', repo], {
+      client,
+      cwd: await temp(),
+      env: { IDP_REPO: configured },
+      ask: answering('read'),
+    })
+
+    expect(code).toBe(0)
+    expect(out).toContain('+++ b/catalog/databases/orders-db-prod.yml')
+    expect(agentsOf(client)).toEqual(['supervisor', 'architect', 'reviewer'])
+  })
 })
 
 describe('ask on a change request', () => {

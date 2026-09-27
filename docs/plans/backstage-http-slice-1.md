@@ -407,6 +407,10 @@ today, so this lands with no change in behaviour, before any HTTP code (the note
 - Modify: `src/cli/commands/entry.ts` (its header, `:22-27`)
 - Modify: `src/cli/README.md`, `AGENTS.md` ("Current state": one function decides it → two)
 - Create: `tests/unit/two-resolutions.test.ts`
+- Modify: `tests/unit/entry.test.ts` (a row per argument of the entry road's call: `--demo`
+  with `IDP_REPO` set is refused, `--repo` beats `IDP_REPO` for the change; review of 1.2)
+- Modify: `docs/roadmap.md` (a known debt the review found, older than 1.2: an absolute
+  `--repo` from a removed working directory)
 - Modify: `CHANGELOG.md`, `README.md` (the test-count badge)
 
 **Interfaces:**
@@ -423,7 +427,7 @@ export async function declarationsFor(
 ): Promise<RepositorySource | undefined>
 ```
 
-- [ ] **Step 1: Write the test (fails: no such export)**
+- [x] **Step 1: Write the test (fails: no such export)**
 
 ```typescript
 describe('what a change is decided against, resolved apart from what the run reads', () => {
@@ -455,7 +459,7 @@ The proof that nothing else changes is today's suite: `entry.test.ts`,
 `configured-source.test.ts`, `plan-project.test.ts`, `declarations-repository.test.ts` and
 the scenario tapes (`tests/scenarios/`), unchanged.
 
-- [ ] **Step 2: Implement**
+- [x] **Step 2: Implement**
 
 In `source.ts`, the body of `sourceOf` after the flags becomes a private
 `repositoryChain(command, repo, context)`: `--repo` (`declarationsRoot(command, …)`), the
@@ -493,7 +497,7 @@ the two are one repository unless a Backstage is read (slice 1.5).
 
 **Exhaustive switches:** `declarationsOf` (removed). **Architecture rules:** none.
 
-- [ ] **Step 3: Checks**
+- [x] **Step 3: Checks**
 
 ```bash
 pnpm vitest run tests/unit/two-resolutions.test.ts tests/unit/entry.test.ts tests/unit/configured-source.test.ts
@@ -507,7 +511,8 @@ warning.
 
 ```bash
 git add src/cli/source.ts src/cli/index.ts src/cli/commands/entry.ts src/cli/README.md \
-  tests/unit/two-resolutions.test.ts CHANGELOG.md AGENTS.md README.md
+  tests/unit/two-resolutions.test.ts tests/unit/entry.test.ts CHANGELOG.md AGENTS.md \
+  README.md docs/roadmap.md docs/plans/backstage-http-slice-1.md
 git commit -m "refactor(cli): resolve what a run reads and what a change is decided against apart"
 ```
 
@@ -1336,7 +1341,9 @@ it('blames the catalogue, not a repository, when it serves no entity', …)
   // 'the Backstage catalogue at 127.0.0.1:7007 serves no entity this token reads; IDP_BACKSTAGE_URL names it'
 it('refuses a question, exit 2 before any request, when the repository a change would use is misconfigured', …)
   // IDP_BACKSTAGE_URL (loopback) and IDP_REPO=relative: `idpa "who owns billing-api?"` exits 2 with
-  // "IDP_REPO=relative is relative…", catalogue.sent stays empty, and no model is called
+  // "IDP_REPO=relative is relative…", catalogue.sent stays empty, and no model is called.
+  // The one proof of 1.2's placement of `declarationsFor` before `provider.load()`: seen
+  // failing with that block moved below the load.
 it('says "declared nowhere in the catalogue this token reads" on show, relations and the ask answer', …)
   // a dependsOn naming nothing, served by the fake: `show`, `relations`, and `ask`/`idpa` answered by a
   // scripted Analyst whose answer renders the entity (ask.ts:201) and a relations block (ask.ts:172);

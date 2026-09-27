@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3265 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3274 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -160,8 +160,10 @@ preview is never decided against a demo. So `cd IaC && idpa "<intent>"` decides 
 IaC. Every road but `--repo` is said in one line on stderr, naming the folder and what
 named it — because an answer about an invented company that does not say so is read as one
 about the user's own; a repository is named by its folder, never as the `.` it was typed
-as. One function decides all of it, `cli/source.ts`'s `sourceOf`, and a Backstage source
-is one more `kind` there.
+as. Two functions decide it, over one chain in `cli/source.ts`: `sourceOf`, what a run
+reads, and `declarationsFor`, what a phrase's change is decided against — `plan`'s chain,
+never the demo SI or a catalogue. They are one repository until a Backstage can be read,
+which is one more `kind` of `sourceOf`'s and never of `declarationsFor`'s.
 
 A change — `plan "<intent>"`, or a phrase the Supervisor calls a `MUTATION` — may read the
 application repository too, and the **Inspector is optional**: it reads the directory
