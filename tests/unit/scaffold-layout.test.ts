@@ -7,7 +7,7 @@ import { renderRegistration } from '../../src/core/validate/registration.js'
 
 const layout = async () =>
   scaffoldLayout(
-    { owner: '@acme/platform', version: '0.1.0-rc.1', repository: 'platform-iac' },
+    { owner: '@acme/platform', version: '0.1.0-rc.2', repository: 'platform-iac' },
     await loadTemplates(),
   )
 
@@ -32,7 +32,7 @@ describe('scaffoldLayout', () => {
 
   it('pins the version the generated workflow will run', async () => {
     const workflow = (await layout()).find((file) => file.path.endsWith('validate.yml'))
-    expect(workflow?.content).toContain('idp-agent@0.1.0-rc.1')
+    expect(workflow?.content).toContain('idp-agent@0.1.0-rc.2')
     expect(workflow?.content).not.toContain('__VERSION__')
   })
 

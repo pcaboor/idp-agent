@@ -34,6 +34,17 @@ Each pull request adds its line here.
 
 ### Fixed
 
+- The package and the documents around it: `pnpm build` empties `dist/` first and `prepack`
+  runs typecheck, test, build and smoke; `pnpm smoke` runs the binary from the packed tarball,
+  extracted outside the clone with its declared dependencies alone, and fails on a file in
+  `dist/` no source compiles to; the version is `0.1.0-rc.2`, so `init platform` no longer
+  pins the withdrawn one; both workflows, the project's CI and the `validate.yml` `init
+  platform` writes, get a read-only token, no persisted credentials and a timeout, and CI
+  cancels a pull request's stale run but never one on main; an annotated path is read the same on Windows, where `validate` called a correctly filed
+  entity misplaced; AGENTS.md, SECURITY.md's guarantees and the design state the gate order
+  the code runs, the re-check before the Reviewer; and the folder READMEs say what the
+  Reviewer is given, what `show` does with a shared name, and what `core/` holds — review
+  batch A3 ([#89](https://github.com/pcaboor/idp-agent/pull/89)).
 - Tests that cannot pass on nothing: the architecture rules fail on a folder that is not there
   or an import that resolves to no file, read `.mts` and `.cts`, and name every module that
   writes, with the functions it writes with, the one that starts a process and the `cli/`

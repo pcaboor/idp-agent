@@ -68,7 +68,7 @@ idp-agent plan                       CHAIN   inputs: command, intent, repo, proj
 │  ├─ gate zod                       ✓
 │  ├─ gate signature                 ✓
 │  └─ gate policy                    ✗       status ERROR, the refusal's reason
-└─ attempt 2                         CHAIN   … reviewer, recheck, then the outcome
+└─ attempt 2                         CHAIN   … recheck, reviewer, then the outcome
 ```
 
 The root is named after the command — `idp-agent plan`, `idp-agent ask`, `idp-agent init`,

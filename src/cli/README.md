@@ -47,9 +47,10 @@ and return a `CommandResult` — `text` plus `found`. No I/O and no process, so
 `tests/unit/commands.test.ts` builds a graph and asserts on the value that comes back.
 `graph --kind` takes `Component`, `Resource` or `API` — Backstage's API is read, never
 proposed (design §4.1) — and an API's row has `API` in its KIND column. `show` resolves an
-API as it resolves any entity: a full reference, then the first entity holding a bare name.
-An API and the Resource the demo convention models one as may share a name; the reference
-names the other.
+API as it resolves any entity, through `resolveEntity`: a full reference, then the one entity
+carrying exactly that name. A name two entities carry — an API and the Resource the demo
+convention models one as may share one — resolves to neither: it is refused on exit 1, with
+those entities alone listed by reference, for the reader to choose.
 
 `runRelations(graph, options)` (`commands/relations.ts`) is `idpa relations`: keyless, and
 a read command like `show`, whose resolution it shares — `show.ts`'s `resolveEntity`, so a

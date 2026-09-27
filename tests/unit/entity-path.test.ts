@@ -60,6 +60,26 @@ describe('resolveEntityPath', () => {
     expect(() => resolveEntityPath(entity)).toThrow(PathEscapeError)
   })
 
+  it('refuses what Windows would read as a traversal or an absolute path, here too', () => {
+    // One repository, one verdict: `validate` in CI on Linux and on a laptop
+    // on Windows must agree, so a backslash is a separator on both — a `..`
+    // hidden in a segment like `a\..` included — and a path is judged
+    // absolute after it is normalised as well as before.
+    for (const file of [
+      '..\\..\\etc\\passwd',
+      'catalog\\..\\..\\x.yml',
+      'a\\../../x.yml',
+      'C:\\x.yml',
+      '\\x.yml',
+      'x/../C:\\x.yml',
+      'x/../\\x.yml',
+    ]) {
+      expect(() => resolveEntityPath(resource({ [SOURCE_FILE_ANNOTATION]: file })), file).toThrow(
+        PathEscapeError,
+      )
+    }
+  })
+
   it('refuses to place a Component by convention', () => {
     const component: Entity = {
       apiVersion: 'backstage.io/v1alpha1',

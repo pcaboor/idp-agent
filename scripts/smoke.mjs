@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 /**
  * Runs the packaged binary, which the unit suite never does: it imports the
- * modules instead. What only breaks here is the shape of `dist` — `bin.js`
+ * modules instead. What only breaks here is the shape of the package — `bin.js`
  * resolves the fixture SI from `import.meta.url`, so a layout change, a missing
  * `files` entry or a bad `bin` mapping passes every test and ships broken.
+ *
+ * The binary is the one in the TARBALL, `npm pack`ed and extracted outside the
+ * clone, never the clone's own `dist/`: run from there, taking `fixtures` out of
+ * `files` left every check green, because the clone still had the folder the
+ * package did not (review, build-ci-2).
  *
  * Run after `pnpm build`. No network, no API key, no Docker.
  */
@@ -17,6 +22,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -24,11 +30,13 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = path.resolve(fileURLToPath(import.meta.url), '../..')
-const BIN = path.join(ROOT, 'dist/cli/bin.js')
 
 // Deliberately not the repository root: the binary must find the fixture SI
 // from its own location, not from wherever the user happens to stand.
 const ELSEWHERE = mkdtempSync(path.join(tmpdir(), 'idp-agent-smoke-'))
+// Where the tarball is packed and extracted. Apart from ELSEWHERE, which the
+// checks below hash to prove the binary wrote nothing where it ran.
+const INSTALLED = mkdtempSync(path.join(tmpdir(), 'idp-agent-package-'))
 
 /**
  * Removed at the end of the run, and on the way out of one that threw: a smoke
@@ -36,14 +44,64 @@ const ELSEWHERE = mkdtempSync(path.join(tmpdir(), 'idp-agent-smoke-'))
  * the suite's until a disk filled. On that second path the error that ended
  * the run is the report; a failed removal is said alongside it, never instead.
  */
-const removeElsewhere = () => rmSync(ELSEWHERE, { recursive: true, force: true })
+const removeElsewhere = () => {
+  rmSync(ELSEWHERE, { recursive: true, force: true })
+  rmSync(INSTALLED, { recursive: true, force: true })
+}
 process.on('exit', () => {
   try {
     removeElsewhere()
   } catch (error) {
-    console.error(`could not remove ${ELSEWHERE}: ${error.message}`)
+    console.error(`could not remove ${ELSEWHERE} or ${INSTALLED}: ${error.message}`)
   }
 })
+
+/**
+ * The package as a registry would hand it over: `npm pack`, then the tarball
+ * extracted, then its `dependencies` — those alone, not the devDependencies —
+ * linked from the clone's install, since a smoke run reaches no network. A
+ * module the binary imports that the package does not declare, or a file it
+ * reads that `files` leaves out, fails here.
+ *
+ * `--ignore-scripts`: `prepack` runs this script, and this script packs.
+ * `--dry-run=false`: under `npm pack --dry-run`, the `prepack` that runs this
+ * inherits `npm_config_dry_run`, and the pack below then wrote no tarball to
+ * extract. A flag outranks the environment, so the rest of it is kept — an
+ * `npm_config_cache` or `npm_config_offline` someone set on purpose included —
+ * and `--no-update-notifier` keeps npm from asking the registry for its own
+ * latest version.
+ */
+const [packed] = JSON.parse(
+  execFileSync(
+    'npm',
+    [
+      'pack',
+      '--json',
+      '--ignore-scripts',
+      '--dry-run=false',
+      '--no-update-notifier',
+      '--pack-destination',
+      INSTALLED,
+    ],
+    {
+      cwd: ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      // npm is npm.cmd on Windows, which only a shell runs.
+      shell: process.platform === 'win32',
+    },
+  ),
+)
+execFileSync('tar', ['-xzf', packed.filename], { cwd: INSTALLED, stdio: 'ignore' })
+const PACKAGE = path.join(INSTALLED, 'package')
+const MANIFEST = JSON.parse(readFileSync(path.join(PACKAGE, 'package.json'), 'utf8'))
+for (const dependency of Object.keys(MANIFEST.dependencies ?? {})) {
+  const link = path.join(PACKAGE, 'node_modules', dependency)
+  mkdirSync(path.dirname(link), { recursive: true })
+  // A junction on Windows, which needs no privilege; the type is ignored elsewhere.
+  symlinkSync(path.join(ROOT, 'node_modules', dependency), link, 'junction')
+}
+const BIN = path.join(PACKAGE, MANIFEST.bin['idp-agent'])
 
 /**
  * Whatever the contributor has exported, the binary must behave the same here
@@ -165,7 +223,6 @@ check({ args: ['help'], code: 0, stdout: /idp-agent graph/ })
 // their usual flags, one command's usage, and a directory that is none refused
 // on exit 2 before any model is chosen — so with nothing configured, the
 // refusal is about the path, not about the model.
-const MANIFEST = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
 check({ args: ['--version'], code: 0, stdout: new RegExp(`^${MANIFEST.version.replaceAll('.', '\\.')}\n$`) })
 check({ args: ['-h'], code: 0, stdout: /idp-agent graph/ })
 check({ args: ['show', '--help'], code: 0, stdout: /^usage:\n {2}idp-agent show /, absentFromStdout: /idp-agent graph/ })
@@ -500,18 +557,10 @@ check({
   console.log(`  ${failures.length === before ? 'ok  ' : 'FAIL'} pnpm demo`)
 }
 
-// The one check that can catch "green tests, broken package": the templates
-// live outside dist/, so nothing in the suite notices if they are missing from
-// the tarball — and `npx idp-agent init platform` would then fail on a machine
-// that never cloned this repository.
-const packed = JSON.parse(
-  execFileSync('npm', ['pack', '--dry-run', '--json'], {
-    cwd: ROOT,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'ignore'],
-  }),
-)[0]
-
+// The templates live outside dist/, so nothing in the suite notices if they
+// are missing from the tarball — and `npx idp-agent init platform` would then
+// fail on a machine that never cloned this repository. `init platform` above
+// ran from the tarball; these two are the files it would miss in silence.
 const shipped = packed.files.map((file) => file.path)
 for (const required of ['templates/iac-repo/witness.yml', 'templates/iac-repo/gitignore']) {
   assert(
@@ -521,13 +570,29 @@ for (const required of ['templates/iac-repo/witness.yml', 'templates/iac-repo/gi
   )
 }
 
-// Counted like any other check: the directory is gone before the verdict, not
-// merely scheduled to go.
+// Nothing in dist/ that no source compiles to. `tsc` never deletes, so a
+// module renamed or removed in src/ — or a probe dropped into dist/ by hand —
+// stayed in every build after it, and `__before_probe.js` was packed (review,
+// build-ci-3). `pnpm build` empties dist/ first now; this is the check that
+// says so about what is actually packed.
+const stale = shipped.filter((file) => {
+  const compiled = /^dist\/(.+?)(?:\.d\.ts|\.js)$/.exec(file)
+  if (compiled === null) return file.startsWith('dist/')
+  return !existsSync(path.join(ROOT, 'src', `${compiled[1]}.ts`))
+})
+assert(
+  'the tarball carries nothing in dist/ that src/ does not compile to',
+  stale.length === 0,
+  `stale files in the tarball, compiled from no source: ${stale.join(', ')} — run pnpm build`,
+)
+
+// Counted like any other check: the directories are gone before the verdict,
+// not merely scheduled to go.
 removeElsewhere()
 assert(
   'the run left nothing in the temp directory',
-  !existsSync(ELSEWHERE),
-  `${ELSEWHERE} is still there after the run`,
+  !existsSync(ELSEWHERE) && !existsSync(INSTALLED),
+  `${ELSEWHERE} or ${INSTALLED} is still there after the run`,
 )
 
 if (failures.length > 0) {
@@ -535,4 +600,4 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`  ${failure}`)
   process.exit(1)
 }
-console.log(`\n${checks} smoke checks passed against ${path.relative(process.cwd(), BIN)}`)
+console.log(`\n${checks} smoke checks passed against the packed ${packed.filename}`)

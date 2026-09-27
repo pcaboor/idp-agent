@@ -150,7 +150,11 @@ Plain data, handed in. Never a graph, never a provider, never a path.
   It runs only when there is an application repository to read; otherwise the Architect
   is handed `NOT_INSPECTED` instead of `ProjectFacts`, and its opening message says that
   nothing was inspected rather than listing facts nobody established.
-- The **Reviewer** gets the `Plan` and the **original request**, and nothing else. Not the
+- The **Reviewer** gets the `Plan`, the **original request**, and what the **engine**
+  established about the plan (`ReviewInput`): each owner `deriveOwners` computed and the
+  entity it follows from, what the repository declares of each grant an update would extend
+  — its level, environment, owner and consumers — and what the preview says each operation
+  would do. Facts, each read off the snapshot or computed by a gate, never reasoning. Not the
   Architect's transcript, not which attempt this is, not what an earlier gate said. It and
   the Architect are the same weights behind the same provider, so their errors are
   correlated by construction; a second opinion fed the first one's reasoning is an echo,
@@ -169,8 +173,9 @@ the **signed** plan — see `cli/commands/init.ts` for why that order is load-be
 
 Plain TypeScript sequences the steps; no agent decides what runs next (design § 6,
 ADR-0001). `repair.ts` runs the five gates in a fixed order — `zod`, `signature`, `policy`,
-`reviewer`, `recheck` — with the three free ones first, so a draft that cannot survive them
-never reaches the one that spends a model call. The harness renders nothing either: it
+`recheck`, `reviewer` — with the four free ones first, so a draft that cannot survive them
+never reaches the one that spends a model call, and the Reviewer judges a plan whose effect
+on the repository the re-check has already computed. The harness renders nothing either: it
 emits `AgentEvent`s, `cli/index.ts` writes one line per event to stderr, Ink draws them at
 stage 7, and the tests assert the same stream.
 

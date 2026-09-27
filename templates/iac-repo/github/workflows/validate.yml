@@ -16,11 +16,22 @@ on:
 # A workflow that names a package nobody can install fails on its first push
 # with no explanation, which is worse than a workflow that says it is waiting.
 
+# This repository's merge is the act of authorisation, so the workflow that
+# checks it gets the least a token can have: it reads the repository, and the
+# package it runs — fetched by npx — can neither push, comment nor approve.
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Validation reads files; it never talks to the remote, so the token
+          # is not left in .git/config for the next step to read.
+          persist-credentials: false
 
       - uses: actions/setup-node@v7
         with:

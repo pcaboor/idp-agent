@@ -54,7 +54,7 @@ export const REPAIR_LIMITS = { maxAttempts: 3 } as const
  * that says which one refused. A gate that exists in one and not the other
  * would be a gate nobody can see from the stream.
  */
-export type Gate = 'zod' | 'signature' | 'policy' | 'reviewer' | 'recheck'
+export type Gate = 'zod' | 'signature' | 'policy' | 'recheck' | 'reviewer'
 
 /**
  * What the engine established about a plan, handed to the gate that judges it.
@@ -443,7 +443,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       // to satisfy: run afterwards, it would be writing a value into a plan that
       // had already been classified, and the classification would describe a
       // field that no longer exists. Every later gate — the policies, the
-      // Reviewer, the re-check — then judges the plan with the owner in it,
+      // re-check, the Reviewer — then judges the plan with the owner in it,
       // which is the plan the user would be shown.
       //
       // It is not in `Gate`, and that is a decision rather than an omission.

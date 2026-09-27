@@ -178,7 +178,7 @@ One object crosses the boundary **per direction of authority**.
 
 The **`Plan`** crosses when the AI side asks for a change: it authorises writes and
 carries values the model chose, so everything downstream of it — Zod, policies, the
-Reviewer, the repository re-check — exists to refuse it.
+repository re-check, the Reviewer — exists to refuse it.
 
 The **`Answer`** crosses when the AI side reports a read (stage 2, ADR-0007). It
 authorises nothing and names no value: it carries only identifiers the engine itself
@@ -1000,8 +1000,9 @@ catalogue declares, levels still asked. The design note is
 4. Architect            does the resource exist?              [read + propose]
        yes -> access declarations only
        no  -> resource declaration + access declarations
-5. validation           Zod · signature · policies · Reviewer [3 attempts max]
-6. re-check             against the repository (catalogue lag)
+5. validation           Zod · signature · policies · re-check · Reviewer [3 attempts max]
+6. re-check             against the repository (catalogue lag) — the fourth gate of
+                        step 5, run inside its loop, not a pass after the Reviewer
 7. diff + confirmation  "I am submitting my request"
 8. branch + MR          an architect reviews -> merge = AUTHORISATION
 ```

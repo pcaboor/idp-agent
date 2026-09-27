@@ -7,9 +7,15 @@
  * adding a type is a single edit, and no rule about objects versus rights has to
  * enumerate type names by hand.
  *
- * This is a static registry today. When custom types become configurable, it is
- * this table that gets built at start-up instead of declared here; nothing that
- * consumes it needs to change.
+ * Static, by decision: the registry does not grow in v1 (stage 8's design
+ * note, decision 9), and a queue, a topic or a bucket is reported as not
+ * expressible rather than given a type. It is also fixed at compile time, which
+ * is more than a table: `z.enum(RESOURCE_TYPE_NAMES)` in `entity.ts` is built
+ * when that module loads, and `ResourceType` is a literal union every consumer
+ * narrows on. A type configured per repository therefore means schemas built
+ * from a registry handed in — a factory in place of each module-level schema —
+ * and every consumer taking the registry rather than importing this one; the
+ * table alone becoming dynamic would change nothing a schema accepts.
  */
 
 export type Nature = 'object' | 'right'
