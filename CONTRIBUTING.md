@@ -17,7 +17,7 @@ Before opening a pull request, run what CI runs:
 pnpm typecheck    # vitest does not typecheck; this is not redundant
 pnpm test
 pnpm build
-pnpm smoke        # runs the built dist/cli/bin.js, which the suite never does
+pnpm smoke        # packs the tarball and runs its dist/cli/bin.js, which the suite never does
 ```
 
 **Neither leaves anything in the temp directory.** A test that needs one calls
@@ -72,9 +72,12 @@ No human has to explain these in review — the build does it, with a message:
   process; in `cli/`, only named modules touch the disk. The rules fail on a folder that is
   not there and on an import that resolves to no file, rather than passing over nothing.
 - Everything typechecks under TypeScript 7 with the project's strict settings.
-- The built binary runs, returns the right exit codes, and the packaged tarball carries
-  what it needs — `pnpm smoke` reads `npm pack` output, because green tests once hid a
-  package with no templates in it.
+- The binary in the packed tarball runs, returns the right exit codes, and the tarball
+  carries what it needs and nothing stale — `pnpm smoke` packs it with `npm pack`, extracts
+  it outside the clone and runs it with its declared dependencies alone, because green
+  tests once hid a package with no templates in it, and a smoke run from the clone's own
+  `dist/` stayed green with `fixtures` taken out of `files`. `pnpm build` empties `dist/`
+  first, and `prepack` runs all four commands above before a tarball is made.
 
 Add a rule when you add a layer. `tests/architecture/dependencies.test.ts` is the place.
 

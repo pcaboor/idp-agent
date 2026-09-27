@@ -1,7 +1,7 @@
 # `scaffold/` — writing a repository into existence
 
 This is the only layer that creates files someone else will own. Everything in it is pure
-except one module.
+except two modules: one reads the templates this package ships, and one writes.
 
 ## Why it is not in `core/`
 
@@ -9,13 +9,16 @@ except one module.
 architecture test now enforces it. The rule engine that checks a repository belongs there;
 the writer that produces one does not.
 
-## Why exactly one file touches the disk
+## Why exactly one file writes
 
-`write.ts` is the only module here importing `node:fs`, and a test holds that. Stage 5's
-atomic applier replaces that seam: one file is a refactor, five would be a rewrite.
+Two modules touch the disk, for two different things. `templates.ts` *reads* the files
+shipped inside the package, into memory; `write.ts` *writes* into someone else's repository,
+and is the only module here importing a writing function. `tests/architecture/` names both
+and holds both lines. Stage 5's atomic applier replaces the writer's seam: one file is a
+refactor, five would be a rewrite.
 
-Everything else — deriving the file list, rendering CODEOWNERS, reading the templates into
-memory — is a pure function of its arguments, and tested as one.
+Everything else — deriving the file list, rendering CODEOWNERS — is a pure function of its
+arguments, and tested as one.
 
 ## Why the folder list is derived
 

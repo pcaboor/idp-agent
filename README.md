@@ -13,7 +13,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 3130, no API key" src="https://img.shields.io/badge/tests-3130%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 3149, no API key" src="https://img.shields.io/badge/tests-3149%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -246,7 +246,7 @@ consumed by (2)
 flowchart LR
     I["Intent<br/><i>plain English</i>"] --> INS["Inspector<br/>reads the repository"]
     INS --> A["Architect<br/>drafts a typed Plan"]
-    A --> G["Five gates<br/>shape · provenance · policy<br/>blind Reviewer · re-check"]
+    A --> G["Five gates<br/>shape · provenance · policy<br/>re-check · blind Reviewer"]
     G -- pass --> D["Unified diff"]
     D --> PR["Pull request<br/><i>stage 6</i>"]
     G -. refused, up to 3 attempts .-> A
@@ -256,8 +256,8 @@ flowchart LR
 1. The **Inspector** reads the repository you're standing in, or the one `--project` names.
 2. The **Architect** proposes a `Plan` into a typed buffer, never free text.
 3. **Five gates** judge it: schema shape, provenance (can each value be traced to a
-   source?), policy, an independent Reviewer that never sees the Architect's reasoning,
-   and a re-check against the repository as it is now.
+   source?), policy, a re-check against the repository as it is now, and an independent
+   Reviewer that never sees the Architect's reasoning.
 4. After three failed attempts it stops cleanly.
 
 The model decides *what to ask*. The deterministic engine answers, validates and renders.

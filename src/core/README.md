@@ -61,6 +61,17 @@ and nothing here can be steered by what it validates. Hence the property tests r
   `listDocumentNames`. Line edits, because a reviewer must see an added line, not an AST
   round-trip's reformat. Locating a document by lines is a heuristic, so what it cannot
   locate it refuses, and `planEdits` reads every edit back with the parser before offering it.
+- **The plan engine** — `plan/`, everything between a proposal and a diff: `signPlan`, the
+  only producer of a `SignedPlan`, then `checkPolicies`, `recheckPlan` and `planEdits`, which
+  take nothing else; `questionsOf` for what must be asked, `deriveOwners` and
+  `reapplyAnswers` for what follows from the catalogue or was already answered, and the
+  `Provenance` all of them read. The gates, their order and why: `plan/README.md`.
+- **Validation** — `validate/`: `checkRepository`, the nine rules `validate` runs over a
+  `RepositorySnapshot` and the re-check runs over the repository a plan would leave, and the
+  Backstage registration — `renderRegistration` writes the Location `init platform` puts at
+  the root, and the `registration` rule reads it back.
+- **The diff** — `renderUnifiedDiff` (`diff/unified.ts`), a `FileEdit`'s bytes before and
+  after as the unified diff a reviewer reads. The bytes are handed in, never read.
 
 - **Commentary** — `checkCommentary`, `COMMENTARY_LIMITS` (`answer/commentary.ts`). The
   engine's check on the sentences a model writes around an answer (ADR-0008): a sentence

@@ -17,4 +17,13 @@ describe('the version the scaffold pins', () => {
     ) as { version: string }
     expect(VERSION).toBe(manifest.version)
   })
+
+  it('is not one npm has already burned', () => {
+    // A version published once can never be published again, withdrawn or
+    // not. `0.1.0-rc.1` was published and unpublished the same day
+    // (CHANGELOG), so a repository scaffolded while the package still said so
+    // pinned a version no registry will ever serve (review, build-ci-5).
+    const BURNED = ['0.1.0-rc.1']
+    expect(BURNED).not.toContain(VERSION)
+  })
 })

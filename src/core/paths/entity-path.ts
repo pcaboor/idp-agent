@@ -15,13 +15,15 @@ export class PathEscapeError extends Error {
 const NUL = String.fromCharCode(0)
 
 /**
- * A repository-relative path that cannot leave the tree.
+ * A relative path, in the platform's own form, that cannot leave the tree.
  *
- * Checked here as well as in `assertInsideRepo` on purpose: this runs on values
- * read from an entity annotation, which an agent or a repository file controls,
- * and a caller that forgets the containment check should still be safe.
+ * Checked by segments as well as by `assertInsideRepo`'s containment test, on
+ * purpose: a caller whose root is itself wrong should still be refused a `..`.
+ * The platform's form, because `assertInsideRepo` hands the path to
+ * `path.resolve`; an annotation is in the repository's form, and is read by
+ * `assertAnnotationSafe` below.
  */
-function assertRelativeSafe(candidate: string): string {
+function assertRelativeSafe(candidate: string): void {
   if (candidate === '' || candidate.includes(NUL) || path.isAbsolute(candidate)) {
     throw new PathEscapeError(candidate)
   }
@@ -30,6 +32,43 @@ function assertRelativeSafe(candidate: string): string {
   // must not be mistaken for a traversal.
   if (normalised === '.' || normalised.split(path.sep).includes('..')) {
     throw new PathEscapeError(candidate)
+  }
+}
+
+/**
+ * The path an entity's annotation names, as the repository writes it.
+ *
+ * A path in a repository is written with `/` on every platform — git's own
+ * form, and the form `validate` compares against — so it is normalised the
+ * POSIX way here, never by `path.normalize`: on Windows that turned every `/`
+ * into `\`, and an entity filed exactly where its annotation says was
+ * reported misplaced (review, product-gap-14). A backslash is read as a
+ * separator for the refusal all the same, and a drive letter or a `\` root as
+ * absolute, on every platform: one repository gets one verdict, from CI on
+ * Linux and from a laptop on Windows alike.
+ */
+function assertAnnotationSafe(candidate: string): string {
+  const normalised = path.posix.normalize(candidate)
+  // The backslash read as a separator BEFORE normalising, too: to the POSIX
+  // module `a\..` is one segment, and the `..` after it cancelled it, so
+  // `a\../../x.yml` came out `x.yml` where Windows reads `..\x.yml`.
+  const separated = path.posix.normalize(candidate.replaceAll('\\', '/'))
+  // Every form is judged, the one returned included: `x/../C:\x.yml` is
+  // relative as written and absolute once normalised.
+  for (const form of [candidate, normalised, separated]) {
+    if (
+      form.includes(NUL) ||
+      path.posix.isAbsolute(form) ||
+      path.win32.isAbsolute(form) ||
+      /^[A-Za-z]:/.test(form)
+    ) {
+      throw new PathEscapeError(candidate)
+    }
+  }
+  for (const form of [normalised, separated]) {
+    if (form === '.' || form.split(/[\\/]/).includes('..')) {
+      throw new PathEscapeError(candidate)
+    }
   }
   return normalised
 }
@@ -58,7 +97,7 @@ export function computeEntityPath(type: ResourceType, name: string): string {
  */
 export function resolveEntityPath(entity: Entity): string {
   const declared = entity.metadata.annotations[SOURCE_FILE_ANNOTATION]
-  if (declared !== undefined && declared !== '') return assertRelativeSafe(declared)
+  if (declared !== undefined && declared !== '') return assertAnnotationSafe(declared)
   if (entity.kind === 'Component') {
     throw new Error('a Component has no conventional location; it lives in its own repository')
   }

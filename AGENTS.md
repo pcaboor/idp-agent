@@ -19,11 +19,11 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3130 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3149 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
-pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does,
-                      # pnpm demo and every example in examples/README.md's table
+pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
+                      # never does, pnpm demo and every example in examples/README.md's table
 ```
 
 CI runs exactly those five, on Node 22 and 24. A suite that demands a key is a
@@ -308,7 +308,7 @@ which is why the write side has a signature of its own.
 
 ```
 Supervisor → Inspector → Architect → Reviewer  │  Zod → signature → policies
-                                               │  → Reviewer → re-check → Diff
+                                               │  → re-check → Reviewer → Diff
 ```
 
 The AI chooses the name, owner, environment and `dependsOn`. The **engine** chooses the
@@ -446,8 +446,10 @@ negation, or one whose words say another environment, gets the question. Charact
 are taken out before a request is read.
 
 Five gates run over a draft, in this order and for this reason: `zod`, `signature`,
-`policy`, `reviewer`, `recheck`. The first three are free, so a draft that cannot survive
-them never reaches the one that spends a model call. Three attempts, then a clean stop.
+`policy`, `recheck`, `reviewer`. The first four are free, so a draft that cannot survive
+them never reaches the one that spends a model call, and the Reviewer is shown what the
+preview would do to the repository, which only the re-check computes (`repair.ts`, `ORDER`
+in `repair.test.ts`). Three attempts, then a clean stop.
 
 ## Conventions
 
@@ -504,9 +506,10 @@ them never reaches the one that spends a model call. Three attempts, then a clea
 
 - **The package is not on npm.** `0.1.0-rc.1` was published and unpublished the same
   hour; the generated `validate.yml` ships with its validation step commented out and
-  says so. `package.json` still carries that version and its metadata, ready for the day
-  it is published again — which must be `0.1.0-rc.2`, since a version number is never
-  reusable.
+  says so. `package.json` carries `0.1.0-rc.2`, since a version number is never reusable,
+  and its metadata, ready for the day it is published again; `prepack` runs `typecheck`,
+  `test`, `build` and `smoke` before any tarball is made, and `build` empties `dist/`
+  first.
 - A copy of the unpublished tarball is still served by `registry.npmmirror.com`; removal
   has to be requested from them.
 - **`draftPlan`'s `vocabulary` parameter is misnamed.** It is the trailing slot of the

@@ -9,7 +9,7 @@ import type { FileIO } from '../../src/scaffold/write.js'
 
 const files = async () =>
   scaffoldLayout(
-    { owner: '@acme/platform', version: '0.1.0-rc.1', repository: 'iac' },
+    { owner: '@acme/platform', version: '0.1.0-rc.2', repository: 'iac' },
     await loadTemplates(),
   )
 
