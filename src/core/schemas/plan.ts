@@ -308,6 +308,35 @@ export const patchSchema = z.discriminatedUnion('patch', [
 ])
 
 /**
+ * The one path a Plan carries, held to the one kind of file it may name: a
+ * catalog-info inside the service's repository.
+ *
+ * No model writes it — the propose tool has no `repoPath`, and `init` mints
+ * the operation after the signature (`asCatalogInfo`) — but a Plan is also a
+ * file anybody hands `plan --from`, and there `repoPath` was a free string the
+ * signature vouched for: `../../../../etc/cron.d/x` and
+ * `.git/hooks/post-checkout` both parsed and signed (gap-stage5-readiness-2).
+ * Harmless only while `planEdits` drops the operation, and stage 5 writes.
+ *
+ * So, by its text alone — `core/` reaches no disk, and whether a folder is a
+ * link is the writer's to ask: forward slashes only; no empty, `.` or `..`
+ * segment, and none starting with a dot, which is where tooling lives (`.git`
+ * among it); no drive, no control, format or separator character; and a base
+ * name Backstage reads as a catalog-info, in any case, as `init` finds one.
+ */
+export const isCatalogInfoPath = (path: string): boolean => {
+  // A control, format or separator character — a line break, a right-to-left
+  // override, a zero-width space: the preview's header would print the path
+  // as another — a backslash, a Windows separator this test would not split
+  // on, or a colon, a drive or a stream.
+  if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\\:]/u.test(path)) return false
+  const segments = path.split('/')
+  const base = segments.at(-1) ?? ''
+  if (!/^catalog-info\.ya?ml$/i.test(base)) return false
+  return segments.every((segment) => segment.length > 0 && !segment.startsWith('.'))
+}
+
+/**
  * The closed set of things an agent may ask for. Anything outside it is rejected
  * at the boundary, before its content is even looked at.
  *
@@ -331,7 +360,15 @@ export const operationSchema = z.discriminatedUnion('op', [
   }),
   z.strictObject({
     op: z.literal('create-catalog-info'),
-    repoPath: z.string().min(1).max(512),
+    repoPath: z
+      .string()
+      .min(1)
+      .max(512)
+      .refine(isCatalogInfoPath, {
+        message:
+          'a catalog-info path is relative, inside the repository, in no hidden folder, and ' +
+          "names a 'catalog-info.yaml' or '.yml'",
+      }),
     entity: proposedComponentSchema,
   }),
 ])

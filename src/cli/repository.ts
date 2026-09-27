@@ -391,6 +391,26 @@ export const validateRoot = (directory: string, cwd: () => string): Promise<stri
   directoryArgument(directory, cwd, 'validate names the declarations repository to check')
 
 /**
+ * The directory `init platform` creates the repository in, as an absolute
+ * path. Resolved, not contained, and absent is fine: the command makes it.
+ * Refused only when something that is not a directory is already there — a
+ * file. It went on to the first scaffold file, whose folder could not be made,
+ * and reported a write that failed part-way on exit 1, naming that file rather
+ * than the argument (review, gap-stage5-readiness-7); before that it was an
+ * unhandled rejection. Empty is refused at parsing, before this.
+ */
+export async function platformRoot(directory: string, cwd: () => string): Promise<string> {
+  const root = path.resolve(cwd(), directory)
+  const found = await stat(root).catch(() => undefined)
+  if (found !== undefined && !found.isDirectory()) {
+    throw new RepositoryArgumentError(
+      `${directory} is not a directory; init platform names the directory the declarations repository is created in`,
+    )
+  }
+  return root
+}
+
+/**
  * The directory `init` inspects, as an absolute path: the one `--repo` names,
  * resolved from where it was typed, else the working directory. Refused, each
  * on exit 2 before a model is chosen:

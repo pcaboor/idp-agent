@@ -202,3 +202,36 @@ describe('dependenciesOf', () => {
     }
   })
 })
+
+/**
+ * A reference two files declare. The catalogue keeps the first declaration
+ * and refuses the second (design 4.4), and the plan reads it so: `planEdits`
+ * amends the first, the re-check names the first, the Reviewer is told the
+ * first. The graph kept the LAST, so `show` and the Analyst described a
+ * declaration no plan would touch (domain-backstage-10).
+ */
+describe('a reference declared twice', () => {
+  const first = resource('orders-db-prod', 'database', 'prod', ['resource:default/mysql-prod'])
+  const again = resource('orders-db-prod', 'database', 'prod', ['resource:default/other-host'])
+  const second: Entity =
+    again.kind === 'Resource'
+      ? { ...again, spec: { ...again.spec, owner: 'group:default/lion' } }
+      : again
+  const consumer = service('billing-api', ['resource:default/orders-db-prod'])
+
+  it('is the first declaration, whole: its fields and the references it declares', () => {
+    const graph = EntityGraph.from([first, second, consumer])
+
+    expect(graph.get(refOf(first))?.spec.owner).toBe('group:default/tiger')
+    expect(graph.unresolvedOf(refOf(first)).map((one) => one.to)).toEqual([
+      'resource:default/mysql-prod',
+    ])
+    expect(graph.danglingReferences().map((one) => one.to)).toEqual([
+      'resource:default/mysql-prod',
+    ])
+  })
+
+  it('still lists both, for what reports the duplicate', () => {
+    expect(EntityGraph.from([first, second]).all()).toHaveLength(2)
+  })
+})

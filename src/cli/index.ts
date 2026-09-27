@@ -46,6 +46,7 @@ import {
   RepositoryArgumentError,
   applicationRoot,
   initRoot,
+  platformRoot,
   projectRoot,
   skipNotice,
   validateRoot,
@@ -1049,13 +1050,22 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     // `init platform ~/my-iac` is the first thing anyone types. Containment
     // belongs to the files written UNDER that root, and `scaffold/write.ts`
     // checks every one of them against it; applying it to the root itself
-    // refused a path the user typed in their own shell.
-    const root = path.resolve(deps.cwd ?? process.cwd(), command.directory)
+    // refused a path the user typed in their own shell. A file there is
+    // refused, exit 2, as `init --repo` refuses one.
+    let root: string
+    try {
+      root = await platformRoot(command.directory, () => deps.cwd ?? process.cwd())
+    } catch (error) {
+      return failed(error, err)
+    }
     const result = await runInitPlatform({ root, owner: command.owner, version: VERSION })
     out(`${result.text}\n`)
-    // stderr, like every line meant for a person: stdout stays the file list.
+    // stderr, like every line meant for a person: stdout stays the file list —
+    // the sentence about a failed write included.
     if (result.notice !== undefined) err(`${result.notice}\n`)
-    return EXIT.ok
+    // A write that failed part-way: the list says what it left, and the run
+    // failed — something failed unexpectedly is exit 1.
+    return result.found ? EXIT.ok : EXIT.notFound
   }
 
   // Reads the directory it was handed, so it must not go through the fixture

@@ -108,4 +108,11 @@ describe('planJsonSchema', () => {
     expect(planJsonSchema().$comment).not.toMatch(/namespace/)
     expect(planJsonSchema().$comment).toMatch(/dependencyOf/)
   })
+
+  it('says what it does not hold a catalog-info path to, and only of a plan', () => {
+    // `repoPath` is refined in code — a catalog-info inside the repository —
+    // and a JSON Schema reader sees a bare string (gap-stage5-readiness-2).
+    expect(planJsonSchema().$comment).toMatch(/repoPath/)
+    expect(entityJsonSchema().$comment).not.toMatch(/repoPath/)
+  })
 })

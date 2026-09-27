@@ -14,7 +14,13 @@ import { materialise } from '../../core/plan/materialise.js'
 import type { Provenance } from '../../core/plan/provenance.js'
 import { signPlan } from '../../core/plan/sign.js'
 import { COMPONENT_LIFECYCLES, ownerRefSchema } from '../../core/schemas/entity.js'
-import { planSchema, proposedName, type Operation, type Plan } from '../../core/schemas/plan.js'
+import {
+  isCatalogInfoPath,
+  planSchema,
+  proposedName,
+  type Operation,
+  type Plan,
+} from '../../core/schemas/plan.js'
 import { reasonOf } from '../../core/schemas/reject.js'
 import { documentNames, parseDocuments, serializeEntity } from '../../core/yaml/serialize.js'
 import { insertDocument } from '../../core/yaml/surgery.js'
@@ -23,7 +29,12 @@ import { readConfig, seededVocabulary } from '../config.js'
 import { budgetNotice, selectionNotice } from '../repository.js'
 import { loadTemplates } from '../../scaffold/templates.js'
 import { scaffoldLayout } from '../../scaffold/layout.js'
-import { writeScaffold, type FileIO } from '../../scaffold/write.js'
+import {
+  ScaffoldWriteError,
+  writeScaffold,
+  type FileIO,
+  type WriteReport,
+} from '../../scaffold/write.js'
 import { readRegistrationFile } from '../../context/iac-fs/snapshot.js'
 import {
   REGISTRATION_FILE,
@@ -121,21 +132,39 @@ export async function runInitPlatform(
     },
     await loadTemplates(),
   )
-  const report = await writeScaffold(options.root, files, io)
+  let report: WriteReport
+  try {
+    report = await writeScaffold(options.root, files, io)
+  } catch (error) {
+    if (!(error instanceof ScaffoldWriteError)) throw error
+    // What it left behind, in the list a whole run prints, and the file it
+    // stopped at: nothing is rolled back, so what was written is on the disk,
+    // and a re-run keeps every one of those and writes the rest. The sentence
+    // is a notice, as the registration's is: stdout stays the file list.
+    return {
+      notice:
+        `stopped: ${inertLine(error.message)}. Nothing it wrote was removed; run it again ` +
+        'once that is fixed, and it keeps every file already there.',
+      text: listing(error).join('\n'),
+      found: false,
+    }
+  }
   const notice = await registrationNotice(options.root, report.kept)
 
-  const listed = [...report.written, ...report.kept].sort()
   return {
     ...(notice !== undefined ? { notice } : {}),
-    text: [
-      `wrote ${report.written.length} · kept ${report.kept.length}`,
-      ...listed.map((file) => `  ${report.written.includes(file) ? '+' : '=' } ${file}`),
-      '',
-      BRANCH_PROTECTION,
-    ].join('\n'),
+    text: [...listing(report), '', BRANCH_PROTECTION].join('\n'),
     found: true,
   }
 }
+
+/** The files a run wrote and kept, `+` and `=`, in path order under a count. */
+const listing = (report: WriteReport): string[] => [
+  `wrote ${report.written.length} · kept ${report.kept.length}`,
+  ...[...report.written, ...report.kept]
+    .sort()
+    .map((file) => `  ${report.written.includes(file) ? '+' : '=' } ${file}`),
+]
 
 /**
  * `idp-agent init --repo <dir>` — once per application (design §7.3).
@@ -510,10 +539,6 @@ function recognise(
   return { conflictIn: file.path, refs: components.map(refOf) }
 }
 
-/** A catalog-info by Backstage's own name, `.yaml` or `.yml`. */
-const isPlainCatalogInfo = (file: string): boolean =>
-  /^catalog-info\.ya?ml$/i.test(file.split('/').at(-1) ?? '')
-
 /**
  * Folders whose catalog-info describes something other than the service: a
  * test's fixture, an example, a template not rendered yet. Never where init
@@ -560,8 +585,11 @@ function targetOf(declarations: readonly { readonly path: string; readonly works
   for (const root of [CATALOG_INFO, 'catalog-info.yml']) {
     if (declarations.some((file) => file.path === root)) return root
   }
+  // A plain catalog-info, by the test a Plan's `repoPath` is held to: one in
+  // a hidden folder — `.github` is walked — is never where init files the
+  // service, since the plan naming it would be refused.
   const elsewhere = declarations.filter(
-    (file) => isPlainCatalogInfo(file.path) && file.workspace === undefined,
+    (file) => isCatalogInfoPath(file.path) && file.workspace === undefined,
   )
   return elsewhere.length === 1 && elsewhere[0] !== undefined ? elsewhere[0].path : CATALOG_INFO
 }

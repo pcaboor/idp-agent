@@ -199,7 +199,8 @@ interface Frame {
  * the guarantee has to be total over leaves or a field escapes by being nested.
  */
 /**
- * Every reference this plan would bring into existence.
+ * Every reference the plan's OTHER operations would bring into existence, as
+ * a test of one reference at one operation.
  *
  * A grant over a database the catalogue does not hold yet is TWO operations —
  * declare the database, then the right over it — and the second names the
@@ -223,17 +224,44 @@ interface Frame {
  *
  * Order is deliberately not required. Operation 0 may name what operation 1
  * declares: both are in one diff, and a reviewer reads the diff whole.
+ *
+ * Two things are left out, and "both are in one diff" is the test for each:
+ *
+ *   - **The operation itself** (wip-diff-1). What ANOTHER operation declares
+ *     grounds a reference; what this one declares is the claim being judged.
+ *     Counted, a grant over itself — a right over nothing — signed `derived`
+ *     and passed the four free gates.
+ *   - **A creation the engine gives no path** (wip-diff-4). Only a Resource
+ *     is filed in a declarations repository (`computeEntityPath`), so a
+ *     Component's creation is dropped by `planEdits`, and a grant naming it
+ *     would be written naming an entity that is neither in the catalogue nor
+ *     in the diff. Read here by the same test the path loop below applies: a
+ *     Resource whose name and type are values.
  */
-const created = (plan: Plan): ReadonlySet<string> => {
-  const refs = new Set<string>()
-  for (const operation of plan.operations) {
-    if (operation.op !== 'create-entity') continue
-    const { kind, metadata } = operation.entity
-    const name = metadata.name
-    if (typeof name !== 'string') continue
-    refs.add(`${kind.toLowerCase()}:default/${name}`)
+const created = (plan: Plan): ((opIndex: number, ref: string) => boolean) => {
+  const filed = new Map<number, string>()
+  for (const [opIndex, operation] of plan.operations.entries()) {
+    switch (operation.op) {
+      case 'create-entity': {
+        const { kind, metadata, spec } = operation.entity
+        if (kind !== 'Resource' || typeof metadata.name !== 'string') break
+        if (isUnknown(spec.type)) break
+        filed.set(opIndex, `resource:default/${metadata.name}`)
+        break
+      }
+      // Neither is given a path: an update amends a file that exists, and a
+      // catalog-info is written into the service's own repository.
+      case 'update-entity':
+      case 'create-catalog-info':
+        break
+      default: {
+        const exhaustive: never = operation
+        return exhaustive
+      }
+    }
   }
-  return refs
+  return (opIndex, ref) =>
+    [...filed].some(([index, filedRef]) => index !== opIndex && filedRef === ref)
 }
 
 /**
@@ -375,10 +403,10 @@ export function signPlan(
       // access across grants, and where it is asked again instead, is
       // `reapply.ts`'s.
       leafClass = answered(provenance, path, text) ? 'echoed' : 'novel'
-    } else if (creates.has(text)) {
-      // A reference to an entity this same plan declares. Derived, not echoed:
-      // it follows from another operation by a rule the engine applied, and
-      // nobody wrote it in a request. See `created`.
+    } else if (creates(opIndex, text)) {
+      // A reference to an entity another operation of this plan files. Derived,
+      // not echoed: it follows from that operation by a rule the engine
+      // applied, and nobody wrote it in a request. See `created`.
       leafClass = 'derived'
     } else if (path.endsWith('.metadata.env')) {
       // An environment is never read out of the request, for the reason a
@@ -432,7 +460,21 @@ export function signPlan(
   const refs = new Map<number, string>()
 
   for (const [index, operation] of withQuestions.operations.entries()) {
-    if (operation.op !== 'create-entity') continue
+    // Only a creation is filed by the engine: an update amends a file that
+    // exists, and a catalog-info goes into the service's own repository. A
+    // switch, so a fourth operation is a compile error here rather than one
+    // given no path in silence (core-plan-10).
+    switch (operation.op) {
+      case 'create-entity':
+        break
+      case 'update-entity':
+      case 'create-catalog-info':
+        continue
+      default: {
+        const exhaustive: never = operation
+        return exhaustive
+      }
+    }
     const entity = operation.entity
     const name = entity.metadata.name
     if (entity.kind !== 'Resource') continue

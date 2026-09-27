@@ -21,7 +21,13 @@ import {
 } from './grant.js'
 import type { Entity } from '../schemas/entity.js'
 import type { Operation } from '../schemas/plan.js'
-import type { AccessLevel, Nature } from '../schemas/resource-types.js'
+import {
+  RESOURCE_TYPE_NAMES,
+  natureOf,
+  type AccessLevel,
+  type Nature,
+  type ResourceType,
+} from '../schemas/resource-types.js'
 import type { Vocabulary } from '../schemas/vocabulary.js'
 import type { SignedPlan } from './sign.js'
 
@@ -35,15 +41,16 @@ import type { SignedPlan } from './sign.js'
  * what cannot be expressed, the signature asks about what nobody can vouch
  * for, and a policy refuses what is expressible, vouched for, and still wrong.
  *
- * Eight ship in v0.1. The count once went DOWN, when the level moved into the
+ * Nine ship in v0.1. The count once went DOWN, when the level moved into the
  * operation: `level-mismatch` and `unamendable-level` asked the same question
  * of two shapes and answered a level-less declaration in opposite directions,
  * so they are one predicate here. It went up again when a name stopped being
  * read as a scope (`environment-in-name`), and twice more when "already
- * declared" was made exact (`declared-otherwise`, `same-reference-twice`). A
- * configurable rule engine — `governance/`, and the `get_governance_rule` tool
- * of §6 — is deferred: eight predicates that run are worth more than an
- * extension point that does not.
+ * declared" was made exact (`declared-otherwise`, `same-reference-twice`), and
+ * once more when a grant over a grant was found signing clean
+ * (`right-over-a-right`). A configurable rule engine — `governance/`, and the
+ * `get_governance_rule` tool of §6 — is deferred: nine predicates that run are
+ * worth more than an extension point that does not.
  *
  * **Every operation is gated, not only the creations.** This loop once skipped
  * anything that was not a `create-entity` or a `create-catalog-info`, which
@@ -74,6 +81,8 @@ export type PolicyName =
   | 'declared-otherwise'
   /** Two operations of one plan aim at one reference, and cannot both be carried out as stated. */
   | 'same-reference-twice'
+  /** A right's `dependsOn` names another right, or itself, where a thing belongs (§4.1). */
+  | 'right-over-a-right'
 
 export interface PolicyViolation {
   readonly policy: PolicyName
@@ -540,13 +549,101 @@ function declaredWithin(
 ): ReadonlyMap<string, string> {
   const environments = new Map(repository)
   for (const operation of plan.operations) {
-    if (operation.op !== 'create-entity') continue
-    const { kind, metadata } = operation.entity
-    const env = environmentOf(operation.entity)
+    const created = createdBy(operation)
+    if (created === undefined) continue
+    const { kind, metadata } = created
+    const env = environmentOf(created)
     if (typeof metadata.name !== 'string' || env === undefined) continue
     environments.set(`${kind.toLowerCase()}:default/${metadata.name}`, env)
   }
   return environments
+}
+
+/**
+ * The entity an operation declares in THIS repository, or undefined. A switch
+ * with no default but the impossible one, so an operation added to the union
+ * is a compile error here rather than a creation every gate reading this
+ * skips in silence (core-plan-10).
+ */
+const createdBy = (operation: Operation) => {
+  switch (operation.op) {
+    case 'create-entity':
+      return operation.entity
+    // An update declares nothing, and a catalog-info is written into the
+    // service's own repository.
+    case 'update-entity':
+    case 'create-catalog-info':
+      return undefined
+    default: {
+      const exhaustive: never = operation
+      return exhaustive
+    }
+  }
+}
+
+/** Thing or right, for a proposed entity whose kind and type say which. */
+const proposedNature = (entity: unknown): Nature | undefined => {
+  if (typeof entity !== 'object' || entity === null) return undefined
+  const { kind, spec } = entity as { kind?: unknown; spec?: unknown }
+  if (kind === 'Component') return 'object'
+  if (kind !== 'Resource' || typeof spec !== 'object' || spec === null) return undefined
+  const { type } = spec as { type?: unknown }
+  return typeof type === 'string' && RESOURCE_TYPE_NAMES.includes(type as ResourceType)
+    ? natureOf(type as ResourceType)
+    : undefined
+}
+
+/**
+ * A right over a right (§4.1): a grant is over a THING, and `dependsOn` is
+ * where it says which.
+ *
+ * The schema asks that a grant name what it is over, never what that is, so
+ * a `database-access` over another grant — or over itself, the shape
+ * wip-diff-1 found signing clean — passed every gate and reached the diff as
+ * an authorisation over an authorisation. The nature of each reference is
+ * what the repository declares, or what this plan declares for what it
+ * creates, the plan's own winning as in `declaredWithin`; a reference neither
+ * has seen is dangling-reference's business, and a reference still a question
+ * is the signature's.
+ *
+ * A thing that depends on another — a database over the cluster it runs on —
+ * is not a right, and nothing here reads it. And it refuses a right rather
+ * than requiring a thing: a reference of no known nature — a Group, an `api:`
+ * entity the repository sets aside, which a gateway-route is legitimately
+ * over — passes it, as the review's sketch, an allow list, would not have.
+ */
+function rightOverARight(
+  plan: SignedPlan['plan'],
+  context: PolicyContext,
+  opIndex: number,
+  entity: unknown,
+): PolicyViolation[] {
+  if (proposedNature(entity) !== 'right') return []
+  const natures = new Map(context.natures)
+  for (const operation of plan.operations) {
+    const created = createdBy(operation)
+    const name = nameOf(created)
+    const nature = proposedNature(created)
+    if (created === undefined || name === undefined || nature === undefined) continue
+    natures.set(`${created.kind.toLowerCase()}:default/${name}`, nature)
+  }
+  const spec = (entity as { spec?: { dependsOn?: unknown } }).spec
+  const over = Array.isArray(spec?.dependsOn) ? (spec.dependsOn as unknown[]) : []
+  return over.flatMap((reference, index) =>
+    typeof reference === 'string' && natures.get(reference) === 'right'
+      ? [
+          {
+            policy: 'right-over-a-right' as const,
+            opIndex,
+            path: `operations.${opIndex}.entity.spec.dependsOn.${index}`,
+            message:
+              `${reference} is a right, not a thing, and a right is over a thing (§4.1): ` +
+              `name in dependsOn what the grant reaches — the database, cache or api — ` +
+              `never another grant, and never this one.`,
+          },
+        ]
+      : [],
+  )
 }
 
 /**
@@ -749,10 +846,19 @@ export function checkPolicies(
 
     if (operation.op === 'update-entity') {
       // `operation.patch.consumer` is read straight off the union: §5.3 keeps
-      // `Patch` closed and it holds one member today, so a second member
-      // without a consumer breaks the build right here — which is the right
-      // way to be told that this gate has a new case to answer for.
+      // `Patch` closed and it holds one member today. The switch is what
+      // makes a second member break the build right here — a
+      // `remove-dependency-of` carries a consumer too, and would otherwise be
+      // judged below as though it added one (core-plan-10).
       const { entityRef, patch } = operation
+      switch (patch.patch) {
+        case 'add-dependency-of':
+          break
+        default: {
+          const exhaustive: never = patch.patch
+          return exhaustive
+        }
+      }
       const grantEnv = environments.get(entityRef)
       const consumerEnv = environments.get(patch.consumer)
       const answeredEnv = provenance.answers.get(environmentPath(opIndex))
@@ -871,7 +977,18 @@ export function checkPolicies(
       continue
     }
 
-    if (operation.op !== 'create-entity' && operation.op !== 'create-catalog-info') continue
+    // Both creations carry an entity and are read the same way below. A
+    // switch, so a fourth operation is a compile error here rather than an
+    // operation that crosses this gate unchecked (core-plan-10).
+    switch (operation.op) {
+      case 'create-entity':
+      case 'create-catalog-info':
+        break
+      default: {
+        const exhaustive: never = operation
+        return exhaustive
+      }
+    }
     const entity: unknown = operation.entity
 
     if (asked.all.length > 0) {
@@ -971,6 +1088,7 @@ export function checkPolicies(
     if (operation.op === 'create-entity') {
       const otherwise = declaredOtherwise(context, opIndex, entity)
       if (otherwise !== undefined) violations.push(otherwise)
+      violations.push(...rightOverARight(signed.plan, context, opIndex, entity))
     }
   }
 

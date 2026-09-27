@@ -34,6 +34,18 @@ Each pull request adds its line here.
 
 ### Fixed
 
+- What the plan engine lets vouch and dispatch: an operation no longer vouches for a reference
+  to itself, nor for a Component the edits drop, and a grant whose `dependsOn` names a right is
+  refused by a ninth policy, `right-over-a-right`; `planEdits`, the signature, the policies and
+  the re-check switch exhaustively on the operation and the patch; a `create-catalog-info` path
+  must be a `catalog-info.yaml` or `.yml` inside the repository, in no hidden folder and with no
+  control, format or separator character; `init platform` lists what it wrote and kept before a
+  write failed, says why on stderr, and exits 1, and refuses a directory that is a file, exit 2,
+  before writing anything; the graph resolves a
+  duplicate to its first declaration, as the plan does; the Reviewer's facts are declared once,
+  and an environment annotation that is not one word of the vocabulary reaches it as outside
+  the vocabulary, never repeated — review batch A4
+  ([#90](https://github.com/pcaboor/idp-agent/pull/90)).
 - The package and the documents around it: `pnpm build` empties `dist/` first and `prepack`
   runs typecheck, test, build and smoke; `pnpm smoke` runs the binary from the packed tarball,
   extracted outside the clone with its declared dependencies alone, and fails on a file in

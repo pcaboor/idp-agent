@@ -661,6 +661,74 @@ describe('a reference to what the same plan declares', () => {
     ).toBe('novel')
     expect(findUnknowns(result.plan).length).toBeGreaterThan(0)
   })
+
+  it('does not let an operation vouch for itself (wip-diff-1)', () => {
+    // A grant over ITSELF. Its name is vouched for by the request, and the
+    // reference was vouched for by the name — the operation's own — so a
+    // right over nothing signed `derived` and passed the four free gates.
+    // What another operation declares is grounding; what this one declares
+    // is the claim being judged.
+    const self = plan({
+      ...access,
+      spec: { ...access.spec, dependsOn: ['resource:default/billing-api-orders-db-prod'] },
+    })
+
+    const result = signed(self, context(), saidInFull(self))
+
+    const leaf = result.classified.find((one) => one.path.endsWith('.dependsOn.0'))
+    expect(leaf?.class).toBe('novel')
+    expect(findUnknowns(result.plan)).toContain('operations.0.entity.spec.dependsOn.0')
+  })
+
+  it('does not vouch for a Component the edits drop (wip-diff-4)', () => {
+    // A Component declared in a declarations repository is given no path, so
+    // `planEdits` drops its creation: "both are in one diff" is false for it,
+    // and a grant over it, or held by it, would be written naming an entity
+    // that exists neither in the catalogue nor in the diff.
+    const service = planSchema.parse({
+      intent: 'give payments-svc read access to orders-db in prod',
+      operations: [
+        {
+          op: 'create-entity',
+          entity: {
+            kind: 'Component',
+            metadata: { name: 'payments-svc' },
+            spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
+          },
+        },
+        {
+          op: 'create-entity',
+          entity: {
+            ...access,
+            spec: {
+              ...access.spec,
+              dependsOn: ['component:default/payments-svc'],
+              dependencyOf: ['component:default/payments-svc'],
+            },
+          },
+        },
+      ],
+    })
+
+    const result = signed(service, withoutTheDatabase(), saidInFull(service))
+
+    const leaves = result.classified.filter(
+      (one) => one.path.endsWith('.dependsOn.0') || one.path.endsWith('.dependencyOf.0'),
+    )
+    expect(leaves.map((one) => one.class)).toEqual(['novel', 'novel'])
+  })
+
+  it('still vouches for a Resource the same plan files, whichever comes first', () => {
+    // The other side of the two above: a database the plan declares is given
+    // a path, so a grant over it is in the one diff, before it or after it.
+    const both = twoStep()
+    const reversed = planSchema.parse({ ...both, operations: [...both.operations].reverse() })
+
+    const result = signed(reversed, withoutTheDatabase(), saidInFull(reversed))
+
+    const leaf = result.classified.find((one) => one.path.endsWith('.dependsOn.0'))
+    expect(leaf?.class).toBe('derived')
+  })
 })
 
 describe('a Component type is not a closed union either', () => {

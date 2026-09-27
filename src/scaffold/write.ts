@@ -13,6 +13,28 @@ export interface WriteReport {
   readonly kept: readonly string[]
 }
 
+/**
+ * A write that failed part-way, with what came before it.
+ *
+ * `writeNew` never deletes and nothing here rolls back, so a failure leaves
+ * the files already written on the disk, and the only honest report of that is
+ * the list. It was lost: the error named the file that failed and none of the
+ * ones before it, so `init platform` could not say what it had left behind
+ * (gap-stage5-readiness-7). The message is the one it always was.
+ */
+export class ScaffoldWriteError extends Error {
+  constructor(
+    /** Repository-relative, as a `ScaffoldFile` names it. */
+    readonly failed: string,
+    readonly written: readonly string[],
+    readonly kept: readonly string[],
+    reason: string,
+  ) {
+    super(`could not write ${failed}: ${reason}`)
+    this.name = 'ScaffoldWriteError'
+  }
+}
+
 /** Injected so a failing write is testable without a read-only filesystem. */
 export interface FileIO {
   mkdir(absoluteDir: string): Promise<void>
@@ -48,15 +70,20 @@ export async function writeScaffold(
     // Every path through the same check the entity writer uses: a template
     // naming `../` must not reach outside the directory the user named.
     const absolute = assertInsideRepo(root, file.path)
-    await io.mkdir(path.dirname(absolute))
 
     try {
+      // Inside, so a folder that cannot be made — a file already where it
+      // belongs — is reported as the file it was for, with the same list.
+      await io.mkdir(path.dirname(absolute))
       if (await io.writeNew(absolute, file.content)) written.push(file.path)
       else kept.push(file.path)
     } catch (error) {
       // Named, and only what was genuinely written is reported.
-      throw new Error(
-        `could not write ${file.path}: ${error instanceof Error ? error.message : String(error)}`,
+      throw new ScaffoldWriteError(
+        file.path,
+        [...written],
+        [...kept],
+        error instanceof Error ? error.message : String(error),
       )
     }
   }

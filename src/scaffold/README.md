@@ -36,3 +36,9 @@ It never clobbers. `writeNew` uses `flag: 'wx'`, so a file that exists is kept a
 reported, never overwritten and never deleted. Re-running `init platform` over a
 hand-edited `CODEOWNERS` leaves it byte for byte — *absent means already done* (§4.3), and
 a scaffolder that clobbers is one nobody runs twice.
+
+It never rolls back either, so a write that fails part-way leaves what it wrote, and says
+so: `ScaffoldWriteError` carries the file it stopped at and what was written and kept before
+it, and `init platform` prints that list on stdout, the reason on stderr, and exits 1. A
+re-run keeps every one of those files and writes the rest. A directory that is a file is
+refused before any of this, exit 2, as `init --repo` refuses one.

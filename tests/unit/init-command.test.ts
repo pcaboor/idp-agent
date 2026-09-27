@@ -73,6 +73,48 @@ describe('init platform', () => {
     expect(await readFile(owners, 'utf8')).toBe('* @someone/else\n')
   })
 
+  it('says what it wrote before a write failed, and exits 1', async () => {
+    // A file where a folder belongs: `.github` cannot hold `workflows/`. The
+    // run used to throw out of `main` naming the file it could not write and
+    // none of the eight it already had (gap-stage5-readiness-7).
+    const root = await temp()
+    await mkdir(path.join(root, 'repo'))
+    await writeFile(path.join(root, 'repo/.github'), 'not a folder\n')
+
+    const { code, out, err } = await init(
+      ['init', 'platform', 'repo', '--owner', '@acme/platform'],
+      root,
+    )
+
+    expect(code).toBe(1)
+    // stdout stays the file list; the sentence about the failure is a person's.
+    expect(out).toContain('wrote 8 · kept 0')
+    expect(out).toContain('+ schemas/plan.schema.json')
+    expect(out).not.toContain('+ CODEOWNERS')
+    expect(out).not.toContain('could not write')
+    expect(err).toContain('could not write .github/workflows/validate.yml')
+    // What was written is on the disk, and said to be kept by a re-run.
+    expect(await readFile(path.join(root, 'repo/schemas/plan.schema.json'), 'utf8')).toContain('{')
+    expect(err).toContain('run it again')
+  })
+
+  it('refuses a directory that is a file, exit 2, before writing anything', async () => {
+    // It was a failed write under it, exit 1, naming the first scaffold file
+    // rather than the argument — and before that an unhandled rejection.
+    const root = await temp()
+    await writeFile(path.join(root, 'repo'), 'x\n')
+
+    const { code, out, err } = await init(
+      ['init', 'platform', 'repo', '--owner', '@acme/platform'],
+      root,
+    )
+
+    expect(code).toBe(2)
+    expect(out).toBe('')
+    expect(err).toContain('repo is not a directory')
+    expect(await readFile(path.join(root, 'repo'), 'utf8')).toBe('x\n')
+  })
+
   it('prints the branch protection it cannot set, on every run', async () => {
     // "An automaton that verifies its own powerlessness, out loud." The
     // no-op run must say it too, or the second reader never sees it.

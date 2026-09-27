@@ -1390,9 +1390,9 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
         // which attempt this is, not what an earlier gate said. Both agents are
         // the same weights behind the same provider, so a second opinion fed the
         // first one's transcript is an echo holding a veto (`reviewer.ts`).
-        // Spread, so a fact added to `ReviewFacts` reaches the Reviewer
-        // without a second edit here — the wiring is the one place where
-        // forgetting is silent.
+        // Spread, and `ReviewInput` is `ReviewFacts` and these two: a fact
+        // added to `ReviewFacts` reaches the Reviewer without a second edit
+        // here, because there is one list to add it to (wip-diff-8).
         review: (plan, facts) =>
           reviewPlan(options.client, { plan, intent: request, ...facts }, options.emit),
         signature: contexts.signature,

@@ -1,12 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import { z } from 'zod'
 import type { AgentEvent } from '../../src/agents/events.js'
 import { MAX_REPAIRS } from '../../src/agents/forced-turn.js'
+import type { ReviewFacts } from '../../src/agents/repair.js'
 import {
   REVIEWER_LIMITS,
   VERDICT_TOOL,
   reviewPlan,
   verdictSchema,
+  type ReviewInput,
 } from '../../src/agents/reviewer.js'
 import { planSchema, type Plan } from '../../src/core/schemas/plan.js'
 import { QUERY_LIMITS } from '../../src/core/schemas/query.js'
@@ -295,6 +297,38 @@ describe('what this gate judges', () => {
     expect(sent).toContain('already held by component:default/checkout-web')
   })
 
+  it('is told an environment is outside the vocabulary, never what it says', async () => {
+    // The annotation is free text a repository holds, and this block is
+    // headed as what the engine established: an environment the engine does
+    // not recognise as one is said to be there and not repeated (wip-diff-9).
+    const client = capturing([turnCalling(VERDICT_TOOL, { verdict: 'ok' })])
+
+    await reviewPlan(
+      client,
+      {
+        plan: PLAN,
+        intent: INTENT,
+        derived: [],
+        targets: [
+          {
+            opIndex: 0,
+            entityRef: 'resource:default/billing-api-orders-db-prod',
+            level: 'readwrite',
+            environment: { outside: true },
+            owner: 'group:default/tiger',
+            consumers: [],
+          },
+        ],
+        effects: [],
+      },
+      () => {},
+    )
+
+    expect(sentTo(client)).toContain(
+      'it declares an environment outside the vocabulary, not repeated here',
+    )
+  })
+
   it('is told when an operation would change nothing at all', async () => {
     // The other half of F9. This gate used to run BEFORE the preview existed,
     // so it could approve a plan whose only operation produces no bytes —
@@ -579,5 +613,17 @@ describe('a review that did not happen is not an approval', () => {
     expect(events.map((event) => event.type)).toEqual(['agent:start', 'stopped', 'agent:end'])
     expect(events.at(-1)).toEqual({ type: 'agent:end', agent: 'reviewer', threw: true })
     expect(reasonOf(events.find((event) => event.type === 'stopped'))).toContain('502')
+  })
+})
+
+describe('what the Reviewer is handed', () => {
+  it('is the facts the engine established, declared once, and the plan and the request', () => {
+    // Two declarations of one list let a fact the loop computes stop short of
+    // the gate that judges: `plan.ts` spreads `ReviewFacts` into a
+    // `ReviewInput`, and a field only the first declared was dropped with
+    // nothing to say so (wip-diff-8). One type, so the compiler says it.
+    expectTypeOf<ReviewInput>().toEqualTypeOf<
+      ReviewFacts & { readonly plan: Plan; readonly intent: string }
+    >()
   })
 })

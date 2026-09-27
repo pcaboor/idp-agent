@@ -208,6 +208,17 @@ export function recheckPlan(
     // whatever that file said, so an access that existed was never named.
     if (operation.op === 'update-entity') {
       const { entityRef, patch } = operation
+      // Everything below reads "listed" as "already done", which is true of
+      // an addition only. A switch, so a second patch is a compile error here
+      // (core-plan-10).
+      switch (patch.patch) {
+        case 'add-dependency-of':
+          break
+        default: {
+          const exhaustive: never = patch.patch
+          return exhaustive
+        }
+      }
       const there = declares.get(entityRef)
       const where = declaredAt.get(entityRef)
       if (there === undefined || where === undefined) {
@@ -230,6 +241,18 @@ export function recheckPlan(
       continue
     }
 
+    // A creation is judged by the path the engine computed for it, and a
+    // catalog-info has none here: `unresolved` below. A switch, so a fourth
+    // operation is a compile error rather than one judged as a creation.
+    switch (operation.op) {
+      case 'create-entity':
+      case 'create-catalog-info':
+        break
+      default: {
+        const exhaustive: never = operation
+        return exhaustive
+      }
+    }
     const path = signed.paths.get(opIndex)
     const ref = signed.refs.get(opIndex)
     if (path === undefined || ref === undefined) {

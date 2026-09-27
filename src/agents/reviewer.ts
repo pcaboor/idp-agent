@@ -181,11 +181,29 @@ const bounded = (reason: string): string => reason.slice(0, QUERY_LIMITS.maxReas
  * correlated by construction and a second opinion fed the first one's reasoning
  * is an echo holding a veto.
  */
-export interface ReviewInput {
+export type ReviewInput = ReviewFacts & {
   readonly plan: Plan
   readonly intent: string
+}
+
+/**
+ * What the engine established about a plan, handed to the gate that judges it.
+ *
+ * Declared once, here, and `ReviewInput` is this and the two things the
+ * Reviewer is shown besides. It was declared twice — here and in `repair.ts` —
+ * and `plan.ts` spreads the loop's facts into the Reviewer's input, so a fact
+ * added to one list and not the other was dropped at the spread with nothing
+ * to say so (wip-diff-8). Now a fact added here reaches the Reviewer's input
+ * by the spread, and a required one breaks the build where `repair` builds
+ * the facts; what `opening` renders of it is still that function's to write.
+ */
+export interface ReviewFacts {
   /** Deterministic facts, never reasoning. See `opening`. */
-  readonly derived: readonly { path: string; owner: string; from: readonly string[] }[]
+  readonly derived: readonly {
+    readonly path: string
+    readonly owner: string
+    readonly from: readonly string[]
+  }[]
   /**
    * What the repository says about each entity an `update-entity` targets.
    *
@@ -217,7 +235,14 @@ export interface UpdateTarget {
   readonly entityRef: string
   /** What it grants, or undefined when it states no level (§4.1). */
   readonly level: string | undefined
-  readonly environment: string | undefined
+  /**
+   * The environment it declares; undefined when it declares none; and
+   * `outside` when what it declares is not an environment this tool knows —
+   * said to be there, never repeated. The annotation is free text a
+   * repository holds, line breaks included, and this block is headed as what
+   * the engine established (wip-diff-9).
+   */
+  readonly environment: string | { readonly outside: true } | undefined
   readonly owner: string | undefined
   /** Who already holds it. An update ADDS to this list. */
   readonly consumers: readonly string[]
@@ -300,8 +325,12 @@ const opening = (input: ReviewInput): string => {
 const statedAs = (level: string | undefined): string =>
   level === undefined ? 'it states no level' : `it grants ${level}`
 
-const where = (environment: string | undefined): string =>
-  environment === undefined ? 'it declares no environment' : `it is scoped to ${environment}`
+const where = (environment: UpdateTarget['environment']): string =>
+  environment === undefined
+    ? 'it declares no environment'
+    : typeof environment === 'string'
+      ? `it is scoped to ${environment}`
+      : 'it declares an environment outside the vocabulary, not repeated here'
 
 const held = (owner: string | undefined): string =>
   owner === undefined ? 'the catalogue names no owner for it' : `${owner} owns it`

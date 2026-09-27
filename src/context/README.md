@@ -31,6 +31,9 @@ ending `validate` on a stack trace. Throwing would lose every valid entity becau
 swallowing is what the catalogue does — it ignores duplicates in silence (design.md § 4.4)
 and reports nothing for what it could not ingest — and a tool that inherits the failure mode
 it exists to prevent is worth nothing.
+A reference two documents declare is read as its first declaration, whole — fields, edges
+and dangling references — as the catalogue resolves a duplicate and as a plan amends one;
+the second stays in `all()`, for `validate` to report.
 `EntityGraph.danglingReferences()` obeys the same rule: reported, never pruned — and shown
 where the relations it breaks are shown, never resolved by guess. The graph keeps, per
 entity, each reference it declares in `dependsOn`, `dependencyOf` or `providesApis` that
