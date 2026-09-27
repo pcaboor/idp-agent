@@ -32,6 +32,13 @@ Each pull request adds its line here.
   on stderr, and [`docs/adopting-backstage.md`](docs/adopting-backstage.md) gives the entry,
   its catalogue rule and `idpa`'s read token ([#86](https://github.com/pcaboor/idp-agent/pull/86)).
 
+### Changed
+
+- The reader of entity documents is two halves: `readDocuments` turns YAML into values and
+  `readValue` reads one value, so the `backstage-http` provider will read a catalogue's
+  entities with the very decisions a file gets; the YAML road's output is pinned before and
+  after ([#92](https://github.com/pcaboor/idp-agent/pull/92)).
+
 ### Fixed
 
 - What reaches a model, and what a run reports: every vocabulary value of the summary is

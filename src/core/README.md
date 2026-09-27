@@ -39,10 +39,14 @@ and nothing here can be steered by what it validates. Hence the property tests r
   It writes links, a system and `providesApis` when an entity read from a file carries them,
   so that entity round-trips; the engine's own writes never do, and it never writes an API.
   `parseDocuments` is the matching one place YAML becomes entities, for `context/`'s readers and
-  for the bytes a plan would write: a document the parser faults is a rejection, never the value
-  `toJS()` would have guessed. It sorts before it judges: a Component or Resource goes to the
-  strict `entitySchema` and comes back in `entities`, an API — in any case, as every kind — goes
-  to `apiSchema` and comes back in `apis`, apart, so every caller on the write side (the
+  for the bytes a plan would write. It is two halves: `readDocuments` turns YAML into values — a
+  document the parser faults is a rejection, never the value `toJS()` would have guessed — and
+  `readValue` reads one value, returning one of five readings (`witness`, `rejected`, `ignored`,
+  `api`, `entity`) that `parseDocuments` folds. The `backstage-http` provider will call
+  `readValue` on each item a catalogue serves, so a catalogue meets the very decisions and
+  refusal words a file does. `readValue` sorts before it judges: a Component or Resource goes to
+  the strict `entitySchema` and comes back in `entities`, an API — in any case, as every kind —
+  goes to `apiSchema` and comes back in `apis`, apart, so every caller on the write side (the
   re-check, the edits, the gates) reads `entities` and cannot amend, count or file an API. Three
   APIs are set aside as before (`unreadApi`): one under another tool's apiVersion, one outside
   the `default` namespace, and one named in upper case, which Backstage allows and this grammar
