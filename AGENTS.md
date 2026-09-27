@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3018 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3063 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does,
@@ -87,7 +87,12 @@ forbids. A document of a kind this tool does not model is also a warning, and ex
 declarations repository that is also the company's catalogue holds Groups and Systems, and
 they are not ours to refuse. Backstage's APIs are read, not set aside: an API missing what
 Backstage requires of one is an `invalid-entity` error, as a broken Component is, and a
-`providesApis` naming nothing is a dangling reference.
+`providesApis` naming nothing is a dangling reference. The `kind: Location` of the root
+`catalog-info.yaml` is not set aside either: it is the repository's **Backstage
+registration**, which `init platform` writes with the path registry's folders as targets
+(`core/validate/registration.ts`, `docs/adopting-backstage.md`). `validate` counts it in
+silence, fails on what Backstage would refuse or what reads outside the repository
+(`registration`, an error), and warns when no target reaches one of the registry's folders.
 
 ## Current state — 2026-09-26
 
@@ -119,9 +124,10 @@ path ends; between two entities, the paths where one depends on the other, else 
 nearest entities both reach — with no model (`context/graph/relations.ts`, rendered by
 `cli/render/relations.ts`); `ask`, answered by the Supervisor and the Analyst against
 recordings with no API key, a relation question included: the model chooses the entity and
-the relation, and the engine writes `relations`' block; `validate`, seven rules over an
-IaC repository; `init platform`, which writes twelve files and clobbers nothing; and stage
-4's two previews, which write nothing to a repository:
+the relation, and the engine writes `relations`' block; `validate`, eight rules over an
+IaC repository; `init platform`, which writes thirteen files — the Backstage registration
+among them — and clobbers nothing; and stage 4's two previews, which write nothing to a
+repository:
 
 ```bash
 idpa "<phrase>" [--repo <dir> | --demo] [--project <dir>] [--json] [--quiet]  # question or change
@@ -201,7 +207,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 
 | Folder | Responsibility |
 |---|---|
-| `core/` | schemas (Zod), the seven validation rules, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — and the engine's check on an answer's commentary (`core/answer/`) |
+| `core/` | schemas (Zod), the eight validation rules and the Backstage registration, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — and the engine's check on an answer's commentary (`core/answer/`) |
 | `context/` | `ContextProvider` (two implementations: `fixtures`, and `iac-fs` behind `--repo`), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries |
 | `cli/` | argument parsing, commands, rendering, `.idp-agent.yml` and the personal `config.yml`, which source a command reads — the only layer that writes to stdout |
 | `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |
@@ -239,7 +245,9 @@ changing that section first.
   dropped — that silent drop is the catalogue behaviour this tool exists to compensate.
   A document this tool does not model — a Group, a System, a `mkdocs.yml` — is not refused
   either, and not dropped: it is set aside and *said* to be, a `not-modelled` warning in
-  `validate`, one summary line in `graph`, `show` and `ask`.
+  `validate`, one summary line in `graph`, `show` and `ask`. The one exception is the root
+  `catalog-info.yaml`'s Location, the Backstage registration, which `validate` reads and
+  holds to Backstage's shape.
 - **The read model is wider than the write model.** Backstage's `kind: API` is a node of
   the graph and a Component's `spec.providesApis` an edge — `show`, `graph --kind API`, the
   overview and the Analyst's `get_apis` read them — and neither is ever proposed: a plan is

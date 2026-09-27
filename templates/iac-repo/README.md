@@ -27,6 +27,15 @@ merge requests never conflict over one.
 pattern matching no file returns an empty set, and an empty set reads as "nothing to do".
 With the witness, a folder that disappeared is a read error instead of a silent zero.
 
+## Backstage, now or later
+
+`catalog-info.yaml`, at the root, is this repository's Backstage registration: a
+`kind: Location` whose targets are the folders above. Nothing needs a Backstage — every
+`idp-agent` command reads these files — and a company that adopts one later registers this
+repository once: one entry in `catalog.locations` of Backstage's `app-config.yaml`, naming
+this file on the default branch, with a rule allowing `Resource`, which Backstage refuses by
+default. `idp-agent validate` holds the Location to that.
+
 ## What CI refuses — once you turn it on
 
 `.github/workflows/validate.yml` is written but **its validation step is commented out**,
@@ -43,7 +52,9 @@ Once on, it refuses what the catalogue would accept:
 - an entity the schema rejects;
 - two entities in one file;
 - a folder holding entities with no witness;
-- an entity filed somewhere other than where its type and name put it.
+- an entity filed somewhere other than where its type and name put it;
+- a root `catalog-info.yaml` Location that Backstage would refuse, or that reads outside
+  this repository.
 
 A reference pointing at nothing is **reported, not refused**. A repository mid-migration is
 not broken, and a red build there would push someone to delete the declaration — which may

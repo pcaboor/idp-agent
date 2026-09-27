@@ -309,7 +309,9 @@ making it strict would break the reader on any real repository. Those two kinds 
 only ones it proposes. Backstage's API is read beside them, through a schema of its own,
 `apiSchema`, that no proposal can reach (§4.1). The rest of a real catalogue — Groups,
 Users, Systems, Locations, Templates — and a YAML file that is no catalogue entry at all, a
-`mkdocs.yml` beside the entities, are set aside by `parseDocuments` before the schema runs:
+`mkdocs.yml` beside the entities, are set aside by `parseDocuments` before the schema runs
+(all but one: the `kind: Location` of the root `catalog-info.yaml`, the repository's
+Backstage registration, which `validate` reads and holds to Backstage's Location shape, §7.2):
 reported, as a `not-modelled` warning in `validate` and one summary line in the read
 commands, and never refused, because refusing them turned a catalogue Backstage reads
 without complaint into a red build. A mistyped kind is told from a custom one by where it
@@ -702,7 +704,7 @@ make it true (§4.3). References are compared as the reader writes them, so a sh
 the file restates the full form in the plan.
 
 Gate [4] is not a second set of rules. It applies the Plan **virtually** — builds the
-snapshot that would exist if the plan landed — and runs the same seven `validate` rules CI
+snapshot that would exist if the plan landed — and runs the same eight `validate` rules CI
 runs over the result. It exists because the catalogue lags the repository by about two
 minutes (§4.4): what was true when the plan was drafted may not be true now, so an entity
 may have appeared, or appeared somewhere else. (It was gate [5] until the reordering above,
@@ -925,12 +927,19 @@ iac-repo/
 ├── .github/workflows/validate.yml    calls `idp-agent validate`, which refuses what the
 │                                     catalogue would accept
 ├── CODEOWNERS
+├── catalog-info.yaml                 the Backstage registration: a Location whose targets
+│                                     are the registry's folders (docs/adopting-backstage.md)
 └── README.md                         the doctrine, written down
 ```
 
 The folder list is derived from the resource-type registry, never written out here: adding
 a type adds its folder, and a list in this document would drift from the code the first
 time one is added. It has already drifted once.
+
+So are the registration's targets: one `catalog.locations` entry in a company's Backstage
+ingests every folder, and adopting Backstage later is that one registration, not a
+migration. A root `catalog-info.yaml` already there is kept, and `init platform` prints on
+stderr the Location it needs.
 
 **What the tool cannot do, and says so.** Branch protection is set in the forge
 interface. The tool prints the exact settings required. **From stage 6** it also

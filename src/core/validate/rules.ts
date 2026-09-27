@@ -1,6 +1,12 @@
 import type { Api, Entity } from '../schemas/entity.js'
 import { resolveEntityPath } from '../paths/entity-path.js'
-import type { IgnoredDocument } from '../yaml/serialize.js'
+import { parseDocuments, type IgnoredDocument } from '../yaml/serialize.js'
+import {
+  REGISTRATION_FILE,
+  isLocationKind,
+  registrationsIn,
+  type Registration,
+} from './registration.js'
 
 /**
  * What CI must refuse. The catalogue ingests a duplicate in silence and lets
@@ -16,6 +22,7 @@ export type Rule =
   | 'misplaced-entity'
   | 'dangling-reference'
   | 'not-modelled'
+  | 'registration'
 
 export type Severity = 'error' | 'warning'
 
@@ -46,6 +53,32 @@ export interface RepositoryFile {
   readonly ignored: readonly IgnoredDocument[]
   /** Documents in the file, including the null ones a witness is made of. */
   readonly documents: number
+  /**
+   * The Backstage registration — each `kind: Location` of the root
+   * `catalog-info.yaml` (`registration.ts`). Absent from every other file, and
+   * from that one when it holds no Location. Not among `ignored`: it is this
+   * repository's own wiring, read and held to Backstage's Location shape.
+   */
+  readonly registrations?: readonly Registration[]
+}
+
+/**
+ * A file as every reader of a repository sees it, from its path and its text:
+ * `parseDocuments`, and at the root the registration taken out of what it sets
+ * aside. One definition, so `validate`, the read commands and the re-check of a
+ * plan cannot disagree about which Location is the registration.
+ */
+export function repositoryFileOf(path: string, text: string): RepositoryFile {
+  const parsed = parseDocuments(text)
+  if (path !== REGISTRATION_FILE) return { path, ...parsed }
+  const registrations = registrationsIn(text)
+  if (registrations.length === 0) return { path, ...parsed }
+  return {
+    path,
+    ...parsed,
+    ignored: parsed.ignored.filter((document) => !isLocationKind(document.kind)),
+    registrations,
+  }
 }
 
 export interface RepositorySnapshot {
@@ -127,6 +160,30 @@ export function checkRepository(snapshot: RepositorySnapshot): Violation[] {
         file: file.path,
         severity: 'warning',
         message: ignored.reason,
+      })
+    }
+
+    // Counted in silence when it registers every folder: the file is there on
+    // purpose, and a line on every repository `init platform` creates would be
+    // noise. What Backstage would refuse, or what reads outside the repository,
+    // fails the build; a folder no target reaches is said, and does not.
+    for (const registration of file.registrations ?? []) {
+      for (const fault of registration.faults) {
+        violations.push({
+          rule: 'registration',
+          file: file.path,
+          severity: 'error',
+          message: `the Backstage registration ${fault}`,
+        })
+      }
+      if (registration.faults.length > 0 || registration.unreached.length === 0) continue
+      violations.push({
+        rule: 'registration',
+        file: file.path,
+        severity: 'warning',
+        message:
+          `the Backstage registration does not reach ${registration.unreached.join(', ')}: ` +
+          'Backstage ingests nothing filed there',
       })
     }
 

@@ -1,7 +1,11 @@
 import { lstat, readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { RepositoryFile, RepositorySnapshot } from '../../core/validate/rules.js'
-import { parseDocuments } from '../../core/yaml/serialize.js'
+import {
+  repositoryFileOf,
+  type RepositoryFile,
+  type RepositorySnapshot,
+} from '../../core/validate/rules.js'
+import { REGISTRATION_FILE } from '../../core/validate/registration.js'
 
 /**
  * Reads a repository laid out the way `init platform` produces one, keeping
@@ -86,7 +90,7 @@ async function readOne(root: string, absolute: string): Promise<RepositoryFile> 
 
   // The same reader `core/` uses on the bytes a plan would write, so a file
   // cannot be conformant here and broken there.
-  return { path: where, ...parseDocuments(content) }
+  return repositoryFileOf(where, content)
 }
 
 /**
@@ -173,6 +177,18 @@ export async function isApplicationRepository(directory: string): Promise<boolea
   if (await isDeclarationsRepository(directory)) return false
   const top = await readdir(directory, { withFileTypes: true }).catch(() => [])
   return top.some((entry) => entry.isFile() && isMarker(entry.name))
+}
+
+/**
+ * The repository's root `catalog-info.yaml`, read as `readRepository` reads it,
+ * or undefined when there is no regular file by that name. What `init platform`
+ * asks of a file it kept: does it register the repository with Backstage?
+ */
+export async function readRegistrationFile(root: string): Promise<RepositoryFile | undefined> {
+  const absolute = path.join(root, REGISTRATION_FILE)
+  const entry = await lstat(absolute).catch(() => undefined)
+  if (entry?.isFile() !== true) return undefined
+  return readOne(root, absolute)
 }
 
 export async function readRepository(root: string): Promise<RepositorySnapshot> {

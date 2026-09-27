@@ -916,6 +916,8 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     const root = path.resolve(deps.cwd ?? process.cwd(), command.directory)
     const result = await runInitPlatform({ root, owner: command.owner, version: VERSION })
     out(`${result.text}\n`)
+    // stderr, like every line meant for a person: stdout stays the file list.
+    if (result.notice !== undefined) err(`${result.notice}\n`)
     return EXIT.ok
   }
 

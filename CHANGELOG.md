@@ -22,6 +22,16 @@ Where the project goes next is in [`docs/roadmap.md`](docs/roadmap.md).
 
 Each pull request adds its line here.
 
+### Added
+
+- `init platform` writes the Backstage registration, a root `catalog-info.yaml` of
+  `kind: Location` whose targets are the path registry's folders, so a company that adopts
+  Backstage later ingests the repository with one `catalog.locations` entry; `validate`
+  counts it in silence and holds it to Backstage's Location shape (a new `registration`
+  rule), a root `catalog-info.yaml` already there is kept and the Location it needs printed
+  on stderr, and [`docs/adopting-backstage.md`](docs/adopting-backstage.md) gives the entry,
+  its catalogue rule and `idpa`'s read token ([#86](https://github.com/pcaboor/idp-agent/pull/86)).
+
 ### Fixed
 
 - `init` on a real service repository ends on a diff or an answerable question: the

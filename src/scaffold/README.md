@@ -24,6 +24,9 @@ resource type adds its folder to every repository scaffolded afterwards, with no
 `docs/design.md` §7.2 wrote the list out by hand and listed five folders against the
 registry's six — that drift is the argument.
 
+The Backstage registration is derived the same way: `catalog-info.yaml`'s targets come from
+the registry through `core/validate/registration.ts`, which `validate` reads it back with.
+
 ## What it never does
 
 It never clobbers. `writeNew` uses `flag: 'wx'`, so a file that exists is kept and

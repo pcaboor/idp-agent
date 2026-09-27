@@ -37,27 +37,23 @@ framed in the model's words, Backstage APIs, the relations view, and tracing int
 **In order**, as the owner decided on 2026-09-23, 2026-09-25 and 2026-09-26. Each line says
 what the item is for.
 
-1. **Slice 0 of `backstage-http`: a repository Backstage ingests in one registration.**
-   `init platform` writes a root `kind: Location`, and a page says how to register the
-   repository and issue `idpa`'s read token ([the design note](backstage-http-brief.md),
-   slice 0). No Backstage is needed to use the tool; installing one is out of scope.
-2. **A sweep of the review: done.** Verdicts in the review's
+1. **A sweep of the review: done.** Verdicts in the review's
    [sweep](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27); its batches follow, one
    pull request each, each naming the check that shows it worked.
-3. **Batch A1, command-line edges.** build-ci-12, cli-ux-11, cli-ux-1, runtime-probe-3,
+2. **Batch A1, command-line edges.** build-ci-12, cli-ux-11, cli-ux-1, runtime-probe-3,
    runtime-probe-13, cli-ux-8, gap-init-real-repos-6, cli-ux-6, gap-init-real-repos-8:
    `-h`, `--version` and `<command> --help` work; `validate` and `init` refuse a path that is
    not a directory on exit 2, before any model; Ctrl-C at a question exits 130; `init` ends
    by saying how to apply its diff. Check: `idpa --version`, `idpa validate /nonexistent`
    and `idpa init --repo /nonexistent` each exit as stated, with no model called.
-4. **Batch A2, tests that cannot pass on nothing.** tests-12, architecture-11,
+3. **Batch A2, tests that cannot pass on nothing.** tests-12, architecture-11,
    gap-stage5-readiness-9, tests-7, tests-8, tests-11, core-plan-13, security-10, tests-9:
    the architecture rules fail on an empty tree or an unresolved import and name who may
    write; the offline guard covers `http`, `net`, `tls` and `WebSocket`; the suite ignores
    the contributor's `IDP_*` and key variables; the audit attacks read `tests/recordings`;
    a real key's shape is caught in a tape; `tests/README.md` explains a stale tape. Check:
    `pnpm test` stays green with `IDP_PROVIDER` and `IDP_MODEL` exported.
-5. **Batch A3, build, CI and documentation drift.** build-ci-3, build-ci-2, build-ci-5,
+4. **Batch A3, build, CI and documentation drift.** build-ci-3, build-ci-2, build-ci-5,
    build-ci-7, build-ci-8, product-gap-14, architecture-12, gap-stage5-readiness-14, docs-9,
    domain-backstage-9, docs-3, security-9, cli-ux-14: a clean `dist/` and a `prepack`, smoke
    from the packed tarball, version `0.1.0-rc.2`, least privilege in both workflows, POSIX
@@ -65,33 +61,33 @@ what the item is for.
    Reviewer), in AGENTS.md and in SECURITY.md's guarantee table, and `src/cli/README.md` no
    longer saying `show` takes the first entity of a shared name. Check: `pnpm build && pnpm
    smoke`, and `npm pack --dry-run` lists no stale file.
-6. **Batch A4, what the plan engine lets vouch and dispatch.** wip-diff-1, wip-diff-4,
+5. **Batch A4, what the plan engine lets vouch and dispatch.** wip-diff-1, wip-diff-4,
    wip-diff-10, wip-diff-8, wip-diff-9, core-plan-10, gap-stage5-readiness-2,
    gap-stage5-readiness-7, domain-backstage-10: an operation no longer vouches for itself or
    for a Component the edits drop; `planEdits` and the gates switch exhaustively; a
    `create-catalog-info` path must be a catalog-info inside the repository; `init platform`
    says what it wrote before a failure; the graph resolves a duplicate as the plan does.
    Check: the new `sign.test` cases, and the plan-mode tapes still replay clean.
-7. **Batch A5, the read side and the provider calls.** gap-ask-grounding-6,
+6. **Batch A5, the read side and the provider calls.** gap-ask-grounding-6,
    gap-ask-grounding-7, gap-ask-grounding-11, domain-backstage-7, gap-init-real-repos-9,
    gap-provider-matrix-6, agents-llm-10, product-gap-10: repository text flattened before a
    prompt; a decorated Supervisor word accepted; the truncation note of the search cited;
    `title`, `labels` and `subcomponentOf` read; `read_file` paths normalised; `store: false`
    at OpenAI; an optional abort signal; one usage line per run. Check: the provider contract
    test, and the question tapes replay with the bytes they had.
-8. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
+7. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
    hand-written files in every shape, and `signPlan` properties over plans valid by
    construction. `tests/invariants/arbitraries.ts` and `core.test.ts` are also edited on
    `feat/s5-cleared`, so this goes on top of stage 5, or with the owner.
-9. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
+8. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
    harness half of agents-llm-9: record from an empty tape, fail on a turn never replayed,
    and digest the JSON Schema the provider is sent. It needs no key, but it prunes dead turns
    and rewrites every tape's digest, so it waits for the owner's go-ahead.
-10. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
+9. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
     gap-stage5-readiness-4: one lstat, realpath and `O_NOFOLLOW` primitive shared from
     `project-fs`, used by `scaffold/write.ts` and by the iac-fs walk, which rejects a
     symbolic link by name. Medium, and what stage 5's writer will need.
-11. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
+10. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
     the current `main`, read only: what it covers and what it misses. It includes **which
     repository a `FileEdit` writes to**, the part of gap-stage5-readiness-8 review priority 9
     left to stage 5 ([#82](https://github.com/pcaboor/idp-agent/pull/82)): `init`'s
@@ -102,7 +98,7 @@ what the item is for.
     operation to `targetOf`'s choice over `ProjectRead.declarations` (`filedIn`) — the root's
     `.yml`, or the one catalog-info kept elsewhere — so a `readCatalogInfo` that reads only the
     root's `catalog-info.yaml` would bring back the twin and the capped `before` this removed.
-12. **Stage 5, write + local branch.** The first write, atomic and idempotent. The owner's own
+11. **Stage 5, write + local branch.** The first write, atomic and idempotent. The owner's own
     work, on branch `feat/s5-cleared`, at the owner's pace.
 
 **Not yet ordered.**
@@ -113,7 +109,11 @@ what the item is for.
   that the owner set as the project's end goal (2026-09-23).
 - **The `backstage-http` read provider, slices 1 to 3**
   ([the design note](backstage-http-brief.md)): after the stage-5 check, beside stage 5.
-  Slices 4 and 5 go with stage 8.
+  Right after slice 1, **a real Backstage in Docker for the demo**: one `docker compose up`
+  starts a pinned Backstage holding the demo SI, registered through slice 0's Location, with
+  a read token, so an evaluator sees the catalogue's pages and `idpa` querying the same
+  Backstage (built image or maintained community image: to decide then). Slices 4 and 5 go
+  with stage 8.
 - **Stage 8, discovery** ([the design note](stage-8-brief.md)). From any
   service repository, generate its catalog-info and discover the dependencies it already
   has, with evidence.
@@ -218,7 +218,16 @@ The owner's decisions, dated, each with where it is recorded.
   [#84](https://github.com/pcaboor/idp-agent/pull/84)).
 - A company without Backstage is fully served by the declarations repository; installing a
   Backstage is not the tool's responsibility, but adopting one must take a single
-  registration: slice 0 ([#84](https://github.com/pcaboor/idp-agent/pull/84)).
+  registration: slice 0 ([#84](https://github.com/pcaboor/idp-agent/pull/84)); built — `init
+  platform` writes the registration and [a page](adopting-backstage.md) says how to register
+  it ([#86](https://github.com/pcaboor/idp-agent/pull/86)).
+
+- A company's production Backstage stays out of the tool's scope, but a Backstage for
+  evaluating the project is the tool's to provide: a recruiter will not install one. A real
+  Backstage in Docker, preloaded with the demo SI, comes right after `backstage-http`'s
+  slice 1 ([#86](https://github.com/pcaboor/idp-agent/pull/86)).
+- The Backstage registration covers `components/` too, where the demo SI and the owner's
+  repository keep their Components ([#86](https://github.com/pcaboor/idp-agent/pull/86)).
 
 ## Known debts and open items
 
