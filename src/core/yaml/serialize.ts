@@ -402,13 +402,15 @@ function misdeclaredKind(value: unknown): string | undefined {
  * `validate` and the read commands take both. A file's APIs are listed after its
  * other entities, whatever order its documents are in.
  *
- * The one reader of entity documents — `readDocuments` is its lower half, and
- * `plan/effect.ts` the only other caller of that. `context/`'s readers call it
- * on what they read from a disk, and `core/` on bytes it is about to write, so
- * a file cannot be conformant to one of them and broken to the other.
- * Rejections are returned rather than thrown for the same reason the readers
- * report them: a file with one bad document still has good ones, and dropping
- * either fact hides a defect.
+ * The one reader of entity documents, in two halves: `readDocuments` turns
+ * YAML into values, and `readValue` reads one value. This is the fold of the
+ * two. `context/`'s readers call it on what they read from a disk, and `core/`
+ * on bytes it is about to write, so a file cannot be conformant to one of them
+ * and broken to the other; the `backstage-http` provider will call
+ * `readValue` alone, on each item a catalogue serves, so a catalogue meets the
+ * very decisions a file does. Rejections are returned rather than thrown for
+ * the same reason the readers report them: a file with one bad document still
+ * has good ones, and dropping either fact hides a defect.
  */
 export function parseDocuments(text: string): {
   entities: Entity[]
@@ -437,36 +439,71 @@ export function parseDocuments(text: string): {
       rejections.push(reading.error)
       continue
     }
-    // A witness is a null document (design 7.2): present on purpose, and not
-    // an entity. Counting it as a rejection would make every witnessed folder
-    // report one.
-    if (reading.value === null || reading.value === undefined) continue
-    const misdeclared = misdeclaredKind(reading.value)
-    if (misdeclared !== undefined) {
-      rejections.push(misdeclared)
-      continue
+    const read = readValue(reading.value)
+    switch (read.as) {
+      case 'witness':
+        break
+      case 'rejected':
+        rejections.push(read.reason)
+        break
+      case 'ignored':
+        ignored.push(read.document)
+        break
+      case 'api':
+        apis.push(read.api)
+        unread.push(...read.unread)
+        break
+      case 'entity':
+        entities.push(read.entity)
+        unread.push(...read.unread)
+        break
+      default: {
+        const exhaustive: never = read
+        return exhaustive
+      }
     }
-    const foreign = ignoredOf(reading.value)
-    if (foreign !== undefined) {
-      ignored.push(foreign)
-      continue
-    }
-    if (READ_KINDS.has(kindOf(reading.value) ?? '')) {
-      const api = apiSchema.safeParse(reading.value)
-      if (api.success) {
-        apis.push(api.data)
-        unread.push(...unreadFieldsOf(reading.value))
-      } else rejections.push(reasonOf(api.error, reading.value))
-      continue
-    }
-    const parsed = entitySchema.safeParse(reading.value)
-    if (parsed.success) {
-      entities.push(parsed.data)
-      unread.push(...unreadFieldsOf(reading.value))
-    } else rejections.push(reasonOf(parsed.error, reading.value))
   }
 
   return { entities, apis, rejections, ignored, unread, documents: readings.length }
+}
+
+/**
+ * What one document's value is to this tool — `readValue`'s answer, one
+ * reading per value and never a throw. The two that read carry `unread`: what
+ * the value holds and the read model does not read (`unreadFieldsOf`).
+ */
+export type ValueReading =
+  | { readonly as: 'witness' }
+  | { readonly as: 'rejected'; readonly reason: string }
+  | { readonly as: 'ignored'; readonly document: IgnoredDocument }
+  | { readonly as: 'api'; readonly api: Api; readonly unread: readonly string[] }
+  | { readonly as: 'entity'; readonly entity: Entity; readonly unread: readonly string[] }
+
+/**
+ * One document's value, read as a file's is: the decisions of the reader, in
+ * its order. A value the parser vouched for (`readDocuments`), or an item a
+ * catalogue served — the reader cannot tell them apart, which is the point:
+ * one set of decisions and one set of refusal words (`reasonOf`) for both.
+ */
+export function readValue(value: unknown): ValueReading {
+  // A witness is a null document (design 7.2): present on purpose, and not
+  // an entity. Counting it as a rejection would make every witnessed folder
+  // report one.
+  if (value === null || value === undefined) return { as: 'witness' }
+  const misdeclared = misdeclaredKind(value)
+  if (misdeclared !== undefined) return { as: 'rejected', reason: misdeclared }
+  const foreign = ignoredOf(value)
+  if (foreign !== undefined) return { as: 'ignored', document: foreign }
+  if (READ_KINDS.has(kindOf(value) ?? '')) {
+    const api = apiSchema.safeParse(value)
+    return api.success
+      ? { as: 'api', api: api.data, unread: unreadFieldsOf(value) }
+      : { as: 'rejected', reason: reasonOf(api.error, value) }
+  }
+  const parsed = entitySchema.safeParse(value)
+  return parsed.success
+    ? { as: 'entity', entity: parsed.data, unread: unreadFieldsOf(value) }
+    : { as: 'rejected', reason: reasonOf(parsed.error, value) }
 }
 
 /** A name a document carries, and the environment it declares, if any. */

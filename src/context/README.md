@@ -25,12 +25,13 @@ position) — and with `ignored`, the same `source` and `reason` plus the `kind`
 for every document this tool does not model: a Group, a System, a `mkdocs.yml` beside the
 entities. Those are part of a real catalogue, so they are set aside rather than refused, `main`
 counts them in one line, and a reference to one is not called dangling.
-Both readers go through `core/`'s `parseDocuments`, the one reader of entity documents, and
-`iac-fs` also rejects a file it cannot open — no permission, a link to nothing — rather than
-ending `validate` on a stack trace. Throwing would lose every valid entity because of one bad one;
-swallowing is what the catalogue does — it ignores duplicates in silence (design.md § 4.4)
-and reports nothing for what it could not ingest — and a tool that inherits the failure mode
-it exists to prevent is worth nothing.
+Both readers go through `core/`'s `parseDocuments`, the one reader of entity documents
+(`readDocuments` for the YAML, then `readValue` for each value, the half a catalogue's items
+will meet too), and `iac-fs` also rejects a file it cannot open — no permission, a link to
+nothing — rather than ending `validate` on a stack trace. Throwing would lose every valid entity
+because of one bad one; swallowing is what the catalogue does — it ignores duplicates in silence
+(design.md § 4.4) and reports nothing for what it could not ingest — and a tool that inherits
+the failure mode it exists to prevent is worth nothing.
 A reference two documents declare is read as its first declaration, whole — fields, edges
 and dangling references — as the catalogue resolves a duplicate and as a plan amends one;
 the second stays in `all()`, for `validate` to report.
