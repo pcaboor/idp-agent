@@ -5,6 +5,7 @@ import {
   isApplicationRepository,
   isDeclarationsRepository,
 } from '../context/iac-fs/snapshot.js'
+import type { ProjectRead } from '../context/project-fs/types.js'
 import { oneLine } from './render/plain.js'
 
 /**
@@ -311,3 +312,60 @@ export const skipNotice = (reason: string): string =>
 
 const projectFlag = (who: ChangeCommand): string =>
   `${who} --project names the application repository the Inspector reads, the service being declared`
+
+/**
+ * The line on stderr that says how the Inspector's files were chosen, when it
+ * was not from what git tracks — or `undefined`, and nothing is said.
+ *
+ * Said to the user and never to the model: `readProject` returns it beside the
+ * snapshot, not in it, so the prompt a recording was made with is unchanged.
+ */
+export function selectionNotice(
+  root: string,
+  read: Pick<ProjectRead, 'selection' | 'skipped'>,
+): string | undefined {
+  const folder = folderOf(root)
+  switch (read.selection) {
+    case 'git':
+      return undefined
+    case 'walk':
+      return (
+        `${folder} is not a git repository: the Inspector read every file the filter let ` +
+        'through, untracked ones included'
+      )
+    case 'none':
+      return `the Inspector read nothing in ${folder} (${read.skipped[0]?.reason ?? 'refused'})`
+    default: {
+      const exhaustive: never = read.selection
+      return exhaustive
+    }
+  }
+}
+
+/**
+ * The directory `init` inspects, refused when it is the home directory or the
+ * filesystem root (review, security-3). `plan` has skipped both since
+ * [#63](https://github.com/pcaboor/idp-agent/pull/63) when it is standing in
+ * them (`standingIn`); `init` inspects the directory it runs in whatever it is,
+ * and a terminal opens in `~` — the Inspector would be handed a listing of
+ * someone's home and the text of their documents. Refused, not skipped: `init`
+ * has nothing to do without a repository to inspect.
+ *
+ * Nothing else is refused here: a directory that does not exist, or is not a
+ * service's, is `init`'s own business, as it was.
+ */
+export async function initRoot(project: string, home: string | undefined): Promise<string> {
+  const real = await realpath(project).catch(() => undefined)
+  if (real === undefined) return project
+  const refuse = (what: string): never => {
+    throw new RepositoryArgumentError(
+      `init inspects the application repository it runs in, and ${what}; run it from the ` +
+        "service's repository, or name it with init --repo <dir>.",
+    )
+  }
+  if (path.parse(real).root === real) refuse(`${oneLine(real)} is the filesystem root`)
+  if (home !== undefined && real === (await realpath(home).catch(() => undefined))) {
+    refuse(`${folderOf(real)} is your home directory`)
+  }
+  return project
+}

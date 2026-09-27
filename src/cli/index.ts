@@ -45,6 +45,7 @@ import { homeOf } from './personal.js'
 import {
   RepositoryArgumentError,
   applicationRoot,
+  initRoot,
   projectRoot,
   skipNotice,
   type DeclarationsCommand,
@@ -778,6 +779,12 @@ export function renderEvent(event: AgentEvent): string | undefined {
  */
 const whole = (text: string): string => inertLine(text, Number.POSITIVE_INFINITY)
 
+/** A line the CLI says on stderr, whole and inert: it quotes a folder's name. */
+const toStderr =
+  (err: (chunk: string) => void) =>
+  (line: string): void =>
+    err(`${whole(line)}\n`)
+
 /**
  * A reason on the event stream: one line, bounded at `oneLine`'s 200, and the
  * bidi controls spelled out as well — `plan` streams the Reviewer's and the
@@ -841,13 +848,26 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     // Resolved against the working directory, because §7.3 is run once per
     // application from inside it, and `--repo` is how someone standing
     // elsewhere says which one.
-    const project = path.resolve(deps.cwd ?? process.cwd(), command.repo ?? '.')
+    //
+    // Refused before a model is chosen when it is the home directory or the
+    // filesystem root, as `plan` skips them (security-3): a directory is an
+    // argument, and an argument is refused before the configuration is.
+    let project: string
+    try {
+      project = await initRoot(
+        path.resolve(deps.cwd ?? process.cwd(), command.repo ?? '.'),
+        homeOf(deps.env ?? process.env),
+      )
+    } catch (error) {
+      return failed(error, err)
+    }
     return agentBacked(
       deps,
       err,
       out,
       { command: 'init', scenario: 'init', inputs: { command: 'init', project } },
-      async (client, emit) => runInitRepo({ project, client, emit, colour: colourOf(deps) }),
+      async (client, emit) =>
+        runInitRepo({ project, client, emit, colour: colourOf(deps), notice: toStderr(err) }),
     )
   }
 
@@ -987,6 +1007,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
         emit,
         json: command.json,
         colour,
+        notice: toStderr(err),
       }),
     )
   }
@@ -1124,6 +1145,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
               emit,
               json: command.json,
               colour: colourOf(deps),
+              notice: toStderr(err),
             })
           },
         }),

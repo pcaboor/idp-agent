@@ -216,9 +216,12 @@ describe('readProject', () => {
   })
 
   it('never descends into node_modules, .git or a credential directory', async () => {
+    // Every `.git` in this block is NESTED — a vendored checkout. A `.git` at
+    // the root makes the root a repository, read through git or not at all
+    // (project-tracked.test.ts); a nested one is what the walk still meets.
     const root = await projectWith({
       'node_modules/left-pad/index.js': 'module.exports = 1',
-      '.git/config': '[remote "origin"]\n  url = https://tok@example.com/a.git',
+      'lib/.git/config': '[remote "origin"]\n  url = https://tok@example.com/a.git',
       '.ssh/id_rsa': 'KEYBYTES',
       '.aws/credentials': 'aws_secret_access_key = tok',
       'dist/bundle.js': 'built',
@@ -227,7 +230,7 @@ describe('readProject', () => {
     const snapshot = await readProject(root)
     expect(pathsOf(snapshot)).toEqual(['package.json'])
     expect(JSON.stringify(snapshot.files)).not.toContain('tok')
-    for (const directory of ['node_modules', '.git', '.ssh', '.aws', 'dist']) {
+    for (const directory of ['node_modules', 'lib/.git', '.ssh', '.aws', 'dist']) {
       expect(reasonFor(snapshot, directory)).toBeTruthy()
     }
   })
@@ -377,10 +380,10 @@ describe('an alias is not a disguise', () => {
 
   it('refuses a link whose target is an excluded directory', async () => {
     const root = await projectWith({
-      '.git/config': '[remote]\n  url = https://TOKEN@github.com/x',
+      'lib/.git/config': '[remote]\n  url = https://TOKEN@github.com/x',
       'package.json': '{"name":"x"}',
     })
-    await symlink(path.join(root, '.git'), path.join(root, 'docs'))
+    await symlink(path.join(root, 'lib', '.git'), path.join(root, 'docs'))
 
     const snapshot = await readProject(root)
 
@@ -391,10 +394,10 @@ describe('an alias is not a disguise', () => {
   it('refuses a link that aims INTO an excluded directory', async () => {
     // The basename is innocent; the ancestor is the whole point of the list.
     const root = await projectWith({
-      '.git/config': '[remote]\n  url = https://TOKEN@github.com/x',
+      'lib/.git/config': '[remote]\n  url = https://TOKEN@github.com/x',
       'nested/keep.md': '# notes',
     })
-    await symlink(path.join(root, '.git', 'config'), path.join(root, 'nested', 'readme.txt'))
+    await symlink(path.join(root, 'lib', '.git', 'config'), path.join(root, 'nested', 'readme.txt'))
 
     const snapshot = await readProject(root)
 

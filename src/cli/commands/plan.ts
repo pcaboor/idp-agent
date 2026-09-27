@@ -38,7 +38,7 @@ import { readConfig, seededVocabulary, type RepositoryConfig } from '../config.j
 import { paintDiff } from '../render/diff.js'
 import type { CommandResult } from './result.js'
 import { inertLine, visible } from '../render/plain.js'
-import { declarationsRoot } from '../repository.js'
+import { declarationsRoot, selectionNotice } from '../repository.js'
 
 /**
  * Steps 3 to 7 of §7.4, wired end to end and stopping one step short of the
@@ -1142,6 +1142,12 @@ export interface IntentOptions {
    * the run ends on the questions the way it always has — see `PlanOptions.ask`.
    */
   readonly ask?: Ask
+  /**
+   * Where a line about how the application repository was read goes — stderr,
+   * from `cli/index.ts` — when its files were not chosen from what git tracks
+   * (`selectionNotice`). Absent, nothing is said.
+   */
+  readonly notice?: (line: string) => void
 }
 
 /**
@@ -1166,6 +1172,10 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
   // Taken on this side of the line: `agents/` reaches no disk, so the bytes are
   // read here and handed over, with every exclusion and cap already applied.
   const project = options.project === undefined ? undefined : await readProject(options.project)
+  if (options.project !== undefined && project !== undefined) {
+    const notice = selectionNotice(options.project, project)
+    if (notice !== undefined) options.notice?.(notice)
+  }
 
   // The Architect's read tools sit on the repository, not on the fixture SI,
   // and `buildTools` owns the witness set they fill — what the ENGINE returned

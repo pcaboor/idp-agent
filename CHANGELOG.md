@@ -36,6 +36,22 @@ Each pull request adds its line here.
   pointing is vetoed when the request mentions anywhere a name the repository declares in
   another environment, so it is asked; invisible characters no longer split a word —
   review priority 6 ([#79](https://github.com/pcaboor/idp-agent/pull/79)).
+- What the Inspector reads from a service repository carries no secret the filter can see:
+  every match in a file is judged, so a placeholder no longer lets a literal after it
+  through, and a file holding one is withheld whole; the keys of Anthropic, OpenAI, GitHub,
+  GitLab, Slack, AWS, Google, Stripe, npm and Hugging Face, a private key at any base64
+  alignment or with its header stripped, a Kubernetes Secret's data in YAML or JSON, a
+  docker `auths` entry and a password in a URL are recognised, and so is a secret-named key
+  written as one word (`DBPASSWORD`), as a flag (`--password=`, `-D…password=`), with its
+  value on the next line or quoted with punctuation, as an XML element, a subscript, a
+  spaced flag or a netrc line, or escaped (`\u0073k-ant-…`) or base64-encoded; in a git
+  repository only the files git tracks are read, an untracked one counted and never named,
+  and git is started outside the repository and runs none of its commands, while a checkout
+  git cannot list is read as nothing and a directory outside git is walked as before and
+  said so on stderr; `jsonwebtoken`, `existingSecret`, a README's `your-api-key`, a type
+  (`password: string`) or a call no longer withhold a file; and `init` refuses the home
+  directory and the filesystem root — review priority 7
+  ([#80](https://github.com/pcaboor/idp-agent/pull/80)).
 
 ### Documentation
 
