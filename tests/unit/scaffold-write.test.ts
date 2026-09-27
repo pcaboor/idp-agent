@@ -8,7 +8,10 @@ import { loadTemplates } from '../../src/scaffold/templates.js'
 import type { FileIO } from '../../src/scaffold/write.js'
 
 const files = async () =>
-  scaffoldLayout({ owner: '@acme/platform', version: '0.1.0-rc.1' }, await loadTemplates())
+  scaffoldLayout(
+    { owner: '@acme/platform', version: '0.1.0-rc.1', repository: 'iac' },
+    await loadTemplates(),
+  )
 
 const temp = (): Promise<string> => mkdtemp(path.join(tmpdir(), 'idp-scaffold-'))
 
@@ -16,7 +19,7 @@ describe('writeScaffold', () => {
   it('writes every file and reports them', async () => {
     const root = await temp()
     const report = await writeScaffold(root, await files())
-    expect(report.written).toHaveLength(12)
+    expect(report.written).toHaveLength(13)
     expect(report.kept).toEqual([])
     expect(await readFile(path.join(root, 'CODEOWNERS'), 'utf8')).toContain('@acme/platform')
   })
@@ -28,7 +31,7 @@ describe('writeScaffold', () => {
     await writeScaffold(root, await files())
     const again = await writeScaffold(root, await files())
     expect(again.written).toEqual([])
-    expect(again.kept).toHaveLength(12)
+    expect(again.kept).toHaveLength(13)
   })
 
   it('leaves a hand-edited file byte for byte', async () => {

@@ -220,8 +220,22 @@ check({
 })
 check({ args: ['plan', '--repo', '.'], code: 2, stderr: /needs an intent/ })
 check({ args: ['init', 'platform', 'repo'], code: 2, stderr: /--owner/ })
-check({ args: ['init', 'platform', 'repo', '--owner', '@acme/platform'], code: 0, stdout: /wrote 12/ })
-check({ args: ['validate', 'repo'], code: 0, stdout: /0 violations/ })
+check({
+  args: ['init', 'platform', 'repo', '--owner', '@acme/platform'],
+  code: 0,
+  stdout: /wrote 13/,
+  absentFromStderr: /catalog-info\.yaml/,
+})
+// The Backstage registration: one `catalog.locations` entry ingests the
+// repository. Present at the root, a Location, and counted by `validate` in
+// silence — no warning on every repository `init platform` creates.
+const REGISTRATION = path.join(ELSEWHERE, 'repo', 'catalog-info.yaml')
+assert(
+  'init platform writes the Backstage registration at the root',
+  existsSync(REGISTRATION) && /^kind: Location$/m.test(readFileSync(REGISTRATION, 'utf8')),
+  `${REGISTRATION} is missing or is not a kind: Location`,
+)
+check({ args: ['validate', 'repo'], code: 0, stdout: /0 violations/, absentFromStdout: /warning|error/ })
 
 // `plan --from` against the repository the two checks above just scaffolded and
 // validated, using the plans that ship with the project. No model is involved and

@@ -1,5 +1,6 @@
 import { RESOURCE_TYPE_NAMES, folderOf } from '../core/schemas/resource-types.js'
 import { entityJsonSchema, planJsonSchema } from '../core/schemas/json-schema.js'
+import { REGISTRATION_FILE, renderRegistration } from '../core/validate/registration.js'
 import { renderCodeowners } from './codeowners.js'
 
 export interface ScaffoldFile {
@@ -13,6 +14,11 @@ export interface ScaffoldOptions {
   readonly owner: string
   /** The version the generated workflow pins. */
   readonly version: string
+  /**
+   * The name of the directory being created, which the Backstage
+   * registration's `metadata.name` is derived from (`registrationName`).
+   */
+  readonly repository: string
 }
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`
@@ -49,6 +55,9 @@ export function scaffoldLayout(
     },
     { path: 'CODEOWNERS', content: renderCodeowners(options.owner) },
     { path: 'README.md', content: required(templates, 'README.md') },
+    // Its targets are the registry's folders, read from the registry as the
+    // witnesses above are: one `catalog.locations` entry ingests them all.
+    { path: REGISTRATION_FILE, content: renderRegistration(options.repository) },
     // Stored dotless in the package, written as the dotfile it must be.
     { path: '.gitignore', content: required(templates, 'gitignore') },
   ]

@@ -3,9 +3,13 @@ import { scaffoldLayout } from '../../src/scaffold/layout.js'
 import { loadTemplates } from '../../src/scaffold/templates.js'
 import { isForgeHandle, renderCodeowners } from '../../src/scaffold/codeowners.js'
 import { RESOURCE_TYPE_NAMES, folderOf } from '../../src/core/schemas/resource-types.js'
+import { renderRegistration } from '../../src/core/validate/registration.js'
 
 const layout = async () =>
-  scaffoldLayout({ owner: '@acme/platform', version: '0.1.0-rc.1' }, await loadTemplates())
+  scaffoldLayout(
+    { owner: '@acme/platform', version: '0.1.0-rc.1', repository: 'platform-iac' },
+    await loadTemplates(),
+  )
 
 describe('scaffoldLayout', () => {
   it('gives every folder the registry declares a witness, not the five the design listed', async () => {
@@ -57,8 +61,13 @@ describe('scaffoldLayout', () => {
     }
   })
 
-  it('writes twelve files', async () => {
-    expect(await layout()).toHaveLength(12)
+  it('writes the Backstage registration at the root, named for the repository', async () => {
+    const registration = (await layout()).find((file) => file.path === 'catalog-info.yaml')
+    expect(registration?.content).toBe(renderRegistration('platform-iac'))
+  })
+
+  it('writes thirteen files', async () => {
+    expect(await layout()).toHaveLength(13)
   })
 })
 

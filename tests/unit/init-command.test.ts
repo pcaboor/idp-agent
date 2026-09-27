@@ -1,10 +1,12 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { main } from '../../src/cli/index.js'
 import { catalogInfoEdits, runInitRepo } from '../../src/cli/commands/init.js'
 import { readRepository } from '../../src/context/iac-fs/snapshot.js'
+import { IacFsProvider } from '../../src/context/iac-fs/provider.js'
+import { renderRegistration } from '../../src/core/validate/registration.js'
 import { checkRepository } from '../../src/core/validate/rules.js'
 import { FixtureProvider } from '../../src/context/fixtures/index.js'
 import { REPORT_TOOL } from '../../src/agents/tools/project-tools.js'
@@ -40,7 +42,7 @@ describe('init platform', () => {
     const root = await temp()
     const { code, out } = await init(['init', 'platform', 'repo', '--owner', '@acme/platform'], root)
     expect(code).toBe(0)
-    expect(out).toContain('wrote 12')
+    expect(out).toContain('wrote 13')
 
     const built = path.join(root, 'repo')
     expect(checkRepository(await readRepository(built))).toEqual([])
@@ -59,7 +61,7 @@ describe('init platform', () => {
     const { code, out } = await init(['init', 'platform', 'repo', '--owner', '@acme/platform'], root)
     expect(code).toBe(0)
     expect(out).toContain('wrote 0')
-    expect(out).toContain('kept 12')
+    expect(out).toContain('kept 13')
     expect(await readFile(owners, 'utf8')).toBe('* @someone/else\n')
   })
 
@@ -131,6 +133,90 @@ describe('init platform', () => {
       expect(file.split('/')).not.toContain('..')
       expect(path.resolve(root, file).startsWith(`${root}${path.sep}`)).toBe(true)
     }
+  })
+
+  it('writes the Backstage registration at the root, and the read commands say nothing of it', async () => {
+    // One `catalog.locations` entry ingests the repository. It is this
+    // repository's own wiring, not a document of somebody else's catalogue:
+    // no warning in `validate`, no set-aside line in `graph`, `show` or `ask`.
+    const root = await temp()
+    await init(['init', 'platform', 'platform-iac', '--owner', '@acme/platform'], root)
+    const built = path.join(root, 'platform-iac')
+
+    expect(await readFile(path.join(built, 'catalog-info.yaml'), 'utf8')).toBe(
+      renderRegistration('platform-iac'),
+    )
+    const loaded = await new IacFsProvider(built).load()
+    expect(loaded.ignored).toEqual([])
+    expect(loaded.rejected).toEqual([])
+  })
+
+  it('keeps a root catalog-info.yaml that is there, and prints on stderr the Location it needs', async () => {
+    const root = await temp()
+    const built = path.join(root, 'repo')
+    await mkdir(built)
+    const theirs =
+      'apiVersion: backstage.io/v1alpha1\nkind: System\nmetadata:\n  name: payments\n'
+    await writeFile(path.join(built, 'catalog-info.yaml'), theirs)
+
+    const { code, out, err } = await init(['init', 'platform', 'repo', '--owner', '@a/b'], root)
+
+    expect(code).toBe(0)
+    expect(await readFile(path.join(built, 'catalog-info.yaml'), 'utf8')).toBe(theirs)
+    expect(out).toContain('= catalog-info.yaml')
+    expect(err).toContain('catalog-info.yaml')
+    expect(err).toContain(renderRegistration('repo'))
+    // stdout stays what a script reads: the files, and the branch protection.
+    expect(out).not.toContain('kind: Location')
+  })
+
+  it('says the same of a kept Location that leaves a folder out', async () => {
+    const root = await temp()
+    const built = path.join(root, 'repo')
+    await mkdir(built)
+    await writeFile(
+      path.join(built, 'catalog-info.yaml'),
+      'apiVersion: backstage.io/v1alpha1\nkind: Location\nmetadata:\n  name: repo\n' +
+        'spec:\n  targets:\n    - ./catalog/**/*.yml\n',
+    )
+    const { code, err } = await init(['init', 'platform', 'repo', '--owner', '@a/b'], root)
+    expect(code).toBe(0)
+    expect(err).toContain(renderRegistration('repo'))
+  })
+
+  it('says a kept root file it cannot read could not be read, not that it holds no Location', async () => {
+    const root = await temp()
+    const built = path.join(root, 'repo')
+    await mkdir(built)
+    await writeFile(path.join(built, 'catalog-info.yaml'), 'key: [unclosed\n')
+    const { code, err } = await init(['init', 'platform', 'repo', '--owner', '@a/b'], root)
+    expect(code).toBe(0)
+    expect(err).not.toContain('holds no Location')
+    expect(err).toContain('does not read')
+    expect(err).toContain('idp-agent validate')
+    expect(err).toContain(renderRegistration('repo'))
+  })
+
+  it('says a kept root catalog-info.yaml that is no regular file is not read', async () => {
+    const root = await temp()
+    const built = path.join(root, 'repo')
+    await mkdir(built)
+    await writeFile(path.join(root, 'elsewhere.yaml'), renderRegistration('repo'))
+    await symlink(path.join(root, 'elsewhere.yaml'), path.join(built, 'catalog-info.yaml'))
+    const { code, err } = await init(['init', 'platform', 'repo', '--owner', '@a/b'], root)
+    expect(code).toBe(0)
+    expect(err).not.toContain('holds no Location')
+    expect(err).toContain('not a regular file')
+    expect(err).toContain(renderRegistration('repo'))
+  })
+
+  it('says nothing on stderr when the kept file is its own registration', async () => {
+    const root = await temp()
+    await init(['init', 'platform', 'repo', '--owner', '@a/b'], root)
+    const { code, out, err } = await init(['init', 'platform', 'repo', '--owner', '@a/b'], root)
+    expect(code).toBe(0)
+    expect(out).toContain('kept 13')
+    expect(err).toBe('')
   })
 
   it('needs a directory', async () => {

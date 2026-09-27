@@ -1,3 +1,4 @@
+import path from 'node:path'
 import { draftPlan } from '../../agents/architect.js'
 import type { EventSink } from '../../agents/events.js'
 import { inspect } from '../../agents/inspector.js'
@@ -23,6 +24,12 @@ import { budgetNotice, selectionNotice } from '../repository.js'
 import { loadTemplates } from '../../scaffold/templates.js'
 import { scaffoldLayout } from '../../scaffold/layout.js'
 import { writeScaffold, type FileIO } from '../../scaffold/write.js'
+import { readRegistrationFile } from '../../context/iac-fs/snapshot.js'
+import {
+  REGISTRATION_FILE,
+  registers,
+  renderRegistration,
+} from '../../core/validate/registration.js'
 import {
   ASK_LIMITS,
   fillAnswers,
@@ -56,18 +63,70 @@ export interface InitPlatformOptions {
   readonly version: string
 }
 
+/**
+ * What `init platform` says on stderr when the root `catalog-info.yaml` was
+ * there already and does not register the repository: the file is kept, as
+ * every file is, and the Location it needs is printed whole, to be added by the
+ * person who owns the file. Undefined when there is nothing to say.
+ */
+async function registrationNotice(
+  root: string,
+  kept: readonly string[],
+): Promise<string | undefined> {
+  if (!kept.includes(REGISTRATION_FILE)) return undefined
+  const file = await readRegistrationFile(root)
+  if (registers(file)) return undefined
+  const held = (file?.registrations ?? []).length > 0
+  // What is said of the file is what was read of it: one this tool cannot
+  // read is never said to hold no Location, and adding a document to text
+  // that does not parse registers nothing.
+  const [why, add] =
+    file === undefined
+      ? [
+          'it is not a regular file, and this tool reads no other, so it cannot tell whether it registers this repository',
+          'Make it hold this Location, as a document of its own:',
+        ]
+      : held
+        ? [
+            'the Location it holds does not register every folder here (`idp-agent validate` says why)',
+            'Add this Location to it, in place of the one it holds:',
+          ]
+        : file.rejections.length > 0
+          ? [
+              'part of it does not read (`idp-agent validate` says why), and no Location in it does',
+              'Once it reads, add this Location to it, as a document of its own:',
+            ]
+          : [
+              'it holds no Location, so Backstage cannot ingest this repository in one registration',
+              'Add this Location to it, as a document of its own:',
+            ]
+  return [
+    `${REGISTRATION_FILE} was already there and is kept; ${why}.`,
+    add,
+    '',
+    '---',
+    renderRegistration(path.basename(root)).trimEnd(),
+  ].join('\n')
+}
+
 export async function runInitPlatform(
   options: InitPlatformOptions,
   io?: FileIO,
-): Promise<CommandResult> {
+): Promise<CommandResult & { readonly notice?: string }> {
   const files = scaffoldLayout(
-    { owner: options.owner, version: options.version },
+    {
+      owner: options.owner,
+      version: options.version,
+      repository: path.basename(options.root),
+    },
     await loadTemplates(),
   )
   const report = await writeScaffold(options.root, files, io)
+  const notice = await registrationNotice(options.root, report.kept)
 
   const listed = [...report.written, ...report.kept].sort()
   return {
+    ...(notice !== undefined ? { notice } : {}),
     text: [
       `wrote ${report.written.length} · kept ${report.kept.length}`,
       ...listed.map((file) => `  ${report.written.includes(file) ? '+' : '=' } ${file}`),

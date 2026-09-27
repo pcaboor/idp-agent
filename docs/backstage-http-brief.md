@@ -121,7 +121,7 @@ not a migration. The repository is already Backstage's format, and `validate` ho
 file to what Backstage accepts. Slice 0 closes the rest: `init platform` writes a root
 `catalog-info.yaml` of `kind: Location` whose targets are the repository's catalogue folders,
 so one `catalog.locations` entry in the company's `app-config.yaml` ingests everything; and a
-short page, *Adopting Backstage later*, gives that entry and the read token `idpa` needs. The
+short page, [*Adopting Backstage later*](adopting-backstage.md), gives that entry and the read token `idpa` needs. The
 owner decided this on 2026-09-27.
 
 ## 3. The flow
@@ -225,7 +225,9 @@ Two tokens work, and the tool cannot tell them apart:
     auth:
       externalAccess:
         - type: static
-          options: { token: ${IDPA_CATALOG_TOKEN}, subject: idp-agent }
+          options:
+            token: ${IDPA_CATALOG_TOKEN}
+            subject: idp-agent
           accessRestrictions:
             - plugin: catalog
               permission: catalog.entity.read
@@ -717,15 +719,25 @@ the token without the test that proves where it goes.
 Doable now; it needs no provider. Closed by 0.2: a repository `init platform` created is
 registered in a Backstage with one `catalog.locations` entry, and the page says how.
 
+**Built** ([#86](https://github.com/pcaboor/idp-agent/pull/86)), with three departures
+from item 1 below, each for what Backstage's source showed: the targets are `*.yml` and
+`*.yaml` under the registry's two roots, because the engine files every entity as `.yml` and
+the registry defines no `components/`; `presence: optional`, because a glob matching nothing
+is otherwise an error and a fresh repository has nothing; and the root Location is not set
+aside but read as the registration, counted in silence by `validate` and held to Backstage's
+shape there. The page gives the `rules` a `catalog.locations` entry needs, since Backstage's
+default rules refuse a `kind: Resource`.
+
 1. **The root Location.** `init platform` writes `catalog-info.yaml` at the repository root:
    `kind: Location`, targets `./catalog/**/*.yaml`, `./components/**/*.yaml` and
    `./dependencies/**/*.yaml` (the folders the path registry defines, read from it, never
    written by hand), no witness file of its own. The reader sets a Location aside as today;
    `validate` holds it to Backstage's Location shape. A repository that already has a root
    `catalog-info.yaml` is not overwritten: `init platform` says what to add.
-2. **The page.** `docs/adopting-backstage.md`: the `app-config.yaml` entry that registers the
-   repository, the read token to issue for `idpa` (§ 4, the one this note recommends), and
-   what changes for a person once it is configured. Linked from the README.
+2. **The page.** [`docs/adopting-backstage.md`](adopting-backstage.md): the `app-config.yaml`
+   entry that registers the repository, the read token to issue for `idpa` (§ 4, the one this
+   note recommends), and what changes for a person once it is configured. Linked from the
+   README.
 
 ### Slice 1 — questions and relations against a Backstage (demoable)
 

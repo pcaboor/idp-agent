@@ -7,6 +7,8 @@ import { planSchema, type Plan } from '../../src/core/schemas/plan.js'
 import { parseDocuments, serializeEntity } from '../../src/core/yaml/serialize.js'
 import { ENV_ANNOTATION } from '../../src/core/schemas/vocabulary.js'
 import type { RepositoryFile, RepositorySnapshot } from '../../src/core/validate/rules.js'
+import { repositoryFileOf } from '../../src/core/validate/rules.js'
+import { REGISTRATION_FILE, renderRegistration } from '../../src/core/validate/registration.js'
 import { saidInFull } from '../support/provenance.js'
 
 const vocabulary = {
@@ -306,6 +308,48 @@ describe('recheckPlan', () => {
     expect(
       violations.some((violation) => violation.message.includes('ghost-service')),
     ).toBe(true)
+  })
+})
+
+describe('recheckPlan and the Backstage registration', () => {
+  it('reads an edited root catalog-info.yaml as validate does: its Location is the registration, not a kind set aside', () => {
+    // A grant kept in the root file beside the registration, which a plan then
+    // extends: the edited bytes are read back through the one definition, or
+    // the Location comes out `not-modelled` and a warning the plan never made.
+    const grant = fileHolding(REGISTRATION_FILE, 'billing-api-orders-db-prod')
+    const text = `${renderRegistration('iac')}---\n${serializeEntity(grant.entities[0]!)}`
+    const root = repositoryFileOf(REGISTRATION_FILE, text)
+    expect(root.ignored).toEqual([])
+    const parsed = planSchema.parse({
+      intent: 'let ghost-service consume orders-db in prod',
+      operations: [
+        {
+          op: 'update-entity',
+          entityRef: 'resource:default/billing-api-orders-db-prod',
+          patch: { patch: 'add-dependency-of', consumer: 'component:default/ghost-service' },
+        },
+      ],
+    })
+    const result = signAs(
+      parsed,
+      signature({
+        witnessed: new Set([
+          'component:default/ghost-service',
+          'resource:default/billing-api-orders-db-prod',
+        ]),
+      }),
+    )
+    if ('outcome' in result) throw new Error('refused')
+
+    const snap = snapshot([root])
+    const bytes = new Map([...bytesOf(snap), [REGISTRATION_FILE, text]])
+    const { edits } = planEdits(result, bytes)
+    expect(edits.map((edit) => edit.path)).toEqual([REGISTRATION_FILE])
+    expect(edits[0]?.after).toContain('kind: Location')
+
+    const { violations } = recheckPlan(result, snap, edits)
+    expect(violations.filter((violation) => violation.rule === 'not-modelled')).toEqual([])
+    expect(violations.filter((violation) => violation.rule === 'registration')).toEqual([])
   })
 })
 

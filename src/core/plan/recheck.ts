@@ -1,9 +1,8 @@
 import type { FileEdit } from '../diff/unified.js'
 import type { Entity } from '../schemas/entity.js'
 import { consumerRestatement, restatementOf, type DeclaredField } from './grant.js'
-import { parseDocuments } from '../yaml/serialize.js'
 import type { RepositoryFile, RepositorySnapshot, Violation } from '../validate/rules.js'
-import { checkRepository } from '../validate/rules.js'
+import { checkRepository, repositoryFileOf } from '../validate/rules.js'
 import type { SignedPlan } from './sign.js'
 
 /**
@@ -14,7 +13,7 @@ import type { SignedPlan } from './sign.js'
  *
  * The check is not a second set of rules. It applies the plan **virtually** —
  * builds the snapshot that would exist if the plan landed — and runs
- * `checkRepository` over the result: the same six rules CI runs, asked about a
+ * `checkRepository` over the result: the same eight rules CI runs, asked about a
  * repository that does not exist yet. That reuse is the whole reason stage 3
  * put those rules in `core/` with no `node:` import.
  *
@@ -130,6 +129,7 @@ const anchoredIn = (violation: Violation, written: Written): boolean => {
     case 'misplaced-entity':
     case 'dangling-reference':
     case 'not-modelled':
+    case 'registration':
       return written.files.has(violation.file)
     default: {
       const _exhaustive: never = violation.rule
@@ -277,7 +277,7 @@ export function recheckPlan(
    * had just called `already-declared`, so the entity came out a duplicate of
    * itself and a partially applied plan was refused. And it modelled creations
    * only, so an update-entity was invisible: `plan` exited 0 on a diff these
-   * same six rules reject once applied.
+   * same eight rules reject once applied.
    *
    * Parsing the edits instead makes the check and the preview the same object.
    * It is the repository's own habit — write then read back — applied to a
@@ -285,7 +285,7 @@ export function recheckPlan(
    */
   const edited = new Map<string, RepositoryFile>()
   for (const edit of edits) {
-    edited.set(edit.path, { path: edit.path, ...parseDocuments(edit.after) })
+    edited.set(edit.path, repositoryFileOf(edit.path, edit.after))
   }
 
   // Virtually means virtually: a new snapshot, never a mutation of the one we

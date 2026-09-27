@@ -13,7 +13,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 3018, no API key" src="https://img.shields.io/badge/tests-3018%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 3063, no API key" src="https://img.shields.io/badge/tests-3063%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -364,7 +364,7 @@ idp-agent init [--repo <dir>]                      # the catalog-info.yaml it wo
 | `graph`, `show` | Walk the dependency graph: who depends on what, which services reach a database. `show` also says what an entity is — its description, system, tags and links, when its file declares them. A Backstage `kind: API` is read too — `graph --kind API`, and on `show` who provides it (`spec.providesApis`) and the rights that reach it — though no plan ever declares one. No model. |
 | `idpa "<phrase>"` | A question is answered, a change is previewed; the classification is said on stderr (`· question`, `· mutation`). Needs a model. |
 | `ask` | Answers a question about your platform. The model picks the queries; the engine answers them, and prints the model's short introduction and conclusion around the answer, checked and marked `›`. Asked about the catalogue as a whole — *talk about this project* — it prints an overview the engine writes: counts by kind, type, environment, owner, system and tag, a few entities in their own descriptions, rights and their levels, the most-reached resources, dangling references, and what it could not read. |
-| `init platform` | Scaffolds the declarations repository, its CI and a branch-protection checklist. |
+| `init platform` | Scaffolds the declarations repository, its CI, its Backstage registration and a branch-protection checklist. |
 | `validate` | Checks a repository against the schemas. This is what the scaffolded CI runs. |
 | `plan` | Turns an intent, or a `Plan` file, into a checked and previewed diff. |
 
@@ -460,6 +460,8 @@ The order follows the doctrine: read first, validate before the first write, pre
 before the pull request. Today **no preview writes anything** — the test suite and
 `pnpm smoke` hash every byte around a full run to prove it — and `init platform` writes
 only into the directory it is handed.
+
+No Backstage is needed, and adopting one later is one registration: [`docs/adopting-backstage.md`](docs/adopting-backstage.md).
 
 What comes next and the owner's decisions: [`docs/roadmap.md`](docs/roadmap.md). What each pull request changed: [`CHANGELOG.md`](CHANGELOG.md).
 
