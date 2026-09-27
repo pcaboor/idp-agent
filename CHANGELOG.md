@@ -31,6 +31,13 @@ Each pull request adds its line here.
   rule), a root `catalog-info.yaml` already there is kept and the Location it needs printed
   on stderr, and [`docs/adopting-backstage.md`](docs/adopting-backstage.md) gives the entry,
   its catalogue rule and `idpa`'s read token ([#86](https://github.com/pcaboor/idp-agent/pull/86)).
+- The `backstage-http` transport, the only code that will send a catalogue token: `GET` on
+  two routes, to the configured origin and path only, `redirect: 'error'` with 3xx and
+  foreign responses refused, bounded in bytes and time, 429 waited for within 10 s, and no
+  response quoted in an error; every child process now runs without any `IDP_BACKSTAGE_`
+  variable and without any provider key, which `git` inherited until now; three architecture rules
+  hold `fetch` to the transport. Nothing calls it yet
+  ([#94](https://github.com/pcaboor/idp-agent/pull/94)).
 
 ### Changed
 
