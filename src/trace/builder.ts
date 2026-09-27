@@ -363,6 +363,10 @@ export function createTraceBuilder(options: {
       case 'ask':
         note('ask', { path: event.question.path, question: event.question.question })
         return
+      case 'usage':
+        // Already on the call's own span, from the result `traced` hands over:
+        // said twice, a count would read as two calls.
+        return
       default: {
         // A new event with no span is a compile error rather than a silent gap.
         const exhaustive: never = event

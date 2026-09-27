@@ -9,7 +9,7 @@ What has already shipped is in [`CHANGELOG.md`](../CHANGELOG.md). What the 2026-
 found, and which of its findings are closed, is in its
 [Status section](reviews/2026-09-23-deep-review.md#status).
 
-*Updated 2026-09-27, `main` at `b4b42f2`.*
+*Updated 2026-09-27, `main` at `5bbe537`.*
 
 ## Where the project stands
 
@@ -39,23 +39,16 @@ Each line says what the item is for. The sweep of the review is done
 ([its verdicts](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27)); its batches are
 here, one pull request each, each naming the check run together at the end.
 
-1. **Batch A5, the read side and the provider calls.** gap-ask-grounding-6,
-   gap-ask-grounding-7, gap-ask-grounding-11, domain-backstage-7, gap-init-real-repos-9,
-   gap-provider-matrix-6, agents-llm-10, product-gap-10: repository text flattened before a
-   prompt; a decorated Supervisor word accepted; the truncation note of the search cited;
-   `title`, `labels` and `subcomponentOf` read; `read_file` paths normalised; `store: false`
-   at OpenAI; an optional abort signal; one usage line per run. Check: the provider contract
-   test, and the question tapes replay with the bytes they had.
-2. **`backstage-http` slice 1: questions and relations against a Backstage.** The provider
+1. **`backstage-http` slice 1: questions and relations against a Backstage.** The provider
    reads a catalogue over HTTP ([the design note](backstage-http-brief.md), slice 1), first
    demonstrated against the fake Backstage on `127.0.0.1:7007`.
-3. **A real Backstage in Docker, for the demo.** One `docker compose up` starts a pinned
+2. **A real Backstage in Docker, for the demo.** One `docker compose up` starts a pinned
    Backstage holding the demo SI, registered through slice 0's Location, with a read token,
    so an evaluator sees the catalogue's pages and `idpa` querying the same Backstage (a
    built image or a maintained community image: decided then).
-4. **`backstage-http` slice 3: the organisation in the read model.** Groups, Users, Systems
+3. **`backstage-http` slice 3: the organisation in the read model.** Groups, Users, Systems
    and Domains read, so the agents see real owners and the systems services belong to.
-5. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
+4. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
    the current `main`, read only: what it covers and what it misses. It starts with an
    **analysis of the owner's uncommitted stage-5 work** on `feat/s5-cleared`, written on
    `eee67d6` before more than forty pull requests: what still applies, what `main` made
@@ -70,29 +63,29 @@ here, one pull request each, each naming the check run together at the end.
    operation to `targetOf`'s choice over `ProjectRead.declarations` (`filedIn`) — the root's
    `.yml`, or the one catalog-info kept elsewhere — so a `readCatalogInfo` that reads only the
    root's `catalog-info.yaml` would bring back the twin and the capped `before` this removed.
-6. **Stage 5, write + local branch.** The first write, atomic and idempotent — taken on from
+5. **Stage 5, write + local branch.** The first write, atomic and idempotent — taken on from
    the owner's plan and branch, discarding nothing already written, once the check above is
    agreed.
-7. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
+6. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
    hand-written files in every shape, and `signPlan` properties over plans valid by
    construction. `tests/invariants/arbitraries.ts` and `core.test.ts` are also edited on
    `feat/s5-cleared`, so it goes on top of stage 5.
-8. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
+7. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
    gap-stage5-readiness-4: one lstat, realpath and `O_NOFOLLOW` primitive shared from
    `project-fs`, used by `scaffold/write.ts` and by the iac-fs walk, which rejects a
    symbolic link by name. Medium, and what stage 5's writer will need.
-9. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
+8. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
    harness half of agents-llm-9: record from an empty tape, fail on a turn never replayed,
    and digest the JSON Schema the provider is sent. It needs no key, but it prunes dead turns
    and rewrites every tape's digest, so it waits for the owner's go-ahead.
-10. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
-    catalogue is plugged in.
-11. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
+9. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
+   catalogue is plugged in.
+10. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
     authorisation (ADR-0006).
-12. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
+11. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
     slices 4 and 5. From any service repository, generate its catalog-info and discover the
     dependencies it already has, with evidence.
-13. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
+12. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
     the project's end goal (2026-09-23).
 
 Within stage 8, its design note (section 11) states its own order:
@@ -281,7 +274,12 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
 **Recordings that need the owner's key**
 
 - **The question-mode recordings are stale.** `tests/recordings/question-*.json` warn "the
-  prompt changed since recording" on the Analyst's turn. They have been stale since
+  prompt changed since recording" on the Analyst's turns. So does `mutation-classified-link.json`
+  on the Supervisor's, for another reason: `tests/scenarios/question-mode.test.ts` asks it
+  "give billing-api read access to orders-db in prod", and the tape was recorded on "give
+  billing-api access to orders-db in prod" — that one needs no key, only the scenario's
+  words (seen by batch A5, which sends every one of them the bytes `5bbe537` did). The
+  question tapes have been stale since
   [#54](https://github.com/pcaboor/idp-agent/pull/54), which changed the Analyst's prompt
   and answer tool ([#55](https://github.com/pcaboor/idp-agent/pull/55) says so). They still
   replay and pass. A re-record needs the owner's key, and #54 suggests recording a

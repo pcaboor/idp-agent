@@ -16,6 +16,13 @@ export interface ProjectFile {
   /** Project-relative, POSIX separators whatever the platform. */
   readonly path: string
   readonly text: string
+  /**
+   * The bytes are not UTF-8 — Latin-1, say — so each sequence that does not
+   * decode reads as U+FFFD in `text`, and `text` is not all the file says.
+   * Absent on every file that decodes, which is what the recordings were made
+   * against.
+   */
+  readonly undecodable?: true
 }
 
 /** Never omitted, never silent: see `NEVER IGNORE IN SILENCE` in `snapshot.ts`. */

@@ -34,8 +34,15 @@ export interface AnalystOutcome {
   witnessed: ReadonlySet<string>
   calls: string[]
   /**
-   * Rows the tools cut off. The tool tells the model; if it stopped there the
-   * CLI would print a short list with nothing saying it is short.
+   * Rows cut off by the searches the answer's references came from — for each
+   * reference, the last call that returned it, a `get_entity` of a reference
+   * the model already held aside: a lookup does not say where the list came
+   * from, and letting it did drop the cut of the search that had. The tool
+   * tells the model; if it stopped there the CLI would print a short list with
+   * nothing saying it is short. Only those searches: a wide search the model
+   * narrowed afterwards cut rows of a list nobody is shown, and adding its cut
+   * to the answer's said the answer was short by rows it never lacked
+   * (gap-ask-grounding-11). A search run twice is one search.
    */
   truncated: number
 }
@@ -130,7 +137,10 @@ async function answerFromCatalogue(
   ]
   const calls: string[] = []
   let answer: Answer | undefined
-  let truncated = 0
+  /** What each search cut, by the call as the model made it. */
+  const cuts = new Map<string, number>()
+  /** For each reference, the search that returned it last — a lookup aside. */
+  const cameFrom = new Map<string, string>()
   let barren = 0
   /** What the model said on a turn that called nothing. Becomes the reason. */
   let said = ''
@@ -201,7 +211,17 @@ async function answerFromCatalogue(
       const reads = call.name !== 'answer'
       if (reads) emit({ type: 'tool:call', id: call.id, name: call.name, args: call.args })
       const outcome = tools.run(call)
-      truncated += outcome.truncated
+      if (reads) {
+        const search = `${call.name} ${JSON.stringify(call.args)}`
+        cuts.set(search, outcome.truncated)
+        // A lookup of a row the model already holds is not where the row came
+        // from: a wide search then a `get_entity` per row it keeps is how a
+        // model reads one, and the lookup's cut of 0 hid the search's.
+        const lookup = call.name === 'get_entity'
+        for (const ref of outcome.returned ?? []) {
+          if (!lookup || !cameFrom.has(ref)) cameFrom.set(ref, search)
+        }
+      }
       // A reference shown as naming nothing is not a row, but it was read:
       // two turns that found only those have not found nothing.
       const found = outcome.rows + (outcome.dangling ?? 0)
@@ -279,6 +299,8 @@ async function answerFromCatalogue(
     })
   }
 
+  const sources = new Set(referencesOf(signed).flatMap((ref) => cameFrom.get(ref) ?? []))
+  const truncated = [...sources].reduce((total, search) => total + (cuts.get(search) ?? 0), 0)
   return { answer: signed, witnessed: tools.witnessed, calls, truncated }
 }
 

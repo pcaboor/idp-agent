@@ -52,6 +52,12 @@ export interface RepositoryFile {
    * Reported, never refused, and never an entity to any other rule.
    */
   readonly ignored: readonly IgnoredDocument[]
+  /**
+   * What its entities and APIs hold that the read model does not read, one
+   * path per key and document (`parseDocuments`). Absent is none — a file
+   * that could not be read has no document to hold one.
+   */
+  readonly unread?: readonly string[]
   /** Documents in the file, including the null ones a witness is made of. */
   readonly documents: number
   /**

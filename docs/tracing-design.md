@@ -187,9 +187,14 @@ The trace also reads three facts the stream carries for its own reasons:
 
 | event | emitted by | what the trace draws |
 |---|---|---|
-| `{ type: 'stopped'; agent; reason }` | the Architect, the Inspector and the Reviewer, when the model call beneath them threw | the agent span fails with `reason`; `agent:end` still closes it |
+| `{ type: 'stopped'; agent; reason }` | the Architect, the Inspector and the Reviewer, when the model call beneath them threw; the Supervisor, when its model's call succeeded and gave neither word twice | the agent span fails with `reason`; `agent:end` still closes it |
 | `error?` on `tool:result` | a tool loop, when the tool refused or failed the call — the Architect's refused `answer` included | the `TOOL` span's outputs carry `error`, and it fails with it |
 | `{ type: 'reapplied'; path; value; entity; answeredAt; replaced? }` | the ask loop, when an answer the user gave is put back into a redraft | a span event on whatever is open |
+
+One event is on the stream and not drawn: `{ type: 'usage'; agent; usage? }`, which `counted`
+(`cli/usage.ts`) emits for each model call that returned, so the terminal can print the run's
+total once. The model call's own span already carries the count, from the result `traced`
+hands over; drawn again, it would read as two calls (`case 'usage': return` in `builder.ts`).
 
 `renderEvent` prints nothing for the four events this design adds. It says so in its switch,
 and the `never` in `default` keeps an unhandled one a compile error. The stderr log stays as it

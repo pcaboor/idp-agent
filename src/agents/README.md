@@ -27,7 +27,7 @@ Two consequences that look odd until you know why:
 
 | file | what it is |
 |---|---|
-| `supervisor.ts` | `MUTATION` or `QUESTION`, no tools, no third answer |
+| `supervisor.ts` | `MUTATION` or `QUESTION`, no tools, no third answer, one retry |
 | `analyst.ts` | a question against the graph, terminating in `answer`: `entities`, `nothing`, `overview` (chosen, never written — the engine describes the catalogue), `relation` (an entity and a relation chosen, the paths computed and written by the engine) or `unanswerable`; all but the last may carry the model's `intro` and `conclusion` |
 | `inspector.ts` | an application repository read into `ProjectFacts`, terminating in `report_facts` |
 | `architect.ts` | a draft into a typed buffer, terminating in `propose` |
@@ -44,7 +44,12 @@ Plain data, handed in. Never a graph, never a provider, never a path.
 
 - The **Supervisor** gets the request and a bucketed SI summary (`context/graph/summary.ts`),
   and no tools at all. It answers `MUTATION` or `QUESTION`, and a third answer is refused
-  rather than defaulted — declare, never infer.
+  rather than defaulted — declare, never infer. The punctuation and markdown around a word
+  are formatting (`Question.`, `**QUESTION**`); an answer that is still neither word is
+  handed back once, and a second one ends the run on exit 1 with one line naming
+  `IDP_SUPERVISOR_MODEL`. Every value of the summary's vocabulary is on one line and
+  bounded (`vocabularyValue` in `summary.ts`): a type or an environment is free text in a
+  repository file.
 - The **Analyst** and the **Architect** get a tool registry built for them in `tools/`,
   whose functions close over an `EntityGraph` the agent itself never holds. A refused
   call comes back as an error the model reads and the `tool:result` event carries, so
@@ -147,6 +152,10 @@ Plain data, handed in. Never a graph, never a provider, never a path.
   and hidden directories bar `.github` are gone before this folder sees anything.
   `list_files` and `read_file` read that snapshot and nothing else, so "confined to the
   repository" is a property of the data it was handed rather than a check it performs.
+  `read_file` matches a path exactly, but `./`, a doubled slash, a `.` or a `..` segment
+  and either Unicode normalisation spell the same path; a file it cannot give is said to
+  be under an excluded folder (named, with why), past a cap, or not there, and a file that
+  is not UTF-8 comes with a note that its text reads U+FFFD where the bytes did not decode.
   It runs only when there is an application repository to read; otherwise the Architect
   is handed `NOT_INSPECTED` instead of `ProjectFacts`, and its opening message says that
   nothing was inspected rather than listing facts nobody established.

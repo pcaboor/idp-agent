@@ -73,7 +73,12 @@ describe('IacFsProvider', () => {
 
   it('reads an empty directory as no entity and no rejection', async () => {
     const repo = await mkdtemp(path.join(tmpdir(), 'iac-provider-empty-'))
-    expect(await new IacFsProvider(repo).load()).toEqual({ entities: [], rejected: [], ignored: [] })
+    expect(await new IacFsProvider(repo).load()).toEqual({
+      entities: [],
+      rejected: [],
+      ignored: [],
+      unread: [],
+    })
   })
   it.skipIf(process.getuid?.() === 0)('reports a folder it could not list, rather than reading it as empty', async () => {
     // The entities under it are missing from every answer `graph`, `show` and

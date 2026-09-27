@@ -100,6 +100,7 @@ describe('show', () => {
         '  definition   declared',
         '  owner        group:default/tiger',
         '  environment  (undeclared)',
+        '  title        Billing API',
         '  description  Invoices and credit notes, as billing-api serves them',
         '  system       system:default/payments',
         '  tags         rest, invoices',

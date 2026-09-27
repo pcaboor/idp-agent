@@ -224,6 +224,40 @@ describe.each(PROVIDERS)('a %s call that cannot succeed', (provider) => {
     expect(calls).toBe(1)
   })
 
+  it("stops when the caller's signal aborts, with the caller's reason, and asks once", async () => {
+    // agents-llm-10: a chat that stops a run mid-call (stage 7) has a way in
+    // that does not wait for IDP_TIMEOUT. The timeout still holds beside it.
+    const signals: AbortSignal[] = []
+    let calls = 0
+    vi.stubGlobal('fetch', (_: unknown, init?: { signal?: AbortSignal }): Promise<Response> => {
+      calls += 1
+      if (init?.signal !== undefined) signals.push(init.signal)
+      return new Promise(() => {})
+    })
+    const stop = new AbortController()
+    const reason = new Error('stopped by the person')
+    setTimeout(() => stop.abort(reason), 20)
+
+    const started = Date.now()
+    const error = await failure(live(provider, 30).generate(request(), { signal: stop.signal }))
+
+    expect(error).toBe(reason)
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(signals).toHaveLength(1)
+    expect(signals.every((signal) => signal.aborted)).toBe(true)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(calls).toBe(1)
+  })
+
+  it('sends nothing when the signal has already aborted', async () => {
+    const seen = answering(() => json(200, {}))
+    const stop = new AbortController()
+    stop.abort(new Error('stopped before the call'))
+    const error = await failure(live(provider).generate(request(), { signal: stop.signal }))
+    expect(error.message).toBe('stopped before the call')
+    expect(seen.calls).toBe(0)
+  })
+
   it('does not retry an expired call when fetch honours the abort', async () => {
     let calls = 0
     vi.stubGlobal('fetch', (_: unknown, init?: { signal?: AbortSignal }): Promise<Response> => {

@@ -75,12 +75,22 @@ export function nowhere(unresolved: Unresolved): string {
 }
 
 export function renderEntityDetail(graph: EntityGraph, entity: CatalogueEntity): string {
-  const { description, tags = [], links = [] } = entity.metadata
+  const { title, description, labels = {}, tags = [], links = [] } = entity.metadata
   // Each judged empty once cleaned, not before: a tag that is only a
   // clear-screen is no tag, and would print as a bare separator.
+  const titled = title === undefined ? '' : shown(title)
   const described = description === undefined ? '' : shown(description)
   const system = entity.spec.system === undefined ? '' : shown(entity.spec.system)
+  const parent =
+    entity.kind === 'Component' && entity.spec.subcomponentOf !== undefined
+      ? shown(entity.spec.subcomponentOf)
+      : ''
   const tagged = tags.map((tag) => shown(tag, TAG_LENGTH)).filter((tag) => tag !== '')
+  // In key order, code unit by code unit, so the line does not move with the
+  // file's order or LANG; each `key=value` as Backstage's own UI writes one.
+  const labelled = Object.entries(labels)
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([key, value]) => shown(`${key}=${value}`))
   const linked = links.flatMap(({ url, title }) =>
     oneLine(url) === ''
       ? []
@@ -121,9 +131,16 @@ export function renderEntityDetail(graph: EntityGraph, entity: CatalogueEntity):
     // What the entity says it is, in its file's own words. Each line only when
     // there is something on it: unlike an environment, a missing description
     // or system is not a gap in a declaration this tool reviews.
+    ...(titled === '' ? [] : [`  title        ${titled}`]),
     ...(described === '' ? [] : [`  description  ${described}`]),
     ...(system === '' ? [] : [`  system       ${system}`]),
+    // What Backstage calls a subcomponent's parent: printed as the file wrote
+    // it, in full when it could be read, like the system.
+    ...(parent === '' ? [] : [`  part of      ${parent}`]),
     ...(tagged.length === 0 ? [] : [`  tags         ${counted(tagged, ENTITY_LIMITS.tags)}`]),
+    ...(labelled.length === 0
+      ? []
+      : [`  labels       ${counted(labelled, ENTITY_LIMITS.tags)}`]),
   ]
 
   if (linked.length > 0) {

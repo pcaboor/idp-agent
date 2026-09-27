@@ -73,11 +73,17 @@ An API is a node like any other: a right that `dependsOn` `api:…` resolves to 
 its own, not a dependency either way: `providedApisOf(component)` reads `spec.providesApis`,
 one declared hop in file order, and `providersOf(api)` is its exact transpose, sorted. A
 `providesApis` naming nothing is a dangling reference, as a `dependsOn` one is.
-`spec.consumesApis` is never read (design §4.1): consumption is the right. `plan` builds its
-graph without the API nodes, puts their references among the documents set aside and strips
-each Component's `providesApis`, so a change is decided against the write model: an API is a
-reference that resolves, and a `providesApis` naming an API declared elsewhere is no dangling
-reference in the summary the Architect reads. What does differ from before: an API missing
+`spec.consumesApis` is never read (design §4.1): consumption is the right — but it is
+counted: every field of an entity or an API the read model does not read (`relations`,
+`spec.consumesApis`, `metadata.uid`) is in `LoadResult.unread` (`unreadFieldsOf`), and the
+read commands say them on one `not read:` line, as the documents set aside are said. A
+`title`, the `labels` and a Component's `subcomponentOf` are read, and `show` prints them.
+A title or a label is text, as Backstage requires: one that is not (`tier: 1`) refuses its
+entity, as a number among the annotations does, where it was stripped before and the
+entity loaded. `plan` builds its graph without the API nodes, puts their references among
+the documents set aside and strips each Component's `providesApis`, so a change is decided
+against the write model: an API is a reference that resolves, and a `providesApis` naming an
+API declared elsewhere is no dangling reference in the summary the Architect reads. What does differ from before: an API missing
 what Backstage requires is refused rather than set aside, so a right over it dangles there,
 as `validate` says.
 

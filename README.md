@@ -13,7 +13,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 3192, no API key" src="https://img.shields.io/badge/tests-3192%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 3249, no API key" src="https://img.shields.io/badge/tests-3249%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -321,7 +321,9 @@ low reasoning effort where the model takes one (an OpenAI reasoning model; the r
 lighter model of the same provider and key. A model call that cannot succeed ends the run
 with one line and exit 1: it did not answer within `IDP_TIMEOUT`, the provider refused the
 key, rate-limited the call or failed, the request outgrew the model's context window, or
-the model hit its output limit or a content filter before answering.
+the model hit its output limit or a content filter before answering. A model-backed run
+ends with one line on stderr saying how many model calls it made and the tokens the
+provider reported for them.
 
 ## Commands
 

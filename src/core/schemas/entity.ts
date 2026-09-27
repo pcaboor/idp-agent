@@ -126,6 +126,7 @@ const readApiRefSchema = z.string().min(1, 'expected an API reference')
 interface RefFields {
   owner: string
   system?: string | undefined
+  subcomponentOf?: string | undefined
   dependsOn?: string[] | undefined
   dependencyOf?: string[] | undefined
   providesApis?: string[] | undefined
@@ -189,6 +190,9 @@ function qualifiedSpec<S extends RefFields>(
     ...spec,
     owner: read(spec.owner, 'group', ['owner']),
     ...(spec.system !== undefined && { system: lenient(spec.system, 'system') }),
+    ...(spec.subcomponentOf !== undefined && {
+      subcomponentOf: lenient(spec.subcomponentOf, 'component'),
+    }),
     ...(spec.dependsOn !== undefined && {
       dependsOn: spec.dependsOn.map((ref, at) => read(ref, undefined, ['dependsOn', at])),
     }),
@@ -229,9 +233,22 @@ const linkSchema = z.object({
   type: z.string().optional(),
 })
 
+/** Why a title or a label that is not text refuses its entity. */
+const BACKSTAGE_TEXT = 'expected text, which Backstage requires'
+
 export const metadataSchema = z.object({
   name: z.string().regex(NAME_PATTERN, 'invalid Backstage name'),
+  /**
+   * What a person calls the entity, and its labels: read so `show` can print
+   * them, never proposed — like the links, nothing a model writes has a field
+   * for either. Each is text, as Backstage requires: a `tier: 1` refuses the
+   * entity, as a number among the annotations does, where it was stripped
+   * and the entity loaded before they were read. The reason names the rule's
+   * owner, since the value parsed and reads as fine.
+   */
+  title: z.string({ error: BACKSTAGE_TEXT }).optional(),
   description: z.string().optional(),
+  labels: z.record(z.string(), z.string({ error: BACKSTAGE_TEXT })).optional(),
   annotations: z.record(z.string(), z.string()).default({}),
   tags: z.array(z.string()).optional(),
   links: z.array(linkSchema).optional(),
@@ -263,6 +280,11 @@ export const componentSchema = z
       owner: readOwnerRefSchema,
       /** Read side only, like the links: no proposal names a system. */
       system: readSystemRefSchema.optional(),
+      /**
+       * The component this one is part of, Component the default kind — read
+       * as `spec.system` is, for its reason: this tool only prints it.
+       */
+      subcomponentOf: z.string().min(1, 'expected a component reference').optional(),
       /**
        * The Backstage APIs this service provides — read, and never proposed:
        * `proposedComponentSchema` has no field for it. `spec.consumesApis` is
@@ -337,6 +359,51 @@ export const resourceSchema = z
     }
   })
   .transform(qualify)
+
+/**
+ * The keys a document of a kind this tool reads holds and the read model does
+ * not read — `relations`, `metadata.uid`, `spec.consumesApis` — one path per
+ * key, sorted. The schemas strip them; this is what says they were there
+ * (domain-backstage-7), so a reader is told a field of the file reached no
+ * answer rather than finding out. Only the three levels the read model has:
+ * what is inside a field it reads, a link's keys say, is that field's.
+ *
+ * Read off the schemas' own shapes, so a field the read model starts to read
+ * leaves this list without a second place to keep in step.
+ */
+export function unreadFieldsOf(document: unknown): string[] {
+  const shape = shapes.get(kindOfDocument(document) ?? '')
+  if (shape === undefined) return []
+  const keysOf = (value: unknown): string[] =>
+    typeof value === 'object' && value !== null && !Array.isArray(value) ? Object.keys(value) : []
+  const record = document as Record<string, unknown>
+  return [
+    ...keysOf(document).filter((key) => !shape.top.has(key)),
+    ...keysOf(record['metadata'])
+      .filter((key) => !shape.metadata.has(key))
+      .map((key) => `metadata.${key}`),
+    ...keysOf(record['spec'])
+      .filter((key) => !shape.spec.has(key))
+      .map((key) => `spec.${key}`),
+  ].sort()
+}
+
+const kindOfDocument = (document: unknown): string | undefined => {
+  const kind =
+    typeof document === 'object' && document !== null
+      ? (document as Record<string, unknown>)['kind']
+      : undefined
+  return typeof kind === 'string' ? kind : undefined
+}
+
+/** The three levels of a read schema, before its transform: what it reads. */
+const levelsOf = (schema: {
+  in: { shape: { metadata: { shape: object }; spec: { shape: object } } }
+}): { top: ReadonlySet<string>; metadata: ReadonlySet<string>; spec: ReadonlySet<string> } => ({
+  top: new Set(Object.keys(schema.in.shape)),
+  metadata: new Set(Object.keys(schema.in.shape.metadata.shape)),
+  spec: new Set(Object.keys(schema.in.shape.spec.shape)),
+})
 
 /**
  * The write model: the two kinds this tool proposes, files and amends. What
@@ -428,6 +495,13 @@ export const apiSchema = z
   .transform(qualify)
 
 export type Api = z.infer<typeof apiSchema>
+
+/** By the kind a document states, as `parseDocuments` routes it: exactly. */
+const shapes = new Map<string, ReturnType<typeof levelsOf>>([
+  ['Component', levelsOf(componentSchema)],
+  ['Resource', levelsOf(resourceSchema)],
+  ['API', levelsOf(apiSchema)],
+])
 
 /**
  * The read model: every entity the graph holds. The write model, and the kinds

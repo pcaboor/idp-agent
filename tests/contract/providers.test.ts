@@ -372,6 +372,24 @@ describe('what an agent is sent beside its request', () => {
     expect(analyst).not.toHaveProperty('reasoning')
   })
 
+  it.each(['gpt-5', 'gpt-4o', 'gpt-5-chat-latest', 'o1-mini'])(
+    'asks OpenAI to store no call to %s, beside whatever effort the call carries',
+    async (model) => {
+      // Left unsent, `store` is true on the Responses API, and every file the
+      // Inspector read from the user's repository is kept at OpenAI. Each
+      // agent's call says false, the Supervisor's merged with its effort.
+      const { supervisor, analyst } = await sentFor('openai', { model })
+      expect(supervisor['store']).toBe(false)
+      expect(analyst['store']).toBe(false)
+    },
+  )
+
+  it.each(['anthropic', 'mistral'] as const)('sends %s no store flag', async (provider) => {
+    const { supervisor, analyst } = await sentFor(provider)
+    expect(supervisor).not.toHaveProperty('store')
+    expect(analyst).not.toHaveProperty('store')
+  })
+
   it.each(['gpt-5', 'gpt-5-mini', 'gpt-5.1', 'gpt-5-codex', 'gpt-6-luna', 'o3', 'o4-mini'])(
     'asks %s for a low effort, and prints no warning',
     async (model) => {
