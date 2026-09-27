@@ -37,8 +37,10 @@ framed in the model's words, Backstage APIs, the relations view, and tracing int
 **In order**, as the owner decided on 2026-09-23, 2026-09-25 and 2026-09-26. Each line says
 what the item is for.
 
-1. **The `backstage-http` read provider: a design note and a stage plan.** Context read from a
-   Backstage catalogue, where today it comes from a configured source.
+1. **Slice 0 of `backstage-http`: a repository Backstage ingests in one registration.**
+   `init platform` writes a root `kind: Location`, and a page says how to register the
+   repository and issue `idpa`'s read token ([the design note](backstage-http-brief.md),
+   slice 0). No Backstage is needed to use the tool; installing one is out of scope.
 2. **A sweep of the review.** Each finding no pull request names is classified still true,
    fixed or obsolete; the Status section is updated, and the cheap fixes still true are
    batched.
@@ -62,8 +64,9 @@ what the item is for.
   authorisation (ADR-0006).
 - **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal
   that the owner set as the project's end goal (2026-09-23).
-- **The `backstage-http` read provider itself**, once its design note and plan (item 2) are
-  agreed.
+- **The `backstage-http` read provider, slices 1 to 3**
+  ([the design note](backstage-http-brief.md)): after the stage-5 check, beside stage 5.
+  Slices 4 and 5 go with stage 8.
 - **Stage 8, discovery** ([the design note](stage-8-brief.md)). From any
   service repository, generate its catalog-info and discover the dependencies it already
   has, with evidence.
@@ -160,6 +163,15 @@ The owner's decisions, dated, each with where it is recorded.
   answer. Otherwise it is asked, the environments in use listed. A negation lexicon is kept
   only as a veto on that pointing
   ([#81](https://github.com/pcaboor/idp-agent/pull/81)).
+- The `backstage-http` design is accepted as recommended: the catalogue read before the
+  model into the same graph, a static read token limited to `catalog.entity.read`, entities
+  the tool does not model set aside and counted, catalogue content to the model provider
+  stated in SECURITY.md and the README, a disk cache and `--cached` in slice 2, and a row
+  after stage 6 ([the note's section 14](backstage-http-brief.md),
+  [#84](https://github.com/pcaboor/idp-agent/pull/84)).
+- A company without Backstage is fully served by the declarations repository; installing a
+  Backstage is not the tool's responsibility, but adopting one must take a single
+  registration: slice 0 ([#84](https://github.com/pcaboor/idp-agent/pull/84)).
 
 ## Known debts and open items
 
