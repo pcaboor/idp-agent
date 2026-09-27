@@ -19,12 +19,20 @@ export class IacFsProvider implements ContextProvider {
   constructor(private readonly root: string) {}
 
   async load(): Promise<LoadResult> {
-    const { files } = await readRepository(this.root)
+    const { files, unreadable } = await readRepository(this.root)
     return {
       entities: files.flatMap((file) => [...file.entities, ...file.apis]),
-      rejected: files.flatMap((file) =>
-        file.rejections.map((reason) => ({ source: file.path, reason })),
-      ),
+      rejected: [
+        // A folder it could not list is said as a file it could not read is:
+        // what it holds is missing from every answer, and the reader is told.
+        ...(unreadable ?? []).map((folder) => ({
+          source: folder.path === '' ? '.' : folder.path,
+          reason: `could not be listed (${folder.reason})`,
+        })),
+        ...files.flatMap((file) =>
+          file.rejections.map((reason) => ({ source: file.path, reason })),
+        ),
+      ],
       ignored: files.flatMap((file) =>
         file.ignored.map((document) => ({ source: file.path, ...document })),
       ),

@@ -13,14 +13,19 @@ question. A first argument that is no command name is `entry`, the one gesture `
 things are refused, and nothing else is second-guessed: a command behind its options
 (`--repo IaC show billing-api` is `show` in the wrong order, not the phrase "show
 billing-api"), and a phrase of a single word a slip away from a command name (`grpah`,
-`shwo`, `palm`, `relation`, `relatoins`) — one edit, two for a name of four letters or more kept at its length, and
-never a change of first letter, so `who`, `edit` and `hello` stay phrases. Each is an
-`error`, and neither reaches a model. A longer phrase whose first word is such a slip —
+`shwo`, `palm`, `relation`, `relatoins`) — one edit, two for a name of four letters or more
+kept at its length, and never a change of first letter, so `who`, `edit` and `hello` stay
+phrases; `validate` and `version` share theirs, and the nearer wins. Each is an `error`, and
+neither reaches a model. A longer phrase whose first word is such a slip —
 `idpa relation billing-api` — stays a phrase, since a sentence may begin with any word;
 when no model can be opened for it, the refusal is followed by the command it looks like
 (`slipHint`: `"relation" is not a command; did you mean idpa relations? It needs no
 model`). `COMMANDS` is the list of names, and `entry.test.ts` holds it to the parser and
-to `HELP`.
+to `HELP`. `-h` and `--help` are `help`, `--version`, `-v` and `version` are `version`, and
+a `--help` or `-h` anywhere before `--` is `help` with the `usage` of the command it follows
+(`usageOf`, its lines of `HELP`) — the lines a refused argument prints too, where it
+printed the whole page. `validate` and `init platform` take exactly one directory, never
+empty, and `version`, `--version` and `-v` nothing (`command-line-edges.test.ts`).
 
 **The one gesture.** `commands/entry.ts`'s `runEntry` is `ask`'s `classified` with a
 different answer to a change: the Supervisor classifies the phrase once, a `QUESTION` is
@@ -165,14 +170,13 @@ left as it is.
 
 **Exit codes.** `EXIT.ok` is 0, `EXIT.notFound` is 1 (the answer is negative: a filter that
 matches nothing, an ambiguous name, a relation that holds nothing, or a repository that does
-not conform — and a model call
-that failed, in the one line `llm/failures.ts` wrote for it), `EXIT.badUsage` is 2 (the
-arguments were refused, or no model, no key or no usable `IDP_TIMEOUT` or
-`IDP_SUPERVISOR_MODEL` is configured),
-`EXIT.unsupported` is 3 (understood, and this build
-will not act on it). Only `cli/index.ts` turns `CommandResult.found` into an exit code — a command
-states the fact and stays free of the process — and `bin.ts` assigns it to
-`process.exitCode`.
+not conform — and a model call that failed, in the one line `llm/failures.ts` wrote for it),
+`EXIT.badUsage` is 2 (the arguments were refused, or no model, no key or no usable
+`IDP_TIMEOUT` or `IDP_SUPERVISOR_MODEL` is configured), `EXIT.unsupported` is 3 (understood,
+and this build will not act on it), `EXIT.interrupted` is 130 (Ctrl-C at a question,
+`InterruptedError`; Ctrl-D stays a decline). Only `cli/index.ts` turns `CommandResult.found`
+into an exit code — a command states the fact and stays free of the process — and `bin.ts`
+assigns it to `process.exitCode`.
 
 **stdout.** `cli/` is the only layer that writes to it. `main(argv, deps)` takes injectable `MainDeps` —
 `root`, `cwd`, `out`, `err` — so `tests/unit/main.test.ts` captures output into arrays and runs against

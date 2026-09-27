@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3063 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3115 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does,
@@ -60,18 +60,19 @@ nothing in common (a near miss alone does not count), an entity was asked about 
 to itself, **the repository does not conform**, a gate refused a
 plan, the repair loop stopped at three attempts, or something failed unexpectedly · `2`
 the arguments were refused — a bad flag, a plan file that is not a plan, a `--repo`, a
-`--project` or a configured repository that is not a directory, a `--project` that is a
-declarations repository or the one the change is decided against, a change with no
-declarations repository to decide against, a single word one slip away from a command name
-(`idpa grpah`, `idpa relation`), a command typed after its options, two relation flags or
-one beside `--to`, a `--depth` that is not a whole number from 1 to 100, a
-`.idp-agent.yml` or a personal `config.yml` that does not parse — or no model, no key or
-no usable `IDP_TIMEOUT` or `IDP_SUPERVISOR_MODEL` is configured · `3` the request was
-understood and this build will not act on it: a change request put to `ask` (which names
-`idpa "<phrase>"` as the gesture that previews it), a question the model refused, a plan
-holding values nobody can vouch for, **asked rather than guessed**, or a plan that produces
-no bytes while the repository does not already declare what it states — in prose and in
-`--json` alike. A command returns
+`--project`, a configured repository or the directory `validate` or `init` is handed that is
+not a directory, a `--project` that is a declarations repository or the one the change is
+decided against, a change with no declarations repository to decide against, a single word
+one slip away from a command name (`idpa grpah`, `idpa relation`), a command typed after its
+options, two relation flags or one beside `--to`, a `--depth` that is not a whole number
+from 1 to 100, a `.idp-agent.yml` or a personal `config.yml` that does not parse — or no
+model, no key or no usable `IDP_TIMEOUT` or `IDP_SUPERVISOR_MODEL` is configured · `3` the
+request was understood and this build will not act on it: a change request put to `ask`
+(which names `idpa "<phrase>"` as the gesture that previews it), a question the model
+refused, a plan holding values nobody can vouch for, **asked rather than guessed**, or a
+plan that produces no bytes while the repository does not already declare what it states —
+in prose and in `--json` alike · `130` Ctrl-C at a question: the person stopped the run,
+which is not a declined question (Ctrl-D is one). A command returns
 `{ text, found, unsupported? }`; only `cli/index.ts` turns that into a code.
 
 The one that is not obvious is a **stop**: three attempts, still refused, exit `1`. Not
@@ -124,7 +125,7 @@ path ends; between two entities, the paths where one depends on the other, else 
 nearest entities both reach — with no model (`context/graph/relations.ts`, rendered by
 `cli/render/relations.ts`); `ask`, answered by the Supervisor and the Analyst against
 recordings with no API key, a relation question included: the model chooses the entity and
-the relation, and the engine writes `relations`' block; `validate`, eight rules over an
+the relation, and the engine writes `relations`' block; `validate`, nine rules over an
 IaC repository; `init platform`, which writes thirteen files — the Backstage registration
 among them — and clobbers nothing; and stage 4's two previews, which write nothing to a
 repository:
@@ -207,7 +208,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 
 | Folder | Responsibility |
 |---|---|
-| `core/` | schemas (Zod), the eight validation rules and the Backstage registration, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — and the engine's check on an answer's commentary (`core/answer/`) |
+| `core/` | schemas (Zod), the nine validation rules and the Backstage registration, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — and the engine's check on an answer's commentary (`core/answer/`) |
 | `context/` | `ContextProvider` (two implementations: `fixtures`, and `iac-fs` behind `--repo`), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries |
 | `cli/` | argument parsing, commands, rendering, `.idp-agent.yml` and the personal `config.yml`, which source a command reads — the only layer that writes to stdout |
 | `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |

@@ -1,5 +1,5 @@
-import type { Api, Entity } from '../schemas/entity.js'
-import { resolveEntityPath } from '../paths/entity-path.js'
+import { SOURCE_FILE_ANNOTATION, type Api, type Entity } from '../schemas/entity.js'
+import { PathEscapeError, resolveEntityPath } from '../paths/entity-path.js'
 import { parseDocuments, type IgnoredDocument } from '../yaml/serialize.js'
 import {
   REGISTRATION_FILE,
@@ -23,6 +23,7 @@ export type Rule =
   | 'dangling-reference'
   | 'not-modelled'
   | 'registration'
+  | 'unreadable-folder'
 
 export type Severity = 'error' | 'warning'
 
@@ -87,10 +88,26 @@ export interface RepositorySnapshot {
   /** Those holding a `.witness.yml`. Found by readdir, never by a glob. */
   readonly witnesses: readonly string[]
   readonly files: readonly RepositoryFile[]
+  /**
+   * The folders the reader could not list, `''` for the root, each with why.
+   * Absent is none. What they hold was never read, so a rule that found
+   * nothing there found nothing because it looked at nothing.
+   */
+  readonly unreadable?: readonly UnreadableFolder[]
+}
+
+/** A folder `readdir` refused: repository-relative, POSIX, and the error code. */
+export interface UnreadableFolder {
+  readonly path: string
+  readonly reason: string
 }
 
 const refOf = (entity: Entity | Api): string =>
   `${entity.kind.toLowerCase()}:default/${entity.metadata.name}`
+
+/** Whether an entity says where it lives, as `resolveEntityPath` reads it. */
+const namesItsFile = (entity: Entity): boolean =>
+  (entity.metadata.annotations[SOURCE_FILE_ANNOTATION] ?? '') !== ''
 
 const folderOfFile = (path: string): string => {
   const cut = path.lastIndexOf('/')
@@ -105,6 +122,20 @@ const referencesOf = (entity: Entity): string[] => [
 
 export function checkRepository(snapshot: RepositorySnapshot): Violation[] {
   const violations: Violation[] = []
+
+  // An error, not a warning: a folder under chmod 000 lost every entity in it,
+  // and `validate` said "0 violations" on exit 0 — compliant, about what it
+  // never read (review, runtime-probe-3). A duplicate or a dangling reference
+  // can sit in there, and CI is the one place that would have said so.
+  for (const folder of snapshot.unreadable ?? []) {
+    violations.push({
+      rule: 'unreadable-folder',
+      file: folder.path === '' ? '.' : folder.path,
+      severity: 'error',
+      message: `could not be listed (${folder.reason}); nothing in it was checked`,
+    })
+  }
+
   const declared = new Set<string>()
   const byRef = new Map<string, string[]>()
 
@@ -207,13 +238,23 @@ export function checkRepository(snapshot: RepositorySnapshot): Violation[] {
 
     for (const entity of file.entities) {
       if (structurallyFaulted.has(file.path)) continue
+      // A Component that names no file has no conventional location — it
+      // lives in its own repository, and resolveEntityPath throws rather than
+      // invent one. There is nothing to check, which is not a failure. That
+      // case alone: the catch used to take every throw, so an annotation
+      // naming a file outside the repository passed in silence.
+      if (entity.kind === 'Component' && !namesItsFile(entity)) continue
       let expected: string
       try {
         expected = resolveEntityPath(entity)
-      } catch {
-        // A Component has no conventional location — it lives in its own
-        // repository, and resolveEntityPath throws rather than invent one.
-        // A throw here means there is nothing to check, not a failure.
+      } catch (error) {
+        if (!(error instanceof PathEscapeError)) throw error
+        violations.push({
+          rule: 'misplaced-entity',
+          file: file.path,
+          severity: 'error',
+          message: `${refOf(entity)} ${error.message}`,
+        })
         continue
       }
       if (expected !== file.path) {

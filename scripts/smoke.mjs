@@ -161,6 +161,26 @@ function hashTree(dir) {
 }
 
 check({ args: ['help'], code: 0, stdout: /idp-agent graph/ })
+// The edges of the command line (review, batch A1): help and the version by
+// their usual flags, one command's usage, and a directory that is none refused
+// on exit 2 before any model is chosen — so with nothing configured, the
+// refusal is about the path, not about the model.
+const MANIFEST = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
+check({ args: ['--version'], code: 0, stdout: new RegExp(`^${MANIFEST.version.replaceAll('.', '\\.')}\n$`) })
+check({ args: ['-h'], code: 0, stdout: /idp-agent graph/ })
+check({ args: ['show', '--help'], code: 0, stdout: /^usage:\n {2}idp-agent show /, absentFromStdout: /idp-agent graph/ })
+check({
+  args: ['validate', '/nonexistent'],
+  code: 2,
+  stderr: /^\/nonexistent is not a directory; validate names the declarations repository/,
+  absentFromStdout: /violations/,
+})
+check({
+  args: ['init', '--repo', '/nonexistent'],
+  code: 2,
+  stderr: /^\/nonexistent is not a directory; init --repo names the application repository/,
+  absentFromStderr: /no model configured/,
+})
 check({ args: ['graph', '--env', 'prod'], code: 0, stdout: /billing-db-prod/ })
 check({ args: ['show', 'billing-db-prod'], code: 0, stdout: /reached by services/ })
 check({ args: ['show', 'billing-api'], code: 0, stdout: /billing-api-billing-db-prod/ })

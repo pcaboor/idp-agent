@@ -270,6 +270,32 @@ describe.each(PROVIDERS)('a %s call that cannot succeed', (provider) => {
     expect(seen.calls).toBe(3)
   })
 
+  it('says each retry as it happens, and nothing on a failure that is not retried', async () => {
+    // The SDK retried a 429 or a 5xx in silence: a run sat waiting with no
+    // line saying why (review, runtime-probe-13). One line per retry, while
+    // it waits — never for the last failure, which the run ends on.
+    vi.stubEnv(KEY_VARIABLES[provider], 'test-key-not-a-real-one')
+    for (const name of wire.moves) vi.stubEnv(name, undefined)
+    const said: string[] = []
+    const client = createClient({
+      mode: 'live',
+      choice: { provider, model: wire.model },
+      notice: (line) => void said.push(line),
+    })
+
+    answering(() => json(429, wire.error(429, 'Requests rate limit exceeded')))
+    await failure(client.generate(request()))
+    expect(said).toEqual([
+      `${who}: rate limited (HTTP 429); retrying the analyst's call (attempt 2 of 3)`,
+      `${who}: rate limited (HTTP 429); retrying the analyst's call (attempt 3 of 3)`,
+    ])
+
+    said.length = 0
+    answering(() => json(401, wire.error(401, 'invalid x-api-key', 'invalid_api_key')))
+    await failure(client.generate(request()))
+    expect(said).toEqual([])
+  })
+
   it('says the provider failed on a 5xx', async () => {
     answering(() => json(500, wire.error(500, 'Internal server error')))
     const error = await failure(live(provider).generate(request()))

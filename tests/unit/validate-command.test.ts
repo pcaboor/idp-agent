@@ -151,10 +151,13 @@ describe('validate', () => {
     expect(io.err.join('')).toContain('needs a directory')
   })
 
-  it('says so when the directory holds nothing, rather than reporting success', async () => {
+  it('counts an empty directory as 0 entities, and passes it', async () => {
+    // Titled "rather than reporting success" while it asserted exit 0 (review,
+    // runtime-probe-3). A directory holding nothing breaks no rule, and the
+    // count says what was read. What is refused is a path that is no
+    // directory at all — `command-line-edges.test.ts`, exit 2.
     const root = await mkdtemp(path.join(tmpdir(), 'idp-validate-'))
     const { code, out } = await run(root)
-    expect(code).toBe(0)
-    expect(out).toMatch(/0 entities/)
+    expect({ code, out }).toEqual({ code: 0, out: '0 entities in 0 files, 0 violations\n' })
   })
 })

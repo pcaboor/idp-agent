@@ -1,9 +1,11 @@
+import type { Dirent } from 'node:fs'
 import { lstat, readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
   repositoryFileOf,
   type RepositoryFile,
   type RepositorySnapshot,
+  type UnreadableFolder,
 } from '../../core/validate/rules.js'
 import { REGISTRATION_FILE } from '../../core/validate/registration.js'
 
@@ -28,13 +30,24 @@ interface Walked {
   folders: string[]
   witnesses: string[]
   files: string[]
+  unreadable: UnreadableFolder[]
 }
 
 async function walk(root: string, directory: string, found: Walked): Promise<void> {
   // readdir, never a glob: a witness is a dotfile, and the rule that makes an
   // empty folder an error rests entirely on seeing it.
-  const entries = await readdir(directory, { withFileTypes: true }).catch(() => undefined)
-  if (entries === undefined) return
+  //
+  // A folder it cannot list is kept, with why, and never read as an empty
+  // one: that swallowed every entity under a folder at chmod 000, and
+  // `validate` called the repository compliant (review, runtime-probe-3).
+  let entries: Dirent[]
+  try {
+    entries = await readdir(directory, { withFileTypes: true })
+  } catch (error) {
+    const reason = (error as NodeJS.ErrnoException).code ?? String(error)
+    found.unreadable.push({ path: relative(root, directory), reason })
+    return
+  }
 
   const here = relative(root, directory)
   if (here !== '') found.folders.push(here)
@@ -192,7 +205,7 @@ export async function readRegistrationFile(root: string): Promise<RepositoryFile
 }
 
 export async function readRepository(root: string): Promise<RepositorySnapshot> {
-  const found: Walked = { folders: [], witnesses: [], files: [] }
+  const found: Walked = { folders: [], witnesses: [], files: [], unreadable: [] }
   await walk(root, root, found)
 
   const files = await Promise.all(found.files.sort().map((file) => readOne(root, file)))
@@ -201,5 +214,10 @@ export async function readRepository(root: string): Promise<RepositorySnapshot> 
     folders: found.folders.sort(),
     witnesses: found.witnesses.sort(),
     files,
+    // Omitted when there is none, which is every repository anyone can read,
+    // so a snapshot compares equal to the one it always was.
+    ...(found.unreadable.length > 0
+      ? { unreadable: found.unreadable.sort((left, right) => left.path.localeCompare(right.path)) }
+      : {}),
   }
 }

@@ -938,8 +938,26 @@ function previewOf(
     // repository — the one this function is standing in.
     dropped: [],
     ...(options.colour !== undefined ? { colour: options.colour } : {}),
+    apply: APPLY,
   })
 }
+
+/**
+ * The line a preview of `init` ends on: how to apply it. `plan`'s — "the merge
+ * is what authorises it" — is about the declarations repository, and a
+ * catalog-info lands in the service's own, so it sent nobody anywhere (review,
+ * gap-init-real-repos-8). The diff's paths are the service's, `a/` and `b/`
+ * prefixed, and the lines around it are not a patch, so `git apply` takes
+ * stdout as it is; the questions and the progress are on stderr.
+ *
+ * A file, not a pipe: `idpa init | git apply` runs the Inspector and the
+ * Architect again, a live model can draft other bytes the second time, and
+ * those are applied unread — or, when that run ends on a question, nothing is.
+ */
+const APPLY =
+  "Nothing is written. To write it, save a run to a file, read it, and apply that file in the " +
+  "service's repository — another run may draft other bytes than these: " +
+  'idpa init > catalog-info.diff, then git apply catalog-info.diff'
 
 /**
  * The bytes a `create-catalog-info` would leave behind, in the SERVICE's own

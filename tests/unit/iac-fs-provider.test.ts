@@ -1,7 +1,8 @@
-import { cp, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { chmod, cp, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { main } from '../../src/cli/index.js'
 import { FixtureProvider } from '../../src/context/fixtures/index.js'
 import { IacFsProvider } from '../../src/context/iac-fs/provider.js'
 
@@ -73,5 +74,30 @@ describe('IacFsProvider', () => {
   it('reads an empty directory as no entity and no rejection', async () => {
     const repo = await mkdtemp(path.join(tmpdir(), 'iac-provider-empty-'))
     expect(await new IacFsProvider(repo).load()).toEqual({ entities: [], rejected: [], ignored: [] })
+  })
+  it.skipIf(process.getuid?.() === 0)('reports a folder it could not list, rather than reading it as empty', async () => {
+    // The entities under it are missing from every answer `graph`, `show` and
+    // `ask` give, and a folder read as empty would say nothing about it.
+    const repo = await mkdtemp(path.join(tmpdir(), 'iac-provider-'))
+    await cp(FIXTURES, repo, { recursive: true })
+    const locked = path.join(repo, 'catalog/databases')
+    await chmod(locked, 0o000)
+    try {
+      const { entities, rejected } = await new IacFsProvider(repo).load()
+      expect(rejected).toEqual([{ source: 'catalog/databases', reason: 'could not be listed (EACCES)' }])
+      expect(entities.some((entity) => entity.metadata.name === 'billing-api')).toBe(true)
+
+      // And `graph` says it, as it says a file it skipped.
+      const err: string[] = []
+      const code = await main(['graph', '--repo', repo], {
+        env: {},
+        out: () => {},
+        err: (chunk) => void err.push(chunk),
+      })
+      expect(code).toBe(0)
+      expect(err.join('')).toContain('skipped catalog/databases: could not be listed (EACCES)\n')
+    } finally {
+      await chmod(locked, 0o755)
+    }
   })
 })

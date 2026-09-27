@@ -34,26 +34,19 @@ framed in the model's words, Backstage APIs, the relations view, and tracing int
 
 ## The queue
 
-**In order**, as the owner decided on 2026-09-23, 2026-09-25 and 2026-09-26. Each line says
-what the item is for.
+**In order**, as the owner decided on 2026-09-23, 2026-09-25, 2026-09-26 and 2026-09-27.
+Each line says what the item is for. The sweep of the review is done
+([its verdicts](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27)); its batches are
+here, one pull request each, each naming the check run together at the end.
 
-1. **A sweep of the review: done.** Verdicts in the review's
-   [sweep](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27); its batches follow, one
-   pull request each, each naming the check that shows it worked.
-2. **Batch A1, command-line edges.** build-ci-12, cli-ux-11, cli-ux-1, runtime-probe-3,
-   runtime-probe-13, cli-ux-8, gap-init-real-repos-6, cli-ux-6, gap-init-real-repos-8:
-   `-h`, `--version` and `<command> --help` work; `validate` and `init` refuse a path that is
-   not a directory on exit 2, before any model; Ctrl-C at a question exits 130; `init` ends
-   by saying how to apply its diff. Check: `idpa --version`, `idpa validate /nonexistent`
-   and `idpa init --repo /nonexistent` each exit as stated, with no model called.
-3. **Batch A2, tests that cannot pass on nothing.** tests-12, architecture-11,
+1. **Batch A2, tests that cannot pass on nothing.** tests-12, architecture-11,
    gap-stage5-readiness-9, tests-7, tests-8, tests-11, core-plan-13, security-10, tests-9:
    the architecture rules fail on an empty tree or an unresolved import and name who may
    write; the offline guard covers `http`, `net`, `tls` and `WebSocket`; the suite ignores
    the contributor's `IDP_*` and key variables; the audit attacks read `tests/recordings`;
    a real key's shape is caught in a tape; `tests/README.md` explains a stale tape. Check:
    `pnpm test` stays green with `IDP_PROVIDER` and `IDP_MODEL` exported.
-4. **Batch A3, build, CI and documentation drift.** build-ci-3, build-ci-2, build-ci-5,
+2. **Batch A3, build, CI and documentation drift.** build-ci-3, build-ci-2, build-ci-5,
    build-ci-7, build-ci-8, product-gap-14, architecture-12, gap-stage5-readiness-14, docs-9,
    domain-backstage-9, docs-3, security-9, cli-ux-14: a clean `dist/` and a `prepack`, smoke
    from the packed tarball, version `0.1.0-rc.2`, least privilege in both workflows, POSIX
@@ -61,64 +54,70 @@ what the item is for.
    Reviewer), in AGENTS.md and in SECURITY.md's guarantee table, and `src/cli/README.md` no
    longer saying `show` takes the first entity of a shared name. Check: `pnpm build && pnpm
    smoke`, and `npm pack --dry-run` lists no stale file.
-5. **Batch A4, what the plan engine lets vouch and dispatch.** wip-diff-1, wip-diff-4,
+3. **Batch A4, what the plan engine lets vouch and dispatch.** wip-diff-1, wip-diff-4,
    wip-diff-10, wip-diff-8, wip-diff-9, core-plan-10, gap-stage5-readiness-2,
    gap-stage5-readiness-7, domain-backstage-10: an operation no longer vouches for itself or
    for a Component the edits drop; `planEdits` and the gates switch exhaustively; a
    `create-catalog-info` path must be a catalog-info inside the repository; `init platform`
    says what it wrote before a failure; the graph resolves a duplicate as the plan does.
    Check: the new `sign.test` cases, and the plan-mode tapes still replay clean.
-6. **Batch A5, the read side and the provider calls.** gap-ask-grounding-6,
+4. **Batch A5, the read side and the provider calls.** gap-ask-grounding-6,
    gap-ask-grounding-7, gap-ask-grounding-11, domain-backstage-7, gap-init-real-repos-9,
    gap-provider-matrix-6, agents-llm-10, product-gap-10: repository text flattened before a
    prompt; a decorated Supervisor word accepted; the truncation note of the search cited;
    `title`, `labels` and `subcomponentOf` read; `read_file` paths normalised; `store: false`
    at OpenAI; an optional abort signal; one usage line per run. Check: the provider contract
    test, and the question tapes replay with the bytes they had.
-7. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
-   hand-written files in every shape, and `signPlan` properties over plans valid by
-   construction. `tests/invariants/arbitraries.ts` and `core.test.ts` are also edited on
-   `feat/s5-cleared`, so this goes on top of stage 5, or with the owner.
-8. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
-   harness half of agents-llm-9: record from an empty tape, fail on a turn never replayed,
-   and digest the JSON Schema the provider is sent. It needs no key, but it prunes dead turns
-   and rewrites every tape's digest, so it waits for the owner's go-ahead.
-9. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
+5. **`backstage-http` slice 1: questions and relations against a Backstage.** The provider
+   reads a catalogue over HTTP ([the design note](backstage-http-brief.md), slice 1), first
+   demonstrated against the fake Backstage on `127.0.0.1:7007`.
+6. **A real Backstage in Docker, for the demo.** One `docker compose up` starts a pinned
+   Backstage holding the demo SI, registered through slice 0's Location, with a read token,
+   so an evaluator sees the catalogue's pages and `idpa` querying the same Backstage (a
+   built image or a maintained community image: decided then).
+7. **`backstage-http` slice 3: the organisation in the read model.** Groups, Users, Systems
+   and Domains read, so the agents see real owners and the systems services belong to.
+8. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
+   the current `main`, read only: what it covers and what it misses. It starts with an
+   **analysis of the owner's uncommitted stage-5 work** on `feat/s5-cleared`, written on
+   `eee67d6` before more than forty pull requests: what still applies, what `main` made
+   obsolete, what must be redone; its ADR becomes 0010. The result is shown to the owner
+   before a line of stage 5 is written. It includes **which
+   repository a `FileEdit` writes to**, the part of gap-stage5-readiness-8 review priority 9
+   left to stage 5 ([#82](https://github.com/pcaboor/idp-agent/pull/82)): `init`'s
+   edit names a file in the service's repository and `plan`'s one in the declarations
+   repository, and nothing in the shape says which — `init`'s `before` is now read whole
+   outside the budget, so only the identity is left. The plan's clearance must also file
+   where `init` files: `asCatalogInfo` keeps its one argument, but `init` then moves the
+   operation to `targetOf`'s choice over `ProjectRead.declarations` (`filedIn`) — the root's
+   `.yml`, or the one catalog-info kept elsewhere — so a `readCatalogInfo` that reads only the
+   root's `catalog-info.yaml` would bring back the twin and the capped `before` this removed.
+9. **Stage 5, write + local branch.** The first write, atomic and idempotent — taken on from
+   the owner's plan and branch, discarding nothing already written, once the check above is
+   agreed.
+10. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
+    hand-written files in every shape, and `signPlan` properties over plans valid by
+    construction. `tests/invariants/arbitraries.ts` and `core.test.ts` are also edited on
+    `feat/s5-cleared`, so it goes on top of stage 5.
+11. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
     gap-stage5-readiness-4: one lstat, realpath and `O_NOFOLLOW` primitive shared from
     `project-fs`, used by `scaffold/write.ts` and by the iac-fs walk, which rejects a
     symbolic link by name. Medium, and what stage 5's writer will need.
-10. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
-    the current `main`, read only: what it covers and what it misses. It includes **which
-    repository a `FileEdit` writes to**, the part of gap-stage5-readiness-8 review priority 9
-    left to stage 5 ([#82](https://github.com/pcaboor/idp-agent/pull/82)): `init`'s
-    edit names a file in the service's repository and `plan`'s one in the declarations
-    repository, and nothing in the shape says which — `init`'s `before` is now read whole
-    outside the budget, so only the identity is left. The plan's clearance must also file
-    where `init` files: `asCatalogInfo` keeps its one argument, but `init` then moves the
-    operation to `targetOf`'s choice over `ProjectRead.declarations` (`filedIn`) — the root's
-    `.yml`, or the one catalog-info kept elsewhere — so a `readCatalogInfo` that reads only the
-    root's `catalog-info.yaml` would bring back the twin and the capped `before` this removed.
-11. **Stage 5, write + local branch.** The first write, atomic and idempotent. The owner's own
-    work, on branch `feat/s5-cleared`, at the owner's pace.
+12. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
+    harness half of agents-llm-9: record from an empty tape, fail on a turn never replayed,
+    and digest the JSON Schema the provider is sent. It needs no key, but it prunes dead turns
+    and rewrites every tape's digest, so it waits for the owner's go-ahead.
+13. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
+    catalogue is plugged in.
+14. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
+    authorisation (ADR-0006).
+15. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
+    slices 4 and 5. From any service repository, generate its catalog-info and discover the
+    dependencies it already has, with evidence.
+16. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
+    the project's end goal (2026-09-23).
 
-**Not yet ordered.**
-
-- **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
-  authorisation (ADR-0006).
-- **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal
-  that the owner set as the project's end goal (2026-09-23).
-- **The `backstage-http` read provider, slices 1 to 3**
-  ([the design note](backstage-http-brief.md)): after the stage-5 check, beside stage 5.
-  Right after slice 1, **a real Backstage in Docker for the demo**: one `docker compose up`
-  starts a pinned Backstage holding the demo SI, registered through slice 0's Location, with
-  a read token, so an evaluator sees the catalogue's pages and `idpa` querying the same
-  Backstage (built image or maintained community image: to decide then). Slices 4 and 5 go
-  with stage 8.
-- **Stage 8, discovery** ([the design note](stage-8-brief.md)). From any
-  service repository, generate its catalog-info and discover the dependencies it already
-  has, with evidence.
-
-The one order stated beyond these items is stage 8's own, in its design note (section 11):
+Within stage 8, its design note (section 11) states its own order:
 priorities 6 (done, [#79](https://github.com/pcaboor/idp-agent/pull/79)), 7 (done,
 [#80](https://github.com/pcaboor/idp-agent/pull/80)), 8 (done,
 [#83](https://github.com/pcaboor/idp-agent/pull/83)), 9 (done,
@@ -228,6 +227,12 @@ The owner's decisions, dated, each with where it is recorded.
   slice 1 ([#86](https://github.com/pcaboor/idp-agent/pull/86)).
 - The Backstage registration covers `components/` too, where the demo SI and the owner's
   repository keep their Components ([#86](https://github.com/pcaboor/idp-agent/pull/86)).
+
+- The queue after batch A5: `backstage-http` slice 1, then the Docker demo Backstage, then
+  slice 3; the stage-5 check, which first analyses the owner's uncommitted stage-5 work
+  against today's `main`; stage 5, which Claude takes on from the owner's plan and branch;
+  batches B1, B3 and B2; slice 2; stage 6; stage 8 with slices 4 and 5; stage 7
+  ([#87](https://github.com/pcaboor/idp-agent/pull/87)).
 
 ## Known debts and open items
 

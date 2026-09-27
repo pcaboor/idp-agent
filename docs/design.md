@@ -704,7 +704,7 @@ make it true (§4.3). References are compared as the reader writes them, so a sh
 the file restates the full form in the plan.
 
 Gate [4] is not a second set of rules. It applies the Plan **virtually** — builds the
-snapshot that would exist if the plan landed — and runs the same eight `validate` rules CI
+snapshot that would exist if the plan landed — and runs the same nine `validate` rules CI
 runs over the result. It exists because the catalogue lags the repository by about two
 minutes (§4.4): what was true when the plan was drafted may not be true now, so an entity
 may have appeared, or appeared somewhere else. (It was gate [5] until the reordering above,

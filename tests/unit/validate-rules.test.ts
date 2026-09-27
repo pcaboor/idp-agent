@@ -270,3 +270,54 @@ describe('checkRepository', () => {
     })
   })
 })
+
+describe('checkRepository, on what it could not read', () => {
+  it('refuses a folder the reader could not list, the root named as .', () => {
+    // What it holds was never read, so no rule saw it; "0 violations" there
+    // meant nothing was looked at (review, runtime-probe-3).
+    const violations = checkRepository(
+      snapshot({
+        unreadable: [
+          { path: '', reason: 'EACCES' },
+          { path: 'catalog/queues', reason: 'EACCES' },
+        ],
+      }),
+    )
+    expect(violations).toEqual([
+      {
+        rule: 'unreadable-folder',
+        file: '.',
+        severity: 'error',
+        message: 'could not be listed (EACCES); nothing in it was checked',
+      },
+      {
+        rule: 'unreadable-folder',
+        file: 'catalog/queues',
+        severity: 'error',
+        message: 'could not be listed (EACCES); nothing in it was checked',
+      },
+    ])
+  })
+
+  it('refuses a source-file annotation that leaves the repository, and still skips a Component that names none', () => {
+    const escaping: Entity = {
+      ...database('a'),
+      metadata: { name: 'a', annotations: { 'idp-agent.dev/source-file': '../outside.yml' } },
+    }
+    const violations = checkRepository(
+      snapshot({
+        folders: ['catalog/databases', 'components'],
+        witnesses: ['catalog/databases', 'components'],
+        files: [file('catalog/databases/a.yml', [escaping]), file('components/billing-api.yml', [component('billing-api')])],
+      }),
+    )
+    expect(violations).toEqual([
+      {
+        rule: 'misplaced-entity',
+        file: 'catalog/databases/a.yml',
+        severity: 'error',
+        message: 'resource:default/a path escapes the repository: "../outside.yml"',
+      },
+    ])
+  })
+})

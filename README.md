@@ -13,7 +13,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 3063, no API key" src="https://img.shields.io/badge/tests-3063%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 3115, no API key" src="https://img.shields.io/badge/tests-3115%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -356,7 +356,14 @@ idp-agent plan "<intent>" [--repo <dir>] [--json]  # needs IDP_PROVIDER, IDP_MOD
 idp-agent init [--repo <dir>]                      # the catalog-info.yaml it would write
     [--name <name>] [--lifecycle <lifecycle>]      # what its files do not state; asked at a terminal
     [--owner group:<namespace>/<name>]
+idp-agent version                                  # or --version, -v
+idp-agent <command> --help                         # its usage; -h or --help alone, every one
 ```
+
+`init` writes nothing: it prints a diff of the service's repository and ends by saying how
+to apply it. Save a run to a file, read it, and apply that file in the service's
+repository — `idpa init > catalog-info.diff`, then `git apply catalog-info.diff`. Piping
+`idpa init` straight into `git apply` runs the models again, and applies bytes nobody read.
 
 | Command | What it does |
 |---|---|
@@ -391,8 +398,8 @@ directory, is a declarations repository, is the `--repo` directory or one of its
 conform, or a gate refused the plan), or a model call that failed · `2` bad arguments, or no
 model, no key or no usable `IDP_TIMEOUT` or `IDP_SUPERVISOR_MODEL` configured · `3`
 understood but not acted on: a change request put to `ask`, a question the model refused,
-or a value nobody can vouch for. An ambiguous name resolves to nothing rather than to the
-first candidate.
+or a value nobody can vouch for · `130` Ctrl-C at a question. An ambiguous name resolves
+to nothing rather than to the first candidate.
 
 ### Use it from anywhere
 

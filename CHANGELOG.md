@@ -34,6 +34,16 @@ Each pull request adds its line here.
 
 ### Fixed
 
+- The edges of the command line: `-h`, `--version`, `-v` and `version` work, and
+  `<command> --help` prints that command's usage, as a refused argument now does instead of
+  the whole help; `validate` refuses a path that is not a directory, an empty one or a second
+  one on exit 2 rather than answering "0 violations", and reports a folder it cannot list and
+  a source-file annotation leaving the repository as errors; `init --repo` refuses a path that
+  is not a directory on exit 2 before any model is chosen, and `init platform ""` no longer
+  scaffolds the working directory; Ctrl-C at a question exits 130 instead of reading as a
+  decline; `init` ends on how to apply its diff (save a run to a file, read it, then
+  `git apply` it); a model call the SDK retries says so on stderr — review batch A1
+  ([#87](https://github.com/pcaboor/idp-agent/pull/87)).
 - `init` on a real service repository ends on a diff or an answerable question: the
   Inspector's 200-file budget reads the manifests, CODEOWNERS, catalog-info, charts,
   Dockerfiles and deployment files first — still handed over in path order — and stderr
