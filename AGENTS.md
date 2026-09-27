@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 2966 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3018 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does,
@@ -52,8 +52,9 @@ named as the only importer of the model SDK when there were two. A figure nobody
 worse than no figure, because it is read as evidence. Re-run the command and correct the
 number in the same commit as the change.
 
-**Exit codes:** `0` succeeded — a diff rendered, or a run with nothing to change · `1` the
-answer is negative — nothing matched, a name was ambiguous (two entities sharing it
+**Exit codes:** `0` succeeded — a diff rendered, or a run with nothing to change because
+the repository already declares everything each operation states, the file and fields named
+· `1` the answer is negative — nothing matched, a name was ambiguous (two entities sharing it
 included), a relation holds nothing, two entities are linked by no declared path and reach
 nothing in common (a near miss alone does not count), an entity was asked about its paths
 to itself, **the repository does not conform**, a gate refused a
@@ -67,8 +68,10 @@ one beside `--to`, a `--depth` that is not a whole number from 1 to 100, a
 `.idp-agent.yml` or a personal `config.yml` that does not parse — or no model, no key or
 no usable `IDP_TIMEOUT` or `IDP_SUPERVISOR_MODEL` is configured · `3` the request was
 understood and this build will not act on it: a change request put to `ask` (which names
-`idpa "<phrase>"` as the gesture that previews it), a question the model refused, or a plan
-holding values nobody can vouch for, **asked rather than guessed**. A command returns
+`idpa "<phrase>"` as the gesture that previews it), a question the model refused, a plan
+holding values nobody can vouch for, **asked rather than guessed**, or a plan that produces
+no bytes while the repository does not already declare what it states — in prose and in
+`--json` alike. A command returns
 `{ text, found, unsupported? }`; only `cli/index.ts` turns that into a code.
 
 The one that is not obvious is a **stop**: three attempts, still refused, exit `1`. Not

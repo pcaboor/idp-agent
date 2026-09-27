@@ -26,7 +26,7 @@ import { declaredLevel, natureOf, statesLevels } from '../../core/plan/grant.js'
 import { checkPolicies, type PolicyContext, type PolicyViolation } from '../../core/plan/policies.js'
 import type { Provenance } from '../../core/plan/provenance.js'
 import { reapplyAnswers, recordAnswers, type RecordedAnswer } from '../../core/plan/reapply.js'
-import { recheckPlan, type Recheck } from '../../core/plan/recheck.js'
+import { recheckPlan, type Recheck, type RecheckOutcome } from '../../core/plan/recheck.js'
 import { signPlan, type SignatureContext, type SignedPlan } from '../../core/plan/sign.js'
 import type { Entity } from '../../core/schemas/entity.js'
 import { planSchema, type Plan } from '../../core/schemas/plan.js'
@@ -277,6 +277,10 @@ function contextsOf(
   const natures = new Map<string, Nature>()
   const over = new Map<string, readonly string[]>()
   const holders = new Map<string, readonly string[]>()
+  // Each declaration whole, the first one of a reference winning as the
+  // catalogue resolves a duplicate (§4.4): what a creation naming it is
+  // compared against, field by field (`declared-otherwise`).
+  const declarations = new Map<string, Entity>()
   // Every name a request can mention, read off the bytes rather than the
   // parse: an API, a System set aside, a document refused and a namesake in
   // another namespace are each a name a person may write, with every
@@ -285,6 +289,7 @@ function contextsOf(
   for (const file of snapshot.files) {
     for (const entity of file.entities) {
       declared.set(refOf(entity), file.path)
+      if (!declarations.has(refOf(entity))) declarations.set(refOf(entity), entity)
       // Every entity, and the value is what it STATES — undefined when it
       // states none. The policies need both facts: a reference the map does
       // not hold at all is a grant this repository has never declared, while
@@ -343,6 +348,7 @@ function contextsOf(
       over,
       holders,
       namesakes,
+      declarations,
     },
   }
 }
@@ -394,17 +400,31 @@ const violationLine = (violation: Violation): string =>
 const plural = (count: number, one: string, many: string): string =>
   `${count} ${count === 1 ? one : many}`
 
-/** What the repository already says, for the run that has nothing to add. */
-function settled(signed: SignedPlan, recheck: Recheck): string[] {
-  const lines: string[] = []
-  for (const [opIndex, outcome] of recheck.outcomes) {
-    if (outcome !== 'already-declared') continue
-    const where = signed.paths.get(opIndex)
-    const ref = signed.refs.get(opIndex)
-    if (where === undefined || ref === undefined) continue
-    lines.push(`  = ${where} already declares ${ref}`)
-  }
+/**
+ * What the repository already says, operation by operation: the file, the
+ * reference, and every field the operation states as the file says it — so a
+ * person told "the repository already says it" can open the file and check.
+ * It used to name the file for a creation and nothing at all for an update,
+ * and "already declared" compared a level alone.
+ *
+ * Every word here is a repository file's or quotes one: flattened, never cut.
+ */
+const restatedLines = (recheck: Recheck | undefined): string[] =>
+  recheck === undefined
+    ? []
+    : [...recheck.restated].flatMap(([, { path: where, ref, fields }]) => [
+        `  = ${inertLine(where, Number.POSITIVE_INFINITY)} already declares ` +
+          inertLine(ref, Number.POSITIVE_INFINITY),
+        ...fields.map(
+          ({ field, value }) =>
+            `      ${inertLine(field, Number.POSITIVE_INFINITY)}: ` +
+            inertLine(value, Number.POSITIVE_INFINITY),
+        ),
+      ])
 
+/** What the repository already says, for the run that has nothing to add. */
+function settled(recheck: Recheck): string[] {
+  const lines = restatedLines(recheck)
   return lines.length === 0
     ? ['nothing to change.']
     : ['nothing to change — the repository already says it:', '', ...lines]
@@ -429,22 +449,40 @@ function settled(signed: SignedPlan, recheck: Recheck): string[] {
  * why this asks the re-check rather than counting dropped operations: its
  * bytes go to the SERVICE repository, which this preview does not cover, so a
  * plan carrying one has done what it said even though this diff is empty.
+ *
+ * And it asks the re-check of EVERY operation, never only of the dropped ones.
+ * An empty diff with nothing dropped used to be exit 0 whatever the re-check
+ * said, so an update the re-check never compared — `unresolved`, every time —
+ * printed a bare "nothing to change." and named nothing. Exit 0 on an empty
+ * diff now means one thing (AGENTS.md's table): every operation is
+ * `already-declared`, and `settled` names where.
  */
-const changedNothing = (
-  signed: SignedPlan,
-  dropped: readonly DroppedOperation[],
-  recheck: Recheck | undefined,
-): boolean => {
-  if (recheck === undefined || dropped.length === 0) return false
-  const accounted = new Set<number>()
-  for (const [opIndex, outcome] of recheck.outcomes) {
-    if (outcome === 'already-declared') accounted.add(opIndex)
-  }
-  for (const [opIndex, operation] of signed.plan.operations.entries()) {
-    if (operation.op === 'create-catalog-info') accounted.add(opIndex)
-  }
-  return signed.plan.operations.every((_, opIndex) => !accounted.has(opIndex))
+const changedNothing = (signed: SignedPlan, recheck: Recheck | undefined): boolean => {
+  if (recheck === undefined) return false
+  // Accounted for: the repository already says it, or its bytes belong to
+  // another repository. Anything else behind an empty diff was not carried
+  // out — dropped with a reason, or found by the re-check to differ from
+  // what the repository says, to name an entity another file declares, or
+  // to name nothing it declares — and exit 0 would say it was.
+  return signed.plan.operations.some(
+    (operation, opIndex) =>
+      operation.op !== 'create-catalog-info' &&
+      recheck.outcomes.get(opIndex) !== 'already-declared',
+  )
 }
+
+/**
+ * The same question, for `--json`, which renders no diff and so asks the
+ * bytes: no file changes, and the repository does not already say it. The
+ * prose said exit 3 there and `--json` said 0, although both promise one code
+ * per outcome — a script reading the status alone took a run that did
+ * nothing for one that was already done.
+ */
+const didNothing = (
+  signed: SignedPlan,
+  changed: readonly FileEdit[],
+  recheck: Recheck | undefined,
+): boolean => changed.length === 0 && changedNothing(signed, recheck)
 
 /**
  * What a machine reads: the signed plan, and everything that judged it.
@@ -471,6 +509,9 @@ const reportOf = (
   policies,
   recheck: {
     outcomes: Object.fromEntries(recheck.outcomes),
+    // What the repository already says, where, for every `already-declared`:
+    // a machine told so has to be able to check it, as a person does.
+    restated: Object.fromEntries(recheck.restated),
     // The plan's, which is what `found` is decided on; `standing` is what was
     // already wrong elsewhere, stated so a machine does not have to re-run
     // `validate` to learn that CI may be red for another reason.
@@ -485,6 +526,37 @@ const reportOf = (
 })
 
 const asJson = (value: object): string => JSON.stringify(value, null, 2)
+
+/**
+ * Why an operation that was not dropped still produced nothing, in the
+ * re-check's words: behind an empty diff, an operation neither dropped nor
+ * already declared is one the run did not carry out, and it is named like a
+ * drop rather than left as the absence of a line.
+ */
+const OUTCOME_WORDS: Readonly<Record<Exclude<RecheckOutcome, 'already-declared'>, string>> = {
+  fresh: 'produced no bytes, and the repository does not declare it',
+  differs: 'the repository declares it, and says otherwise',
+  moved: 'names an entity the repository declares in another file',
+  unresolved: 'names nothing the repository declares',
+}
+
+const unaccounted = (
+  signed: SignedPlan,
+  dropped: readonly DroppedOperation[],
+  recheck: Recheck | undefined,
+): DroppedOperation[] =>
+  signed.plan.operations.flatMap((operation, opIndex) => {
+    const outcome = recheck?.outcomes.get(opIndex)
+    if (
+      operation.op === 'create-catalog-info' ||
+      outcome === undefined ||
+      outcome === 'already-declared' ||
+      dropped.some((one) => one.opIndex === opIndex)
+    ) {
+      return []
+    }
+    return [{ opIndex, reason: OUTCOME_WORDS[outcome] }]
+  })
 
 /**
  * What the plan asked for and this preview did not produce.
@@ -537,15 +609,15 @@ export function renderPreview(preview: {
   const diff = renderUnifiedDiff(edits)
 
   if (diff === '') {
-    const acted = !changedNothing(signed, dropped, recheck)
+    const acted = !changedNothing(signed, recheck)
     return {
       text: [
         ...(acted
           ? recheck === undefined
             ? ['nothing to change.']
-            : settled(signed, recheck)
+            : settled(recheck)
           : ['this plan changes nothing, and the repository does not already say it:']),
-        ...droppedLines(dropped),
+        ...droppedLines(acted ? dropped : [...dropped, ...unaccounted(signed, dropped, recheck)]),
         ...(standing.length > 0 ? ['', ...standing] : []),
         '',
         '0 files · nothing written',
@@ -566,6 +638,7 @@ export function renderPreview(preview: {
   // rest of the repository's are counted in `standing`.
   const warnings =
     recheck?.violations.filter((violation) => violation.severity === 'warning') ?? []
+  const restated = restatedLines(recheck)
 
   return {
     text: [
@@ -575,7 +648,19 @@ export function renderPreview(preview: {
       ...(warnings.length > 0 && standing.length > 0 ? [''] : []),
       ...standing,
       ...droppedLines(dropped),
-      ...(warnings.length > 0 || standing.length > 0 || dropped.length > 0 ? [''] : []),
+      // An operation the repository already says produces no bytes beside
+      // ones that do, and is named rather than left for a reader to miss.
+      ...(restated.length > 0
+        ? [
+            '',
+            `${plural(recheck?.restated.size ?? 0, 'operation', 'operations')} the ` +
+              'repository already says:',
+            ...restated,
+          ]
+        : []),
+      ...(warnings.length > 0 || standing.length > 0 || dropped.length > 0 || restated.length > 0
+        ? ['']
+        : []),
       // `visible` before the paint, so the escapes this tool adds are the only
       // ones in it: the lines of context are a repository file's bytes, and a
       // file can hold what a terminal obeys. See `visible`.
@@ -1067,7 +1152,9 @@ function previewPlan(
     return {
       text: asJson(reportOf(signed, questions, policies, recheck, changed, dropped)),
       found: !refused,
-      ...(questions.length > 0 ? { unsupported: true } : {}),
+      ...(questions.length > 0 || (!refused && didNothing(signed, changed, recheck))
+        ? { unsupported: true }
+        : {}),
     }
   }
 
@@ -1369,6 +1456,7 @@ function renderOutcome(
           attempts: outcome.attempts,
         }),
         found: true,
+        ...(didNothing(outcome.signed, changed, outcome.recheck) ? { unsupported: true } : {}),
       }
     }
     return renderPreview({

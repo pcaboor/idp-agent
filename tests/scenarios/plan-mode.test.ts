@@ -340,6 +340,18 @@ spec:
       expect(await hashTree(repo)).toBe(before)
       endedWell(code, out)
       reachedTheModel(events)
+      // The access is there, so the run ends on exit 0 and says where. The
+      // tape's draft is an update joining billing-api to the grant that
+      // already lists it, and it printed a bare "nothing to change." naming
+      // nothing: an update was never compared with the file. The replay is
+      // deterministic, so the scenario states the outcome its name promises
+      // rather than accepting whichever one `endedWell` does.
+      expect(code).toBe(0)
+      expect(out).toContain(
+        'dependencies/access/billing-api-orders-db-prod.yml already declares ' +
+          'resource:default/billing-api-orders-db-prod',
+      )
+      expect(out).toContain('dependsOn: resource:default/orders-db-prod')
     },
     TIMEOUT,
   )

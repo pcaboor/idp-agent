@@ -749,10 +749,15 @@ const dedupe = (kept: readonly KeptValue[]): KeptValue[] =>
  * reviewer that a grant exists with nothing stated about it.
  */
 function targetsOf(plan: Plan, snapshot: RepositorySnapshot): UpdateTarget[] {
+  // The FIRST declaration wins, as the catalogue resolves a duplicate (§4.4),
+  // `planEdits` finds the file an update amends and the re-check names it
+  // (core-plan-12). The last one used to, so the Reviewer was told the level,
+  // owner and consumers of a grant the edits did not touch.
   const declares = new Map<string, Entity>()
   for (const file of snapshot.files) {
     for (const entity of file.entities) {
-      declares.set(`${entity.kind.toLowerCase()}:default/${entity.metadata.name}`, entity)
+      const ref = `${entity.kind.toLowerCase()}:default/${entity.metadata.name}`
+      if (!declares.has(ref)) declares.set(ref, entity)
     }
   }
 
@@ -781,6 +786,16 @@ function targetsOf(plan: Plan, snapshot: RepositorySnapshot): UpdateTarget[] {
  * produced no bytes has no outcome worth reporting beyond the reason it
  * produced none. An operation neither mentions is one that writes what it
  * says, which is stated rather than left as the absence of a line.
+ *
+ * KNOWN WRONG, and left so on purpose (wip-diff-2). The re-check now finds an
+ * `update-entity` whose consumer the grant already lists at the stated level
+ * `already-declared`, and the CLI says so, naming the file — but this line
+ * still tells the Reviewer such an update "would be written to the
+ * repository". Saying "changes nothing" there changes the message the
+ * Reviewer is sent in the recorded `link-already-declared` scenario, whose
+ * tape is exactly that update, so the tape would go stale; it waits for a
+ * re-record, and `docs/roadmap.md` carries it. A creation's
+ * `already-declared` was already said, and still is.
  */
 function effectsOf(
   plan: Plan,
@@ -792,7 +807,7 @@ function effectsOf(
     const reason = reasons.get(opIndex)
     if (reason !== undefined) return { opIndex, effect: `writes nothing: ${reason}` }
     const outcome = recheck.outcomes.get(opIndex)
-    if (outcome === 'already-declared') {
+    if (outcome === 'already-declared' && plan.operations[opIndex]?.op !== 'update-entity') {
       return { opIndex, effect: 'changes nothing: the repository already declares it' }
     }
     if (outcome === 'moved') {

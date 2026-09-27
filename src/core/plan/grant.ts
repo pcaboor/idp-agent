@@ -1,4 +1,4 @@
-import type { Entity } from '../schemas/entity.js'
+import { entitySchema, type Entity } from '../schemas/entity.js'
 import type { Operation } from '../schemas/plan.js'
 import {
   RESOURCE_TYPES,
@@ -8,6 +8,8 @@ import {
   type Nature,
   type ResourceType,
 } from '../schemas/resource-types.js'
+import { ENV_ANNOTATION } from '../schemas/vocabulary.js'
+import { materialise } from './materialise.js'
 
 /**
  * What "already declared" means, in one place.
@@ -22,20 +24,225 @@ import {
  * happen, and a request for `read` was reported satisfied by a standing
  * `readwrite`.
  *
- * A grant IS its level — §4.1: a right states the level it grants, and only a
- * right may — so a declaration restates a proposal when it states the same
- * level. `planEdits` asks that to decide whether to write bytes and
- * `recheckPlan` asks it to name the outcome a person reads; two answers to one
- * question is the shape this folder has paid for before, so there is one.
+ * Then it meant a LEVEL, and the same falsehood came back through every other
+ * field (review priority 8, runtime-probe-1): a grant of that name held by
+ * another consumer, owned by another team or scoped to another environment
+ * restated a proposal whenever the two levels agreed, so an access nobody had
+ * was reported on exit 0 as the one the request asked for.
  *
- * What this does NOT compare: the owner, the type, the environment, the
- * consumer list, or anything else. A file legitimately carries consumers, a
- * description and tags no proposal ever states, so comparing documents would
- * call a genuine replay a change and refuse it. The level is the field that is
- * the authorisation, and it is the one this closes — a declaration whose OWNER
- * differs still reads as already declared here, and nothing below says
- * otherwise.
+ * So a declaration restates an operation when EVERYTHING the operation would
+ * declare is already there (`restatementOf`, `consumerRestatement`): the type,
+ * the environment, the level, the owner, what the right is over and who holds
+ * it. Anything missing or different is not already declared. `planEdits` asks
+ * this to decide whether to write bytes, `recheckPlan` to name the outcome a
+ * person reads, and the `declared-otherwise` policy to refuse a creation that
+ * says otherwise before any preview; three answers to one question is the
+ * shape this folder has paid for before, so there is one.
+ *
+ * Two lists are compared by INCLUSION, and that is not leniency. A file
+ * legitimately carries consumers, targets, a description and tags no proposal
+ * ever states — a grant orders-api also holds is still billing-api's access —
+ * so a declaration listing more than the proposal restates it, and one
+ * missing an item does not. What is not compared: a description, tags, a
+ * Component's lifecycle — nothing a proposal states about an authorisation.
+ *
+ * References are compared as the reader reads them. The declaration arrives
+ * parsed by `entitySchema`, which writes Backstage's short forms in full; the
+ * proposal is read through the same schema when it can be (`asRead`), so both
+ * sides meet in one spelling and a file writing `owner: tiger` restates a
+ * proposal naming `group:default/tiger`.
  */
+
+/** A field an operation states, as the declaration already says it. */
+export interface DeclaredField {
+  /** The key a reader finds in the file: `owner`, `dependencyOf`, `company.fr/env`. */
+  readonly field: string
+  readonly value: string
+}
+
+/** A field an operation states and the declaration does not say. */
+export interface FieldDifference {
+  readonly field: string
+  /** What the declaration says there — the whole list, for a list. */
+  readonly declared: string
+  /** What the operation says there — for a list, the items the declaration lacks. */
+  readonly proposed: string
+  /**
+   * Present when the operation holds `{unknown}` there. A question is not a
+   * claim: the signature asks it before anything is previewed, so a gate
+   * refusing it as well would state one stop twice.
+   */
+  readonly question?: true
+}
+
+export type Restatement =
+  /** Already declared: every field the operation states, as the file says it. */
+  | { readonly restates: true; readonly fields: readonly DeclaredField[] }
+  /** Not: every field that differs, never the first alone. */
+  | { readonly restates: false; readonly differs: readonly FieldDifference[] }
+
+/** What a field reads as when nothing is stated there. §4.1: absent is absent. */
+const NONE = 'none'
+/** What a field reads as when it holds `{unknown}`. A question is never a value. */
+const QUESTION = 'a question'
+
+const words = (value: unknown): string =>
+  typeof value === 'string' ? value : value === undefined ? NONE : QUESTION
+
+const listWords = (list: readonly string[]): string => (list.length === 0 ? NONE : list.join(', '))
+
+const objectOf = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
+
+/**
+ * The fields of a proposal this comparison reads, references written as the
+ * reader writes them.
+ *
+ * A proposal is not an Entity (see `materialise`), and its references are the
+ * strict full form already; reading it through `entitySchema` anyway is what
+ * makes "normalised as the reader normalises them" a fact rather than a
+ * coincidence of two grammars. A proposal the schema refuses — one still
+ * carrying a question, a consumer list on a thing — is read as written, and a
+ * question in it stays a question.
+ */
+function asRead(proposal: unknown): Record<string, unknown> & { env?: unknown } {
+  const raw = objectOf(proposal)
+  const spec = objectOf(raw.spec)
+  const env = objectOf(raw.metadata).env
+  const entity = materialise(proposal)
+  const read = entity === undefined ? undefined : entitySchema.safeParse(entity)
+  return read?.success === true ? { ...spec, ...read.data.spec, env } : { ...spec, env }
+}
+
+/**
+ * Whether `declared` — the declaration of the reference a creation names —
+ * already says everything `proposal` says, and if not, what differs.
+ */
+export function restatementOf(declared: Entity, proposal: unknown): Restatement {
+  const proposed = asRead(proposal)
+  const fields: DeclaredField[] = []
+  const differs: FieldDifference[] = []
+
+  const scalar = (field: string, there: unknown, here: unknown, listed = true): void => {
+    if (there === here && typeof here === 'string') {
+      fields.push({ field, value: here })
+      return
+    }
+    // Neither side states it: nothing to compare, and nothing to name.
+    if (there === undefined && here === undefined) {
+      if (listed) fields.push({ field, value: NONE })
+      return
+    }
+    differs.push({
+      field,
+      declared: words(there),
+      proposed: words(here),
+      ...(typeof here === 'object' && here !== null ? { question: true as const } : {}),
+    })
+  }
+
+  const included = (field: string, there: readonly string[] | undefined, here: unknown): void => {
+    // A proposal that states no list claims nothing about one: a thing states
+    // no consumers, and the schema refuses a right that states none.
+    if (here === undefined) return
+    const theirs = there ?? []
+    if (!Array.isArray(here) || !here.every((item) => typeof item === 'string')) {
+      differs.push({ field, declared: listWords(theirs), proposed: QUESTION, question: true })
+      return
+    }
+    const missing = here.filter((item) => !theirs.includes(item))
+    if (missing.length === 0) fields.push({ field, value: listWords(here) })
+    else differs.push({ field, declared: listWords(theirs), proposed: missing.join(', ') })
+  }
+
+  const spec = declared.spec as {
+    type?: unknown
+    access?: unknown
+    owner?: unknown
+    dependsOn?: string[]
+    dependencyOf?: string[]
+  }
+  scalar('type', spec.type, proposed.type)
+  scalar(ENV_ANNOTATION, declared.metadata.annotations[ENV_ANNOTATION], proposed.env, false)
+  scalar('access', declaredLevel(declared), proposed.access, false)
+  scalar('owner', spec.owner, proposed.owner)
+  included('dependsOn', spec.dependsOn, proposed.dependsOn)
+  included('dependencyOf', spec.dependencyOf, proposed.dependencyOf)
+
+  return differs.length === 0 ? { restates: true, fields } : { restates: false, differs }
+}
+
+/**
+ * Whether the grant an `add-dependency-of` extends already gives `consumer`
+ * the access the operation states: the consumer listed, at the level the
+ * operation claims (§5.3 — an omitted level claims the grant states none).
+ *
+ * The type, the environment, the owner and what the grant is over are named
+ * for a reader and not compared: the operation states none of them, since it
+ * names its grant by reference. They are named because they are the only way
+ * to see WHICH access is already there. A draft extending a grant over
+ * payments-db-prod that already lists billing-api is already declared, and
+ * printed the consumer, the level and the environment alone, so a request for
+ * orders-db-prod read as done with nothing on the page to tell the two apart.
+ * Whether that grant is over what the request asked for is not decided here —
+ * this reads no request — and `docs/roadmap.md` carries it. The environment
+ * policies hold what the user answered or pointed at to the grant's own.
+ */
+export function consumerRestatement(
+  declared: Entity,
+  consumer: string,
+  access: unknown,
+): Restatement {
+  const fields: DeclaredField[] = []
+  const differs: FieldDifference[] = []
+  const spec = declared.spec as { type?: unknown; owner?: unknown; dependsOn?: string[] }
+  // Named, in the order a creation's are, so the two read alike.
+  const named = (field: string, value: unknown): void => {
+    if (typeof value === 'string') fields.push({ field, value })
+  }
+
+  named('type', spec.type)
+  named(ENV_ANNOTATION, declared.metadata.annotations[ENV_ANNOTATION])
+
+  const claim = levelClaim(access)
+  const level = declaredLevel(declared)
+  if (claim.said === 'question') {
+    differs.push({ field: 'access', declared: words(level), proposed: QUESTION, question: true })
+  } else {
+    const stated = claim.said === 'level' ? claim.level : undefined
+    if (stated === level) fields.push({ field: 'access', value: words(level) })
+    else differs.push({ field: 'access', declared: words(level), proposed: words(stated) })
+  }
+
+  named('owner', spec.owner)
+  named('dependsOn', listWords(spec.dependsOn ?? []))
+
+  const holders = declared.kind === 'Resource' ? (declared.spec.dependencyOf ?? []) : []
+  if (holders.includes(consumer)) fields.push({ field: 'dependencyOf', value: consumer })
+  else differs.push({ field: 'dependencyOf', declared: listWords(holders), proposed: consumer })
+
+  return differs.length === 0 ? { restates: true, fields } : { restates: false, differs }
+}
+
+/**
+ * One difference, as a sentence names it: for a list, what it lacks; for a
+ * level, the words `statedAs` uses everywhere a level is named.
+ */
+export const differenceWords = (difference: FieldDifference): string => {
+  const { field, declared, proposed } = difference
+  if (field === 'dependsOn' || field === 'dependencyOf') {
+    return difference.question === true
+      ? `${field} is still a question`
+      : `${field} lists ${declared}, not ${proposed}`
+  }
+  if (field === 'access') {
+    const level = (value: string): string | undefined => (value === NONE ? undefined : value)
+    return difference.question === true
+      ? 'its level is still a question'
+      : `it ${statedAs(level(declared))} where this plan ${statedAs(level(proposed))}`
+  }
+  return `${field} is ${declared} there and ${proposed} here`
+}
 
 /** The level a declaration states, or undefined when it states none (§4.1). */
 export const declaredLevel = (entity: Entity): AccessLevel | undefined =>
@@ -101,9 +308,9 @@ export function levelClaim(access: unknown): LevelClaim {
 /** The same question, asked of a proposed entity's `spec.access`. */
 export const proposedClaim = (entity: unknown): LevelClaim => levelClaim(statedAccess(entity))
 
-/** Whether a declaration already states the grant a proposal states. */
+/** Whether a declaration already says everything a proposal says. See `restatementOf`. */
 export const restates = (declared: Entity, proposal: unknown): boolean =>
-  declaredLevel(declared) === proposedLevel(proposal)
+  restatementOf(declared, proposal).restates
 
 /**
  * How a level reads in a sentence. An unstated one is reported as unstated and

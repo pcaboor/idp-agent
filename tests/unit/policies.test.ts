@@ -7,6 +7,8 @@ import type { SignatureContext, SignedPlan } from '../../src/core/plan/sign.js'
 import { findUnknowns, planSchema } from '../../src/core/schemas/plan.js'
 import type { AccessLevel, Nature } from '../../src/core/schemas/resource-types.js'
 import type { Provenance } from '../../src/core/plan/provenance.js'
+import type { Entity } from '../../src/core/schemas/entity.js'
+import { parseDocuments } from '../../src/core/yaml/serialize.js'
 import {
   environmentsAnswered,
   saidInFull,
@@ -1094,5 +1096,239 @@ describe('an environment the request points at through the thing', () => {
     )
 
     expect(violation?.message).toContain(`${GRANT} is declared prod, and dev was answered`)
+  })
+})
+
+/**
+ * "Already declared" is exact (review priority 8). A creation that names a
+ * declared reference either restates it — everything it states is already
+ * there — or says otherwise, and saying otherwise is refused here, before a
+ * preview: the file cannot be rewritten (§4.3), and compared on the level
+ * alone, a grant held by another consumer was reported on exit 0 as the access
+ * the request asked for.
+ */
+describe('declared-otherwise', () => {
+  const READ_IN_PROD = 'give billing-api read access to orders-db in prod'
+  const REF = 'resource:default/billing-api-orders-db-prod'
+
+  /** The grant the repository declares under the name the draft chose. */
+  const declaredGrant = ({
+    env = 'prod',
+    level = 'read',
+    owner = 'group:default/tiger',
+    consumers = ['component:default/billing-api'],
+  } = {}): Entity => {
+    const [entity] = parseDocuments(
+      [
+        '---',
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: Resource',
+        'metadata:',
+        '  name: billing-api-orders-db-prod',
+        '  annotations:',
+        `    company.fr/env: ${env}`,
+        'spec:',
+        '  type: database-access',
+        `  access: ${level}`,
+        `  owner: ${owner}`,
+        '  dependsOn:',
+        '    - resource:default/orders-db-prod',
+        '  dependencyOf:',
+        ...consumers.map((consumer) => `    - ${consumer}`),
+        '',
+      ].join('\n'),
+    ).entities
+    if (entity === undefined) throw new Error('fixture')
+    return entity
+  }
+
+  /** The policy context, with `entity` declared under REF. */
+  const declaring = (entity: Entity): PolicyContext =>
+    policies({
+      declarations: new Map([[REF, entity]]),
+      levels: new Map<string, AccessLevel | undefined>([
+        [REF, entity.kind === 'Resource' ? entity.spec.access : undefined],
+      ]),
+      natures: new Map<string, Nature>([[REF, 'right']]),
+    })
+
+  it('refuses a creation restating a grant another consumer holds, at the same level', () => {
+    // The review's case: same name, same level, another consumer.
+    const signed = sign(accessIn('prod'), READ_IN_PROD)
+
+    const violations = check(
+      signed,
+      declaring(declaredGrant({ consumers: ['component:default/orders-api'] })),
+    )
+
+    const violation = of(violations, 'declared-otherwise')
+    expect(violation?.path).toBe('operations.0.entity')
+    expect(violation?.message).toContain(REF)
+    expect(violation?.message).toContain('dependencyOf')
+    expect(violation?.message).toContain('component:default/billing-api')
+    // What to do instead, in terms of the one operation that appends.
+    expect(violation?.message).toContain('add-dependency-of')
+    expect(violations.map((one) => one.policy)).not.toContain('declared-level-mismatch')
+  })
+
+  it('refuses a creation restating a grant another team owns', () => {
+    const signed = sign(accessIn('prod'), READ_IN_PROD)
+
+    const violation = of(
+      check(signed, declaring(declaredGrant({ owner: 'group:default/lion' }))),
+      'declared-otherwise',
+    )
+
+    expect(violation?.message).toContain('owner')
+    expect(violation?.message).toContain('group:default/lion')
+    expect(violation?.message).toContain('group:default/tiger')
+  })
+
+  it('refuses a creation restating a grant scoped to another environment', () => {
+    const signed = sign(accessIn('prod'), READ_IN_PROD)
+
+    const violation = of(
+      check(signed, declaring(declaredGrant({ env: 'staging' }))),
+      'declared-otherwise',
+    )
+
+    expect(violation?.message).toContain('staging')
+  })
+
+  it('leaves a level alone to declared-level-mismatch, which says it once', () => {
+    const signed = sign(accessIn('prod'), READ_IN_PROD)
+
+    const policiesFired = check(signed, declaring(declaredGrant({ level: 'readwrite' }))).map(
+      (one) => one.policy,
+    )
+
+    expect(policiesFired).toContain('declared-level-mismatch')
+    expect(policiesFired).not.toContain('declared-otherwise')
+  })
+
+  it('says nothing about a creation that restates the declaration', () => {
+    // A genuine replay, which must still end on "nothing to change".
+    const signed = sign(accessIn('prod'), READ_IN_PROD)
+
+    expect(check(signed, declaring(declaredGrant()))).toEqual([])
+  })
+
+  it('says nothing about a declaration listing the consumer among others', () => {
+    const signed = sign(accessIn('prod'), READ_IN_PROD)
+
+    expect(
+      check(
+        signed,
+        declaring(
+          declaredGrant({
+            consumers: ['component:default/orders-api', 'component:default/billing-api'],
+          }),
+        ),
+      ),
+    ).toEqual([])
+  })
+})
+
+/**
+ * One entity, one operation. Two operations aimed at one reference were
+ * merged in silence — the second creation found the first's bytes and added
+ * nothing, an update of an entity the same plan creates amended the creation
+ * — so what a reader was told the plan does was not what it did.
+ */
+describe('same-reference-twice', () => {
+  const CONSUMERS = [
+    'component:default/billing-api',
+    'component:default/orders-api',
+    'resource:default/orders-db-prod',
+    'resource:default/checkout-orders-db-prod',
+  ]
+
+  const signAll = (operations: unknown[], answers: Record<string, string> = {}): SignedPlan => {
+    const parsed = planSchema.parse({
+      intent: 'give billing-api and orders-api read access to orders-db in prod',
+      operations,
+    })
+    const said = saidInFull(parsed)
+    const result = signPlan(
+      parsed,
+      signature({ witnessed: new Set(CONSUMERS) }),
+      userSaid(parsed.intent, { ...Object.fromEntries(said.answers), ...answers }),
+    )
+    if ('outcome' in result) throw new Error(`refused: ${JSON.stringify(result.refusals)}`)
+    return result
+  }
+
+  const create = (consumer = 'component:default/billing-api') => ({
+    op: 'create-entity',
+    entity: accessIn('prod', undefined, consumer),
+  })
+
+  it('refuses two creations of one entity, naming both', () => {
+    const violations = check(
+      signAll([create(), create('component:default/orders-api')]),
+      policies(),
+    )
+
+    const violation = of(violations, 'same-reference-twice')
+    expect(violation?.path).toBe('operations.1')
+    expect(violation?.message).toContain('operations.0')
+    expect(violation?.message).toContain('operations.1')
+    expect(violation?.message).toContain('resource:default/billing-api-orders-db-prod')
+  })
+
+  it('refuses a creation and an update of the entity it creates, naming both', () => {
+    const violations = check(
+      signAll([
+        create(),
+        joining('resource:default/billing-api-orders-db-prod', 'component:default/orders-api', 'read'),
+      ]),
+      policies(),
+    )
+
+    const violation = of(violations, 'same-reference-twice')
+    expect(violation?.path).toBe('operations.1')
+    expect(violation?.message).toContain('operations.0')
+    expect(violation?.message).toContain('dependencyOf')
+  })
+
+  it('refuses two updates joining one consumer to one grant', () => {
+    const update = joining(
+      'resource:default/checkout-orders-db-prod',
+      'component:default/billing-api',
+      'read',
+    )
+
+    const violation = of(check(signAll([update, update]), policies()), 'same-reference-twice')
+
+    expect(violation?.path).toBe('operations.1')
+    expect(violation?.message).toContain('operations.0')
+  })
+
+  it('refuses two updates of one grant stating two levels', () => {
+    const signed = signAll(
+      [
+        joining('resource:default/checkout-orders-db-prod', 'component:default/billing-api', 'read'),
+        joining(
+          'resource:default/checkout-orders-db-prod',
+          'component:default/orders-api',
+          'readwrite',
+        ),
+      ],
+      { 'operations.1.patch.access': 'readwrite' },
+    )
+
+    const violation = of(check(signed, policies()), 'same-reference-twice')
+
+    expect(violation?.message).toContain('read')
+    expect(violation?.message).toContain('readwrite')
+  })
+
+  it('lets two updates of one grant join two consumers: two accesses', () => {
+    const signed = signAll([
+      joining('resource:default/checkout-orders-db-prod', 'component:default/billing-api', 'read'),
+      joining('resource:default/checkout-orders-db-prod', 'component:default/orders-api', 'read'),
+    ])
+
+    expect(of(check(signed, policies()), 'same-reference-twice')).toBeUndefined()
   })
 })

@@ -1,6 +1,6 @@
 import type { FileEdit } from '../diff/unified.js'
 import type { Entity } from '../schemas/entity.js'
-import { restates } from './grant.js'
+import { consumerRestatement, restatementOf, type DeclaredField } from './grant.js'
 import { parseDocuments } from '../yaml/serialize.js'
 import type { RepositoryFile, RepositorySnapshot, Violation } from '../validate/rules.js'
 import { checkRepository } from '../validate/rules.js'
@@ -29,26 +29,54 @@ import type { SignedPlan } from './sign.js'
  */
 
 export type RecheckOutcome =
+  /**
+   * Nothing declares what it states yet: a creation of a reference the
+   * repository does not hold, or a consumer appended to a grant that does not
+   * list it.
+   */
   | 'fresh'
   /**
-   * The entity is already in the repository, at the path the plan computed,
-   * stating the grant the plan states. What the CLI reports as "nothing to
-   * change — the repository already says it".
+   * Everything the operation states is already declared (`grant.ts`): the
+   * entity at the path the plan computed, or the consumer on the grant an
+   * update extends, at the level it states. What the CLI reports as "nothing
+   * to change — the repository already says it", naming the file and the
+   * fields (`restated`).
    */
   | 'already-declared'
   /**
-   * Same reference, same file, a different grant. Decided by name alone this
-   * came out `already-declared`, so a requested narrowing was reported as work
-   * already done. See `grant.ts` for what "the same grant" compares.
+   * Same reference, same file, and it says something else: another level,
+   * owner, environment, type, target, or a grant that does not list the
+   * consumer the plan states. Decided by name, or by level alone, this came
+   * out `already-declared`, so an access nobody had was reported as work
+   * already done. See `grant.ts` for what is compared.
    */
   | 'differs'
   /** Same name, different file. Writing would make a duplicate. */
   | 'moved'
-  /** Still carries a question, so there is no path to check. */
+  /**
+   * Nothing to check: a creation still carrying a question, so there is no
+   * path, or an update of a reference the repository declares nowhere, which
+   * `planEdits` drops by name.
+   */
   | 'unresolved'
+
+/** An operation the repository already declares, and where and what it says. */
+export interface Restated {
+  /** The file declaring it, repository-relative: the one a reader opens. */
+  readonly path: string
+  readonly ref: string
+  /** Every field the operation states, as the file says it. */
+  readonly fields: readonly DeclaredField[]
+}
 
 export interface Recheck {
   readonly outcomes: ReadonlyMap<number, RecheckOutcome>
+  /**
+   * opIndex → what the repository already says, for every operation whose
+   * outcome is `already-declared` and only those. A person told "the
+   * repository already says it" has to be able to check that it does.
+   */
+  readonly restated: ReadonlyMap<number, Restated>
   /**
    * The PLAN's violations, errors and warnings: those of the repository it
    * would leave behind that it introduces — including a fault it changes, such
@@ -155,20 +183,52 @@ export function recheckPlan(
   edits: readonly FileEdit[],
 ): Recheck {
   const outcomes = new Map<number, RecheckOutcome>()
+  const restated = new Map<number, Restated>()
 
   // Where the repository already declares each reference, and what it
   // declares there. Built once: a plan with n operations over a repository
-  // with m files must not be n×m.
+  // with m files must not be n×m. The FIRST declaration wins, the way the
+  // catalogue resolves a duplicate (§4.4) and the way `planEdits` finds the
+  // file an update amends: the last one used to win here, so the two could
+  // name different files for one operation (core-plan-12).
   const declaredAt = new Map<string, string>()
   const declares = new Map<string, Entity>()
   for (const file of snapshot.files) {
     for (const entity of file.entities) {
+      if (declares.has(refOf(entity))) continue
       declaredAt.set(refOf(entity), file.path)
       declares.set(refOf(entity), entity)
     }
   }
 
   for (const [opIndex, operation] of signed.plan.operations.entries()) {
+    // An update names its grant by reference and computes no path: the file
+    // is wherever the repository declares it. It used to be `unresolved`
+    // whatever that file said, so an access that existed was never named.
+    if (operation.op === 'update-entity') {
+      const { entityRef, patch } = operation
+      const there = declares.get(entityRef)
+      const where = declaredAt.get(entityRef)
+      if (there === undefined || where === undefined) {
+        outcomes.set(opIndex, 'unresolved')
+        continue
+      }
+      const listed =
+        there.kind === 'Resource' && (there.spec.dependencyOf ?? []).includes(patch.consumer)
+      if (!listed) {
+        outcomes.set(opIndex, 'fresh')
+        continue
+      }
+      const restatement = consumerRestatement(there, patch.consumer, patch.access)
+      if (restatement.restates) {
+        outcomes.set(opIndex, 'already-declared')
+        restated.set(opIndex, { path: where, ref: entityRef, fields: restatement.fields })
+      } else {
+        outcomes.set(opIndex, 'differs')
+      }
+      continue
+    }
+
     const path = signed.paths.get(opIndex)
     const ref = signed.refs.get(opIndex)
     if (path === undefined || ref === undefined) {
@@ -189,19 +249,22 @@ export function recheckPlan(
     // The reference is there, at the path the engine computed. Whether that is
     // "already declared" depends on what the file SAYS: this outcome is what
     // the CLI prints as "the repository already says it", so it has to mean
-    // the repository says what the plan says. Decided by the reference alone,
-    // it reported a requested narrowing as work already done, with an empty
-    // diff and exit 0. `restates` is the one place that rule lives — the same
-    // question `planEdits` asks to decide whether to write any bytes.
+    // the repository says everything the plan says. Decided by the reference
+    // alone, then by the level alone, it reported an access nobody had as work
+    // already done, with an empty diff and exit 0. `grant.ts` is the one place
+    // that rule lives — the question `planEdits` asks to decide whether to
+    // write any bytes.
     const there = declares.get(ref)
-    outcomes.set(
-      opIndex,
-      there !== undefined &&
-        operation.op === 'create-entity' &&
-        !restates(there, operation.entity)
-        ? 'differs'
-        : 'already-declared',
-    )
+    const restatement =
+      there === undefined || operation.op !== 'create-entity'
+        ? undefined
+        : restatementOf(there, operation.entity)
+    if (restatement?.restates === true) {
+      outcomes.set(opIndex, 'already-declared')
+      restated.set(opIndex, { path, ref, fields: restatement.fields })
+    } else {
+      outcomes.set(opIndex, 'differs')
+    }
   }
 
   /**
@@ -260,6 +323,7 @@ export function recheckPlan(
 
   return {
     outcomes,
+    restated,
     ...attribute(checkRepository(snapshot), checkRepository(would), {
       files: changed,
       folders: new Set([...changed].map(folderOf)),

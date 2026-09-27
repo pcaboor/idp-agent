@@ -99,10 +99,14 @@ const AMEND_PATH = 'dependencies/access/checkout-orders-db-prod.yml'
 const AMEND_FILE = document('checkout-orders-db-prod', ['component:default/checkout-web'])
 const AMEND_INTENT = 'let billing-api and payments-api share the checkout access too'
 
-const addConsumer = (consumer: string) => ({
+const addConsumer = (consumer: string, access?: string) => ({
   op: 'update-entity' as const,
   entityRef: 'resource:default/checkout-orders-db-prod',
-  patch: { patch: 'add-dependency-of' as const, consumer },
+  patch: {
+    patch: 'add-dependency-of' as const,
+    consumer,
+    ...(access === undefined ? {} : { access }),
+  },
 })
 
 const repository = (entries: Array<[string, string]>): ReadonlyMap<string, string> =>
@@ -194,9 +198,9 @@ describe('planEdits, creating an entity', () => {
   it('still produces an edit when the entity is already declared there', () => {
     // An empty diff, not an absent one. "Nothing to do" and "the operation was
     // dropped" are different answers and the caller has to tell them apart.
-    // Already declared means the file states the same GRANT — same level, not
-    // merely the same name.
-    const existing = document('billing-api-orders-db-prod', [], 'read')
+    // Already declared means the file states the same GRANT — everything the
+    // proposal states, consumer included — not merely the same name.
+    const existing = document('billing-api-orders-db-prod', ['component:default/billing-api'], 'read')
     const edits = planEdits(sign(CREATE_INTENT, [createAccess]), repository([[ACCESS_PATH, existing]])).edits
 
     expect(edits).toHaveLength(1)
@@ -233,6 +237,41 @@ describe('planEdits, creating an entity', () => {
 
     expect(edits).toEqual([])
     expect(dropped[0]?.reason).toMatch(/states no level|no level/)
+  })
+
+  it('produces no bytes when the file declares that grant for another consumer', () => {
+    // The review's case (runtime-probe-1): the same name, the same level, and
+    // another consumer. Compared on the level alone it came out an edit whose
+    // two sides were equal — "the repository already says it" about an access
+    // billing-api does not have. Appending cannot turn a creation into an
+    // amendment, so there are no honest bytes, and the reason names the field.
+    const theirs = document('billing-api-orders-db-prod', ['component:default/orders-api'], 'read')
+    const { edits, dropped } = planEdits(
+      sign(CREATE_INTENT, [createAccess]),
+      repository([[ACCESS_PATH, theirs]]),
+    )
+
+    expect(edits).toEqual([])
+    expect(dropped).toHaveLength(1)
+    expect(dropped[0]?.reason).toContain(ACCESS_PATH)
+    expect(dropped[0]?.reason).toContain('dependencyOf')
+    expect(dropped[0]?.reason).toContain('component:default/billing-api')
+  })
+
+  it('produces no bytes when the file declares that grant owned by another team', () => {
+    const theirs = document(
+      'billing-api-orders-db-prod',
+      ['component:default/billing-api'],
+      'read',
+    ).replace('owner: group:default/tiger', 'owner: group:default/lion')
+    const { edits, dropped } = planEdits(
+      sign(CREATE_INTENT, [createAccess]),
+      repository([[ACCESS_PATH, theirs]]),
+    )
+
+    expect(edits).toEqual([])
+    expect(dropped[0]?.reason).toContain('owner')
+    expect(dropped[0]?.reason).toContain('group:default/lion')
   })
 
   it('contributes nothing when the operation still carries a question', () => {
@@ -281,11 +320,31 @@ describe('planEdits, amending an entity', () => {
   })
 
   it('still produces an edit when the consumer is already listed', () => {
-    const signed = sign(AMEND_INTENT, [addConsumer('component:default/checkout-web')])
+    // Listed, at the level the grant declares and the operation states: the
+    // access exists, so the edit's two sides are equal.
+    const signed = sign(AMEND_INTENT, [addConsumer('component:default/checkout-web', 'read')])
     const edits = planEdits(signed, repository([[AMEND_PATH, AMEND_FILE]])).edits
 
     expect(edits).toHaveLength(1)
     expect(at(edits, 0).after).toBe(at(edits, 0).before)
+  })
+
+  it('produces no bytes when the consumer is listed and the level misstated', () => {
+    // Listed, but not at the level the operation claims: not already done, and
+    // not something an append can make true. Named, never an empty edit.
+    // Signed with `readwrite` answered, so the level is a value and not a
+    // question: what is under test is the comparison, not the signature.
+    const parsed = planSchema.parse({
+      intent: AMEND_INTENT,
+      operations: [addConsumer('component:default/checkout-web', 'readwrite')],
+    })
+    const signed = signPlan(parsed, context(), saidInFull(parsed, 'readwrite'))
+    if ('outcome' in signed) throw new Error('refused')
+    const { edits, dropped } = planEdits(signed, repository([[AMEND_PATH, AMEND_FILE]]))
+
+    expect(edits).toEqual([])
+    expect(dropped[0]?.reason).toContain('readwrite')
+    expect(dropped[0]?.reason).toContain(AMEND_PATH)
   })
 
   it('contributes nothing when no file declares the entity', () => {
@@ -317,7 +376,7 @@ describe('planEdits, amending a grant written in short form', () => {
   ].join('\n')
 
   it('sees a consumer it lists in short form as already listed', () => {
-    const signed = sign(AMEND_INTENT, [addConsumer('component:default/checkout-web')])
+    const signed = sign(AMEND_INTENT, [addConsumer('component:default/checkout-web', 'read')])
     const { edits, dropped } = planEdits(signed, repository([[AMEND_PATH, SHORT_FILE]]))
 
     expect(dropped).toEqual([])
@@ -617,7 +676,9 @@ describe('planEdits reads back what it wrote', () => {
   // nothing else changed. The surgery is a line-level heuristic underneath;
   // this is what makes a wrong guess a named drop instead of a wrong diff, or
   // an unchanged file that reads as "already listed".
-  const billingApi = addConsumer('component:default/billing-api')
+  // Stating the level the grant declares: listed at that level is already
+  // done, and listed at another is not (`consumerRestatement`).
+  const billingApi = addConsumer('component:default/billing-api', 'read')
 
   it('drops an update whose target only the parser can find, and leaves the file alone', () => {
     // A flow-mapping `metadata`: the parser reads the entity, a line edit
@@ -722,7 +783,9 @@ describe('planEdits, beside a document the parser faults', () => {
   // a consumer that was, and the unchanged file was then dropped as "the edit
   // left the file as it was" — a plan told the repository did not say what it
   // said.
-  const billingApi = addConsumer('component:default/billing-api')
+  // Stating the level the grant declares: listed at that level is already
+  // done, and listed at another is not (`consumerRestatement`).
+  const billingApi = addConsumer('component:default/billing-api', 'read')
   const brokenSibling = [
     '---',
     'apiVersion: backstage.io/v1alpha1',
