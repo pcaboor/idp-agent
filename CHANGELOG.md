@@ -89,6 +89,10 @@ Each pull request adds its line here.
 
 ### Documentation
 
+- The review's 133 findings that no pull request named are swept against `main`: 15 fixed,
+  39 partly fixed, 79 still true, none obsolete; the review's Status section records each
+  verdict, and the roadmap batches the cheap fixes into pull requests and lists what waits
+  for a re-record or the owner ([#85](https://github.com/pcaboor/idp-agent/pull/85)).
 - The `backstage-http` read provider is designed: the catalogue is read once per run, before
   any model, through the same reader as a file, `spec` and never `relations`; the token comes
   from `IDP_BACKSTAGE_TOKEN` and reaches only the configured origin, on two `GET` routes and

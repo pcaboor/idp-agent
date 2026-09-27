@@ -172,6 +172,184 @@ Named as left open, and still open: runtime-probe-15, `plan --repo` resolved aga
 `process.cwd()` rather than `MainDeps.cwd` ([#46](https://github.com/pcaboor/idp-agent/pull/46);
 the comment where `plan`'s source is resolved in `src/cli/index.ts` says so).
 
+### The sweep (2026-09-27)
+
+The index has 212 rows. 79 are named by a pull request, in the priorities above or in
+"Beyond the priorities". The other 133 were each checked against `main` at `05356af`, read
+only, with a probe where the verdict depended on behaviour. The review's own text is left as
+it was. The order of what is left is in [`docs/roadmap.md`](../roadmap.md#the-queue).
+
+| Verdict | high | medium | low | Total |
+|---|---|---|---|---|
+| fixed | 0 | 6 | 6 | 12 |
+| partly fixed | 2 | 25 | 15 | 42 |
+| still true | 1 | 45 | 33 | 79 |
+| obsolete | 0 | 0 | 0 | 0 |
+| **Total** | 3 | 76 | 54 | 133 |
+
+None of the 133 is critical or info. Of the 121 left open, 26 are trivial to fix, 57 small,
+29 medium and 9 large. 59 need neither a re-record nor the owner, 7 need a re-record only,
+41 need the owner only, and 14 need both.
+
+**Fixed without a pull request naming them**
+
+| id | Fixed by |
+|---|---|
+| build-ci-4 | [#78](https://github.com/pcaboor/idp-agent/pull/78): `scripts/demo.mjs` checks each step's exit code, runs no `rm -rf`, and smoke runs it |
+| build-ci-11 | [#78](https://github.com/pcaboor/idp-agent/pull/78): install section says "Not on npm yet", keys named, `.env.example` held by a test |
+| cli-ux-9 | [#58](https://github.com/pcaboor/idp-agent/pull/58): `ask` prints the model's reason and error messages through `oneLine` |
+| cli-ux-15 | [#78](https://github.com/pcaboor/idp-agent/pull/78) (the provider table, `.env.example`, HELP) and [#59](https://github.com/pcaboor/idp-agent/pull/59) (the missing-key check) |
+| core-yaml-7 | [#45](https://github.com/pcaboor/idp-agent/pull/45): inserted and appended lines take the file's line ending |
+| core-yaml-8 | [#45](https://github.com/pcaboor/idp-agent/pull/45): `scalarOf` drops a trailing comment, so a listed consumer is not added twice |
+| docs-1 | [#78](https://github.com/pcaboor/idp-agent/pull/78): `pnpm demo` and every example run by smoke against their documented exit codes |
+| docs-5 | [#47](https://github.com/pcaboor/idp-agent/pull/47), [#78](https://github.com/pcaboor/idp-agent/pull/78): a README first screen on Backstage, intent and diff, held by a test |
+| gap-ask-grounding-10 | [#58](https://github.com/pcaboor/idp-agent/pull/58): the same as cli-ux-9 |
+| product-gap-12 | [#78](https://github.com/pcaboor/idp-agent/pull/78): `add-access.json` documented as `3 · question`, checked by smoke |
+| runtime-probe-10 | [#74](https://github.com/pcaboor/idp-agent/pull/74): `show` and `relations` list every entity carrying the name |
+| runtime-probe-12 | [#62](https://github.com/pcaboor/idp-agent/pull/62): the diff and policy messages go through `visible` and `inertLine` |
+
+**Obsolete.** None.
+
+**By design.** No finding is by design as a whole, but part of five is. The rest of each
+stays open in the table below.
+
+| id | The part that is by design | Decision |
+|---|---|---|
+| domain-backstage-7 | `consumesApis` and `relations` not read | [#71](https://github.com/pcaboor/idp-agent/pull/71) (consumption is expressed by rights); [#84](https://github.com/pcaboor/idp-agent/pull/84) (`spec`, never `relations`) |
+| domain-backstage-8 | `ContextProvider` keeps only `load()` | [#84](https://github.com/pcaboor/idp-agent/pull/84): one snapshot per run |
+| domain-backstage-9, product-gap-8 | the type registry does not grow | stage 8, decision 9: no new resource types in v1 ([#76](https://github.com/pcaboor/idp-agent/pull/76)) |
+| architecture-7 | no plugin API yet | 2026-09-23: the foundation is fixed before plugins |
+
+**Still true or partly fixed.** Sorted by severity. The batch column is the pull request
+proposed in the roadmap. "re-record" means the fix changes what a recording was sent, and
+"owner" means it waits for a decision of the owner's. Four items belong to no batch and
+need neither: architecture-10 and product-gap-4 (medium refactors, left for later),
+domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 5's writer).
+
+| id | verdict | severity | fix | batch | flags | sketch |
+|---|---|---|---|---|---|---|
+| architecture-5 | partly fixed | high | large |  | re-record, owner | Keep the namespace in one `refOf`/`parseRef`, a configurable environment annotation, registry-built schemas. |
+| product-gap-13 | partly fixed | high | large |  | owner | A "Session and provenance" section in design.md before stage 5, a signal on `GenerateRequest`, a REPL prototype. |
+| wip-diff-3 | still true | high | medium |  | re-record, owner | A fact naming each reference the catalogue lacks and the operation declaring it, a §7.5 sentence in SYSTEM, then re-record `link-db-missing`. |
+| agents-llm-2 | partly fixed | medium | medium |  | re-record, owner | Cap each tool result and transcript, a `--max-calls` or token budget from the recorded usage, a usage summary at the end. |
+| agents-llm-4 | partly fixed | medium | medium |  | owner | An `openai-compatible` adapter on `/chat/completions` (`IDP_BASE_URL`), `IDP_<AGENT>_MODEL`, an explicit `maxRetries`; Azure and Bedrock optional. |
+| agents-llm-6 | still true | medium | trivial |  | re-record | `turn >= maxTurns - 1` in the Analyst's, Inspector's and Architect's loops, as the Reviewer has. |
+| agents-llm-7 | still true | medium | trivial |  | re-record | Word the `propose` description as the prompt does (no empty list) and fix the comment on the operation count. |
+| agents-llm-8 | still true | medium | small |  | re-record | Carry the refused operations' JSON into the repair report, or the last proposal into the next opening message. |
+| agents-llm-9 | partly fixed | medium | medium | B2 (part) | re-record, owner | Record from an empty map, clone the transcript at call time, digest the JSON Schema, assert every turn replayed. |
+| architecture-1 | still true | medium | medium |  | owner | One pure `evaluatePlan()` in `core/plan` called by repair, `--from` and `init`, with a parity test; `contextsOf` out of `cli/`. |
+| architecture-6 | partly fixed | medium | medium | A4 (part) |  | `never` defaults or a `HANDLERS` table at the 44 remaining `op ===` branches; a switch on `patch.patch`. |
+| architecture-7 | still true | medium | large |  | owner | `Policy` and `Rule` objects enabled per repository, factory tables for providers, a `./plugin` export — after the foundation. |
+| architecture-8 | partly fixed | medium | medium |  | owner | Same fix as agents-llm-4. |
+| architecture-9 | partly fixed | medium | large |  | owner | A structured Preview/PlanReport apart from rendering, a signal through the commands, a session ADR before stage 5 freezes confirmation. |
+| architecture-10 | partly fixed | medium | medium |  |  | One `runBoundedLoop` for the four agents, and `reasonOf` everywhere. |
+| architecture-11 | still true | medium | small | A2 |  | Fail on an empty tree or an unresolved import, scan `.mts`/`.cts`, and a rule naming the `cli/` modules that touch the disk. |
+| build-ci-2 | still true | medium | small | A3 |  | Smoke from an extracted `npm pack` tarball, or at least assert `fixtures/si-demo` is packed. |
+| build-ci-3 | still true | medium | trivial | A3 |  | Clean `dist/` before `tsc`, and a `prepack` running typecheck, test, build and smoke. |
+| cli-ux-1 | still true | medium | small | A1 |  | `validate` resolves its directory like the other commands (exit 2 when it is none) and parses strictly. |
+| cli-ux-5 | partly fixed | medium | small |  | owner | A repeatable `plan --answer <path>=<value>` (or `--answers file.json`) through `fillAnswers`, named in the question text. |
+| cli-ux-6 | partly fixed | medium | small | A1 |  | Ctrl-C at a prompt rejects with an interruption, and `main` exits 130; Ctrl-D stays a decline. |
+| cli-ux-10 | still true | medium | medium |  | owner | One versioned `PlanReport` union by `outcome`, with edits and diffs, emitted by both routes and every refusal. |
+| cli-ux-11 | partly fixed | medium | small | A1 |  | `-h`, `--version`, `version` and `<cmd> --help` before `parsePhrase`; strict single positionals; a usage line, not the whole HELP. |
+| cli-ux-12 | partly fixed | medium | large |  | owner | Same as architecture-9, and split `plan.ts` into pipeline, ask loop and render. |
+| core-plan-8 | still true | medium | medium |  | owner | `environmentAnnotation` in `.idp-agent.yml`, threaded in place of `ENV_ANNOTATION`, with a neutral default. |
+| core-plan-9 | still true | medium | medium |  | owner | One function mints an `ApprovedChange` after the five gates, held in a module-private `WeakSet` the writer checks. |
+| core-plan-11 | still true | medium | small |  | owner | Same channel as cli-ux-5: an `--answer` value enters `provenance.answers` and signs `echoed`. |
+| core-yaml-5 | still true | medium | medium | B3 |  | One lstat, realpath and `O_NOFOLLOW` primitive shared from project-fs, used by `scaffold/write.ts` and the stage-5 writer. |
+| core-yaml-6 | partly fixed | medium | small | B1 |  | Vary marker, indent, BOM, CRLF and trailing comments in `arbitraryHandWrittenFile`; an effectiveness property for creations. |
+| docs-3 | partly fixed | medium | trivial | A3 |  | Write the gate order `SECURITY.md:114` guarantees (schema, signature, policy, Reviewer, re-check) as `repair.ts` and the test it cites (`ORDER` in `repair.test.ts`) run it: the re-check before the Reviewer. [#78](https://github.com/pcaboor/idp-agent/pull/78) fixed the rest. Same fix as architecture-12. |
+| docs-6 | still true | medium | medium |  | owner | `idpa tour`: 2 or 3 packaged tapes replayed over the demo SI, keyless and labelled; then the asciinema. |
+| docs-7 | still true | medium | small |  | owner | A README section on what the tool produces and what it does not (provisioning is the reconciler's). |
+| docs-8 | partly fixed | medium | small |  | owner | `docs/extending.md` from the existing seams, plugins on the roadmap, a session-model ADR stub. |
+| domain-backstage-6 | still true | medium | medium |  | owner | Same fix as core-plan-8. |
+| domain-backstage-7 | partly fixed | medium | small | A5 |  | Read `title`, `labels` and `subcomponentOf` on the read side, print them on `show`, count stripped keys as set aside. |
+| gap-ask-grounding-2 | still true | medium | medium |  | re-record, owner | Witness only earlier turns' results, cite the call whose rows are reprinted, mark a forced-turn answer partial. |
+| gap-ask-grounding-3 | partly fixed | medium | medium |  | re-record, owner | Tie `nothing` to a call that returned zero rows, an `unknown` outcome, engine refusals on exit 1. |
+| gap-ask-grounding-4 | partly fixed | medium | medium |  | re-record, owner | Engine-verified `holds` and `count` outcomes, rendered by the engine as `relation` is. |
+| gap-ask-grounding-7 | still true | medium | small | A5 |  | Strip punctuation and markdown before comparing the Supervisor's word, retry once, then exit 1 with one line. |
+| gap-ask-grounding-9 | still true | medium | large |  | owner | Same as architecture-5 for namespaces; until then set aside a non-default namespace with a warning. |
+| gap-init-real-repos-5 | still true | medium | small |  | owner | Place an Inspector fact only when its value occurs in a file it read; otherwise ask. Same fix as security-5. |
+| gap-init-real-repos-6 | still true | medium | trivial | A1 |  | Same fix as cli-ux-8. |
+| gap-init-real-repos-7 | still true | medium | medium |  | re-record, owner | CODEOWNERS and `.idp-agent.yml` from the git root for a sub-folder; `auth` out of the directory stems; one Component per run documented. |
+| gap-stage5-readiness-2 | still true | medium | small | A4 |  | Refine `repoPath`: relative, no `..`, no hidden segment, basename `catalog-info.y(a)ml`; test both probe paths. |
+| gap-stage5-readiness-3 | still true | medium | large |  | owner | Decide in the stage-5 plan that the base is a commit, read through git, and the contracts without git. |
+| gap-stage5-readiness-4 | still true | medium | medium | B3 |  | The iac-fs walk turns a symbolic link into a named rejection; same primitive as core-yaml-5. |
+| gap-stage5-readiness-6 | partly fixed | medium | medium | stage 5 |  | Stage 5's writer re-reads each target and compares it with `before`, refusing on a mismatch. |
+| gap-stage5-readiness-9 | still true | medium | small | A2 |  | A rule that only the named writers import a writing function or `child_process`, over the closure; a minimum file count. |
+| gap-stage5-readiness-10 | still true | medium | medium |  | owner | Same `evaluatePlan()` as architecture-1; then word SECURITY and README by route, or give `--from` a Reviewer. |
+| gap-stage5-readiness-11 | partly fixed | medium | small | B1 |  | Same generators as core-yaml-6; stage 5's idempotence invariant asserts the effect too. |
+| gap-stage5-readiness-13 | still true | medium | large |  | owner | Split compute from render (a structured Preview) and add a Confirm seam beside Ask. |
+| product-gap-4 | still true | medium | medium |  |  | Keep `metadata.namespace`, one `refOf`/`parseRef` in core, a rule forbidding the `:default/` literal. |
+| product-gap-5 | still true | medium | small |  | re-record, owner | Same fix as core-plan-8. |
+| product-gap-6 | partly fixed | medium | medium |  | re-record | `offset`, and system, lifecycle and tag criteria for searches; a count or table outcome. |
+| product-gap-7 | still true | medium | small |  | owner | Same README section as docs-7; a reconciler example optional. |
+| product-gap-8 | still true | medium | large |  | owner | Schemas built from a registry, extra types from the config; the comment now (domain-backstage-9). |
+| product-gap-9 | partly fixed | medium | medium |  | owner | Same adapter as agents-llm-4, and one Anthropic recording with the owner's key. |
+| runtime-probe-3 | still true | medium | small | A1 |  | `validate` reuses `repositoryRoot`, an unreadable folder is a violation, `rules.ts` lets `PathEscapeError` through, the test matches its title. |
+| runtime-probe-9 | partly fixed | medium | small |  | owner | Same channel as cli-ux-5. |
+| runtime-probe-11 | still true | medium | medium | B3 |  | Same primitive as core-yaml-5, in `writeScaffold` and the iac-fs walk. |
+| security-9 | partly fixed | medium | trivial | A3 |  | Same fix as docs-3: its four points are gone, and the gate-order row is the one guarantee left that contradicts the code and the test it names. |
+| tests-2 | partly fixed | medium | small |  | owner | Pin each replayed scenario's exit code and diff; same work as wip-diff-7. |
+| tests-3 | still true | medium | small | B1 |  | Plans valid by construction (Component, levelled grant, update), `fc.pre` instead of `return`. |
+| tests-4 | still true | medium | small |  | re-record, owner | The freshness guard in question mode, after the question tapes are re-recorded. |
+| tests-5 | still true | medium | small | B2 | owner | Record from an empty map, assert every turn replayed, prune the dead turns offline. |
+| tests-6 | still true | medium | small | B2 | owner | Digest the JSON Schema the provider is sent; same fix as wip-diff-12. |
+| tests-8 | still true | medium | small | A2 |  | Delete `IDP_PROVIDER`, `IDP_MODEL`, `IDP_*_MODEL` and `*_API_KEY` in the setup unless recording; record only with a scenario. |
+| tests-9 | still true | medium | small | A2 |  | `tests/README.md` on the tape lifecycle, linked from CONTRIBUTING. |
+| tests-11 | still true | medium | trivial | A2 |  | Same fix as core-plan-13, plus a sentinel so a crash counts as neither open nor closed. |
+| wip-diff-1 | still true | medium | small | A4 |  | `created()` per operation, leaving the walked one out and counting only creations with a path; a policy that `dependsOn` names an object. |
+| wip-diff-4 | still true | medium | small | A4 |  | Same change as wip-diff-1: `created()` only counts creations the engine places. |
+| wip-diff-6 | still true | medium | medium |  | owner | Freshness as its own test after the invariants, a record-from-the-first-stale-turn mode, one stated policy. |
+| wip-diff-7 | partly fixed | medium | small |  | owner | Pin each scenario's replayed exit code and outcome line; a golden diff for a creation and an add-dependency-of. |
+| agents-llm-10 | partly fixed | low | small | A5 |  | An optional `signal` on `generate()`, outside the digest, joined to the timeout's controller in `within()`; streaming stays stage 7's. |
+| architecture-12 | still true | low | trivial | A3 |  | Gate order in AGENTS.md and SECURITY.md as the code runs it (recheck before reviewer); name what `cli/` reads. |
+| build-ci-5 | partly fixed | low | trivial | A3 |  | Bump `package.json` to `0.1.0-rc.2`, as the CHANGELOG announces. |
+| build-ci-6 | partly fixed | low | small |  | owner | Reserve the npm name by publishing; until then every `npx` mention stays commented, `docs/design.md` included. |
+| build-ci-7 | still true | low | trivial | A3 |  | `permissions: contents: read` and `persist-credentials: false` in the scaffolded `validate.yml`. |
+| build-ci-8 | partly fixed | low | trivial | A3 |  | `permissions`, `concurrency` and `timeout-minutes` in `ci.yml`; a Windows row optional. |
+| build-ci-9 | still true | low | small |  | owner | `packageManager`, engines `>=22.12`, a `dependabot.yml`, and the pin policy written down. |
+| build-ci-10 | still true | low | small |  | owner | Biome or ESLint plus a format check as `lint` and a CI step; the one-time reformat in its own PR. |
+| build-ci-12 | still true | low | trivial | A1 |  | `-h` as help; `--version`, `-v` and `version` print the package version, exit 0. |
+| cli-ux-8 | still true | low | trivial | A1 |  | `initRoot` refuses a path that is not a directory, exit 2, before a model is chosen. |
+| cli-ux-13 | still true | low | trivial |  | owner | `iacRepo` optional while nothing reads it; `plan --from` reads the config for its environments. |
+| cli-ux-14 | partly fixed | low | trivial | A3 |  | Reword `src/cli/README.md:44-45`, which says `show` takes "the first entity holding a bare name": `resolveEntity` refuses a shared name since [#74](https://github.com/pcaboor/idp-agent/pull/74). `withAnswers` is gone ([#78](https://github.com/pcaboor/idp-agent/pull/78)); the gate order goes with architecture-12. |
+| core-plan-10 | partly fixed | low | small | A4 |  | Switches with `never` defaults in `planEdits` and at the filter sites in sign and policies; a switch on `patch.patch`. |
+| core-plan-13 | partly fixed | low | trivial | A2 |  | Point the three audit attacks at `tests/recordings` and give `plan-outcomes` assertions. |
+| docs-9 | partly fixed | low | trivial | A3 |  | The Reviewer's real inputs, two scaffold modules read and one writes, `plan/`, `validate/`, `diff/` in core's README. |
+| docs-10 | still true | low | small |  | owner | Name the PR or commit on `main` for "this branch", say `c1bb7d8` is unreachable, drop the `rtk` prefixes, fix test G. |
+| domain-backstage-8 | still true | low | small | slice 1 |  | Cap each vocabulary list at 30 in `formatSummary` — planned as `backstage-http` slice 1. |
+| domain-backstage-9 | still true | low | trivial | A3 |  | Rewrite the registry comment: static by decision for v1, configurable only through schema factories. |
+| domain-backstage-10 | partly fixed | low | small | A4 |  | `EntityGraph` keeps the first declaration of a duplicate, as the plan does, with a test tying them. |
+| gap-ask-grounding-5 | partly fixed | low | trivial |  | re-record | Reword `consumers` (point at `impacts`), and compare `nameContains` case-insensitively. |
+| gap-ask-grounding-6 | still true | low | small | A5 |  | Flatten line breaks and control characters, and bound the length, of every vocabulary value in `formatSummary`. |
+| gap-ask-grounding-8 | partly fixed | low | small |  | re-record, owner | Let `ask` force the read road, as `plan` forces the change road. |
+| gap-ask-grounding-11 | still true | low | small | A5 |  | Print the truncation of the search the cited rows came from, not the session's total. |
+| gap-ask-grounding-12 | still true | low | small |  | re-record | Cap each vocabulary list, and send the Supervisor the request without the vocabulary. |
+| gap-ask-grounding-13 | still true | low | small |  | re-record, owner | Assert the exact consumers block; at the re-record, overview, relation and nothing scenarios and a second provider. |
+| gap-init-real-repos-8 | still true | low | trivial | A1 |  | An `init` closing line saying how to apply the diff. |
+| gap-init-real-repos-9 | still true | low | small | A5 |  | Normalise `read_file` paths, say "not read: under <folder>" or "past the cap", flag non-UTF-8 files. |
+| gap-init-real-repos-10 | still true | low | small |  | owner | Read `git remote get-url origin` (credentials stripped) for `backstage.io/source-location`, or drop "git remote" from §7.3. |
+| gap-provider-matrix-6 | still true | low | trivial | A5 |  | Always send `store: false` to OpenAI, merged with the reasoning effort; pin it in the contract test. |
+| gap-provider-matrix-7 | still true | low | medium |  | re-record, owner | Tool errors as `error-json`; reasoning parts carried for the providers that need them. |
+| gap-stage5-readiness-5 | still true | low | medium |  | owner | Same as core-plan-9: an `ApprovedChange` carrying the edits and their before-hashes. |
+| gap-stage5-readiness-7 | still true | low | small | A4 |  | A `ScaffoldWriteError {written, failed}` so `init platform` says what it left. |
+| gap-stage5-readiness-12 | still true | low | small |  | owner | Reword design §4.3 for shared grant files; a plan identity for branch names in the stage-5 plan. |
+| gap-stage5-readiness-14 | partly fixed | low | trivial | A3 |  | Gate order in AGENTS.md (twice) and the `Gate` union as the code runs: recheck, then reviewer. |
+| product-gap-10 | partly fixed | low | small | A5 |  | Usage on the event stream and one stderr line per run with calls and tokens. |
+| product-gap-11 | still true | low | small |  | owner | Same channel as cli-ux-5. |
+| product-gap-14 | still true | low | trivial | A3 |  | `path.posix.normalize` in `assertRelativeSafe` and `resolveEntityPath`. |
+| runtime-probe-13 | partly fixed | low | small | A1 |  | Refuse an empty or dash-leading directory for `init platform` and `validate`; a retry progress event. |
+| security-5 | still true | low | small |  | owner | Witness each Inspector fact textually, or it is asked; the CODEOWNERS owner as its own class. |
+| security-6 | partly fixed | low | medium |  | re-record, owner | A policy: every grant's consumer and target is named by the request or answered; otherwise ask. |
+| security-10 | still true | low | trivial | A2 |  | Run `secretIn` over each tape's raw text beside the header regex. |
+| tests-7 | still true | low | small | A2 |  | Stub `http`, `https`, `net`, `tls` and `WebSocket` in the offline setup; delete `*_API_KEY`. |
+| tests-12 | still true | low | trivial | A2 |  | Let the reads throw, a minimum file count, `.mts`/`.cts`, fail on an unresolved import. |
+| wip-diff-5 | still true | low | small |  | re-record | The Reviewer's SYSTEM lists its four inputs and says targets and effects are not for re-judging; with wip-diff-3's re-record. |
+| wip-diff-8 | still true | low | trivial | A4 |  | `ReviewInput = ReviewFacts & {plan; intent}` and the two comments fixed. |
+| wip-diff-9 | still true | low | small | A4 |  | Render an environment only when the vocabulary holds it; otherwise say it is outside the vocabulary. |
+| wip-diff-10 | still true | low | small | A4 |  | `sign.test` cases for a self `dependsOn` and a Component `dependsOn`; a repair test of an already-declared update, `it.fails` until wip-diff-2. |
+| wip-diff-12 | still true | low | small | B2 | owner | Digest over each tool's `z.toJSONSchema` plus `toolChoice`; rewrite the tapes' digests offline in the same PR. |
+
 ## 3. Findings by theme
 
 ### Security

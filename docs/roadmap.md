@@ -9,7 +9,7 @@ What has already shipped is in [`CHANGELOG.md`](../CHANGELOG.md). What the 2026-
 found, and which of its findings are closed, is in its
 [Status section](reviews/2026-09-23-deep-review.md#status).
 
-*Updated 2026-09-27, `main` at `53e838b`.*
+*Updated 2026-09-27, `main` at `05356af`.*
 
 ## Where the project stands
 
@@ -41,22 +41,69 @@ what the item is for.
    `init platform` writes a root `kind: Location`, and a page says how to register the
    repository and issue `idpa`'s read token ([the design note](backstage-http-brief.md),
    slice 0). No Backstage is needed to use the tool; installing one is out of scope.
-2. **A sweep of the review.** Each finding no pull request names is classified still true,
-   fixed or obsolete; the Status section is updated, and the cheap fixes still true are
-   batched.
-3. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
-   the current `main`, read only: what it covers and what it misses. It includes **which
-   repository a `FileEdit` writes to**, the part of gap-stage5-readiness-8 review priority 9
-   left to stage 5 ([#82](https://github.com/pcaboor/idp-agent/pull/82)): `init`'s
-   edit names a file in the service's repository and `plan`'s one in the declarations
-   repository, and nothing in the shape says which — `init`'s `before` is now read whole
-   outside the budget, so only the identity is left. The plan's clearance must also file
-   where `init` files: `asCatalogInfo` keeps its one argument, but `init` then moves the
-   operation to `targetOf`'s choice over `ProjectRead.declarations` (`filedIn`) — the root's
-   `.yml`, or the one catalog-info kept elsewhere — so a `readCatalogInfo` that reads only the
-   root's `catalog-info.yaml` would bring back the twin and the capped `before` this removed.
-4. **Stage 5, write + local branch.** The first write, atomic and idempotent. The owner's own
-   work, on branch `feat/s5-cleared`, at the owner's pace.
+2. **A sweep of the review: done.** Verdicts in the review's
+   [sweep](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27); its batches follow, one
+   pull request each, each naming the check that shows it worked.
+3. **Batch A1, command-line edges.** build-ci-12, cli-ux-11, cli-ux-1, runtime-probe-3,
+   runtime-probe-13, cli-ux-8, gap-init-real-repos-6, cli-ux-6, gap-init-real-repos-8:
+   `-h`, `--version` and `<command> --help` work; `validate` and `init` refuse a path that is
+   not a directory on exit 2, before any model; Ctrl-C at a question exits 130; `init` ends
+   by saying how to apply its diff. Check: `idpa --version`, `idpa validate /nonexistent`
+   and `idpa init --repo /nonexistent` each exit as stated, with no model called.
+4. **Batch A2, tests that cannot pass on nothing.** tests-12, architecture-11,
+   gap-stage5-readiness-9, tests-7, tests-8, tests-11, core-plan-13, security-10, tests-9:
+   the architecture rules fail on an empty tree or an unresolved import and name who may
+   write; the offline guard covers `http`, `net`, `tls` and `WebSocket`; the suite ignores
+   the contributor's `IDP_*` and key variables; the audit attacks read `tests/recordings`;
+   a real key's shape is caught in a tape; `tests/README.md` explains a stale tape. Check:
+   `pnpm test` stays green with `IDP_PROVIDER` and `IDP_MODEL` exported.
+5. **Batch A3, build, CI and documentation drift.** build-ci-3, build-ci-2, build-ci-5,
+   build-ci-7, build-ci-8, product-gap-14, architecture-12, gap-stage5-readiness-14, docs-9,
+   domain-backstage-9, docs-3, security-9, cli-ux-14: a clean `dist/` and a `prepack`, smoke
+   from the packed tarball, version `0.1.0-rc.2`, least privilege in both workflows, POSIX
+   paths on Windows, the gate order written as the code runs it (recheck before the
+   Reviewer), in AGENTS.md and in SECURITY.md's guarantee table, and `src/cli/README.md` no
+   longer saying `show` takes the first entity of a shared name. Check: `pnpm build && pnpm
+   smoke`, and `npm pack --dry-run` lists no stale file.
+6. **Batch A4, what the plan engine lets vouch and dispatch.** wip-diff-1, wip-diff-4,
+   wip-diff-10, wip-diff-8, wip-diff-9, core-plan-10, gap-stage5-readiness-2,
+   gap-stage5-readiness-7, domain-backstage-10: an operation no longer vouches for itself or
+   for a Component the edits drop; `planEdits` and the gates switch exhaustively; a
+   `create-catalog-info` path must be a catalog-info inside the repository; `init platform`
+   says what it wrote before a failure; the graph resolves a duplicate as the plan does.
+   Check: the new `sign.test` cases, and the plan-mode tapes still replay clean.
+7. **Batch A5, the read side and the provider calls.** gap-ask-grounding-6,
+   gap-ask-grounding-7, gap-ask-grounding-11, domain-backstage-7, gap-init-real-repos-9,
+   gap-provider-matrix-6, agents-llm-10, product-gap-10: repository text flattened before a
+   prompt; a decorated Supervisor word accepted; the truncation note of the search cited;
+   `title`, `labels` and `subcomponentOf` read; `read_file` paths normalised; `store: false`
+   at OpenAI; an optional abort signal; one usage line per run. Check: the provider contract
+   test, and the question tapes replay with the bytes they had.
+8. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
+   hand-written files in every shape, and `signPlan` properties over plans valid by
+   construction. `tests/invariants/arbitraries.ts` and `core.test.ts` are also edited on
+   `feat/s5-cleared`, so this goes on top of stage 5, or with the owner.
+9. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
+   harness half of agents-llm-9: record from an empty tape, fail on a turn never replayed,
+   and digest the JSON Schema the provider is sent. It needs no key, but it prunes dead turns
+   and rewrites every tape's digest, so it waits for the owner's go-ahead.
+10. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
+    gap-stage5-readiness-4: one lstat, realpath and `O_NOFOLLOW` primitive shared from
+    `project-fs`, used by `scaffold/write.ts` and by the iac-fs walk, which rejects a
+    symbolic link by name. Medium, and what stage 5's writer will need.
+11. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
+    the current `main`, read only: what it covers and what it misses. It includes **which
+    repository a `FileEdit` writes to**, the part of gap-stage5-readiness-8 review priority 9
+    left to stage 5 ([#82](https://github.com/pcaboor/idp-agent/pull/82)): `init`'s
+    edit names a file in the service's repository and `plan`'s one in the declarations
+    repository, and nothing in the shape says which — `init`'s `before` is now read whole
+    outside the budget, so only the identity is left. The plan's clearance must also file
+    where `init` files: `asCatalogInfo` keeps its one argument, but `init` then moves the
+    operation to `targetOf`'s choice over `ProjectRead.declarations` (`filedIn`) — the root's
+    `.yml`, or the one catalog-info kept elsewhere — so a `readCatalogInfo` that reads only the
+    root's `catalog-info.yaml` would bring back the twin and the capped `before` this removed.
+12. **Stage 5, write + local branch.** The first write, atomic and idempotent. The owner's own
+    work, on branch `feat/s5-cleared`, at the owner's pace.
 
 **Not yet ordered.**
 
@@ -71,7 +118,7 @@ what the item is for.
   service repository, generate its catalog-info and discover the dependencies it already
   has, with evidence.
 
-The one order stated beyond these four is stage 8's own, in its design note (section 11):
+The one order stated beyond these items is stage 8's own, in its design note (section 11):
 priorities 6 (done, [#79](https://github.com/pcaboor/idp-agent/pull/79)), 7 (done,
 [#80](https://github.com/pcaboor/idp-agent/pull/80)), 8 (done,
 [#83](https://github.com/pcaboor/idp-agent/pull/83)), 9 (done,
@@ -372,6 +419,61 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
 - When `repair()` runs again within one `plan`, attempt names restart at 1; no round
   attribute tells them apart.
 - MLflow's protobuf `partialSuccess` is not decoded; only a JSON one is reported.
+
+**Left from the sweep of the review**
+
+Checked against `main` at `05356af`. The fix sketched for each is in the review's
+[sweep](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27).
+
+*Waits for a re-record only.* agents-llm-6 (a turn given back is not forced), agents-llm-7
+(the `propose` description asks for the empty list the schema refuses), agents-llm-8 (the
+Architect cannot read the plan it must repair), wip-diff-5 (the Reviewer's SYSTEM does not
+name its four inputs; with wip-diff-3), gap-ask-grounding-5 (`consumers` says "any chain";
+`nameContains` is case-sensitive), gap-ask-grounding-12 (the Supervisor is sent the whole
+vocabulary), product-gap-6 (no offset and no system, lifecycle or tag criteria in a search).
+
+*Waits for the owner.*
+
+- **Answering without a terminal.** cli-ux-5, core-plan-11, product-gap-11,
+  runtime-probe-9: one `plan --answer <path>=<value>` (or `--answers file.json`); the owner
+  picks its shape.
+- **One evaluation for every route.** architecture-1, gap-stage5-readiness-10: a shared
+  `evaluatePlan()`, and whether `plan --from` gets a Reviewer or the docs say it has four
+  gates.
+- **For the stage-5 check.** core-plan-9 and gap-stage5-readiness-5 (an `ApprovedChange`
+  minted after the five gates), gap-stage5-readiness-3 (the base is a commit, not the
+  working tree), gap-stage5-readiness-12 (a plan identity; design §4.3 reworded),
+  gap-stage5-readiness-13, cli-ux-10, cli-ux-12, architecture-9 and product-gap-13 (a
+  structured preview, a Confirm seam, a versioned `--json`, a session ADR before the
+  confirmation contract is fixed).
+- **The environment annotation and namespaces.** core-plan-8, domain-backstage-6,
+  product-gap-5 (stage 8's question 6), architecture-5 and gap-ask-grounding-9 (one
+  `refOf`/`parseRef` keeping the namespace; product-gap-4 needs no decision but goes with
+  them).
+- **Providers.** agents-llm-4, architecture-8 and product-gap-9 (an `openai-compatible`
+  adapter, a model per agent, an Anthropic recording), gap-provider-matrix-7 (tool errors
+  and reasoning in the transcript), agents-llm-2 (a context and call budget).
+- **Recordings and what the scenarios pin.** agents-llm-9, tests-4, wip-diff-6,
+  gap-ask-grounding-13, and wip-diff-7 with tests-2 (pin each replayed exit code and diff).
+  Batch B2 waits for a go-ahead too.
+- **What the Reviewer and the Analyst may accept** (each also a re-record). wip-diff-3 (the
+  Reviewer vetoes declaring a missing resource the request needs; high), security-6 (no rule
+  ties a grant's consumer and target to the request), gap-ask-grounding-2, -3, -4 and -8
+  (witnesses, `nothing`, `holds` and `count` outcomes, `ask` forcing the read road).
+- **`init`.** security-5 and gap-init-real-repos-5 (an Inspector fact placed only when a
+  file states it), gap-init-real-repos-7 (monorepo root context; `auth/` folders skipped),
+  gap-init-real-repos-10 (read the git remote, or drop it from design §7.3).
+- **Scope and documents.** docs-6 (a keyless `idpa tour`), docs-7 and product-gap-7 (what
+  the tool produces and what it does not), docs-8 and architecture-7 (an extension guide;
+  plugins after the foundation), product-gap-8 (the registry, closed for v1), docs-10 (the
+  audit report's unreachable commit), cli-ux-13 (`iacRepo`, required and never read).
+- **Toolchain and release.** build-ci-10 (a linter and formatter), build-ci-9 (a dependency
+  policy), build-ci-6 (reserving the npm name).
+
+*Belongs elsewhere.* domain-backstage-8 (a bound on each vocabulary list) is `backstage-http`
+slice 1; gap-stage5-readiness-6 (compare before writing) is stage 5's writer; architecture-10
+(one bounded agent loop) and the rest of architecture-6 (exhaustive dispatch beyond batch A4)
+are refactors left unordered.
 
 ## How this file is kept
 
