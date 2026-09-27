@@ -946,6 +946,17 @@ than assuming it" is a human reading that diff. The signature says a proposed va
 matches what the inspection established; the Inspector is a model reading files, so it
 says nothing about whether the inspection was right.
 
+On a real service repository (review priority 9), the Inspector's budget is spent on the
+signal files first — manifests, CODEOWNERS, catalog-info, charts, Dockerfiles, deployments —
+and what it left out is counted on stderr. A field no file states is asked at a terminal, as
+`plan` asks, or answered by `--name`, `--lifecycle` and `--owner`, which count as answers.
+Every catalog-info the repository keeps is read whole, outside that budget, by the reader
+every entity document goes through: a Component of the same kind, namespace and name is
+"already declared" (exit 0), whatever lifecycle it states, and a new one is added to the file
+the repository keeps rather than to a twin beside it — never to a test's, an example's or a
+workspace's. When that file already declares a Component under another name or namespace,
+the name is asked: that one, and nothing is added; another, and it is added beside.
+
 **Stage 8 extends this command** to the dependencies a service's configuration already
 states: extracted by the engine, re-read before they vouch, matched only on identifiers the
 catalogue declares, levels still asked. The design note is

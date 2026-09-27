@@ -5,6 +5,7 @@ import {
   isApplicationRepository,
   isDeclarationsRepository,
 } from '../context/iac-fs/snapshot.js'
+import { PROJECT_LIMITS } from '../context/project-fs/snapshot.js'
 import type { ProjectRead } from '../context/project-fs/types.js'
 import { oneLine } from './render/plain.js'
 
@@ -312,6 +313,31 @@ export const skipNotice = (reason: string): string =>
 
 const projectFlag = (who: ChangeCommand): string =>
   `${who} --project names the application repository the Inspector reads, the service being declared`
+
+/**
+ * The line on stderr that says how much the Inspector's budget left unread,
+ * counted — or `undefined` when it read everything it was offered (review,
+ * gap-init-real-repos-1). The model is told in its own opening that a cap
+ * stopped the harvest; the person is told how much, and how much of it was a
+ * signal file.
+ */
+export function budgetNotice(
+  root: string,
+  read: Pick<ProjectRead, 'files' | 'leftOut' | 'signalsLeftOut'>,
+): string | undefined {
+  if (read.leftOut === 0) return undefined
+  return (
+    `the Inspector's budget (${PROJECT_LIMITS.maxFiles} files, ` +
+    `${PROJECT_LIMITS.maxTotalBytes} bytes) read ${read.files.length} files of ` +
+    `${folderOf(root)} and left ${read.leftOut} out — ` +
+    // Said only when it is so: a workspace monorepo can hold more manifests
+    // than the budget, and then some of them are among what was left out.
+    (read.signalsLeftOut === 0
+      ? 'its manifests, ownership, catalogue, chart, container and deployment files were read first'
+      : `${read.signalsLeftOut} of them manifests, ownership, catalogue, chart, container or ` +
+        'deployment files')
+  )
+}
 
 /**
  * The line on stderr that says how the Inspector's files were chosen, when it

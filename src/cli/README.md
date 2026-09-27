@@ -241,12 +241,17 @@ interactive path runs with no terminal. The default is decided by `askOf`: a pro
 **stderr** when stdin is a TTY and no sink was injected (stdout carries the diff), and
 nothing at all otherwise, because a script has nobody to ask and blocking on a read is the
 worst thing a CLI in a pipeline can do — the questions print and the run exits 3, as it
-always has. `undefined` is a decline, and so is an empty line.
+always has. `undefined` is a decline, and so is an empty line. `init` asks through the same
+seam and the same `fillAnswers`, and takes the three answers no file of a service states
+reliably as flags too — `--name`, `--lifecycle`, `--owner` — held at parsing to what an answer
+at the prompt is held to (`initAnswersOf`, exit 2) and vouched for as answered; with nobody to
+ask, its questions name those flags rather than a plan file it has none of.
 
 Printed and prompted, a question is the same lines (`questionLines`): the path, the reason
 the plan carries, and — when the engine knows them — what the draft had put there and what
 the field takes: `the draft says readwrite · accepted: read, readwrite` for the level of a
-grant whose type states one, or `in use: dev, prod` for an environment, whose set is shown
+grant whose type states one, `accepted: experimental, production, deprecated` for a
+Component's lifecycle, or `in use: dev, prod` for an environment, whose set is shown
 and never closed. They are the `Question`'s optional `proposed`, `accepted` and `inUse`, so
 `--json` carries them too; the `{unknown}` in the plan, which the Reviewer and the repair
 loop read, is not reworded. An answer outside an `accepted` set is refused at the prompt,

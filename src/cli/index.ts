@@ -34,7 +34,7 @@ import { OWN_RELATIONS, type OwnRelation } from '../core/schemas/query.js'
 import { runValidate } from './commands/validate.js'
 import { PlanInputError, questionLines, runIntent, runPlan, type Ask } from './commands/plan.js'
 import { wantsColour } from './render/diff.js'
-import { runInitPlatform, runInitRepo } from './commands/init.js'
+import { initAnswersOf, runInitPlatform, runInitRepo, type InitAnswers } from './commands/init.js'
 import { ConfigError } from './config.js'
 import { isForgeHandle } from '../scaffold/codeowners.js'
 import { VERSION } from '../core/index.js'
@@ -121,8 +121,13 @@ export type Command =
    */
   | { name: 'plan'; source: PlanSource; repo?: string; json: boolean }
   | { name: 'init-platform'; directory: string; owner: string }
-  /** Absent `repo` means the repository the user is standing in (§7.3). */
-  | { name: 'init'; repo?: string }
+  /**
+   * Absent `repo` means the repository the user is standing in (§7.3).
+   * `answers` are the person's own values for the three fields no file of a
+   * service states reliably — its catalogue name, lifecycle and owner —
+   * already held to what each field accepts.
+   */
+  | { name: 'init'; repo?: string; answers: InitAnswers }
   | { name: 'help' }
   | { name: 'error'; message: string }
 
@@ -148,7 +153,7 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   idp-agent validate <directory>
   idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json]
   idp-agent plan --from <plan.json> [--repo <directory>] [--json]
-  idp-agent init [--repo <directory>]
+  idp-agent init [--repo <directory>] [--name <name>] [--lifecycle experimental|production|deprecated] [--owner group:<namespace>/<name>]
   idp-agent init platform <directory> --owner @org/team
 
   relations traces an entity's declared relations, each with its whole path
@@ -156,6 +161,10 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   who consumes it, what it depends on and what depends on it, the APIs it
   provides, or every path to another entity with --to. Without a flag, every
   relation that holds something. It needs no model and no key.
+
+  init previews the catalog-info.yaml of the service it is run in, or adds to
+  the one the repository keeps. --name, --lifecycle and --owner answer what
+  its files do not state; at a terminal it asks instead.
 
   idpa is idp-agent. Every command but init and validate finds the
   declarations repository the same way: --repo, else the current directory
@@ -185,13 +194,27 @@ export function parseArguments(argv: string[]): Command {
       try {
         const { values } = parseArgs({
           args: rest,
-          options: { repo: { type: 'string' } },
+          options: {
+            repo: { type: 'string' },
+            name: { type: 'string' },
+            lifecycle: { type: 'string' },
+            owner: { type: 'string' },
+          },
           strict: true,
         })
+        // Refused here, as a bad flag, rather than after an inspection a
+        // model was paid for: the same rules an answer typed at the prompt is
+        // held to (`initAnswersOf`).
+        const answers = initAnswersOf(values)
+        if ('refused' in answers) return { name: 'error', message: answers.refused }
         // Omitted rather than passed as undefined: exactOptionalPropertyTypes
         // draws the distinction, and "the directory I am standing in" is an
         // absence rather than a value main has to invent here.
-        return { name: 'init', ...(values.repo !== undefined ? { repo: values.repo } : {}) }
+        return {
+          name: 'init',
+          ...(values.repo !== undefined ? { repo: values.repo } : {}),
+          answers: answers.answers,
+        }
       } catch (error) {
         return { name: 'error', message: (error as Error).message }
       }
@@ -866,8 +889,20 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
       err,
       out,
       { command: 'init', scenario: 'init', inputs: { command: 'init', project } },
-      async (client, emit) =>
-        runInitRepo({ project, client, emit, colour: colourOf(deps), notice: toStderr(err) }),
+      async (client, emit) => {
+        // The terminal, as `plan` asks (§7.5): a question `init` cannot answer
+        // from the repository's files is put to the person when there is one.
+        const ask = askOf(deps)
+        return runInitRepo({
+          project,
+          client,
+          emit,
+          answers: command.answers,
+          ...(ask !== undefined ? { ask } : {}),
+          colour: colourOf(deps),
+          notice: toStderr(err),
+        })
+      },
     )
   }
 

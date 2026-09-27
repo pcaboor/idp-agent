@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { entityRefSchema, ownerRefSchema } from './entity.js'
+import { COMPONENT_LIFECYCLES, entityRefSchema, ownerRefSchema } from './entity.js'
 import {
   ACCESS_LEVELS,
   levelledOf,
@@ -245,7 +245,7 @@ export const proposedComponentSchema = z.strictObject({
   }),
   spec: z.strictObject({
     type: or(z.string().min(1).max(63)),
-    lifecycle: or(z.enum(['experimental', 'production', 'deprecated'])),
+    lifecycle: or(z.enum(COMPONENT_LIFECYCLES)),
     owner: or(ownerRefSchema),
     dependsOn: z.array(entityRefSchema).optional(),
   }),

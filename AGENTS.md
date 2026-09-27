@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 2936 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 2966 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does,
@@ -125,7 +125,7 @@ idpa "<phrase>" [--repo <dir> | --demo] [--project <dir>] [--json] [--quiet]  # 
 idp-agent relations <name-or-ref> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --to <name-or-ref>] [--depth <n>] [--repo <dir> | --demo]  # no model
 idp-agent plan --from <plan.json> --repo <dir>   # no model, and none is possible
 idp-agent plan "<intent>" --repo <dir> [--json]  # Inspector, Architect, five gates
-idp-agent init [--repo <dir>]                    # the catalog-info.yaml it would write
+idp-agent init [--repo <dir>] [--name <n>] [--lifecycle <l>] [--owner <ref>]  # the catalog-info.yaml it would write
 ```
 
 **`init platform` is still the only command that writes into a repository**, and only into

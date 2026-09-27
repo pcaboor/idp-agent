@@ -119,9 +119,17 @@ named), the exclusion list (`.env*`, key
 material, credential files, `.git/`, `node_modules/` and hidden directories bar `.github`), the
 content test of `project-fs/secrets.ts` — key material, a known issuer's token, a secret assigned
 a literal, every match examined, escaped and base64 text decoded — the `lstat`-then-`realpath` symlink refusal, and three caps —
-200 files, 64 KB each, 1 MB in total. `truncated` is true only when a cap stopped the read, never
-when one file was skipped; `selection` says whether the files were git's, a walk's outside git, or
-none, and only the CLI reads it.
+200 files, 64 KB each, 1 MB in total. The caps are spent on the service's signal files first —
+its manifests, `package.json` before any other, CODEOWNERS, catalog-info, charts, Dockerfiles,
+compose files and deployment YAML, a README — the shallower first, then the rest by depth; the
+files are still handed over in path order, so a repository under the caps sends what it always
+sent. `truncated` is true only when a cap stopped the read, never when one file was skipped, and
+`leftOut` counts what the caps left unread — `signalsLeftOut`, how many of those were signal
+files; `selection` says whether the files were git's, a walk's outside git, or none.
+`declarations` holds every `catalog-info*.yaml`/`.yml`, read whole and outside the caps — the
+root's from the disk, tracked or not — each with the workspace it sits in, a folder with a
+package manifest of its own, for `init` to compare with and diff against. Only the CLI reads
+these, and none of them reaches a model.
 
 `context/` may reach the network later — `backstage/` will be an HTTP client. `core/` never may,
 and `tests/architecture/dependencies.test.ts` fails the build if that slips.

@@ -39,16 +39,23 @@ what the item is for.
 
 1. **Review priority 8, an exact "already declared".** The tool never asserts on exit 0 an
    access that does not exist.
-2. **Review priority 9, `init` on a real service repository.** The first onboarding gesture
-   ends on a diff, not a dead end or a duplicate.
-3. **The `backstage-http` read provider: a design note and a stage plan.** Context read from a
+2. **The `backstage-http` read provider: a design note and a stage plan.** Context read from a
    Backstage catalogue, where today it comes from a configured source.
-4. **A sweep of the review.** Each finding no pull request names is classified still true,
+3. **A sweep of the review.** Each finding no pull request names is classified still true,
    fixed or obsolete; the Status section is updated, and the cheap fixes still true are
    batched.
-5. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
-   the current `main`, read only: what it covers and what it misses.
-6. **Stage 5, write + local branch.** The first write, atomic and idempotent. The owner's own
+4. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
+   the current `main`, read only: what it covers and what it misses. It includes **which
+   repository a `FileEdit` writes to**, the part of gap-stage5-readiness-8 review priority 9
+   left to stage 5 ([#82](https://github.com/pcaboor/idp-agent/pull/82)): `init`'s
+   edit names a file in the service's repository and `plan`'s one in the declarations
+   repository, and nothing in the shape says which — `init`'s `before` is now read whole
+   outside the budget, so only the identity is left. The plan's clearance must also file
+   where `init` files: `asCatalogInfo` keeps its one argument, but `init` then moves the
+   operation to `targetOf`'s choice over `ProjectRead.declarations` (`filedIn`) — the root's
+   `.yml`, or the one catalog-info kept elsewhere — so a `readCatalogInfo` that reads only the
+   root's `catalog-info.yaml` would bring back the twin and the capped `before` this removed.
+5. **Stage 5, write + local branch.** The first write, atomic and idempotent. The owner's own
    work, on branch `feat/s5-cleared`, at the owner's pace.
 
 **Not yet ordered.**
@@ -57,15 +64,16 @@ what the item is for.
   authorisation (ADR-0006).
 - **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal
   that the owner set as the project's end goal (2026-09-23).
-- **The `backstage-http` read provider itself**, once its design note and plan (item 3) are
+- **The `backstage-http` read provider itself**, once its design note and plan (item 2) are
   agreed.
 - **Stage 8, discovery** ([the design note](stage-8-brief.md)). From any
   service repository, generate its catalog-info and discover the dependencies it already
   has, with evidence.
 
-The one order stated beyond these six is stage 8's own, in its design note (section 11):
+The one order stated beyond these five is stage 8's own, in its design note (section 11):
 priorities 6 (done, [#79](https://github.com/pcaboor/idp-agent/pull/79)), 7 (done,
-[#80](https://github.com/pcaboor/idp-agent/pull/80)), 8 and 9 as queued, and stage 5's first two tasks; then slice 1,
+[#80](https://github.com/pcaboor/idp-agent/pull/80)), 8 as queued, 9 (done,
+[#82](https://github.com/pcaboor/idp-agent/pull/82)), and stage 5's first two tasks; then slice 1,
 which needed only priority 7 and can start now; then slices 2 and 3, and submission.
 Submitting rights for a Component declared in its own service repository needs the
 `backstage-http` provider, and submission needs stages 5 and 6.
@@ -196,6 +204,29 @@ Checked against this change ([#80](https://github.com/pcaboor/idp-agent/pull/80)
 - **A repository git cannot list is read as nothing**, and so is one whose listing passes
   32 MiB (about half a million files) or 15 seconds (`GIT_LIMITS`). The reason is on the
   Inspector's opening line and on stderr.
+
+**`init`, left from review priority 9**
+
+Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)).
+
+- **No `--type`.** A Component type no file states is asked at a terminal; with nobody to
+  ask, the run ends on that question and says the field has no flag.
+- **`.idp-agent.yml` is never sent to the Inspector.** It is a hidden file, which
+  `project-fs` withholds, and the plan-mode recordings were made with it withheld; the
+  engine reads it (`readConfig`).
+- **An existing declaration is never amended.** A Component the service's catalog-info
+  already declares is reported as declared on exit 0 even when the draft proposes another
+  owner or lifecycle: `init` adds a declaration, it does not rewrite one.
+- **A catalog-info in a hidden folder is not seen.** The walk that finds declarations skips
+  hidden folders, as it must for what a model is sent, so a `.backstage/catalog-info.yaml`
+  is neither recognised nor added to, and a new root file is previewed beside it.
+- **A `kind: Location` is not followed.** A root catalog-info that points elsewhere is read
+  for what it declares itself; the files its targets name are read only when they are
+  catalog-info files too.
+- **A same-named Component in a workspace's catalog-info counts as declared.** It is read
+  like the service's own; in a monorepo it is most often another service's name.
+- **The declarations repository is still not read at `init` time**, so a Component declared
+  there and not in the service's own catalog-info is proposed again (stage 8, slice 3).
 
 **Recordings that need the owner's key**
 

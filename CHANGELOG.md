@@ -24,6 +24,19 @@ Each pull request adds its line here.
 
 ### Fixed
 
+- `init` on a real service repository ends on a diff or an answerable question: the
+  Inspector's 200-file budget reads the manifests, CODEOWNERS, catalog-info, charts,
+  Dockerfiles and deployment files first — still handed over in path order — and stderr
+  counts what it left out, and how many of those were signal files; a question is asked at a
+  terminal as `plan` asks it, the draft's value and a lifecycle's accepted values shown, and
+  `--name`, `--lifecycle` and `--owner` answer it on the command line; an existing
+  `catalog-info.yaml` or `.yml`, at the root or kept elsewhere, with or without `---`, is read
+  whole outside the budget, so a Component it declares — by kind, namespace and name, case
+  aside, whatever lifecycle it states, never a same-named API or Resource — is reported as
+  already declared on exit 0; a new one is added to that file rather than to a twin, never to
+  a test's, an example's or a workspace's, and the name is asked when the file already
+  declares a Component under another; only the service's own catalog-info that cannot be read
+  stops it — review priority 9 ([#82](https://github.com/pcaboor/idp-agent/pull/82)).
 - An environment is never inferred, against a natural name too: a right's scope is the
   environment it declares, and a name saying another is refused (`environment-in-name`);
   the environment of the grant an update extends is asked when nothing the user said names

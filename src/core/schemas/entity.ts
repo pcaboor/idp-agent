@@ -247,13 +247,19 @@ const baseFields = {
   metadata: metadataSchema.extend({ namespace: z.unknown().optional() }),
 }
 
+/**
+ * A Component's lifecycle: a closed set, and one list of it — the reader, the
+ * proposal and the prompt that asks for one (`clarify.ts`) all read this.
+ */
+export const COMPONENT_LIFECYCLES = ['experimental', 'production', 'deprecated'] as const
+
 export const componentSchema = z
   .object({
     ...baseFields,
     kind: z.literal('Component'),
     spec: z.object({
       type: z.string().min(1),
-      lifecycle: z.enum(['experimental', 'production', 'deprecated']),
+      lifecycle: z.enum(COMPONENT_LIFECYCLES),
       owner: readOwnerRefSchema,
       /** Read side only, like the links: no proposal names a system. */
       system: readSystemRefSchema.optional(),
