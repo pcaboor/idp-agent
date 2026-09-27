@@ -57,7 +57,7 @@ import {
 } from './repository.js'
 import {
   blameOf,
-  declarationsOf,
+  declarationsFor,
   overviewName,
   planNeedsRepository,
   sourceNotice,
@@ -1217,12 +1217,27 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   let read: Read
   try {
     // A phrase finds its SI as `ask` does, and says so in `ask`'s line: its
-    // question road IS `ask`'s, and a change is decided against the same
-    // repository, when one was found. Its refusals name `idpa`, which is what
-    // was typed.
+    // question road IS `ask`'s. Its refusals name `idpa`, which is what was
+    // typed.
     read = await providerOf(command.name === 'entry' ? 'idpa' : command.name, command, deps, err)
   } catch (error) {
     return failed(error, err)
+  }
+  // What a phrase's change is decided against, resolved on its own: `plan`'s
+  // chain, whatever the question side reads, and none for `--demo`. The same
+  // repository as the read's until a catalogue can be read (slice 1.5), when
+  // this is what still refuses a broken IDP_REPO or file `repo`, exit 2 — and
+  // before the load, so before any request to the catalogue.
+  let declarations: RepositorySource | undefined
+  if (command.name === 'entry') {
+    try {
+      declarations = await declarationsFor(
+        { command: 'idpa', repo: command.repo, demo: command.demo },
+        sourceContextOf(deps),
+      )
+    } catch (error) {
+      return failed(error, err)
+    }
   }
   const { provider, source } = read
   const repository = overviewName(source)
@@ -1283,12 +1298,12 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     }
     // The change road's repositories, decided before any model is chosen, for
     // the reason `plan`'s are: a `--project` is an argument, and it is checked
-    // whichever road the Supervisor then takes. None for the demo SI, which a
-    // change is never previewed against — refused below, once the Supervisor
-    // has said it is a change — but a `--project` is still refused for what it
-    // is on its own, so the same argument meets the same refusal wherever the
-    // SI came from.
-    const declarations = declarationsOf(source)
+    // whichever road the Supervisor then takes. None when `declarations` is
+    // none — `--demo`, or nothing named a repository — and a change is never
+    // previewed against the demo SI: refused below, once the Supervisor has
+    // said it is a change. A `--project` is still refused for what it is on
+    // its own, so the same argument meets the same refusal wherever the SI
+    // came from.
     const cwd = (): string => deps.cwd ?? process.cwd()
     let roots: Roots | undefined
     try {

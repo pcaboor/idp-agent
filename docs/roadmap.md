@@ -392,6 +392,12 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
 - **Every diff writes the demo company's `company.fr/env` annotation**
   (`ENV_ANNOTATION` in `src/core/schemas/vocabulary.ts`). Making it configurable is stage 8's
   question 6.
+- **An absolute `--repo` from a removed working directory dies on `ENOENT … uv_cwd`,** exit
+  1 (found in `backstage-http` slice 1.2's review, older than it). `repositoryChain` in
+  `src/cli/source.ts` hands `declarationsRoot` `context.cwd()`, asked for up front, where
+  `SourceContext` says the working directory is asked for only on the roads that need it;
+  passing `context.cwd`, the function, asks for it only when `--repo` is relative. Left out of
+  1.2, which changes no behaviour.
 
 **Open questions**
 

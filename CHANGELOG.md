@@ -38,6 +38,11 @@ Each pull request adds its line here.
   `readValue` reads one value, so the `backstage-http` provider will read a catalogue's
   entities with the very decisions a file gets; the YAML road's output is pinned before and
   after ([#92](https://github.com/pcaboor/idp-agent/pull/92)).
+- What a run reads and what a change is decided against are resolved apart: a phrase's
+  change takes `plan`'s chain — `--repo`, the working directory, `IDP_REPO`, the personal
+  file — whatever the question side reads, so a Backstage can be read for questions while
+  changes stay decided in Git; no behaviour changes today
+  ([#93](https://github.com/pcaboor/idp-agent/pull/93)).
 
 ### Fixed
 

@@ -206,8 +206,9 @@ handed, so the directory compared is the directory read; with no project it read
 `--project` with `--from` is a parse error: that road has no Inspector.
 `tests/unit/plan-project.test.ts` holds all of it.
 
-**Where the SI comes from.** `source.ts`'s `sourceOf` decides it once, for `graph`, `show`, `relations`,
-`ask`, `plan` and a phrase (which asks as `ask` does), and returns a value —
+**Where the SI comes from.** `source.ts`'s `sourceOf` decides what every command reads —
+`graph`, `show`, `relations`, `ask`, `plan` and a phrase (which asks as `ask` does) — and
+returns a value —
 `{ kind: 'repo', root, label, origin }` or `{ kind: 'demo', label, origin }` — that
 `providerOf` turns into a `ContextProvider` and nothing after it knows which. The read
 commands take, first match wins: `--repo`, resolved against `cwd` and refused with exit 2
@@ -217,7 +218,11 @@ a relative one is exit 2, since it would name another repository in every direct
 in the personal configuration; the demo SI. `plan` takes the same four, `cwd` included on
 its markers — a service's repository carries none — and never the demo SI: without any of
 them it is refused with exit 2, naming all four, and a phrase the Supervisor calls a change
-is refused the same way (`declarationsOf`). What is not reached is not read: a malformed
+is refused the same way. A phrase resolves twice: what it reads (`sourceOf`) and what its
+change is decided against (`declarationsFor`: `plan`'s chain, walked with `idpa`'s name so
+its refusals name what was typed, and nothing for `--demo`), both over one private chain,
+the second before the load. They coincide while no Backstage is read; once one is, the read
+takes it and the change never does. What is not reached is not read: a malformed
 file cannot refuse a run `IDP_REPO` already answered. A configured path that is not a
 directory is exit 2 naming the variable or the file, never the demo SI; a directory with no
 markers is read all the same, as `--repo` reads one. Every road but `--repo` is said in one

@@ -14,8 +14,9 @@ import { oneLine } from './render/plain.js'
 import { RepositoryArgumentError, declarationsRoot, type DeclarationsCommand } from './repository.js'
 
 /**
- * Where the SI a command reads comes from, decided once, here, for `graph`,
- * `show`, `ask` and `plan` alike.
+ * Where the SI a command reads comes from, decided here for `graph`, `show`,
+ * `ask` and `plan` alike — and, for a phrase, what its change is decided
+ * against.
  *
  * The project has two uses: `init platform` creates the declarations
  * repository once, and then the CLI is used from anywhere to question it — not
@@ -27,6 +28,10 @@ import { RepositoryArgumentError, declarationsRoot, type DeclarationsCommand } f
  * testable apart from reading, and so that `backstage-http` (design §3) fits
  * as one more variant — `{ kind: 'backstage', url, label, origin }` — with the
  * callers' exhaustive switches the only places that learn about it.
+ *
+ * A run resolves twice: what it reads (`sourceOf`) and, for a phrase, what a
+ * change is decided against (`declarationsFor`). Both walk one chain, so they
+ * are one repository until a catalogue can be read; the second never takes one.
  */
 
 /** The environment variable that names the declarations repository by default. */
@@ -149,22 +154,60 @@ export async function sourceOf(
   request: SourceRequest,
   context: SourceContext,
 ): Promise<Source | undefined> {
-  if (request.repo !== undefined) {
-    const root = await declarationsRoot(request.command, request.repo, context.cwd())
-    return repository(root, { by: 'flag' })
-  }
-  if (request.command !== 'plan' && request.demo === true) {
+  // `--repo` first, as the chain takes it: the command line refuses the two
+  // together, and a caller that passes both reads the repository.
+  if (request.command !== 'plan' && request.repo === undefined && request.demo === true) {
     return { kind: 'demo', label: DEMO_LABEL, origin: { by: 'flag' } }
+  }
+  const found = await repositoryChain(request.command, request.repo, context)
+  if (found !== undefined) return found
+  return request.command === 'plan'
+    ? undefined
+    : { kind: 'demo', label: DEMO_LABEL, origin: { by: 'default' } }
+}
+
+/**
+ * The declarations repository a phrase's change is decided against: `plan`'s
+ * chain — --repo, the working directory on its markers, IDP_REPO, the file's
+ * repo — and nothing when --demo was typed. Never derived from what the run
+ * reads.
+ *
+ * With no Backstage configured it is the repository `sourceOf` found for the
+ * read, or nothing where the read fell to the demo SI: the two resolutions
+ * coincide on every run today, as two walks of one chain over a filesystem
+ * that holds still — not one value shared, so markers or a personal file
+ * changed between the walks are read as they then are. Slice 1.5 lets a
+ * catalogue answer the read ahead of IDP_REPO and the file; a change still
+ * takes this chain, never the catalogue (backstage-http brief §3). `command` is the read command that was
+ * typed, so a refusal here names it as the read's does.
+ */
+export async function declarationsFor(
+  request: { command: ReadCommand; repo?: string | undefined; demo?: boolean | undefined },
+  context: SourceContext,
+): Promise<RepositorySource | undefined> {
+  if (request.repo === undefined && request.demo === true) return undefined
+  return repositoryChain(request.command, request.repo, context)
+}
+
+/**
+ * The one chain both resolutions walk, first match wins: `--repo`, the working
+ * directory when its markers say it is a declarations repository, `IDP_REPO`,
+ * the file's `repo`. `command` is what a refusal names.
+ */
+async function repositoryChain(
+  command: DeclarationsCommand,
+  repo: string | undefined,
+  context: SourceContext,
+): Promise<RepositorySource | undefined> {
+  if (repo !== undefined) {
+    const root = await declarationsRoot(command, repo, context.cwd())
+    return repository(root, { by: 'flag' })
   }
   const root = standingIn(context)
   if (root !== undefined && (await isDeclarationsRepository(root))) {
     return repository(root, { by: 'working-directory' })
   }
-  const configured = await configuredRepository(request.command, context)
-  if (configured !== undefined) return configured
-  return request.command === 'plan'
-    ? undefined
-    : { kind: 'demo', label: DEMO_LABEL, origin: { by: 'default' } }
+  return configuredRepository(command, context)
 }
 
 /** `IDP_REPO`, else the personal file's `repo`, checked to be a directory. */
@@ -353,25 +396,6 @@ export function sourceNotice(
         `or set ${REPO_VARIABLE} or repo in ${file} to make it the default`
       )
     }
-    default: {
-      const exhaustive: never = source
-      return exhaustive
-    }
-  }
-}
-
-/**
- * The declarations repository a change is previewed against, or `undefined`
- * when the source is none: the demo SI is a catalogue to question, never a
- * repository to decide a write against (§4.4). Exhaustive, for the reason
- * `overviewName` is — a Backstage source is not one either.
- */
-export function declarationsOf(source: Source): RepositorySource | undefined {
-  switch (source.kind) {
-    case 'repo':
-      return source
-    case 'demo':
-      return undefined
     default: {
       const exhaustive: never = source
       return exhaustive
