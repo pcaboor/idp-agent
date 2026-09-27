@@ -5,7 +5,7 @@ import type { SignatureContext, SignedPlan } from '../../src/core/plan/sign.js'
 import { planSchema } from '../../src/core/schemas/plan.js'
 import { findUnknowns } from '../../src/core/schemas/plan.js'
 import { nothingStated, type Provenance } from '../../src/core/plan/provenance.js'
-import { saidWithLevels, userSaid } from '../support/provenance.js'
+import { saidInFull, saidWithLevels, userSaid } from '../support/provenance.js'
 
 const vocabulary = {
   kinds: ['Component', 'Resource'],
@@ -101,10 +101,14 @@ describe('signPlan', () => {
   })
 
   it('accepts a value lifted verbatim from the request', () => {
-    // echoed: the user said "prod", so prod is theirs, not the model's.
-    const result = signed(plan(access, 'give billing-api read access to orders-db in prod'))
-    const env = result.classified.find((l) => l.path.endsWith('metadata.env'))
-    expect(env?.class).toBe('echoed')
+    // echoed: the user named the owner, so it is theirs, not the model's —
+    // though no repository uses it yet.
+    const owned = { ...access, spec: { ...access.spec, owner: 'group:default/payments' } }
+    const result = signed(
+      plan(owned, 'give billing-api read access to orders-db, owned by group:default/payments'),
+    )
+    const owner = result.classified.find((l) => l.path.endsWith('spec.owner'))
+    expect(owner?.class).toBe('echoed')
   })
 
   it('accepts a value the catalogue already uses', () => {
@@ -163,8 +167,22 @@ describe('the environment', () => {
     expect(findUnknowns(result.plan)).toContain('operations.0.entity.metadata.env')
   })
 
-  it('accepts the one the request named', () => {
+  it('asks it when the request names it in words, as it asks a level', () => {
+    // The owner's decision of 2026-09-27: a word states no environment, in any
+    // language. A word test cannot read a negation — "not prod" and
+    // "prodではなく" leave `prod` a whole word — and no list of them is
+    // complete. What states one is an answer, or the declaration the request
+    // points at by its reference in full.
     const result = signed(plan(access, 'give billing-api read access to orders-db in prod'))
+
+    const env = result.classified.find((leaf) => leaf.path.endsWith('.env'))
+    expect(env?.class).toBe('novel')
+    expect(findUnknowns(result.plan)).toEqual(['operations.0.entity.metadata.env'])
+  })
+
+  it('accepts the one the user answered', () => {
+    const answered = plan(access, 'give billing-api read access to orders-db in prod')
+    const result = signed(answered, context(), saidInFull(answered))
 
     const env = result.classified.find((leaf) => leaf.path.endsWith('.env'))
     expect(env?.class).toBe('echoed')
@@ -230,7 +248,8 @@ describe('the level a grant is for', () => {
     // billing-api read access to orders-db in prod" is a word with a space
     // either side and not a fragment of one. The user asked for it, which is
     // the strongest claim a value can carry.
-    const result = signed(plan(at('read'), 'give billing-api read access to orders-db in prod'))
+    const read = plan(at('read'), 'give billing-api read access to orders-db in prod')
+    const result = signed(read, context(), saidInFull(read))
 
     const level = result.classified.find((leaf) => leaf.path.endsWith('spec.access'))
     expect(level?.class).toBe('echoed')
@@ -361,14 +380,14 @@ describe('the brand', () => {
     // `clarify.answer` clones, and a clone of a frozen object is not frozen —
     // which is the whole reason a freeze may stand where a lock on the type
     // could not.
-    const asked = sign(
-      plan({ ...access, spec: { ...access.spec, owner: 'group:default/ghost-team' } }),
-      context(),
-    )
+    const ghost = plan({ ...access, spec: { ...access.spec, owner: 'group:default/ghost-team' } })
+    const asked = sign(ghost, context(), saidInFull(ghost))
     if ('outcome' in asked) throw new Error('should have signed with an unknown')
 
-    const filled = answer(asked.plan, 'operations.0.entity.spec.owner', 'group:default/tiger')
-    const again = signed(planSchema.parse(filled))
+    const filled = planSchema.parse(
+      answer(asked.plan, 'operations.0.entity.spec.owner', 'group:default/tiger'),
+    )
+    const again = signed(filled, context(), saidInFull(filled))
 
     expect(findUnknowns(again.plan)).toEqual([])
     expect(again.classified.find((leaf) => leaf.path.endsWith('spec.owner'))?.class).toBe(
@@ -441,12 +460,14 @@ describe('a closed union is not a vocabulary', () => {
     // uses — meant the FIRST access of a repository could never be proposed:
     // no access exists, so `database-access` is in no vocabulary, so it is a
     // question, so no access is ever written. Structural, like `kind`.
+    const first = plan(access, 'give billing-api read access to orders-db in prod')
     const firstEver = signed(
-      plan(access, 'give billing-api read access to orders-db in prod'),
+      first,
       context({
         // A repository holding one database and nothing else.
         vocabulary: { ...vocabulary, types: ['database'] },
       }),
+      saidInFull(first),
     )
 
     expect(firstEver.classified.find((leaf) => leaf.path.endsWith('.type'))?.class).toBe(
@@ -584,7 +605,8 @@ describe('a reference to what the same plan declares', () => {
     // without a person answering a question about a reference the operation
     // above it declares. The catalogue does not hold the database — that is
     // the whole scenario — so no witness set ever will.
-    const result = signed(twoStep(), withoutTheDatabase())
+    const both = twoStep()
+    const result = signed(both, withoutTheDatabase(), saidInFull(both))
 
     const leaf = result.classified.find((one) => one.path.endsWith('.dependsOn.0'))
     expect(leaf?.class).toBe('derived')
@@ -795,7 +817,7 @@ describe('a level is asked, never read out of the request', () => {
     // appears in their sentence, and the signature now holds the two apart.
     // Without this the loop would ask the same question for ever.
     const answered = plan(grant, 'give billing-api access to orders-db in prod')
-    const result = signed(answered, context(), saidWithLevels(answered, 'readwrite'))
+    const result = signed(answered, context(), saidInFull(answered, 'readwrite'))
 
     expect(result.classified.find((leaf) => leaf.path.endsWith('.access'))?.class).toBe('echoed')
     expect(findUnknowns(result.plan)).toEqual([])
@@ -840,7 +862,10 @@ describe('an answer vouches for the field it answered, and nowhere else', () => 
     const result = signed(
       twoGrants,
       context(),
-      userSaid(twoGrants.intent, { 'operations.0.entity.spec.access': 'read' }),
+      userSaid(twoGrants.intent, {
+        'operations.0.entity.spec.access': 'read',
+        'operations.0.entity.metadata.env': 'prod',
+      }),
     )
 
     expect(findUnknowns(result.plan)).toEqual(['operations.1.patch.access'])
@@ -852,6 +877,7 @@ describe('an answer vouches for the field it answered, and nowhere else', () => 
       context(),
       userSaid(twoGrants.intent, {
         'operations.0.entity.spec.access': 'readwrite',
+        'operations.0.entity.metadata.env': 'prod',
         'operations.1.patch.access': 'read',
       }),
     )
@@ -907,7 +933,10 @@ describe('the words are the provenance’s, never the plan’s', () => {
     const result = signed(
       forged,
       context(),
-      userSaid(request, { 'operations.0.entity.spec.access': 'read' }),
+      userSaid(request, {
+        'operations.0.entity.spec.access': 'read',
+        'operations.0.entity.metadata.env': 'prod',
+      }),
     )
 
     expect(findUnknowns(result.plan)).toEqual(['operations.0.entity.spec.owner'])

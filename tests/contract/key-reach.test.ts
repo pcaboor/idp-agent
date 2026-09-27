@@ -26,7 +26,7 @@ import { memorySink, onlyTrace } from '../support/trace.js'
  */
 
 const FIXTURES = path.resolve(import.meta.dirname, '../../fixtures/si-demo')
-const EXAMPLE = path.resolve(import.meta.dirname, '../../examples/declare-cache.json')
+const EXAMPLE = path.resolve(import.meta.dirname, '../../examples/open-network.json')
 const KEY = 'canary-key-that-is-not-a-real-one-0123456789'
 const MLFLOW = 'http://127.0.0.1:5055'
 
@@ -345,9 +345,10 @@ describe.each(PROVIDER_NAMES)('the %s key on a real run', (provider) => {
   })
 
   it('reaches its provider in its header, and nothing else, on a change', async () => {
-    // The Architect proposes what `examples/declare-cache.json` holds, which
+    // The Architect proposes what `examples/open-network.json` holds, which
     // signs cleanly against the demo SI: every value is in the request or in
-    // the repository, and nothing needs asking.
+    // the repository, its environment is the declaration the request points
+    // at, and nothing needs asking.
     const example = JSON.parse(await readFile(EXAMPLE, 'utf8')) as {
       intent: string
       operations: unknown[]

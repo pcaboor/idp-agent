@@ -18,6 +18,7 @@ import type {
 } from '../../src/llm/client.js'
 import { hashBoth, hashTree } from '../support/tree.js'
 import type { Ask } from '../../src/cli/commands/plan.js'
+import { confirmingEnvironment } from '../support/ask.js'
 
 /**
  * Replays a scripted sequence of model turns, keyed by AGENT.
@@ -154,12 +155,13 @@ const converging = (operations: unknown[]): LlmClient & { seen: GenerateRequest[
  * Answers the one question a grant now always carries, and declines the rest.
  *
  * A level is asked, never read out of the request, so a fixture that wants a
- * complete plan has to answer for it — which is what a person does. Every
- * other question is left unanswered, so a test about an unvouched owner still
- * tests that.
+ * complete plan has to answer for it — which is what a person does. So is an
+ * environment nobody pointed at, and it is confirmed as the draft proposed it
+ * (`confirmingEnvironment`). Every other question is left unanswered, so a
+ * test about an unvouched owner still tests that.
  */
 const answering = (value: string): Ask => async (question) =>
-  question.path.endsWith('.access') ? value : undefined
+  question.path.endsWith('.access') ? value : confirmingEnvironment(question)
 describe('plan "<intent>"', () => {
   it('leaves the declarations repository byte-identical', async () => {
     // "Preview only — writes nothing" is the whole stage, and the intent form

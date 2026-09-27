@@ -36,6 +36,17 @@ Each pull request adds its line here.
   pointing is vetoed when the request mentions anywhere a name the repository declares in
   another environment, so it is asked; invisible characters no longer split a word —
   review priority 6 ([#79](https://github.com/pcaboor/idp-agent/pull/79)).
+- An environment is never taken from the words of a request, in any language, exactly as
+  an access level is not: "give billing-api read access to orders-db in prod", "not prod"
+  and "prodではなく" are all asked, the environments in use listed. It comes from the
+  person's answer, or from the declaration of what the request names by its reference in
+  full — for the grant an update extends and now for a right the draft creates, whose
+  `metadata.env` is then derived — and `environment-mismatch` holds the plan to that. A
+  word never states an environment but can cancel one: "…resource:default/orders-db-prod
+  in dev" is asked, where it once ended on the prod diff. A negation marker anywhere in the
+  request, in a list extended with the forms two verifiers found ("dont", "anywhere but",
+  "ではなく", "nao" without its accent, "avoiding", "in place of", "hormis", "대신"), vetoes
+  the pointing too ([#81](https://github.com/pcaboor/idp-agent/pull/81)).
 - What the Inspector reads from a service repository carries no secret the filter can see:
   every match in a file is judged, so a placeholder no longer lets a literal after it
   through, and a file holding one is withheld whole; the keys of Anthropic, OpenAI, GitHub,

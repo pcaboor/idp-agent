@@ -24,6 +24,7 @@ import type {
   LlmClient,
 } from '../../src/llm/client.js'
 import { hashBoth, hashTree } from '../support/tree.js'
+import { asksEnvironment } from '../support/ask.js'
 
 /**
  * §7.5, the half that was missing: the CLI does not print a question and leave.
@@ -88,6 +89,9 @@ const answeringPath = (
 ): { ask: Ask; asked: Question[] } => {
   const asked: Question[] = []
   const ask: Ask = async (question) => {
+    if (asksEnvironment(question) && question.proposed !== undefined) {
+      return question.proposed
+    }
     asked.push(question)
     if (question.path.endsWith('.access')) return 'read'
     for (const [suffix, value] of Object.entries(byPath)) {
@@ -98,7 +102,38 @@ const answeringPath = (
   return { ask, asked }
 }
 
+/**
+ * Answers from a list, in turn, and keeps what it was shown — but for an
+ * environment the draft proposed, which it confirms, keeps apart and draws
+ * nothing from the list for.
+ *
+ * An environment is never read out of the request's words (the owner's
+ * decision of 2026-09-27), so every database these fixtures declare asks it,
+ * before the question each test is about. Confirmed the way `answeringPath`
+ * answers a level, a fixture about the owner need not know where that
+ * question lands. `answeringEvery` answers the environment from the list too.
+ */
 const answering = (
+  values: readonly (string | undefined)[],
+): { ask: Ask; asked: Question[]; confirmed: Question[] } => {
+  const asked: Question[] = []
+  const confirmed: Question[] = []
+  let spent = 0
+  const ask: Ask = async (question) => {
+    if (asksEnvironment(question) && question.proposed !== undefined) {
+      confirmed.push(question)
+      return question.proposed
+    }
+    asked.push(question)
+    const value = values[spent]
+    spent += 1
+    return value
+  }
+  return { ask, asked, confirmed }
+}
+
+/** Answers every question from a list, in turn, environments included. */
+const answeringEvery = (
   values: readonly (string | undefined)[],
 ): { ask: Ask; asked: Question[] } => {
   const asked: Question[] = []
@@ -112,10 +147,14 @@ const answering = (
   return { ask, asked }
 }
 
-/** An `ask` that says the same thing however often it is asked. */
+/**
+ * An `ask` that says the same thing however often it is asked — but for an
+ * environment the draft proposed, which it confirms (`answering`).
+ */
 const alwaysSaying = (value: string): { ask: Ask; asked: Question[] } => {
   const asked: Question[] = []
   const ask: Ask = async (question) => {
+    if (asksEnvironment(question) && question.proposed !== undefined) return question.proposed
     asked.push(question)
     return value
   }
@@ -162,8 +201,9 @@ const FACTS = {
 
 /**
  * The owner is the one value the request does not carry, so the signer turns it
- * into the single question of §7.5 — the same plan the "asks rather than
- * guesses" test in plan-intent.test.ts stops on.
+ * into the question of §7.5 — the same plan the "asks rather than guesses"
+ * test in plan-intent.test.ts stops on. Its environment is asked too, before
+ * it: "in prod" states none (`answering` confirms it).
  */
 const ONE_QUESTION = 'declare the database orders-db-prod in prod'
 
@@ -179,8 +219,9 @@ const CREATE_DATABASE = {
 /**
  * Two questions, and the name is deliberately NOT one of them: every segment of
  * `orders-db` is in the request, so `composed()` vouches for it. What is left
- * is the environment the request never named and the owner nobody stated — and
- * they are asked in the order `findUnknowns` walks them.
+ * is the environment — which no request states in words, and this one does not
+ * even try — and the owner nobody stated, asked in the order `findUnknowns`
+ * walks them.
  */
 const TWO_QUESTIONS = 'declare the database orders-db'
 
@@ -286,7 +327,7 @@ describe('plan "<intent>" asks, and carries on with the answer', () => {
     const repo = await scaffoldedRepository()
     const project = await application()
     const before = await hashBoth(repo, project)
-    const { ask, asked } = answering(['prod', 'group:default/tiger'])
+    const { ask, asked } = answeringEvery(['prod', 'group:default/tiger'])
 
     const result = await runIntent({
       intent: TWO_QUESTIONS,
@@ -311,7 +352,7 @@ describe('plan "<intent>" asks, and carries on with the answer', () => {
     const repo = await scaffoldedRepository()
     const project = await application()
     const before = await hashBoth(repo, project)
-    const { ask, asked } = answering(['prod', undefined])
+    const { ask, asked } = answeringEvery(['prod', undefined])
 
     const result = await runIntent({
       intent: TWO_QUESTIONS,
@@ -510,7 +551,9 @@ describe('plan through main', () => {
     })
 
     expect(code).toBe(3)
-    expect(out).toContain('1 question, asked rather than guessed:')
+    // The environment and the owner: "in prod" states no environment.
+    expect(out).toContain('2 questions, asked rather than guessed:')
+    expect(out).toContain(ENV_PATH)
     expect(out).toContain(OWNER_PATH)
     expect(out).toContain('Fill them in and run this again.')
     expect(out).not.toContain('@@')
@@ -1469,7 +1512,7 @@ describe('plan --from puts nothing back, because nothing moved', () => {
       operations: [CREATE_DATABASE_UNSCOPED],
     })
     const { events, emit } = collect()
-    const { ask, asked } = answering(['prod', 'group:default/tiger'])
+    const { ask, asked } = answeringEvery(['prod', 'group:default/tiger'])
 
     const result = await runPlan({ from, repo, ask, emit })
 
@@ -1549,11 +1592,16 @@ const grantingReadwrite = async (): Promise<string> => {
   return repo
 }
 
-/** `read` for the first level asked, `readwrite` for the second. */
+/**
+ * `read` for the first level asked, `readwrite` for the second — and each
+ * grant's environment confirmed as the draft proposed it: the request names
+ * the grant, not what it is over, so nothing points (`answering`).
+ */
 const readThenReadwrite = (): { ask: Ask; asked: Question[] } => {
   const asked: Question[] = []
   const levels = ['read', 'readwrite']
   const ask: Ask = async (question) => {
+    if (asksEnvironment(question) && question.proposed !== undefined) return question.proposed
     asked.push(question)
     return question.path.endsWith('.patch.access') ? levels.shift() : undefined
   }

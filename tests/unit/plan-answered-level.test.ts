@@ -17,6 +17,7 @@ import type {
   LlmClient,
 } from '../../src/llm/client.js'
 import { hashTree } from '../support/tree.js'
+import { asksEnvironment, confirmingEnvironment } from '../support/ask.js'
 
 /**
  * The owner's run, from inside their declarations repository, with no
@@ -183,17 +184,29 @@ const ownGrant = (access: unknown) => ({
 
 const approving = { reviewer: [turnCalling(VERDICT_TOOL, { verdict: 'ok' })] }
 
-/** Answers every level with `level`, declines everything else, and keeps what it was shown. */
+/**
+ * Answers every level with `level`, confirms an environment as the draft
+ * proposed it, declines everything else, and keeps what it was shown.
+ *
+ * The request points at `orders-db-prod` by its reference in full, so a grant
+ * over it has its environment from that declaration and is not asked; a
+ * network flow over it is, since only a levelled grant is read for what it is
+ * over (`GrantedOver`), and a word — "en prod" — states none.
+ */
 const answeringLevel = (level: string): { ask: Ask; asked: Question[] } => {
   const asked: Question[] = []
   return {
     asked,
     ask: async (question) => {
       asked.push(question)
-      return question.path.endsWith('.access') ? level : undefined
+      return question.path.endsWith('.access') ? level : confirmingEnvironment(question)
     },
   }
 }
+
+/** The questions asked, but for the environments a person confirmed. */
+const pathsOf = (asked: readonly Question[]): string[] =>
+  asked.filter((question) => !asksEnvironment(question)).map((question) => question.path)
 
 const collect = (): { events: AgentEvent[]; emit: (event: AgentEvent) => void } => {
   const events: AgentEvent[] = []
@@ -481,7 +494,7 @@ describe('a level is carried only onto a grant that states one', () => {
       { files: WITH_NETWORK, reviewer: [refusing, approvingOnce] },
     )
 
-    expect(asked.map((question) => question.path)).toEqual([DECLARED_AT])
+    expect(pathsOf(asked)).toEqual([DECLARED_AT])
     expect(result.found).toBe(true)
     expect(result.text).toContain(`+++ b/${NEW_GRANT_FILE}`)
     expect(result.text).toContain(`+++ b/${NETWORK_FILE}`)
@@ -575,7 +588,8 @@ describe("the values the report says are the user's", () => {
       asked.push(question)
       if (question.path.endsWith('.access')) return 'read'
       if (question.path.endsWith('.name')) return 'billing-ledger'
-      return question.path.endsWith('.owner') ? TIGER : undefined
+      if (question.path.endsWith('.owner')) return TIGER
+      return confirmingEnvironment(question)
     }
 
     const { client } = await runOwners(
@@ -587,7 +601,9 @@ describe("the values the report says are the user's", () => {
       ask,
     )
 
-    expect(asked.map((question) => question.path)).toEqual([
+    // The ledger is a thing, so its environment is asked too: nothing points
+    // at a database the draft creates.
+    expect(pathsOf(asked)).toEqual([
       JOINED_AT,
       'operations.1.entity.metadata.name',
       'operations.1.entity.spec.owner',
@@ -599,6 +615,7 @@ describe("the values the report says are the user's", () => {
         '',
         `  ${JOINED_AT} = read (${THE_ACCESS})`,
         '  operations.1.entity.metadata.name = billing-ledger (resource:default/billing-ledger)',
+        '  operations.1.entity.metadata.env = prod (resource:default/billing-ledger)',
         `  operations.1.entity.spec.owner = ${TIGER} (resource:default/billing-ledger)`,
         '',
         'Choose operations that honour them.',

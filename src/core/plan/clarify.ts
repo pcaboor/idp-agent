@@ -183,8 +183,8 @@ export function questionsOf(plan: Plan, context: QuestionContext = {}): Question
 }
 
 /**
- * The environment of the grant each update extends, when nothing the user
- * said names one (core-plan-3).
+ * The environment of the grant each update extends, unless the user answered
+ * it or pointed at it (core-plan-3).
  *
  * An update names its grant by reference and carries no environment, so the
  * signature has no leaf to classify and a policy measured the grant against
@@ -198,23 +198,24 @@ export function questionsOf(plan: Plan, context: QuestionContext = {}): Question
  * (`scopeOf`). Its question says so, and shows that environment as the
  * draft's when what it reaches declares exactly one.
  *
- * Not asked when the request states it (`requestedEnvironment`, the one
- * definition the policies read too). By a word — any environment the
- * repository uses, not only the grant's: a request naming `dev` over a prod
- * grant has said what it asks for, `environment-mismatch` refuses the grant
- * against it, and "nothing you said names an environment" would be false. Or
- * by pointing: "…à resource:default/orders-db-prod" names, by its reference
- * in full, the thing the grant is over, and that thing declares the
- * environment the grant hands out — the environment follows from a
- * declaration rather than from the model's choice, and the policies hold the
- * rest of the update to it as they would the word. Either one only while
- * nothing else the request mentions is declared in another environment: a
- * bare name, or a request mentioning several environments' entities, is
- * asked. Not asked when the
- * user already answered it, whatever they answered: an answer naming another
- * environment is the policies' to refuse, with the grant of that environment
- * as the remedy, and asking again would put the same choice to the person
- * twice. Not asked of a thing — `consumer-on-an-object` refuses that update.
+ * Asked when the request names an environment in words, too: a word states
+ * none, in any language, as a level word does not (`signPlan`) — "not prod"
+ * and "prodではなく" leave `prod` a whole word, and no list of negations is
+ * complete. Not asked when the request points (`requestedEnvironment`, the
+ * one definition the signature and the policies read too): "…à
+ * resource:default/orders-db-prod" names, by its reference in full, the thing
+ * the grant is over, and that thing declares the environment the grant hands
+ * out — the environment follows from a declaration rather than from the
+ * model's choice, and the policies hold the rest of the update to it. Only
+ * while nothing else the request mentions is declared in another environment,
+ * no word of it says another, and it holds no negation: a bare name, a request
+ * mentioning several environments' entities or saying "in dev" beside the prod
+ * database, or one negating anything, is asked. Not asked when
+ * the user already answered it, whatever they answered: an answer naming
+ * another environment is the policies' to refuse, with the grant of that
+ * environment as the remedy, and asking again would put the same choice to
+ * the person twice. Not asked of a thing — `consumer-on-an-object` refuses
+ * that update.
  */
 function impliedQuestions(plan: Plan, context: QuestionContext): Question[] {
   const questions: Question[] = []
@@ -230,22 +231,21 @@ function impliedQuestions(plan: Plan, context: QuestionContext): Question[] {
     const path = environmentPath(opIndex)
     if (provenance !== undefined) {
       if (provenance.answers.has(path)) continue
-      const requested = requestedEnvironment(
-        entityRef,
-        environments,
-        declared,
-        over,
-        context.namesakes,
+      const pointed = requestedEnvironment(
+        plan,
+        opIndex,
+        { declared, over, namesakes: context.namesakes, environments },
         provenance,
       )
-      if (requested.named.length > 0 || requested.pointed !== undefined) continue
+      if (pointed !== undefined) continue
     }
     const [only, ...others] = scope.environments
     questions.push({
       path,
       question:
-        `the draft joins ${patch.consumer} to ${entityRef}, which ${scope.words}, and ` +
-        'nothing you said names an environment for it; which environment is this access for?',
+        `the draft joins ${patch.consumer} to ${entityRef}, which ${scope.words}, and an ` +
+        'environment is never read from the words of a request; which environment is this ' +
+        'access for?',
       ...(only === undefined || others.length > 0 ? {} : { proposed: only }),
       ...(environments.length === 0 ? {} : { inUse: [...environments] }),
       implied: true,

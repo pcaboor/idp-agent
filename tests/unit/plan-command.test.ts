@@ -7,6 +7,7 @@ import { runInitPlatform } from '../../src/cli/commands/init.js'
 import { runPlan } from '../../src/cli/commands/plan.js'
 import { hashTree } from '../support/tree.js'
 import type { Ask } from '../../src/cli/commands/plan.js'
+import { confirmingEnvironment } from '../support/ask.js'
 
 const capture = (): { out: string[]; err: string[] } => ({ out: [], err: [] })
 
@@ -31,12 +32,13 @@ const run = async (args: string[], ask?: Ask) => {
  * Answers the one question a grant now always carries, and declines the rest.
  *
  * A level is asked, never read out of the request, so a fixture that wants a
- * complete plan has to answer for it — which is what a person does. Every
- * other question is left unanswered, so a test about an unvouched owner still
- * tests that.
+ * complete plan has to answer for it — which is what a person does. So is an
+ * environment nobody pointed at, and it is confirmed as the draft proposed it
+ * (`confirmingEnvironment`). Every other question is left unanswered, so a
+ * test about an unvouched owner still tests that.
  */
 const answering = (value: string): Ask => async (question) =>
-  question.path.endsWith('.access') ? value : undefined
+  question.path.endsWith('.access') ? value : confirmingEnvironment(question)
 /**
  * A real repository on a real disk, because the guarantee under test is that
  * the bytes on that disk do not move. A fake file system would let the command

@@ -6,6 +6,7 @@ import { runInitPlatform } from '../../src/cli/commands/init.js'
 import { main, type MainDeps } from '../../src/cli/index.js'
 import { sourceOf } from '../../src/cli/source.js'
 import type { LlmClient } from '../../src/llm/client.js'
+import { confirmingEnvironment } from '../support/ask.js'
 
 /**
  * A declarations repository configured once — `IDP_REPO`, or `repo:` in the
@@ -75,6 +76,10 @@ const run = async (
   const err: string[] = []
   const code = await main(argv, {
     root: FIXTURES,
+    // Somebody at the keyboard confirming the environment the example's
+    // database declares: it is never read out of the request's words, and
+    // what these tests are about is which repository was read.
+    ask: async (question) => confirmingEnvironment(question),
     ...deps,
     out: (chunk) => void out.push(chunk),
     err: (chunk) => void err.push(chunk),

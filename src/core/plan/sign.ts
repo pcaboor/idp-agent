@@ -1,4 +1,5 @@
 import { answered, named, nothingStated, stated, type Provenance } from './provenance.js'
+import { requestedEnvironment, type Namesakes } from './environment.js'
 import type { Plan } from '../schemas/plan.js'
 import { PLAN_LIMITS } from '../schemas/plan.js'
 import { computeEntityPath } from '../paths/entity-path.js'
@@ -57,6 +58,15 @@ export interface SignatureContext {
   readonly repoRoot: string
   /** ref → the file already declaring it. The re-check decides what that means. */
   readonly declared: ReadonlyMap<string, string>
+  /**
+   * ref → the environment each entity the repository declares states, and
+   * every name it holds with the environments its documents declare: what a
+   * right's environment is read off when the request points at what it is
+   * over (`requestedEnvironment`). Optional, and absent means nothing points:
+   * every creation's environment is then an answer or a question.
+   */
+  readonly environments?: ReadonlyMap<string, string>
+  readonly namesakes?: Namesakes
 }
 
 /**
@@ -161,7 +171,9 @@ function enumerated(vocabulary: Vocabulary, path: string, value: string): boolea
   // exists, so enumerating it would let a model pick production for a request
   // that named no environment at all, and the plan would sign cleanly. §4.1
   // says being authorised in dev grants nothing elsewhere; an environment is
-  // therefore echoed — the user named it — or novel, and novel means asked.
+  // therefore answered, or derived from a declaration the request points at,
+  // or novel, and novel means asked. (`signPlan` settles `.metadata.env` before
+  // this is reached; the absence here is the rule stated where it would go.)
   if (path.endsWith('.kind')) return vocabulary.kinds.includes(value)
   return false
 }
@@ -239,6 +251,18 @@ export function signPlan(
   // The words alone, for a name vouched for segment by segment: an answer is
   // a whole value for a whole field, never a word inside one.
   const vouches = (text: string): boolean => named(provenance, text)
+  // The environment each operation's request points at, when it points: the
+  // repository's declarations, never this plan's (`requestedEnvironment`).
+  const repository = {
+    declared: context.environments ?? new Map<string, string>(),
+    over: new Map<string, readonly string[]>(),
+    namesakes: context.namesakes,
+    environments: context.vocabulary.environments,
+  }
+  const pointed = (opIndex: number): string | undefined =>
+    context.environments === undefined
+      ? undefined
+      : requestedEnvironment(plan, opIndex, repository, provenance)?.env
   const classified: LeafFinding[] = []
   const refusals: LeafRefusal[] = []
   const asked = new Map<string, string>()
@@ -356,6 +380,25 @@ export function signPlan(
       // it follows from another operation by a rule the engine applied, and
       // nobody wrote it in a request. See `created`.
       leafClass = 'derived'
+    } else if (path.endsWith('.metadata.env')) {
+      // An environment is never read out of the request, for the reason a
+      // level is not: a word test cannot read a negation, and no list of them
+      // is complete. "not prod", "prodではなく", "dont use prod" and "nao em
+      // prod" each named `prod` as a whole word and signed a production
+      // declaration as the person's word. So the words vouch for none, in any
+      // language.
+      //
+      // Two things do. The person's answer to this field. And, for a right
+      // over things the request names by their references in full, each
+      // declaring one environment, that declaration: the environment follows
+      // from what the person pointed at, by a rule the engine applied, which
+      // is `derived` — the one definition the question and the policies read
+      // too (`requestedEnvironment`). A draft declaring another than the one
+      // pointed at is asked, and shown as the draft's. Anything else is novel,
+      // and novel means asked. Deliberately no vocabulary either: see
+      // `enumerated`.
+      if (answered(provenance, path, text)) leafClass = 'echoed'
+      else if (pointed(opIndex) === text) leafClass = 'derived'
     } else if (stated(provenance, path, text)) {
       // Checked before the vocabulary on purpose. A value can be both, and
       // "the user asked for this" is the stronger claim: it is their request,

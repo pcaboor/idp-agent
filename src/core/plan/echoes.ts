@@ -51,16 +51,15 @@
  *
  * What this does NOT do is understand the request. It answers whether a string
  * appears in it as a word, nothing more: a request that names `prod` to say
- * "anything but prod" reads the same as one asking for it — and so does a
- * negation attached across a change of script, `非prod` or `비prod`, which is
- * the same limit as "non prod" written with a space. "en production" names no
- * `prod` at all, and neither does "orders-db-prod": an environment inside a
- * longer name is not a word of the request. Either way the environment is
- * ASKED, which is the safe direction — unless what is named, by its
- * reference in full, is the entity a grant is over, whose declared
- * environment the person then pointed at (`requestedEnvironment`), which
- * reads the entity's declaration and never its name. That is what the diff is
- * for, and why the merge is the act of authorisation.
+ * "anything but prod" reads, HERE, the same as one asking for it — and so does
+ * "not prod", "hors prod", "non–prod" with a dash, "prodではなく", or a
+ * negation attached across a change of script, `非prod` or `비prod`. That is
+ * why no environment is ever read through this (`requestedEnvironment`), in
+ * any language, as no level is (`signPlan`): a word test cannot read a
+ * negation, and no list of negations is ever complete. What it reads is the
+ * words a value may be vouched for by — a name, an owner, the references a
+ * request names in full, which is how a request points at a declaration whose
+ * environment it then has, never at a name that merely spells one.
  *
  * Also true of the text as the person saw it: characters nobody sees are not
  * read (`fold`), so a soft hyphen or a zero-width space splits no word.
@@ -80,6 +79,38 @@ export function echoes(intent: string, value: string): boolean {
     return true
   }
   return false
+}
+
+/**
+ * The words of a text as prose splits them, folded (`fold`): letters, marks
+ * and digits of one script, ended by anything else — a hyphen, a dash, a
+ * space — and by a change of script (`differ`).
+ *
+ * Finer than a token on purpose: `echoes` keeps "non-prod" one token so that
+ * it names no `prod`, and this splits it into `non` and `prod`, so a negation
+ * joined to its word is still found (`negates`). Read for markers only, never
+ * for a value.
+ */
+export function proseWords(text: string): string[] {
+  const words: string[] = []
+  let current = ''
+  let previous: string | undefined
+  for (const char of fold(text)) {
+    if (!WORD.test(char)) {
+      if (current !== '') words.push(current)
+      current = ''
+      previous = undefined
+      continue
+    }
+    if (previous !== undefined && differ(previous, char)) {
+      words.push(current)
+      current = ''
+    }
+    current += char
+    previous = char
+  }
+  if (current !== '') words.push(current)
+  return words
 }
 
 const INVISIBLE = /\p{Default_Ignorable_Code_Point}/gu

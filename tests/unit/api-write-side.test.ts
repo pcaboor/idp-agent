@@ -7,6 +7,7 @@ import { runInitPlatform } from '../../src/cli/commands/init.js'
 import type { Ask } from '../../src/cli/commands/plan.js'
 import { operationSchema, planSchema } from '../../src/core/schemas/plan.js'
 import { hashTree } from '../support/tree.js'
+import { confirmingEnvironment } from '../support/ask.js'
 
 /**
  * The read model is wider than the write model, and only the read model grew:
@@ -59,7 +60,7 @@ describe('a proposal', () => {
 })
 
 const answering = (value: string): Ask => async (question) =>
-  question.path.endsWith('.access') ? value : undefined
+  question.path.endsWith('.access') ? value : confirmingEnvironment(question)
 
 const run = async (args: string[], ask?: Ask) => {
   const io = { out: [] as string[], err: [] as string[] }
