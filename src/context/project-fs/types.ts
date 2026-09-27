@@ -68,4 +68,39 @@ export type Selection = 'git' | 'walk' | 'none'
  */
 export interface ProjectRead extends ProjectSnapshot {
   readonly selection: Selection
+  /**
+   * Candidates the file or byte budget left unread — counted, for the line the
+   * CLI says on stderr. Zero when the budget read everything it was offered.
+   */
+  readonly leftOut: number
+  /**
+   * How many of `leftOut` were signal files — manifests, ownership, catalogue,
+   * chart, container and deployment files — so the line on stderr never says
+   * they were all read when a workspace monorepo holds more than the budget.
+   */
+  readonly signalsLeftOut: number
+  /**
+   * Every `catalog-info*.yaml`/`.yml` the repository keeps, read whole and
+   * OUTSIDE the budget: what `init` compares a Component with, and the `before`
+   * of the diff it previews. Not on `ProjectSnapshot`, so never sent to a
+   * model: a file the budget left out is still a declaration the repository
+   * holds, and a capped read of it would preview a creation over it.
+   */
+  readonly declarations: readonly Declaration[]
+}
+
+/**
+ * A catalog-info file: its bytes, or why they could not be taken whole — in
+ * which case nobody can say what it declares, and nothing is previewed over it.
+ */
+export type Declaration = (
+  | { readonly path: string; readonly text: string }
+  | { readonly path: string; readonly unreadable: string }
+) & {
+  /**
+   * The folder below the root, nearest first, that holds its own package
+   * manifest and so is a workspace of its own — absent when there is none.
+   * A catalog-info in one describes that workspace, not the repository.
+   */
+  readonly workspace?: string
 }

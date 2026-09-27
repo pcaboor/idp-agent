@@ -38,7 +38,7 @@ import { readConfig, seededVocabulary, type RepositoryConfig } from '../config.j
 import { paintDiff } from '../render/diff.js'
 import type { CommandResult } from './result.js'
 import { inertLine, visible } from '../render/plain.js'
-import { declarationsRoot, selectionNotice } from '../repository.js'
+import { budgetNotice, declarationsRoot, selectionNotice } from '../repository.js'
 
 /**
  * Steps 3 to 7 of §7.4, wired end to end and stopping one step short of the
@@ -750,7 +750,7 @@ const provenanceOf = (request: string, answers: ReadonlyMap<string, string>): Pr
  * the build understood the request and acted on it, and this is a negative
  * answer about one value — the same distinction `renderStopped` draws.
  */
-const renderRefusedAnswer = (reason: string): CommandResult => ({
+export const renderRefusedAnswer = (reason: string): CommandResult => ({
   text: [
     // A field's path and the rule it broke — and, for a value outside a closed
     // set (`fillAnswers`), the value the user typed, which is why this line is
@@ -1179,8 +1179,12 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
   // read here and handed over, with every exclusion and cap already applied.
   const project = options.project === undefined ? undefined : await readProject(options.project)
   if (options.project !== undefined && project !== undefined) {
-    const notice = selectionNotice(options.project, project)
-    if (notice !== undefined) options.notice?.(notice)
+    for (const notice of [
+      selectionNotice(options.project, project),
+      budgetNotice(options.project, project),
+    ]) {
+      if (notice !== undefined) options.notice?.(notice)
+    }
   }
 
   // The Architect's read tools sit on the repository, not on the fixture SI,

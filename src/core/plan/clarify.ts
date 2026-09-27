@@ -1,5 +1,6 @@
 import type { Plan } from '../schemas/plan.js'
 import { findUnknowns } from '../schemas/plan.js'
+import { COMPONENT_LIFECYCLES } from '../schemas/entity.js'
 import { ACCESS_LEVELS, type Nature } from '../schemas/resource-types.js'
 import {
   environmentPath,
@@ -37,8 +38,8 @@ export interface Question {
   readonly proposed?: string
   /**
    * Every value this field accepts, when the set is closed and the engine owns
-   * it: the level of a grant whose type states one. An answer outside it is
-   * refused at the prompt, before any gate.
+   * it: the level of a grant whose type states one, a Component's lifecycle.
+   * An answer outside it is refused at the prompt, before any gate.
    */
   readonly accepted?: readonly string[]
   /**
@@ -135,8 +136,8 @@ const OPERATION_PATH = /^operations\.(\d+)\.(.+)$/
 /**
  * What the person is told a field takes, by what the field IS — a level is
  * where its operation states the level of a grant that has one
- * (`levelledSiteOf`), an environment is `metadata.env` — and from the engine's
- * own lists, never a literal here.
+ * (`levelledSiteOf`), a lifecycle is a Component's, an environment is
+ * `metadata.env` — and from the engine's own lists, never a literal here.
  *
  * A level by its operation, never by a path ending in `.access`: a network
  * flow has no level, and a set of "read, readwrite" enforced at its prompt
@@ -152,6 +153,16 @@ function valuesOf(
   const site =
     operation === undefined ? undefined : levelledSiteOf(operation, context.over ?? new Map())
   if (site !== undefined && match?.[2] === site.field) return { accepted: [...ACCESS_LEVELS] }
+  // A Component's lifecycle, wherever a Component is created: a closed set
+  // the schema holds it to, so an answer outside it is refused at the prompt
+  // rather than at gate [1], after the round (`fillAnswers`).
+  if (
+    match?.[2] === 'entity.spec.lifecycle' &&
+    (operation?.op === 'create-catalog-info' ||
+      (operation?.op === 'create-entity' && operation.entity.kind === 'Component'))
+  ) {
+    return { accepted: [...COMPONENT_LIFECYCLES] }
+  }
   if (path.endsWith('.metadata.env') && context.environments !== undefined) {
     return context.environments.length === 0 ? {} : { inUse: [...context.environments] }
   }

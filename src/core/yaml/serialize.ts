@@ -449,6 +449,14 @@ export function parseDocuments(text: string): {
 export interface DocumentName {
   readonly name: string
   readonly env: string | undefined
+  /**
+   * The kind and the namespace as the document states them, unchecked — what
+   * an identity is read from when the schema refuses the rest (`init`: a
+   * Component with a lifecycle Backstage accepts and this tool does not
+   * write is still that Component). Undefined when not stated as text.
+   */
+  readonly kind: string | undefined
+  readonly namespace: string | undefined
 }
 
 /**
@@ -501,7 +509,13 @@ export function documentNames(text: string): {
       unreadable = true
       continue
     }
-    named.push({ name, env: typeof env === 'string' ? env : undefined })
+    const { namespace } = metadata
+    named.push({
+      name,
+      env: typeof env === 'string' ? env : undefined,
+      kind: isMapping(value) && typeof value.kind === 'string' ? value.kind : undefined,
+      namespace: typeof namespace === 'string' ? namespace : undefined,
+    })
   }
   return { named, unreadable }
 }

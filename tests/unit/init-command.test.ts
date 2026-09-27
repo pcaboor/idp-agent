@@ -384,7 +384,11 @@ describe('init, per application', () => {
     expect(result.unsupported).toBe(true)
     expect(result.found).toBe(false)
     expect(result.text).toContain('operations.0.entity.spec.type')
-    expect(result.text).not.toContain('anything-the-model-likes')
+    // Shown as the draft's, on the prompt's own line (#72), and nowhere else:
+    // never as a value, and never in a catalog-info.
+    expect(
+      result.text.split('\n').filter((line) => line.includes('anything-the-model-likes')),
+    ).toEqual(['      the draft says anything-the-model-likes'])
     expect(result.text).not.toContain('catalog-info.yaml')
     expect(await hashTree(project)).toBe(before)
   })

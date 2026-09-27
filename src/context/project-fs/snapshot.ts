@@ -4,7 +4,7 @@ import { lstat, open, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
 import { assertInsideRepo, PathEscapeError } from '../../core/paths/entity-path.js'
 import { secretIn, type SecretClass } from './secrets.js'
-import type { ProjectFile, ProjectRead, Selection, SkippedFile } from './types.js'
+import type { Declaration, ProjectFile, ProjectRead, Selection, SkippedFile } from './types.js'
 
 /**
  * Reads the APPLICATION repository — the one a service lives in, not the
@@ -50,6 +50,7 @@ export const PROJECT_LIMITS = {
  */
 export type {
   ProjectFile,
+  Declaration,
   ProjectRead,
   ProjectSnapshot,
   Selection,
@@ -529,6 +530,11 @@ interface Walk {
   /** Undefined outside a git repository: then every file the walk reaches is a candidate. */
   readonly tracked: Tracked | undefined
   readonly candidates: Candidate[]
+  /**
+   * Every catalog-info the walk reached, whatever its size: read apart from
+   * the candidates and outside their budget (`declarations`).
+   */
+  readonly catalogs: Candidate[]
   readonly skipped: SkippedFile[]
   /** Entries git does not track: counted, never named. */
   untracked: number
@@ -699,6 +705,11 @@ async function walk(
       continue
     }
 
+    // Before the size rule, which only decides what a MODEL is sent: a
+    // catalog-info over the cap is still a declaration, and `declarations`
+    // says it could not be read rather than letting it vanish.
+    if (isCatalogInfo(name)) state.catalogs.push({ path: here, absolute: target, size: stats.size })
+
     if (stats.size > PROJECT_LIMITS.maxFileBytes) {
       // Skipped, never truncated: half a file is a lie, and a model told half
       // a manifest will answer confidently about the missing half.
@@ -762,6 +773,180 @@ async function readBounded(
 const byPath = (a: { path: string }, b: { path: string }): number =>
   a.path < b.path ? -1 : a.path > b.path ? 1 : 0
 
+/**
+ * A catalog-info, by its base name: Backstage's `catalog-info.yaml`, the
+ * `.yml` people write as often, and the `catalog-info.<part>.yaml` a repository
+ * splits one into.
+ */
+export const isCatalogInfo = (name: string): boolean => /^catalog-info([.-].*)?\.ya?ml$/i.test(name)
+
+/** Package manifests other than `package.json`, which outranks them all. */
+const MANIFESTS = new Set([
+  'go.mod',
+  'pom.xml',
+  'build.gradle',
+  'build.gradle.kts',
+  'settings.gradle',
+  'settings.gradle.kts',
+  'cargo.toml',
+  'pyproject.toml',
+  'requirements.txt',
+  'setup.py',
+  'setup.cfg',
+  'pipfile',
+  'gemfile',
+  'composer.json',
+  'mix.exs',
+  'deno.json',
+])
+
+/** Folders whose YAML is a deployment: Kubernetes manifests, charts, overlays. */
+const DEPLOYMENT_DIRECTORIES = new Set([
+  'k8s',
+  'kubernetes',
+  'kube',
+  'manifests',
+  'deploy',
+  'deployment',
+  'deployments',
+  'helm',
+  'chart',
+  'charts',
+  'kustomize',
+  'overlays',
+])
+
+/**
+ * The files that state what a service IS — its manifest, who owns it, how it
+ * is declared, packaged and deployed — ranked, or undefined for the rest.
+ *
+ * The budget used to be spent in path order, so on a real repository an
+ * `app/` or a `__generated__/` of two hundred files was read and the
+ * `package.json` after it was not (review, gap-init-real-repos-1). The ranks
+ * are the order the Inspector is after them in: the manifest first, and
+ * `package.json` before any other, because the owner's services are Node.
+ *
+ * `.idp-agent.yml` is absent on purpose. It is a hidden file, which this
+ * module never hands a model (`READABLE_HIDDEN_FILES`); the engine reads it
+ * (`cli/config.ts`), and the plan-mode recordings were made with it withheld.
+ */
+function signalOf(relative: string): number | undefined {
+  const segments = relative.toLowerCase().split('/')
+  const name = segments.at(-1) ?? ''
+  if (name === 'package.json') return 0
+  if (MANIFESTS.has(name) || name.endsWith('.csproj')) return 1
+  if (name === 'codeowners') return 2
+  if (isCatalogInfo(name)) return 3
+  if (name === 'chart.yaml' || /^values([.-].*)?\.ya?ml$/.test(name)) return 4
+  if (name === 'dockerfile' || name.startsWith('dockerfile.') || name.endsWith('.dockerfile')) {
+    return 5
+  }
+  if (/^(docker-)?compose([.-].*)?\.ya?ml$/.test(name)) return 6
+  if (
+    /\.ya?ml$/.test(name) &&
+    (/^kustomization\./.test(name) ||
+      segments.slice(0, -1).some((segment) => DEPLOYMENT_DIRECTORIES.has(segment)))
+  ) {
+    return 7
+  }
+  if (/^readme(\..+)?$/.test(name)) return 8
+  return undefined
+}
+
+/**
+ * The order the budget is spent in: every signal file before any other file,
+ * the shallower first within each — a repository's own `package.json` before
+ * the two hundred of its workspaces — and then the rank, then the path, so
+ * two runs over one disk read the same files (design § 6.2).
+ *
+ * The order the files are READ in, never the order they are handed over:
+ * `readProject` returns them in path order, as it always has, so a repository
+ * the budget does not cap — every plan-mode recording's — sends the model the
+ * very bytes it sent before.
+ */
+function byBudget(a: Candidate, b: Candidate): number {
+  const rank = (candidate: Candidate): readonly [number, number, number] => {
+    const signal = signalOf(candidate.path)
+    return [signal === undefined ? 1 : 0, candidate.path.split('/').length, signal ?? 0]
+  }
+  const [one, other] = [rank(a), rank(b)]
+  for (let index = 0; index < one.length; index += 1) {
+    const difference = (one[index] ?? 0) - (other[index] ?? 0)
+    if (difference !== 0) return difference
+  }
+  return byPath(a, b)
+}
+
+/**
+ * The root's `catalog-info.yaml` and `.yml` when the walk did not offer them —
+ * untracked, or in a repository git could not list. The model is never sent
+ * these, so tracking is not what decides here: the root file is what `init`
+ * would write over, and its `before` is what is on the disk. A link or a
+ * second name for another file is not followed, and said so.
+ */
+async function rootCatalogs(realRoot: string, known: ReadonlySet<string>): Promise<Declaration[]> {
+  const found: Declaration[] = []
+  for (const name of ['catalog-info.yaml', 'catalog-info.yml']) {
+    if (known.has(name)) continue
+    const stats = await lstat(path.join(realRoot, name)).catch(() => undefined)
+    if (stats === undefined) continue
+    if (!stats.isFile() || stats.nlink > 1) {
+      found.push({ path: name, unreadable: 'it is not a plain file, and it was not followed' })
+      continue
+    }
+    found.push(await declarationOf({ path: name, absolute: path.join(realRoot, name), size: stats.size }))
+  }
+  return found
+}
+
+/** One catalog-info, whole, or why not. The same bounded read as every file here. */
+async function declarationOf(candidate: Candidate): Promise<Declaration> {
+  const read = await readBounded(candidate.absolute)
+  if (read === undefined) return { path: candidate.path, unreadable: 'it could not be read' }
+  if (read.over) {
+    return {
+      path: candidate.path,
+      unreadable: `it is over the ${PROJECT_LIMITS.maxFileBytes}-byte file cap`,
+    }
+  }
+  if (read.bytes.includes(0)) return { path: candidate.path, unreadable: 'it is not text' }
+  return { path: candidate.path, text: read.bytes.toString('utf8') }
+}
+
+/**
+ * Every catalog-info the walk reached, whole, each with the workspace it sits
+ * in when one holds it: a folder below the root with a package manifest of its
+ * own (`signalOf`'s first two ranks) among the files the walk offered.
+ */
+async function declarationsOf(
+  realRoot: string,
+  catalogs: readonly Candidate[],
+  candidates: readonly Candidate[],
+): Promise<Declaration[]> {
+  const workspaces = new Set(
+    candidates
+      .filter((candidate) => (signalOf(candidate.path) ?? Number.POSITIVE_INFINITY) <= 1)
+      .map((candidate) => path.posix.dirname(candidate.path))
+      .filter((folder) => folder !== '.'),
+  )
+  const workspaceOf = (file: string): string | undefined => {
+    const folders = file.split('/').slice(0, -1)
+    for (let depth = folders.length; depth > 0; depth -= 1) {
+      const folder = folders.slice(0, depth).join('/')
+      if (workspaces.has(folder)) return folder
+    }
+    return undefined
+  }
+  const read: Declaration[] = []
+  for (const catalog of [...catalogs].sort(byPath)) {
+    const declaration = await declarationOf(catalog)
+    const workspace = workspaceOf(catalog.path)
+    read.push(workspace === undefined ? declaration : { ...declaration, workspace })
+  }
+  const root = await rootCatalogs(realRoot, new Set(catalogs.map((catalog) => catalog.path)))
+  return [...read, ...root].sort(byPath)
+}
+
 export async function readProject(root: string): Promise<ProjectRead> {
   const resolved = path.resolve(root)
   // The root is resolved once, and every containment decision is made against
@@ -779,6 +964,9 @@ export async function readProject(root: string): Promise<ProjectRead> {
       skipped: [{ path: '.', reason: 'refused: the project root is not a readable directory' }],
       truncated: false,
       selection: 'none',
+      leftOut: 0,
+      signalsLeftOut: 0,
+      declarations: [],
     }
   }
 
@@ -797,6 +985,11 @@ export async function readProject(root: string): Promise<ProjectRead> {
       ],
       truncated: false,
       selection: 'none',
+      leftOut: 0,
+      signalsLeftOut: 0,
+      // Nothing is sent to a model here, and nothing of this is: what `init`
+      // would write over is still what the root holds.
+      declarations: await rootCatalogs(realRoot, new Set()),
     }
   }
   const selection: Selection = chosen.selection
@@ -805,6 +998,7 @@ export async function readProject(root: string): Promise<ProjectRead> {
     realRoot,
     tracked: chosen.selection === 'git' ? chosen.tracked : undefined,
     candidates: [],
+    catalogs: [],
     skipped: [],
     untracked: 0,
     directories: 1,
@@ -818,28 +1012,45 @@ export async function readProject(root: string): Promise<ProjectRead> {
     })
   }
 
-  // Sorted before the caps are applied, not after: the caps decide WHICH files
-  // are read, so two runs agree on the content only if they agree on the order
-  // first. That is what lets a recording replay (design § 6.2).
-  state.candidates.sort(byPath)
+  // Ordered before the caps are applied, not after: the caps decide WHICH
+  // files are read, so two runs agree on the content only if they agree on the
+  // order first. That is what lets a recording replay (design § 6.2). The
+  // signal files come first (`byBudget`), so a cap leaves out the files that
+  // say least about the service.
+  state.candidates.sort(byBudget)
 
   const files: ProjectFile[] = []
   let total = 0
-  for (const candidate of state.candidates) {
+  let leftOut = 0
+  let signalsLeftOut = 0
+  /**
+   * The one entry a cap earns: the file it stopped at, and how many it left
+   * out with it — counted, because "stopped here" on a list read in an order
+   * nobody sees says nothing about how much was missed.
+   */
+  const stop = (at: number, cap: string): void => {
+    leftOut = state.candidates.length - at
+    signalsLeftOut = state.candidates
+      .slice(at)
+      .filter((candidate) => signalOf(candidate.path) !== undefined).length
+    state.skipped.push({
+      path: state.candidates[at]?.path ?? '.',
+      reason:
+        `not read: the ${cap} cap stopped the read here, leaving ${leftOut} ` +
+        `${leftOut === 1 ? 'file' : 'files'} out — ` +
+        (signalsLeftOut === 0
+          ? 'manifests, ownership, catalogue and deployment files were read first'
+          : `${signalsLeftOut} of them manifests, ownership, catalogue or deployment files`),
+    })
+    state.truncated = true
+  }
+  for (const [index, candidate] of state.candidates.entries()) {
     if (files.length >= PROJECT_LIMITS.maxFiles) {
-      state.skipped.push({
-        path: candidate.path,
-        reason: `not read: the ${PROJECT_LIMITS.maxFiles}-file cap stopped the read here`,
-      })
-      state.truncated = true
+      stop(index, `${PROJECT_LIMITS.maxFiles}-file`)
       break
     }
     if (total >= PROJECT_LIMITS.maxTotalBytes) {
-      state.skipped.push({
-        path: candidate.path,
-        reason: `not read: the ${PROJECT_LIMITS.maxTotalBytes}-byte total cap stopped the read here`,
-      })
-      state.truncated = true
+      stop(index, `${PROJECT_LIMITS.maxTotalBytes}-byte total`)
       break
     }
 
@@ -891,17 +1102,15 @@ export async function readProject(root: string): Promise<ProjectRead> {
       // Checked on the bytes in hand as well as before the read: `lstat` said
       // how big the file was a moment ago, and a snapshot that overruns its
       // own total cap by a whole file is a cap that does not hold.
-      state.skipped.push({
-        path: candidate.path,
-        reason: `not read: the ${PROJECT_LIMITS.maxTotalBytes}-byte total cap stopped the read here`,
-      })
-      state.truncated = true
+      stop(index, `${PROJECT_LIMITS.maxTotalBytes}-byte total`)
       break
     }
 
     files.push({ path: candidate.path, text: bytes.toString('utf8') })
     total += bytes.length
   }
+  // Handed over in path order, whatever order they were read in (`byBudget`).
+  files.sort(byPath)
 
   const skipped = state.skipped.sort(byPath)
   if (skipped.length > PROJECT_LIMITS.maxSkipped) {
@@ -924,5 +1133,8 @@ export async function readProject(root: string): Promise<ProjectRead> {
     skipped,
     truncated: state.truncated,
     selection,
+    leftOut,
+    signalsLeftOut,
+    declarations: await declarationsOf(realRoot, state.catalogs, state.candidates),
   }
 }
