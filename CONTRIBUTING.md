@@ -26,6 +26,17 @@ pnpm smoke        # runs the built dist/cli/bin.js, which the suite never does
 test locked with mode 000 included — and `pnpm smoke` removes its own. There is nothing to
 clean up by hand, and `tests/unit/temp-directory.test.ts` fails if that stops holding.
 
+**Your shell does not reach the suite.** `IDP_PROVIDER`, `IDP_MODEL`, every other `IDP_`
+variable but `IDP_TRACE_DIR`, and every `*_API_KEY` are removed before each test file, and
+`fetch`, `node:http`, `node:https`, `node:net`, `node:tls` and `WebSocket` throw: export
+what the README says and `pnpm test` passes the same.
+
+**A change can stale a recording.** The scenarios replay model calls recorded once with a
+key, and a change to what a model is sent — a prompt, a tool, a fixture the Inspector reads
+— makes `plan-mode.test.ts` fail with "the recording is stale — re-record it".
+[`tests/README.md`](tests/README.md) says what stales a tape, what to do about it, and how
+to record one.
+
 **`pnpm typecheck` is not a formality.** A green suite has already hidden a resource type
 that does not exist, an `undefined` passed where the property is optional, and a dead
 import — vitest strips types, it does not check them. The config is deliberately strict
@@ -57,6 +68,9 @@ No human has to explain these in review — the build does it, with a message:
   else from it — which is why that file holds types only.
 - `scaffold/` imports `core/` and nothing else of ours, and exactly one module in it
   writes.
+- Only named modules write, each with the functions it writes with, and only one starts a
+  process; in `cli/`, only named modules touch the disk. The rules fail on a folder that is
+  not there and on an import that resolves to no file, rather than passing over nothing.
 - Everything typechecks under TypeScript 7 with the project's strict settings.
 - The built binary runs, returns the right exit codes, and the packaged tarball carries
   what it needs — `pnpm smoke` reads `npm pack` output, because green tests once hid a

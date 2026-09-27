@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
-import { describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
+import { it } from './oracle.js'
 import { z } from 'zod'
 
 // Mirrors src/llm/runtime.ts digestOf exactly (it is not exported).

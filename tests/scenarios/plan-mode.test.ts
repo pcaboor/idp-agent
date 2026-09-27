@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -5,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { main } from '../../src/cli/index.js'
 import { runInitPlatform } from '../../src/cli/commands/init.js'
 import type { AgentEvent } from '../../src/agents/events.js'
+import { secretIn } from '../../src/context/project-fs/secrets.js'
 import { hashTree } from '../support/tree.js'
 import { disagreements, memorySink, onlyTrace } from '../support/trace.js'
 import { confirmingEnvironment } from '../support/ask.js'
@@ -439,9 +441,47 @@ describe('the recordings themselves', () => {
     const { readdir, readFile } = await import('node:fs/promises')
     const files = (await readdir(RECORDINGS)).filter((name) => name.endsWith('.json'))
 
+    expect(files.length).toBeGreaterThan(0)
     for (const file of files) {
       const raw = await readFile(path.join(RECORDINGS, file), 'utf8')
-      expect(raw, `${file}`).not.toMatch(/authorization|api[_-]?key|bearer\s/i)
+      expect(credentialIn(raw), `${file}`).toBeUndefined()
     }
   })
+
+  it("would see a real key's shape, not only a header's name", () => {
+    // A tape holds every file the Inspector read, verbatim: a key in a
+    // fixture is a key in the tape, and it carries no label to find it by.
+    // Built from a hash here, so that no key-shaped literal sits in the source.
+    const noise = (seed: string, length: number): string => {
+      let out = ''
+      for (let n = 0; out.length < length; n += 1) {
+        out += createHash('sha256').update(`${seed}${n}`).digest('base64url')
+      }
+      return out.slice(0, length)
+    }
+    const tape = (text: string): string =>
+      JSON.stringify({ turns: [{ result: { content: [{ type: 'text', text }] } }] }, null, 2)
+    for (const key of [
+      `sk-ant-api03-${noise('anthropic', 95)}`,
+      `sk-proj-${noise('openai', 120)}`,
+      `ghp_${noise('github', 36).replace(/[-_]/g, 'x')}`,
+    ]) {
+      // No name beside it: the shape alone has to give it away.
+      expect(credentialIn(tape(`read_file notes.txt: ${key}`)), key.slice(0, 8)).toBeDefined()
+    }
+    expect(credentialIn(tape('give billing-api read access to orders-db in prod'))).toBeUndefined()
+  })
 })
+
+/**
+ * Why a tape's raw text looks like it holds a credential, or `undefined`: a
+ * header's name, or what `project-fs` withholds a file for — key material, a
+ * literal assigned to a secret's name, a token's shape. The names alone missed
+ * `sk-…`, `ghp_…` and every other key that arrives without its label.
+ */
+function credentialIn(raw: string): string | undefined {
+  const header = /authorization|api[_-]?key|bearer\s/i.exec(raw)
+  if (header !== null) return `names ${header[0]}`
+  const secret = secretIn(raw)
+  return secret === undefined ? undefined : `holds a secret (${secret})`
+}

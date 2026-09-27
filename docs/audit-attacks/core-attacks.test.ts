@@ -1,7 +1,8 @@
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
+import { it } from './oracle.js'
 import { reviewPlan, VERDICT_TOOL } from '../../src/agents/reviewer.js'
 import { runInitPlatform, requestOf, catalogInfoEdits, CATALOG_INFO } from '../../src/cli/commands/init.js'
 import { renderQuestions, renderStopped, runPlan } from '../../src/cli/commands/plan.js'
@@ -34,13 +35,25 @@ const context = (over: Partial<SignatureContext> = {}): SignatureContext => ({
  * in the context: a crash or a fixture failure counts as "failing", which in
  * this folder reads as "closed".
  */
-const signed = (plan: Plan, over: Partial<SignatureContext> = {}): SignedPlan => {
+const signed = (
+  plan: Plan,
+  over: Partial<SignatureContext> = {},
+  { refusalCloses = true }: { readonly refusalCloses?: boolean } = {},
+): SignedPlan => {
   const result = signPlan(plan, context(over), {
     intent: plan.intent,
     wordsOf: 'user',
     answers: new Map(),
   })
-  if ('outcome' in result) throw new Error(JSON.stringify(result.refusals))
+  if ('outcome' in result) {
+    // Refusing to sign is one way A and G close — a type or a name nobody
+    // vouched for, declined — so there it fails as an assertion. B is about
+    // what follows a signature, and a refusal there is its fixture breaking:
+    // a crash (oracle.ts), neither open nor closed.
+    const refusals = JSON.stringify(result.refusals)
+    if (refusalCloses) expect.fail(`signPlan refused: ${refusals}`)
+    throw new Error(`signPlan refused the fixture: ${refusals}`)
+  }
   return result
 }
 
@@ -86,7 +99,14 @@ describe('A. a Component spec.type is free text and signs as derived', () => {
         }
       },
     }
-    const verdict = await reviewPlan(client, { plan: plan1.plan, intent, derived: [] }, () => {})
+    // `targets` and `effects` arrived in ReviewInput after this test was
+    // written (F9, F10); without them it crashed on `input.targets` and read
+    // as closed. Empty: the plan is one creation, which updates nothing.
+    const verdict = await reviewPlan(
+      client,
+      { plan: plan1.plan, intent, derived: [], targets: [], effects: [] },
+      () => {},
+    )
     const opening = seen[0]?.transcript[0]
     const text = opening !== undefined && opening.role === 'user' ? opening.text : ''
     expect(text).toContain(INJECTION)
@@ -165,7 +185,7 @@ describe('B. a SignedPlan is not tamper-evident', () => {
   })
 
   it('a field changed after signing is written, and the classification still vouches for the old one', () => {
-    const plan1 = signed(plan)
+    const plan1 = signed(plan, {}, { refusalCloses: false })
     expect(classOf(plan1, 'operations.0.entity.spec.owner')).toBe('enumerated')
     expect(classOf(plan1, 'operations.0.entity.spec.access')).toBe('echoed')
     expect(Object.isFrozen(plan1.plan)).toBe(false)

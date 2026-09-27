@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3115 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3130 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does,
@@ -465,24 +465,34 @@ them never reaches the one that spends a model call. Three attempts, then a clea
   checklist; tick its boxes as you go — Stage 1 shipped with all 36 unticked, which is
   how a plan stops being a status signal.
 - No `switch` on a closed union without `const _exhaustive: never = value` in `default`.
-- **Fourteen** architecture rules are enforced by `tests/architecture/`. `core/` imports
+- **Sixteen** architecture rules are enforced by `tests/architecture/`. `core/` imports
   neither `agents/`, `llm/`, `context/`, `cli/`, `scaffold/`, the disk, the network nor the
   model SDK. `agents/` imports neither `fs`, `child_process` nor a git client — **and
   nothing reachable from it does either**, the test walks the transitive closure. Only
   `llm/` imports the model SDK, and `agents/` imports `llm/client.js` and nothing else from
   it. `scaffold/` imports `core/` and nothing else of ours; only `write.ts` and
-  `templates.ts` touch the disk there, and only `write.ts` imports a writing function. Only
-  `context/iac-fs` and `context/project-fs` read a user's repository. `trace/` reaches
-  nothing but types — no disk, no network, no `fetch`, no SDK, nothing of `cli/` — and only
-  `cli/` reaches it. Add a rule when you add a layer — and re-count this number when you
-  do, because it is the one that drifts first:
+  `templates.ts` touch the disk there, and only `write.ts` imports a writing function. In
+  `context/`, only `iac-fs` and `project-fs` read a user's repository; in `cli/`, seven named
+  modules touch the disk, among them `commands/plan.ts` and `config.ts`, which read the
+  repositories too. Across `src/`, only `scaffold/write.ts`, `cli/recording-fs.ts` and
+  `cli/trace-sink.ts` import a writing function — `project-fs/snapshot.ts` opens files, read
+  only — each named with the functions it may use, and only `project-fs/snapshot.ts` starts
+  a process (`git ls-files`). `trace/` reaches nothing but types — no disk, no network, no
+  `fetch`, no SDK, nothing of `cli/` — and only `cli/` reaches it. The rules read `.ts`,
+  `.mts` and `.cts`, and fail on a folder that is not there and on an import that resolves
+  to no file, rather than passing over nothing. Add a rule when you add a layer — and
+  re-count this number when you do, because it is the one that drifts first:
   `pnpm vitest run tests/architecture --reporter=verbose`.
-- **No test calls a model.** `tests/setup/offline.ts` replaces `fetch` with a thrower
-  unless `IDP_RECORDING=record`, so a forgotten recording fails loudly instead of quietly
-  spending whoever's key is in the shell. An agent-backed command is driven either by a
-  recording or by a scripted client injected through `MainDeps.client` — that seam exists
-  so a whole command can be tested end to end with no key and no tape. Recording is a
-  deliberate, separate act performed by a human with a key.
+- **No test calls a model.** `tests/setup/offline.ts` makes `fetch`, `node:http`,
+  `node:https`, `node:net`, `node:tls` and `WebSocket` throw, and `tests/setup/shell.ts`
+  removes every `IDP_` variable but `IDP_TRACE_DIR` and every `*_API_KEY`, unless a scenario
+  is being recorded (`IDP_RECORDING=record`, in `tests/scenarios/` only). A forgotten
+  recording fails loudly instead of quietly spending whoever's key is in the shell, and the
+  suite passes the same with the README's variables exported. What stales a tape, and how
+  to record one: [`tests/README.md`](tests/README.md). An agent-backed command is driven
+  either by a recording or by a scripted client injected through `MainDeps.client` — that
+  seam exists so a whole command can be tested end to end with no key and no tape.
+  Recording is a deliberate, separate act performed by a human with a key.
 - `fixtures/si-demo/` is a valid IaC repository, not a test-only shape: one file per
   entity, in the folder `computeEntityPath` produces, witness files included. `validate`
   reports 33 entities in 33 files and 0 violations over it. Later stages write into it

@@ -159,22 +159,31 @@ Review ids that a later pull request names as fixed, outside the ids the priorit
 
 - agents-llm-5 → [#75](https://github.com/pcaboor/idp-agent/pull/75)
 - agents-llm-11 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
+- architecture-11 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2; no rule names `forge/` yet, which does not exist, and a rule over a missing folder now fails
 - build-ci-12 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - cli-ux-1 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - cli-ux-6 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - cli-ux-7 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
 - cli-ux-8 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - cli-ux-11 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
+- core-plan-13 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2
 - core-yaml-9 → [#50](https://github.com/pcaboor/idp-agent/pull/50), found while stacking #49
 - gap-init-real-repos-6 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - gap-init-real-repos-8 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - gap-provider-matrix-2 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
 - gap-provider-matrix-3 → [#75](https://github.com/pcaboor/idp-agent/pull/75), seen and left in #44
 - gap-provider-matrix-4 → [#59](https://github.com/pcaboor/idp-agent/pull/59), for the request timeout; calls are still not streamed (`generateText` in `src/llm/runtime.ts`)
+- gap-stage5-readiness-9 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2
 - runtime-probe-3 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - runtime-probe-8 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
 - runtime-probe-13 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - security-4 → [#58](https://github.com/pcaboor/idp-agent/pull/58) for `show`, `graph`, `ask` and `validate`; [#62](https://github.com/pcaboor/idp-agent/pull/62) cleans what `plan` and `init` print, without naming the id
+- security-10 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2, for a real key's shape in a tape; `providerMetadata` is still recorded, and dropping it rewrites every tape, so it waits for a re-record
+- tests-7 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2
+- tests-8 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2
+- tests-9 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2, for the tape lifecycle in `tests/README.md`; freshness is still asserted inside each plan scenario, and there is no record-from-the-stale-turn mode
+- tests-11 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2
+- tests-12 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2
 - tests-13 → [#56](https://github.com/pcaboor/idp-agent/pull/56), for the temp directories; the 10-minute scenario timeout is unchanged
 
 Named as left open, and still open: runtime-probe-15, `plan --repo` resolved against
@@ -254,7 +263,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | architecture-8 | partly fixed | medium | medium |  | owner | Same fix as agents-llm-4. |
 | architecture-9 | partly fixed | medium | large |  | owner | A structured Preview/PlanReport apart from rendering, a signal through the commands, a session ADR before stage 5 freezes confirmation. |
 | architecture-10 | partly fixed | medium | medium |  |  | One `runBoundedLoop` for the four agents, and `reasonOf` everywhere. |
-| architecture-11 | still true | medium | small | A2 |  | Fail on an empty tree or an unresolved import, scan `.mts`/`.cts`, and a rule naming the `cli/` modules that touch the disk. |
+| architecture-11 | still true | medium | small | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | Fail on an empty tree or an unresolved import, scan `.mts`/`.cts`, and a rule naming the `cli/` modules that touch the disk. |
 | build-ci-2 | still true | medium | small | A3 |  | Smoke from an extracted `npm pack` tarball, or at least assert `fixtures/si-demo` is packed. |
 | build-ci-3 | still true | medium | trivial | A3 |  | Clean `dist/` before `tsc`, and a `prepack` running typecheck, test, build and smoke. |
 | cli-ux-1 | still true | medium | small | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) |  | `validate` resolves its directory like the other commands (exit 2 when it is none) and parses strictly. |
@@ -286,7 +295,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | gap-stage5-readiness-3 | still true | medium | large |  | owner | Decide in the stage-5 plan that the base is a commit, read through git, and the contracts without git. |
 | gap-stage5-readiness-4 | still true | medium | medium | B3 |  | The iac-fs walk turns a symbolic link into a named rejection; same primitive as core-yaml-5. |
 | gap-stage5-readiness-6 | partly fixed | medium | medium | stage 5 |  | Stage 5's writer re-reads each target and compares it with `before`, refusing on a mismatch. |
-| gap-stage5-readiness-9 | still true | medium | small | A2 |  | A rule that only the named writers import a writing function or `child_process`, over the closure; a minimum file count. |
+| gap-stage5-readiness-9 | still true | medium | small | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | A rule that only the named writers import a writing function or `child_process`, over the closure; a minimum file count. |
 | gap-stage5-readiness-10 | still true | medium | medium |  | owner | Same `evaluatePlan()` as architecture-1; then word SECURITY and README by route, or give `--from` a Reviewer. |
 | gap-stage5-readiness-11 | partly fixed | medium | small | B1 |  | Same generators as core-yaml-6; stage 5's idempotence invariant asserts the effect too. |
 | gap-stage5-readiness-13 | still true | medium | large |  | owner | Split compute from render (a structured Preview) and add a Confirm seam beside Ask. |
@@ -305,9 +314,9 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | tests-4 | still true | medium | small |  | re-record, owner | The freshness guard in question mode, after the question tapes are re-recorded. |
 | tests-5 | still true | medium | small | B2 | owner | Record from an empty map, assert every turn replayed, prune the dead turns offline. |
 | tests-6 | still true | medium | small | B2 | owner | Digest the JSON Schema the provider is sent; same fix as wip-diff-12. |
-| tests-8 | still true | medium | small | A2 |  | Delete `IDP_PROVIDER`, `IDP_MODEL`, `IDP_*_MODEL` and `*_API_KEY` in the setup unless recording; record only with a scenario. |
-| tests-9 | still true | medium | small | A2 |  | `tests/README.md` on the tape lifecycle, linked from CONTRIBUTING. |
-| tests-11 | still true | medium | trivial | A2 |  | Same fix as core-plan-13, plus a sentinel so a crash counts as neither open nor closed. |
+| tests-8 | still true | medium | small | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | Delete `IDP_PROVIDER`, `IDP_MODEL`, `IDP_*_MODEL` and `*_API_KEY` in the setup unless recording; record only with a scenario. |
+| tests-9 | still true | medium | small | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | `tests/README.md` on the tape lifecycle, linked from CONTRIBUTING. |
+| tests-11 | still true | medium | trivial | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | Same fix as core-plan-13, plus a sentinel so a crash counts as neither open nor closed. |
 | wip-diff-1 | still true | medium | small | A4 |  | `created()` per operation, leaving the walked one out and counting only creations with a path; a policy that `dependsOn` names an object. |
 | wip-diff-4 | still true | medium | small | A4 |  | Same change as wip-diff-1: `created()` only counts creations the engine places. |
 | wip-diff-6 | still true | medium | medium |  | owner | Freshness as its own test after the invariants, a record-from-the-first-stale-turn mode, one stated policy. |
@@ -325,7 +334,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | cli-ux-13 | still true | low | trivial |  | owner | `iacRepo` optional while nothing reads it; `plan --from` reads the config for its environments. |
 | cli-ux-14 | partly fixed | low | trivial | A3 |  | Reword `src/cli/README.md:44-45`, which says `show` takes "the first entity holding a bare name": `resolveEntity` refuses a shared name since [#74](https://github.com/pcaboor/idp-agent/pull/74). `withAnswers` is gone ([#78](https://github.com/pcaboor/idp-agent/pull/78)); the gate order goes with architecture-12. |
 | core-plan-10 | partly fixed | low | small | A4 |  | Switches with `never` defaults in `planEdits` and at the filter sites in sign and policies; a switch on `patch.patch`. |
-| core-plan-13 | partly fixed | low | trivial | A2 |  | Point the three audit attacks at `tests/recordings` and give `plan-outcomes` assertions. |
+| core-plan-13 | partly fixed | low | trivial | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | Point the three audit attacks at `tests/recordings` and give `plan-outcomes` assertions. |
 | docs-9 | partly fixed | low | trivial | A3 |  | The Reviewer's real inputs, two scaffold modules read and one writes, `plan/`, `validate/`, `diff/` in core's README. |
 | docs-10 | still true | low | small |  | owner | Name the PR or commit on `main` for "this branch", say `c1bb7d8` is unreachable, drop the `rtk` prefixes, fix test G. |
 | domain-backstage-8 | still true | low | small | slice 1 |  | Cap each vocabulary list at 30 in `formatSummary` — planned as `backstage-http` slice 1. |
@@ -352,9 +361,9 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | runtime-probe-13 | partly fixed | low | small | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) (a retry is a line on stderr, not a trace event) |  | Refuse an empty or dash-leading directory for `init platform` and `validate`; a retry progress event. |
 | security-5 | still true | low | small |  | owner | Witness each Inspector fact textually, or it is asked; the CODEOWNERS owner as its own class. |
 | security-6 | partly fixed | low | medium |  | re-record, owner | A policy: every grant's consumer and target is named by the request or answered; otherwise ask. |
-| security-10 | still true | low | trivial | A2 |  | Run `secretIn` over each tape's raw text beside the header regex. |
-| tests-7 | still true | low | small | A2 |  | Stub `http`, `https`, `net`, `tls` and `WebSocket` in the offline setup; delete `*_API_KEY`. |
-| tests-12 | still true | low | trivial | A2 |  | Let the reads throw, a minimum file count, `.mts`/`.cts`, fail on an unresolved import. |
+| security-10 | still true | low | trivial | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) for the key's shape; `providerMetadata` is left for a re-record |  | Run `secretIn` over each tape's raw text beside the header regex. |
+| tests-7 | still true | low | small | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | Stub `http`, `https`, `net`, `tls` and `WebSocket` in the offline setup; delete `*_API_KEY`. |
+| tests-12 | still true | low | trivial | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | Let the reads throw, a minimum file count, `.mts`/`.cts`, fail on an unresolved import. |
 | wip-diff-5 | still true | low | small |  | re-record | The Reviewer's SYSTEM lists its four inputs and says targets and effects are not for re-judging; with wip-diff-3's re-record. |
 | wip-diff-8 | still true | low | trivial | A4 |  | `ReviewInput = ReviewFacts & {plan; intent}` and the two comments fixed. |
 | wip-diff-9 | still true | low | small | A4 |  | Render an environment only when the vocabulary holds it; otherwise say it is outside the vocabulary. |

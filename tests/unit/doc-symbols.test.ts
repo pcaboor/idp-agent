@@ -49,6 +49,7 @@ const NOT_OURS = new Map([
   ['ANTHROPIC_BASE_URL', "the Anthropic SDK's own variable"],
   ['OPENAI_BASE_URL', "the OpenAI SDK's own variable"],
   ['ExportTraceServiceRequest', "OTLP's message, which the MLflow sink sends"],
+  ['WebSocket', "Node's global, which the suite's offline setup blocks"],
 ])
 
 const IDENTIFIER =

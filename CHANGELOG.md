@@ -34,6 +34,17 @@ Each pull request adds its line here.
 
 ### Fixed
 
+- Tests that cannot pass on nothing: the architecture rules fail on a folder that is not there
+  or an import that resolves to no file, read `.mts` and `.cts`, and name every module that
+  writes, with the functions it writes with, the one that starts a process and the `cli/`
+  modules that touch the disk; the suite blocks `node:http`, `node:https`, `node:net`,
+  `node:tls` and `WebSocket` as well as `fetch`, and sets aside every `IDP_` variable but
+  `IDP_TRACE_DIR` and every `*_API_KEY`, so it passes the same with `IDP_PROVIDER` and
+  `IDP_MODEL` exported, and only a scenario records; a tape holding a key's shape fails, not
+  only one naming a header; the audit's attack tests read `tests/recordings` and replay them
+  clean, run in place with their own config, and a crash counts as neither open nor closed; `tests/README.md`
+  says what stales a tape and how to record one — review batch A2
+  ([#88](https://github.com/pcaboor/idp-agent/pull/88)).
 - The edges of the command line: `-h`, `--version`, `-v` and `version` work, and
   `<command> --help` prints that command's usage, as a refused argument now does instead of
   the whole help; `validate` refuses a path that is not a directory, an empty one or a second
