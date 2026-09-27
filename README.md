@@ -452,6 +452,7 @@ firewall automation and ticketing) and adds the multi-agent layer that system ne
 | 4 | Preview only: Inspector, Architect, `Plan`, diff; writes nothing | ✅ |
 | 5 | Write + local branch: atomicity, idempotence | 🚧 |
 | 6 | GitHub pull request: real forge, negative token test | |
+| 6b | [Read the live catalogue](docs/backstage-http-brief.md): questions and relations against a running Backstage (`backstage-http`); no Backstage needed to use the tool | |
 | 7 | Polish: Ink TUI, asciinema, npm publish | |
 | 8 | [Discovery](docs/stage-8-brief.md): catalogue an existing service and its dependencies; preview-only until 5–6 land, submission after 6 | |
 

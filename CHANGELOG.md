@@ -89,6 +89,15 @@ Each pull request adds its line here.
 
 ### Documentation
 
+- The `backstage-http` read provider is designed: the catalogue is read once per run, before
+  any model, through the same reader as a file, `spec` and never `relations`; the token comes
+  from `IDP_BACKSTAGE_TOKEN` and reaches only the configured origin, on two `GET` routes and
+  never a child process; every bound is stated and a partial catalogue is refused; Backstage
+  answers questions and the declarations repository still decides changes; stage 8's gate
+  matches the location the catalogue records, never the one an entity claims; five slices,
+  the first demoable after a slice 0 that makes the repository Backstage-ready in one
+  registration — installing a Backstage stays out of scope — and the owner's answers
+  ([#84](https://github.com/pcaboor/idp-agent/pull/84)).
 - Stage 8, discovery, is designed: from a service repository, report the dependencies its
   configuration already states, with evidence the engine re-reads, and propose the missing
   catalog-info and rights; the owner's answers to its questions are recorded
