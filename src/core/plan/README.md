@@ -26,7 +26,7 @@ schema rejects what cannot be requested. The signature turns a value nobody can 
 into a question rather than a refusal — *declare, never infer* means asking, not guessing
 and not giving up. A policy refuses what is expressible, vouched for, and still wrong; the
 design named that gate four times and defined it nowhere, so `policies.ts` opens with the
-definition. Six ship, and **every operation is gated** — `update-entity` joins a consumer
+definition. Eight ship, and **every operation is gated** — `update-entity` joins a consumer
 to an *existing* grant, so it is the one operation that hands out an authorisation nobody
 re-declares, and the loop once skipped it. The re-check exists because the catalogue lags
 the repository by about two minutes (§4.4): what was true when the plan was drafted may not
@@ -244,23 +244,57 @@ annotation to drift.
 
 ## What "already declared" means
 
-`grant.ts` exists for the reason `materialise.ts` does: two modules ask one question and
-neither may own the answer. It used to mean a **name** — `planEdits` asked
-`listDocumentNames`, `recheckPlan` asked whether the reference was declared at the computed
-path — so a plan stating `read` against a file granting `readwrite` produced an edit whose
-two sides were equal, an empty diff, and a run ending on *nothing to change — the
-repository already says it*. The tool asserted a falsehood about an authorisation in both
+`grant.ts` exists for the reason `materialise.ts` does: three modules ask one question —
+the edits, the re-check and the policies — and none may own the answer. It used to mean a
+**name** — `planEdits` asked `listDocumentNames`, `recheckPlan` asked whether the reference
+was declared at the computed path — so a plan stating `read` against a file granting
+`readwrite` produced an edit whose two sides were equal, an empty diff, and a run ending on
+*nothing to change — the repository already says it*. The tool asserted a falsehood about an authorisation in both
 directions: a requested narrowing silently did not happen, and a request for `read` was
 reported satisfied by a standing `readwrite`.
 
-A grant **is** its level (§4.1), so a declaration restates a proposal when it states the
-same level. When it does not, there are no honest bytes to show — appending cannot rewrite
-a scalar — so `planEdits` produces none and names both levels, `recheckPlan` answers
-`differs` rather than `already-declared`, and the `declared-level-mismatch` policy refuses
-the plan before any preview is offered. What it does **not** compare is everything else: a
-declaration whose owner differs still reads as already declared, because a file
-legitimately carries consumers, tags and a description no proposal ever states, and
-comparing documents would call a genuine replay a change.
+A grant **is** its level (§4.1), so it came to mean a **level** — and the same falsehood came
+back through every other field (review priority 8): a grant of that name held by another
+consumer, owned by another team or scoped to another environment restated a proposal
+whenever the two levels agreed, so an access nobody had was reported on exit 0 as the one the
+request asked for. And an update was never compared at all — the re-check called it
+`unresolved` whatever the file said, so an access that did exist was never named.
+
+So a declaration restates an operation when **everything the operation would declare is
+already there**: for a creation (`restatementOf`), the type, the environment, the level, the
+owner, what the right is over and who holds it; for an `add-dependency-of`
+(`consumerRestatement`), the consumer listed at the level the operation states. Two lists are
+compared by inclusion — a file legitimately lists consumers and targets no proposal states,
+and a grant orders-api also holds is still billing-api's access — and references as the
+reader writes them, so `owner: tiger` restates `group:default/tiger`. A description, tags and
+a Component's lifecycle are not compared: nothing a proposal says about an authorisation.
+
+When it does not restate, there are no honest bytes — appending cannot rewrite a declaration
+(§4.3) — so `planEdits` produces none and names every field that differs, `recheckPlan`
+answers `differs`, and a policy refuses the plan before any preview: `declared-level-mismatch`
+for the level, `declared-otherwise` for the rest, with an update per consumer as the remedy
+when a consumer is all that is missing. An update whose consumer the grant does not list is
+an append (`fresh`). When it does restate, `recheckPlan` says `already-declared` and hands the
+CLI the file and the fields (`restated`), which is what "nothing to change — the repository
+already says it" prints, so a reader can check it. For an update that is the grant's type,
+environment, owner and what it is over too, which the operation does not state: they are how
+a reader tells the grant the draft extended from the one the request asked for. An empty diff
+exits 0 only when every operation is `already-declared`, in prose and in `--json` alike.
+
+Two operations of one plan aimed at one reference are refused too (`same-reference-twice`),
+naming both: two creations of one entity, a creation and an update of it, or two updates of
+one grant for one consumer or stating two levels. They used to merge in silence — the second
+creation found the first's bytes and added nothing. Two updates of one grant for two
+consumers are two accesses and stand.
+
+Two places are still wrong, on purpose. The Reviewer is told that an update the re-check
+finds `already-declared` "would be written to the repository" (`effectsOf`, review id
+wip-diff-2); saying otherwise changes what the recorded `link-already-declared` scenario sent
+the Reviewer, so it waits for a re-record. And "already declared" is about the operation, not
+the request: nothing here reads the request, so an update extending a grant over another
+thing than the one asked for, which already lists the consumer, is reported already declared
+on exit 0 — what it is over printed beside it, and a gate for it left in
+[`docs/roadmap.md`](../../../docs/roadmap.md).
 
 ## What it never does
 

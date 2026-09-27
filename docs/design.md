@@ -551,7 +551,7 @@ can *vouch for* — and asks rather than refuses, because *declare, never infer*
 putting the question to the user, not guessing and not giving up — and a policy refuses
 what is expressible, vouched for, and still wrong.
 
-Six ship in v0.1:
+Eight ship in v0.1:
 
 | policy | refuses |
 |---|---|
@@ -561,6 +561,8 @@ Six ship in v0.1:
 | `environment-in-name` | a proposed name that says another environment than the one the entity declares |
 | `declared-level-mismatch` | a level the operation states that the repository does not declare |
 | `consumer-on-an-object` | an `add-dependency-of` aimed at a thing, which carries no consumers |
+| `declared-otherwise` | a creation of a reference the repository declares that says something else about it — another consumer, owner, environment, type or target — the level being `declared-level-mismatch`'s |
+| `same-reference-twice` | two operations aimed at one reference: two creations of it, a creation and an update of it, or two updates of one grant for one consumer or stating two levels — naming both |
 
 **The environment a right grants is the one it declares**, and nothing its name says. A
 name is the model's to choose (§5.2), and `cross-environment-consumer` once counted the
@@ -668,18 +670,36 @@ entity and a database's absent level looked like a right's unstated one. The two
 kept apart now, and each gate says its own thing.
 
 A configurable rule engine — `governance/`, and the `get_governance_rule` tool this
-document once gave the Architect in § 6 — is deferred past v0.1: six predicates that run
+document once gave the Architect in § 6 — is deferred past v0.1: eight predicates that run
 are worth more than an extension point that does not. The tool is absent from the
 Architect's registry for the same reason, because a tool naming a feature nobody built is
 a prompt for the model to ask about one.
 
-An empty diff is not always success. `nothing to change.` on exit 0 says the repository
-already grants what was asked, and it is true when the re-check says `already-declared` —
-the plan restated a declaration and the bytes it would write are the ones on disk. When
-every operation was *dropped* instead, the plan did nothing and nothing says the request
-was already satisfied: that exits 3, with the reasons underneath as before. The two used to
-share one sentence and one exit code, and a reason printed under a sentence that
-contradicts it is not saying it.
+An empty diff is not always success. `nothing to change` on exit 0 says the repository
+already grants what was asked, and it is true only when the re-check says
+`already-declared` of every operation — the plan restated declarations and the bytes it
+would write are the ones on disk — and it names, for each, the file and every field the
+operation states as the file says it, so a reader can check. When an operation was
+*dropped* instead, or the re-check found it saying something else than the file, the plan
+did nothing and nothing says the request was already satisfied: that exits 3, with the
+reasons underneath, in prose and in `--json` alike. The two used to share one sentence and one exit code, and a reason
+printed under a sentence that contradicts it is not saying it.
+
+**Already declared means everything the operation states** (`src/core/plan/grant.ts`).
+It meant a name, then a level, and each time an access nobody had was reported on exit 0 —
+last as a grant of the requested name held by another consumer at the same level
+(review priority 8). A creation restates a declaration when its type, environment, level
+and owner are the declaration's and what it is over and who holds it are among the
+declaration's; an `add-dependency-of` restates the grant it extends when the grant already
+lists the consumer at the level the operation states, and is otherwise an append — and the
+grant's type, environment, owner and what it is over are named beside it, though the
+operation states none of them, because they are how a reader tells which grant it was.
+Whether that grant is over what the *request* asked for is not decided: "already declared"
+reads the operation, not the request, and a gate for it is in
+[`roadmap.md`](roadmap.md). Anything
+else is `declared-level-mismatch`'s or `declared-otherwise`'s to refuse, and no append can
+make it true (§4.3). References are compared as the reader writes them, so a short form in
+the file restates the full form in the plan.
 
 Gate [4] is not a second set of rules. It applies the Plan **virtually** — builds the
 snapshot that would exist if the plan landed — and runs the same seven `validate` rules CI
@@ -1023,7 +1043,7 @@ Every run ends on the same line, so no one mistakes submission for permission:
 | Resource missing | the Architect branches: resource declaration **and** access |
 | Ambiguous name | interactive picker listing each match with its environment — never a default |
 | An environment nobody answered or pointed at | the environment is asked — of a creation's `metadata.env` and of an existing grant extended alike — showing the draft's and the environments in use, and for a grant the grant the draft chose — never a default, and never read from a word of the request, in any language (§5.3). For an update, an answer naming another environment is refused, with the grant of that environment as the remedy (§6.1). Not asked when the request names everything the right is over by its reference in full and each declares the one environment — the person pointed at that declaration — and no name it mentions anywhere is declared in another by any document of the repository; a thing points at nothing, and a bare name, a request naming the environment only in words, one mentioning several environments' entities, one holding a negation marker anywhere, or one whose words say another environment (§5.3), is asked |
-| Already declared | the plan RESTATES the declaration, the edit produces bytes identical to the ones on disk, and the re-check reports `already-declared`, exit 0 |
+| Already declared | the plan RESTATES the declaration — everything each operation states is already there, a consumer already listed at the level stated included — the edit produces bytes identical to the ones on disk, and the re-check reports `already-declared`, naming the file and the fields, exit 0. A declaration of that name saying anything else is refused, never reported as done (§6.1) |
 | No convergence | stops at 3 attempts, states what could not be determined, suggests the flag or field that would resolve it, writes nothing |
 
 An empty plan used to be how both of those rows were written, and it is not a

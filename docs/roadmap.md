@@ -9,7 +9,7 @@ What has already shipped is in [`CHANGELOG.md`](../CHANGELOG.md). What the 2026-
 found, and which of its findings are closed, is in its
 [Status section](reviews/2026-09-23-deep-review.md#status).
 
-*Updated 2026-09-27, `main` at `b9b204d`.*
+*Updated 2026-09-27, `main` at `53e838b`.*
 
 ## Where the project stands
 
@@ -37,14 +37,12 @@ framed in the model's words, Backstage APIs, the relations view, and tracing int
 **In order**, as the owner decided on 2026-09-23, 2026-09-25 and 2026-09-26. Each line says
 what the item is for.
 
-1. **Review priority 8, an exact "already declared".** The tool never asserts on exit 0 an
-   access that does not exist.
-2. **The `backstage-http` read provider: a design note and a stage plan.** Context read from a
+1. **The `backstage-http` read provider: a design note and a stage plan.** Context read from a
    Backstage catalogue, where today it comes from a configured source.
-3. **A sweep of the review.** Each finding no pull request names is classified still true,
+2. **A sweep of the review.** Each finding no pull request names is classified still true,
    fixed or obsolete; the Status section is updated, and the cheap fixes still true are
    batched.
-4. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
+3. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
    the current `main`, read only: what it covers and what it misses. It includes **which
    repository a `FileEdit` writes to**, the part of gap-stage5-readiness-8 review priority 9
    left to stage 5 ([#82](https://github.com/pcaboor/idp-agent/pull/82)): `init`'s
@@ -55,7 +53,7 @@ what the item is for.
    operation to `targetOf`'s choice over `ProjectRead.declarations` (`filedIn`) — the root's
    `.yml`, or the one catalog-info kept elsewhere — so a `readCatalogInfo` that reads only the
    root's `catalog-info.yaml` would bring back the twin and the capped `before` this removed.
-5. **Stage 5, write + local branch.** The first write, atomic and idempotent. The owner's own
+4. **Stage 5, write + local branch.** The first write, atomic and idempotent. The owner's own
    work, on branch `feat/s5-cleared`, at the owner's pace.
 
 **Not yet ordered.**
@@ -70,9 +68,10 @@ what the item is for.
   service repository, generate its catalog-info and discover the dependencies it already
   has, with evidence.
 
-The one order stated beyond these five is stage 8's own, in its design note (section 11):
+The one order stated beyond these four is stage 8's own, in its design note (section 11):
 priorities 6 (done, [#79](https://github.com/pcaboor/idp-agent/pull/79)), 7 (done,
-[#80](https://github.com/pcaboor/idp-agent/pull/80)), 8 as queued, 9 (done,
+[#80](https://github.com/pcaboor/idp-agent/pull/80)), 8 (done,
+[#83](https://github.com/pcaboor/idp-agent/pull/83)), 9 (done,
 [#82](https://github.com/pcaboor/idp-agent/pull/82)), and stage 5's first two tasks; then slice 1,
 which needed only priority 7 and can start now; then slices 2 and 3, and submission.
 Submitting rights for a Component declared in its own service repository needs the
@@ -239,6 +238,13 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
 - **Commentary on plans is not built** (ADR-0008, "Consequences"). It changes what plan mode
   sends, and `tests/scenarios/plan-mode.test.ts` fails on a stale plan-mode recording, so it
   waits for a re-record with a key.
+- **The Reviewer is told an update already declared "would be written"** (review id
+  wip-diff-2). Since [#83](https://github.com/pcaboor/idp-agent/pull/83) the re-check
+  finds an `add-dependency-of` whose consumer the grant already lists at the stated level
+  `already-declared`, and the CLI says so, naming the file; `effectsOf` in
+  `src/agents/repair.ts` still tells the Reviewer that update "would be written to the
+  repository". The recorded `link-already-declared` scenario is exactly that update, so
+  saying "changes nothing" stales its Reviewer turn; it waits for a re-record.
 - **No Anthropic recording exists.** The nine recordings are OpenAI's and Mistral's; the
   provider contract test checks Anthropic's request shape, not a live run.
 - **The Architect is told the user's answers only when a refusal is at them.** Listing them
@@ -254,6 +260,18 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
 
 **Behaviour**
 
+- **An update extending a grant over another thing than the one asked for is already
+  declared** (left from review priority 8). "Already declared" reads the operation, not the
+  request: a request for `resource:default/orders-db-prod` whose draft extends a grant over
+  `payments-db-prod` that already lists the consumer ends on "nothing to change — the
+  repository already says it", exit 0. Since
+  [#83](https://github.com/pcaboor/idp-agent/pull/83) the grant's `dependsOn`, type
+  and owner are printed beside it (`consumerRestatement` in `src/core/plan/grant.ts`), so a
+  reader can see it; nothing refuses it. A gate would compare what the grant is over with
+  what the request points at (`requestedEnvironment`'s reading in
+  `src/core/plan/environment.ts`), which is known only when the request names the thing by
+  its reference in full; a bare name is the Reviewer's to judge, and `plan --from` has no
+  Reviewer.
 - **The demo SI has no `kind: API` entity** (`fixtures/si-demo/`):
   [#71](https://github.com/pcaboor/idp-agent/pull/71) left it untouched. The summary `ask`
   sends lists the kinds in use (`src/context/graph/summary.ts`), so adding one changes what

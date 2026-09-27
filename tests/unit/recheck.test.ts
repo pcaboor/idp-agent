@@ -574,3 +574,149 @@ describe('recheckPlan attributes each violation', () => {
     ])
   })
 })
+
+/**
+ * "Already declared" is exact (review priority 8). It compared the level
+ * alone, so a grant of the same name held by another consumer, owned by
+ * another team or scoped to another environment was reported on exit 0 as the
+ * access the plan asked for; and an update was never compared at all — it was
+ * `unresolved` whatever the file said, so an access that DID exist was never
+ * named as such.
+ */
+describe('recheckPlan, already-declared means everything the operation states', () => {
+  const GRANT = 'dependencies/access/billing-api-orders-db-prod.yml'
+
+  /** The grant at the computed path, with the fields a test changes. */
+  const grantFile = (
+    path: string,
+    { owner = 'group:default/tiger', consumers = ['component:default/billing-api'] } = {},
+  ): RepositoryFile => {
+    const [file] = fileHolding(path, 'billing-api-orders-db-prod').entities
+    if (file?.kind !== 'Resource') throw new Error('fixture')
+    return {
+      ...fileHolding(path, 'billing-api-orders-db-prod'),
+      entities: [{ ...file, spec: { ...file.spec, owner, dependencyOf: consumers } }],
+    }
+  }
+
+  /** An update joining `consumer` to the grant, stating `access` as its level. */
+  const joining = (consumer: string, access: string | undefined = 'read'): SignedPlan => {
+    const parsed = planSchema.parse({
+      intent: `let ${consumer} use resource:default/billing-api-orders-db-prod`,
+      operations: [
+        {
+          op: 'update-entity',
+          entityRef: 'resource:default/billing-api-orders-db-prod',
+          patch: {
+            patch: 'add-dependency-of',
+            consumer,
+            ...(access === undefined ? {} : { access }),
+          },
+        },
+      ],
+    })
+    const signed = signAs(
+      parsed,
+      signature({
+        witnessed: new Set([consumer, 'resource:default/billing-api-orders-db-prod']),
+      }),
+    )
+    if ('outcome' in signed) throw new Error('refused')
+    return signed
+  }
+
+  it('reports differs for a grant that lacks the requested consumer, at the same level', () => {
+    const other = grantFile(GRANT, { consumers: ['component:default/orders-api'] })
+
+    const { outcomes, restated } = recheck(sign(), snapshot([other]))
+
+    expect(outcomes.get(0)).toBe('differs')
+    expect(restated.has(0)).toBe(false)
+  })
+
+  it('reports differs for a grant another team owns', () => {
+    const theirs = grantFile(GRANT, { owner: 'group:default/lion' })
+
+    expect(recheck(sign(), snapshot([theirs])).outcomes.get(0)).toBe('differs')
+  })
+
+  it('reports differs for a grant scoped to another environment', () => {
+    const staging = fileHolding(GRANT, 'billing-api-orders-db-prod', 'staging')
+
+    expect(recheck(sign(), snapshot([staging])).outcomes.get(0)).toBe('differs')
+  })
+
+  it('names the file and every field it matched when a creation restates it', () => {
+    const { outcomes, restated } = recheck(sign(), snapshot([grantFile(GRANT)]))
+
+    expect(outcomes.get(0)).toBe('already-declared')
+    expect(restated.get(0)).toEqual({
+      path: GRANT,
+      ref: 'resource:default/billing-api-orders-db-prod',
+      fields: [
+        { field: 'type', value: 'database-access' },
+        { field: ENV_ANNOTATION, value: 'prod' },
+        { field: 'access', value: 'read' },
+        { field: 'owner', value: 'group:default/tiger' },
+        { field: 'dependsOn', value: 'resource:default/orders-db-prod' },
+        { field: 'dependencyOf', value: 'component:default/billing-api' },
+      ],
+    })
+  })
+
+  it('reports an update adding a consumer the grant already lists as already-declared', () => {
+    // The `link-already-declared` shape: the access exists, and the run has
+    // to say where rather than print a bare "nothing to change.".
+    const { outcomes, restated } = recheck(
+      joining('component:default/billing-api'),
+      snapshot([grantFile(GRANT)]),
+    )
+
+    expect(outcomes.get(0)).toBe('already-declared')
+    expect(restated.get(0)).toEqual({
+      path: GRANT,
+      ref: 'resource:default/billing-api-orders-db-prod',
+      fields: [
+        { field: 'type', value: 'database-access' },
+        { field: ENV_ANNOTATION, value: 'prod' },
+        { field: 'access', value: 'read' },
+        { field: 'owner', value: 'group:default/tiger' },
+        { field: 'dependsOn', value: 'resource:default/orders-db-prod' },
+        { field: 'dependencyOf', value: 'component:default/billing-api' },
+      ],
+    })
+  })
+
+  it('reports differs for an update whose consumer is listed at another level', () => {
+    const { outcomes } = recheck(
+      joining('component:default/billing-api', 'readwrite'),
+      snapshot([grantFile(GRANT)]),
+    )
+
+    expect(outcomes.get(0)).toBe('differs')
+  })
+
+  it('reports an update adding a new consumer as fresh: it appends', () => {
+    const { outcomes, restated } = recheck(
+      joining('component:default/orders-api'),
+      snapshot([grantFile(GRANT)]),
+    )
+
+    expect(outcomes.get(0)).toBe('fresh')
+    expect(restated.has(0)).toBe(false)
+  })
+
+  it('reads a duplicate the way planEdits does: the first file declaring it', () => {
+    // core-plan-12: the re-check let the LAST declaration win and the edits
+    // the first, so the two could name different files for one update.
+    const first = 'catalog/aaa/billing-api-orders-db-prod.yml'
+    const snap = snapshot([grantFile(first), grantFile(GRANT)])
+    const signed = joining('component:default/billing-api')
+
+    const edited = planEdits(signed, bytesOf(snap)).edits.map((edit) => edit.path)
+    const { restated } = recheckPlan(signed, snap, planEdits(signed, bytesOf(snap)).edits)
+
+    expect(edited).toEqual([first])
+    expect(restated.get(0)?.path).toBe(first)
+  })
+})

@@ -695,3 +695,300 @@ describe('plan --from, over a repository that was already wrong', () => {
     expect(await hashTree(root)).toBe(before)
   })
 })
+
+/**
+ * Review priority 8, end to end: the tool never says, on exit 0, that an
+ * access already exists when it does not. "Already declared" compared the
+ * level alone, so each of these ended on "nothing to change — the repository
+ * already says it" about an access nobody had; and an update that DID find
+ * its access already there said a bare "nothing to change." and named nothing.
+ */
+describe('plan --from, what the repository already says', () => {
+  const GRANT = 'resource:default/billing-api-orders-db-prod'
+
+  const grantDocument = (
+    { owner = 'group:default/tiger', consumer = 'component:default/billing-api' } = {},
+  ): string =>
+    entityDocument('billing-api-orders-db-prod', 'database-access', 'prod', [
+      '  access: read',
+      '  dependsOn:',
+      '    - resource:default/orders-db-prod',
+      '  dependencyOf:',
+      `    - ${consumer}`,
+    ]).replace('owner: group:default/tiger', `owner: ${owner}`)
+
+  const withGrant = async (content: string): Promise<string> => {
+    const root = await scaffoldedRepository()
+    await declare(root, DATABASE_PATH, entityDocument('orders-db-prod', 'database', 'prod'))
+    await declare(root, ACCESS_PATH, content)
+    return root
+  }
+
+  const preview = async (root: string, plan: unknown) => {
+    const from = await planFile(root, plan)
+    const before = await hashTree(root)
+    const result = await run(['plan', '--from', from, '--repo', root], answering('read'))
+    expect(await hashTree(root)).toBe(before)
+    return result
+  }
+
+  it('refuses a creation restating a grant another consumer holds, at the same level', async () => {
+    const root = await withGrant(grantDocument({ consumer: 'component:default/orders-api' }))
+
+    const { code, out } = await preview(root, {
+      intent: CREATE_INTENT,
+      operations: [createAccess],
+    })
+
+    expect(code).toBe(1)
+    expect(out).toContain('declared-otherwise')
+    expect(out).toContain('component:default/billing-api')
+    expect(out).not.toContain('nothing to change')
+    expect(out).not.toContain('@@')
+  })
+
+  it('refuses a creation restating a grant another team owns', async () => {
+    const root = await withGrant(grantDocument({ owner: 'group:default/lion' }))
+
+    const { code, out } = await preview(root, {
+      intent: CREATE_INTENT,
+      operations: [createAccess],
+    })
+
+    expect(code).toBe(1)
+    expect(out).toContain('declared-otherwise')
+    expect(out).toContain('group:default/lion')
+    expect(out).not.toContain('nothing to change')
+  })
+
+  it('names the file and the fields it matched when a creation restates the grant', async () => {
+    const root = await withGrant(grantDocument())
+
+    const { code, out } = await preview(root, {
+      intent: CREATE_INTENT,
+      operations: [createAccess],
+    })
+
+    expect(code).toBe(0)
+    expect(out).toContain('nothing to change — the repository already says it:')
+    expect(out).toContain(`= ${ACCESS_PATH} already declares ${GRANT}`)
+    for (const field of [
+      'type: database-access',
+      'company.fr/env: prod',
+      'access: read',
+      'owner: group:default/tiger',
+      'dependsOn: resource:default/orders-db-prod',
+      'dependencyOf: component:default/billing-api',
+    ]) {
+      expect(out).toContain(field)
+    }
+  })
+
+  it('reports an update adding a consumer already there as already declared, naming it', async () => {
+    // The `link-already-declared` shape. It printed "nothing to change." on
+    // exit 0 and named no file: an update was never compared at all.
+    const root = await withGrant(grantDocument())
+
+    const { code, out } = await preview(root, {
+      intent: `let component:default/billing-api read ${GRANT}`,
+      operations: [
+        {
+          op: 'update-entity',
+          entityRef: GRANT,
+          patch: {
+            patch: 'add-dependency-of',
+            consumer: 'component:default/billing-api',
+            access: 'read',
+          },
+        },
+      ],
+    })
+
+    expect(code).toBe(0)
+    expect(out).toContain('nothing to change — the repository already says it:')
+    expect(out).toContain(`= ${ACCESS_PATH} already declares ${GRANT}`)
+    expect(out).toContain('dependencyOf: component:default/billing-api')
+    expect(out).toContain('access: read')
+    expect(out).toContain('company.fr/env: prod')
+  })
+
+  it('names a restated operation beside the diff of one that is not', async () => {
+    // The database is declared as the plan says; the access is not. The diff
+    // shows the access, and the database is named rather than left out.
+    const root = await scaffoldedRepository()
+    await declare(root, DATABASE_PATH, entityDocument('orders-db-prod', 'database', 'prod'))
+
+    const { code, out } = await preview(root, CREATE_PLAN)
+
+    expect(code).toBe(0)
+    expect(out).toContain(`+++ b/${ACCESS_PATH}`)
+    expect(out).toContain('1 operation the repository already says:')
+    expect(out).toContain(`= ${DATABASE_PATH} already declares resource:default/orders-db-prod`)
+  })
+
+  it('never exits 0 on an empty diff the re-check did not find already declared', async () => {
+    // Declared twice, and the catalogue reads the first (§4.4), which is not
+    // where the plan computed. The bytes at the computed path restate the
+    // plan, so the diff is empty — and nothing was dropped, which used to be
+    // enough for exit 0 and "nothing to change".
+    const root = await withGrant(grantDocument())
+    await declare(root, 'dependencies/access/aaa-first.yml', grantDocument())
+
+    const { code, out } = await preview(root, { intent: CREATE_INTENT, operations: [createAccess] })
+
+    expect(code).toBe(3)
+    expect(out).not.toContain('nothing to change')
+    expect(out).toContain('operations.0 — names an entity the repository declares in another file')
+  })
+
+  it('names what the grant an update extends is over, so one over another thing can be seen', async () => {
+    // The request is for orders-db-prod; the draft extends a grant over
+    // payments-db-prod that already lists billing-api. That access exists, so
+    // the update is already declared — but it printed the consumer, the level
+    // and the environment alone, and nothing a reader could tell it by.
+    const root = await withGrant(grantDocument({ consumer: 'component:default/orders-api' }))
+    await declare(
+      root,
+      'catalog/databases/payments-db-prod.yml',
+      entityDocument('payments-db-prod', 'database', 'prod'),
+    )
+    await declare(
+      root,
+      'dependencies/access/billing-api-payments-db-prod.yml',
+      entityDocument('billing-api-payments-db-prod', 'database-access', 'prod', [
+        '  access: read',
+        '  dependsOn:',
+        '    - resource:default/payments-db-prod',
+        '  dependencyOf:',
+        '    - component:default/billing-api',
+      ]),
+    )
+
+    const { out } = await preview(root, {
+      intent: `give component:default/billing-api read access to resource:default/orders-db-prod`,
+      operations: [
+        {
+          op: 'update-entity',
+          entityRef: 'resource:default/billing-api-payments-db-prod',
+          patch: {
+            patch: 'add-dependency-of',
+            consumer: 'component:default/billing-api',
+            access: 'read',
+          },
+        },
+      ],
+    })
+
+    expect(out).toContain(
+      '= dependencies/access/billing-api-payments-db-prod.yml already declares ' +
+        'resource:default/billing-api-payments-db-prod',
+    )
+    expect(out).toContain('dependsOn: resource:default/payments-db-prod')
+    expect(out).toContain('type: database-access')
+    expect(out).toContain('owner: group:default/tiger')
+  })
+
+  it('hands a machine what it hands a person: the file and the fields, under recheck.restated', async () => {
+    const root = await withGrant(grantDocument())
+    const from = await planFile(root, {
+      intent: `let component:default/billing-api read ${GRANT}`,
+      operations: [
+        {
+          op: 'update-entity',
+          entityRef: GRANT,
+          patch: {
+            patch: 'add-dependency-of',
+            consumer: 'component:default/billing-api',
+            access: 'read',
+          },
+        },
+      ],
+    })
+
+    const { code, out } = await run(
+      ['plan', '--from', from, '--repo', root, '--json'],
+      answering('read'),
+    )
+
+    expect(code).toBe(0)
+    const report = JSON.parse(out) as {
+      recheck: {
+        outcomes: Record<string, string>
+        restated: Record<string, { path: string; ref: string; fields: unknown[] }>
+      }
+    }
+    expect(report.recheck.outcomes['0']).toBe('already-declared')
+    expect(report.recheck.restated['0']?.path).toBe(ACCESS_PATH)
+    expect(report.recheck.restated['0']?.ref).toBe(GRANT)
+    expect(report.recheck.restated['0']?.fields).toEqual(
+      expect.arrayContaining([
+        { field: 'dependencyOf', value: 'component:default/billing-api' },
+        { field: 'access', value: 'read' },
+        { field: 'company.fr/env', value: 'prod' },
+        { field: 'dependsOn', value: 'resource:default/orders-db-prod' },
+      ]),
+    )
+  })
+
+  it('exits with the same code in --json as in prose when the diff is empty', async () => {
+    // Exit 0 on an empty diff means the repository already declares every
+    // operation (AGENTS.md). The prose said 3 for these and --json said 0: a
+    // script reading the status alone took a run that did nothing for done.
+    const duplicated = await withGrant(grantDocument())
+    await declare(duplicated, 'dependencies/access/aaa-first.yml', grantDocument())
+    const moved = { intent: CREATE_INTENT, operations: [createAccess] }
+
+    const nowhere = await withGrant(grantDocument())
+    const unresolved = {
+      intent: 'let component:default/billing-api depend on component:default/orders-api',
+      operations: [
+        {
+          op: 'update-entity',
+          entityRef: 'resource:default/declared-nowhere',
+          patch: {
+            patch: 'add-dependency-of',
+            consumer: 'component:default/billing-api',
+            access: 'read',
+          },
+        },
+      ],
+    }
+
+    for (const [root, plan] of [
+      [duplicated, moved],
+      [nowhere, unresolved],
+    ] as const) {
+      const from = await planFile(root, plan)
+      const prose = await run(['plan', '--from', from, '--repo', root], answering('read'))
+      const json = await run(['plan', '--from', from, '--repo', root, '--json'], answering('read'))
+
+      expect(prose.code).toBe(3)
+      expect(json.code).toBe(prose.code)
+    }
+  })
+
+  it('refuses two operations aimed at one entity, naming both', async () => {
+    const root = await scaffoldedRepository()
+    await declare(root, DATABASE_PATH, entityDocument('orders-db-prod', 'database', 'prod'))
+    const second = {
+      op: 'update-entity',
+      entityRef: GRANT,
+      patch: {
+        patch: 'add-dependency-of',
+        consumer: 'component:default/billing-api',
+        access: 'read',
+      },
+    }
+
+    const { code, out } = await preview(root, {
+      intent: CREATE_INTENT,
+      operations: [createAccess, second],
+    })
+
+    expect(code).toBe(1)
+    expect(out).toContain('same-reference-twice')
+    expect(out).toContain('operations.0')
+    expect(out).toContain('operations.1')
+    expect(out).not.toContain('@@')
+  })
+})

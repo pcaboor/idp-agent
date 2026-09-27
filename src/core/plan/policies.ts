@@ -8,15 +8,19 @@ import {
   type PointedAt,
 } from './environment.js'
 import {
+  differenceWords,
   levelClaim,
   levelledSiteOf,
   proposedClaim,
+  restatementOf,
   soleReference,
   statedAs,
   type AccessSubject,
   type GrantedOver,
   type LevelClaim,
 } from './grant.js'
+import type { Entity } from '../schemas/entity.js'
+import type { Operation } from '../schemas/plan.js'
 import type { AccessLevel, Nature } from '../schemas/resource-types.js'
 import type { Vocabulary } from '../schemas/vocabulary.js'
 import type { SignedPlan } from './sign.js'
@@ -31,13 +35,15 @@ import type { SignedPlan } from './sign.js'
  * what cannot be expressed, the signature asks about what nobody can vouch
  * for, and a policy refuses what is expressible, vouched for, and still wrong.
  *
- * Six ship in v0.1. The count once went DOWN, when the level moved into the
+ * Eight ship in v0.1. The count once went DOWN, when the level moved into the
  * operation: `level-mismatch` and `unamendable-level` asked the same question
  * of two shapes and answered a level-less declaration in opposite directions,
  * so they are one predicate here. It went up again when a name stopped being
- * read as a scope (`environment-in-name`). A configurable rule engine —
- * `governance/`, and the `get_governance_rule` tool of §6 — is deferred: six
- * predicates that run are worth more than an extension point that does not.
+ * read as a scope (`environment-in-name`), and twice more when "already
+ * declared" was made exact (`declared-otherwise`, `same-reference-twice`). A
+ * configurable rule engine — `governance/`, and the `get_governance_rule` tool
+ * of §6 — is deferred: eight predicates that run are worth more than an
+ * extension point that does not.
  *
  * **Every operation is gated, not only the creations.** This loop once skipped
  * anything that was not a `create-entity` or a `create-catalog-info`, which
@@ -59,6 +65,15 @@ export type PolicyName =
   | 'declared-level-mismatch'
   /** The operation hands a consumer to an entity that is not a right (§4.1). */
   | 'consumer-on-an-object'
+  /**
+   * A creation names a reference the repository declares and says something
+   * else about it than the declaration does — another consumer, owner,
+   * environment, type or target (`grant.ts`). The level is
+   * `declared-level-mismatch`'s.
+   */
+  | 'declared-otherwise'
+  /** Two operations of one plan aim at one reference, and cannot both be carried out as stated. */
+  | 'same-reference-twice'
 
 export interface PolicyViolation {
   readonly policy: PolicyName
@@ -127,6 +142,14 @@ export interface PolicyContext {
    * the write model's.
    */
   readonly namesakes: Namesakes
+  /**
+   * ref → the declaration itself, first declaration first, for every entity
+   * the snapshot holds: what a creation naming a declared reference is
+   * compared against, field by field (`declared-otherwise`). Optional, and
+   * absent means that one policy is silent; `contextsOf` builds it for both
+   * roads.
+   */
+  readonly declarations?: ReadonlyMap<string, Entity>
 }
 
 
@@ -527,6 +550,166 @@ function declaredWithin(
 }
 
 /**
+ * A creation naming a reference the repository already declares, and saying
+ * something else about it (review priority 8).
+ *
+ * "Already declared" compared the level alone, so a grant of that name held by
+ * another consumer, owned by another team or scoped to another environment
+ * passed every gate, produced an edit whose two sides were equal, and ended on
+ * "nothing to change — the repository already says it", exit 0, about an
+ * access nobody had. A declaration is never rewritten (§4.3), so there is no
+ * honest bytes to offer either way, and this says so before a preview is.
+ *
+ * The level is left to `declared-level-mismatch`, which names it with the
+ * remedy that fits whose level it is; a field still a question is the
+ * signature's to ask. What is left is compared by `restatementOf`, the one
+ * definition `planEdits` and `recheckPlan` read too.
+ */
+function declaredOtherwise(
+  context: PolicyContext,
+  opIndex: number,
+  entity: unknown,
+): PolicyViolation | undefined {
+  const name = nameOf(entity)
+  const { kind } = entity as { kind?: unknown }
+  if (name === undefined || typeof kind !== 'string') return undefined
+  const ref = `${kind.toLowerCase()}:default/${name}`
+  const declared = context.declarations?.get(ref)
+  if (declared === undefined) return undefined
+  const restatement = restatementOf(declared, entity)
+  if (restatement.restates) return undefined
+  const differs = restatement.differs.filter(
+    (difference) => difference.field !== 'access' && difference.question !== true,
+  )
+  if (differs.length === 0) return undefined
+
+  // Consumers alone is the one difference an append can carry out, and it is
+  // an update's to carry: one `add-dependency-of` per consumer, through the
+  // gates an update meets — its level asked, its environment asked.
+  const consumersOnly = differs.every((difference) => difference.field === 'dependencyOf')
+  const remedy = consumersOnly
+    ? `To give ${differs.map((difference) => difference.proposed).join(', ')} the access it ` +
+      `grants, propose an update-entity of ${ref} with an add-dependency-of patch per ` +
+      'consumer, instead of restating it.'
+    : 'Declare a separate one under a name of its own, instead of restating this one' +
+      (differs.some((difference) => difference.field === 'dependencyOf')
+        ? `, or — if ${ref} is what was asked — an update-entity with an add-dependency-of ` +
+          'patch per consumer.'
+        : '.')
+  return {
+    policy: 'declared-otherwise',
+    opIndex,
+    path: `operations.${opIndex}.entity`,
+    message:
+      `${ref} is already declared, and this plan says otherwise: ` +
+      `${differs.map(differenceWords).join('; ')}. A declaration is never rewritten (§4.3), ` +
+      `so restating it declares nothing. ${remedy}`,
+  }
+}
+
+/** The reference an operation declares or amends, when it names one. */
+const targetOf = (operation: Operation): string | undefined => {
+  switch (operation.op) {
+    case 'create-entity': {
+      const name = nameOf(operation.entity)
+      return name === undefined ? undefined : `${operation.entity.kind.toLowerCase()}:default/${name}`
+    }
+    case 'update-entity':
+      return operation.entityRef
+    // Written into the service's own repository, never this one's: it shares
+    // no file with anything else a plan does here.
+    case 'create-catalog-info':
+      return undefined
+    default: {
+      const exhaustive: never = operation
+      return exhaustive
+    }
+  }
+}
+
+/**
+ * Two operations of one plan aimed at one reference, when they cannot both be
+ * carried out as stated — and a reason naming both.
+ *
+ * They were merged in silence. A second creation of an entity found the
+ * first's bytes and added nothing, so the consumer it stated was granted
+ * nothing while the plan said it was; an update of an entity the same plan
+ * creates amended the creation, so the plan showed a declaration and an
+ * amendment of it where the file holds one. Two updates of one grant for two
+ * consumers are two accesses and stand; for one consumer, or claiming two
+ * levels for one grant, they are one access said twice, or a grant said to
+ * hold two levels.
+ */
+function sameReference(
+  reference: string,
+  [first, firstAt]: readonly [Operation, number],
+  [second, secondAt]: readonly [Operation, number],
+): string | undefined {
+  const one = `operations.${firstAt}`
+  const other = `operations.${secondAt}`
+  if (first.op === 'create-entity' && second.op === 'create-entity') {
+    return (
+      `${one} and ${other} both create ${reference}. One entity is one declaration: state it ` +
+      'once, with every consumer it is for in its dependencyOf.'
+    )
+  }
+  if (first.op === 'update-entity' && second.op === 'update-entity') {
+    if (first.patch.consumer === second.patch.consumer) {
+      return (
+        `${one} and ${other} both add ${first.patch.consumer} to ${reference}. One access is ` +
+        'one operation: state it once.'
+      )
+    }
+    const [mine, theirs] = [levelClaim(first.patch.access), levelClaim(second.patch.access)]
+    if (mine.said === 'question' || theirs.said === 'question') return undefined
+    const [a, b] = [
+      mine.said === 'level' ? mine.level : undefined,
+      theirs.said === 'level' ? theirs.level : undefined,
+    ]
+    if (a === b) return undefined
+    return (
+      `${one} says ${reference} ${statedAs(a)} and ${other} says it ${statedAs(b)}. A grant ` +
+      'declares one level: state the level it declares in both.'
+    )
+  }
+  const [creation, creationAt, update, updateAt] =
+    first.op === 'create-entity'
+      ? [first, firstAt, second, secondAt]
+      : [second, secondAt, first, firstAt]
+  if (creation.op !== 'create-entity' || update.op !== 'update-entity') return undefined
+  return (
+    `operations.${creationAt} creates ${reference} and operations.${updateAt} amends it. An ` +
+    `entity this plan creates is declared whole: put ${update.patch.consumer} in the ` +
+    `dependencyOf of operations.${creationAt} instead of amending it.`
+  )
+}
+
+function sameReferenceTwice(operations: readonly Operation[]): PolicyViolation[] {
+  const violations: PolicyViolation[] = []
+  const seen = new Map<string, Array<readonly [Operation, number]>>()
+  for (const [opIndex, operation] of operations.entries()) {
+    const reference = targetOf(operation)
+    if (reference === undefined) continue
+    const earlier = seen.get(reference) ?? []
+    for (const before of earlier) {
+      const message = sameReference(reference, before, [operation, opIndex])
+      if (message === undefined) continue
+      // One refusal per operation, at the later one: it is the one to drop or
+      // fold into the first, and a pair named twice is one fault said twice.
+      violations.push({
+        policy: 'same-reference-twice',
+        opIndex,
+        path: `operations.${opIndex}`,
+        message,
+      })
+      break
+    }
+    seen.set(reference, [...earlier, [operation, opIndex]])
+  }
+  return violations
+}
+
+/**
  * `provenance` is what the user stated, the one source of it (see
  * `Provenance`) — a round's, where `context` is the run's: the ask loop changes
  * the first between passes and never the second.
@@ -781,7 +964,17 @@ export function checkPolicies(
       { shape: 'creation', access: levelledSiteOf(operation, context.over) ?? {} },
     )
     if (level !== undefined) violations.push(level)
+
+    // Everything else the creation says, against the declaration of the same
+    // reference: a create-catalog-info writes into the service's repository
+    // and restates nothing here.
+    if (operation.op === 'create-entity') {
+      const otherwise = declaredOtherwise(context, opIndex, entity)
+      if (otherwise !== undefined) violations.push(otherwise)
+    }
   }
+
+  violations.push(...sameReferenceTwice(operations))
 
   // Every violation, never the first: a caller fixing them one round-trip at
   // a time is the repair loop's worst case, and each round-trip is paid for.

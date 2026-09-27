@@ -37,6 +37,16 @@ Each pull request adds its line here.
   a test's, an example's or a workspace's, and the name is asked when the file already
   declares a Component under another; only the service's own catalog-info that cannot be read
   stops it — review priority 9 ([#82](https://github.com/pcaboor/idp-agent/pull/82)).
+- "Already declared" is exact: a declaration restates a plan only when everything each
+  operation states is already there — consumer, target, environment, level, owner and type,
+  references compared as the reader writes them — so a grant of the requested name held by
+  another consumer, owned by another team or scoped to another environment is refused
+  (`declared-otherwise`) instead of reported on exit 0 as done; two operations aimed at one
+  reference are refused, naming both (`same-reference-twice`); an update joining a consumer
+  the grant already lists at the stated level is reported already declared, with the grant's
+  type, owner and what it is over; and "nothing to change" names the file and every matching
+  field, and exits 0 only when every operation is already declared, in prose and in `--json`
+  alike — review priority 8 ([#83](https://github.com/pcaboor/idp-agent/pull/83)).
 - An environment is never inferred, against a natural name too: a right's scope is the
   environment it declares, and a name saying another is refused (`environment-in-name`);
   the environment of the grant an update extends is asked when nothing the user said names

@@ -4,7 +4,14 @@ import { findUnknowns } from '../schemas/plan.js'
 import { parseDocuments, serializeEntity } from '../yaml/serialize.js'
 import { appendSequenceItem, insertDocument, SurgeryError } from '../yaml/surgery.js'
 import { appendedOnly, insertedOnly, listsConsumer } from './effect.js'
-import { declaredLevel, proposedLevel, restates, statedAs } from './grant.js'
+import {
+  consumerRestatement,
+  declaredLevel,
+  differenceWords,
+  proposedLevel,
+  restatementOf,
+  statedAs,
+} from './grant.js'
 import { materialise } from './materialise.js'
 import type { SignedPlan } from './sign.js'
 
@@ -134,25 +141,34 @@ export function planEdits(signed: SignedPlan, before: ReadonlyMap<string, string
               (candidate) => refOf(candidate) === refOf(entity),
             )
 
-      // Already declared there means the file states the same GRANT, never
-      // merely a document of the same name. Asked by name, a plan stating
-      // `read` against a file granting `readwrite` produced an edit whose two
-      // sides were equal — an empty diff, and a run reporting "the repository
-      // already says it" about the opposite authorisation.
+      // Already declared there means the file says EVERYTHING the proposal
+      // says (`grant.ts`), never merely a document of the same name. Asked by
+      // name, then by level alone, a plan against a file granting the same
+      // level to another consumer produced an edit whose two sides were equal
+      // — an empty diff, and a run reporting "the repository already says it"
+      // about an access nobody had.
       //
-      // When the levels disagree there is no honest edit to show: appending
-      // cannot rewrite a scalar (§4.3), so the operation produces no bytes and
-      // NAMES the two levels. The `declared-level-mismatch` policy refuses
-      // such a plan before a preview is offered at all; this is the same fact
-      // where the bytes are computed, so a caller reaching here without that
-      // gate still cannot be told "nothing to change".
-      if (there !== undefined && !restates(there, operation.entity)) {
+      // When they disagree there is no honest edit to show: appending cannot
+      // rewrite a declaration (§4.3), so the operation produces no bytes and
+      // NAMES what differs. The `declared-level-mismatch` and
+      // `declared-otherwise` policies refuse such a plan before a preview is
+      // offered at all; this is the same fact where the bytes are computed, so
+      // a caller reaching here without those gates still cannot be told
+      // "nothing to change".
+      const restatement = there === undefined ? undefined : restatementOf(there, operation.entity)
+      if (there !== undefined && restatement?.restates === false) {
+        const onlyLevel = restatement.differs.every((one) => one.field === 'access')
         dropped.push({
           opIndex,
-          reason:
-            `${path} already declares ${refOf(entity)} and ${statedAs(declaredLevel(there))}, ` +
-            `while this plan ${statedAs(proposedLevel(operation.entity))}; a level is not ` +
-            `something an append can rewrite`,
+          reason: onlyLevel
+            ? // Kept word for word: the one difference this sentence covered
+              // before every other field was compared.
+              `${path} already declares ${refOf(entity)} and ${statedAs(declaredLevel(there))}, ` +
+              `while this plan ${statedAs(proposedLevel(operation.entity))}; a level is not ` +
+              `something an append can rewrite`
+            : `${path} already declares ${refOf(entity)}, and says otherwise: ` +
+              `${restatement.differs.map(differenceWords).join('; ')}. A declaration is not ` +
+              `something an append can rewrite`,
         })
         continue
       }
@@ -210,6 +226,24 @@ export function planEdits(signed: SignedPlan, before: ReadonlyMap<string, string
       // sequence the surgery would refuse to split can hold the consumer, and
       // an unchanged file is then the truth rather than a failure to find it.
       if (listsConsumer(existing, ref, patch.consumer)) {
+        // Listed, and "already done" only if at the level the operation
+        // states: listed at another is not something an append can make
+        // true, and an unchanged file would read as done. The level is the
+        // one field this compares — the consumer is listed, and the
+        // environment is the policies' to hold (`consumerRestatement`).
+        const target = parseDocuments(existing).entities.find(
+          (candidate) => refOf(candidate) === ref,
+        )
+        const restatement =
+          target === undefined
+            ? undefined
+            : consumerRestatement(target, patch.consumer, patch.access)
+        if (restatement?.restates === false) {
+          failed(
+            `it is already listed there, and ${restatement.differs.map(differenceWords).join('; ')}`,
+          )
+          continue
+        }
         touch(path, existing)
         continue
       }
