@@ -57,17 +57,32 @@ export async function declarationsRoot(
       `--repo is empty; ${command} --repo names the declarations repository`,
     )
   }
-  const root = path.isAbsolute(repo)
-    ? path.resolve(repo)
-    : path.resolve(typeof cwd === 'string' ? cwd : cwd(), repo)
-  const stats = await stat(root).catch(() => undefined)
-  if (stats === undefined || !stats.isDirectory()) {
-    throw new RepositoryArgumentError(
-      `${repo} is not a directory; ${command} --repo names the declarations repository`,
-    )
+  return directoryArgument(repo, cwd, `${command} --repo names the declarations repository`)
+}
+
+/**
+ * The one check every directory argument gets: resolved from where it was
+ * typed when it is relative, and refused — `<as typed> is not a directory;
+ * <what the argument names>` — when nothing there is a directory. The callers
+ * differ only in that second half and in what they refuse first, an empty
+ * value above all, which resolves to the working directory and would pass.
+ */
+async function directoryArgument(
+  typed: string,
+  cwd: string | (() => string),
+  names: string,
+): Promise<string> {
+  const root = path.isAbsolute(typed)
+    ? path.resolve(typed)
+    : path.resolve(typeof cwd === 'string' ? cwd : cwd(), typed)
+  if (!(await isDirectory(root))) {
+    throw new RepositoryArgumentError(`${typed} is not a directory; ${names}`)
   }
   return root
 }
+
+const isDirectory = async (root: string): Promise<boolean> =>
+  (await stat(root).catch(() => undefined))?.isDirectory() === true
 
 /**
  * What the Inspector reads on a `plan "<intent>"` run: the application
@@ -193,11 +208,7 @@ export async function projectRoot(
   // `--project "$SERVICE"` with the variable unset is the working directory,
   // which is the directory the flag was typed to avoid.
   if (project.trim() === '') throw new RepositoryArgumentError(`--project is empty; ${flag}`)
-  const root = path.isAbsolute(project) ? path.resolve(project) : path.resolve(cwd(), project)
-  const stats = await stat(root).catch(() => undefined)
-  if (stats === undefined || !stats.isDirectory()) {
-    throw new RepositoryArgumentError(`${project} is not a directory; ${flag}`)
-  }
+  const root = await directoryArgument(project, cwd, flag)
   // Named by its folder, flattened: a folder is called whatever someone called
   // it. `cli/index.ts` cleans the whole message again on the way out.
   if (await isDeclarationsRepository(root)) {
@@ -369,20 +380,69 @@ export function selectionNotice(
 }
 
 /**
- * The directory `init` inspects, refused when it is the home directory or the
- * filesystem root (review, security-3). `plan` has skipped both since
- * [#63](https://github.com/pcaboor/idp-agent/pull/63) when it is standing in
- * them (`standingIn`); `init` inspects the directory it runs in whatever it is,
- * and a terminal opens in `~` — the Inspector would be handed a listing of
- * someone's home and the text of their documents. Refused, not skipped: `init`
- * has nothing to do without a repository to inspect.
- *
- * Nothing else is refused here: a directory that does not exist, or is not a
- * service's, is `init`'s own business, as it was.
+ * The directory `validate` checks, as an absolute path, refused when it is no
+ * directory — a path that is not there, or a file. `readRepository` reads
+ * either as a repository with nothing in it, and `validate` answered "0
+ * violations" on exit 0 about it: the one command CI runs, saying compliant
+ * about what it never read (review, cli-ux-1). A relative one is resolved from
+ * where it was typed. Empty is refused at parsing, before this.
  */
-export async function initRoot(project: string, home: string | undefined): Promise<string> {
-  const real = await realpath(project).catch(() => undefined)
-  if (real === undefined) return project
+export const validateRoot = (directory: string, cwd: () => string): Promise<string> =>
+  directoryArgument(directory, cwd, 'validate names the declarations repository to check')
+
+/**
+ * The directory `init` inspects, as an absolute path: the one `--repo` names,
+ * resolved from where it was typed, else the working directory. Refused, each
+ * on exit 2 before a model is chosen:
+ *
+ *   - an empty `--repo`, for the reason `declarationsRoot` gives: resolved, it
+ *     is the working directory, the directory the flag was typed to avoid;
+ *   - a path that is no directory. It was inspected — as nothing — and the run
+ *     paid for two model calls or more before it failed, in words about the
+ *     service rather than the path (review, gap-init-real-repos-6, cli-ux-8);
+ *   - the home directory and the filesystem root (review, security-3). `plan`
+ *     has skipped both since [#63](https://github.com/pcaboor/idp-agent/pull/63)
+ *     when it is standing in them (`standingIn`); `init` inspects the directory
+ *     it runs in whatever it is, and a terminal opens in `~` — the Inspector
+ *     would be handed a listing of someone's home and the text of their
+ *     documents. Refused, not skipped: `init` has nothing to do without a
+ *     repository to inspect.
+ *
+ * Nothing else is refused here: a directory that is not a service's is
+ * `init`'s own business, as it was.
+ */
+export async function initRoot(options: {
+  /** As typed. Absent means the directory the user is standing in (§7.3). */
+  readonly repo: string | undefined
+  /** Asked for only when `repo` is absent or relative: see `applicationRoot`. */
+  readonly cwd: () => string
+  readonly home: string | undefined
+}): Promise<string> {
+  const { repo, home } = options
+  const flag = 'init --repo names the application repository of the service being declared'
+  if (repo !== undefined && repo.trim() === '') {
+    throw new RepositoryArgumentError(`--repo is empty; ${flag}`)
+  }
+  const gone = (): never => {
+    throw new RepositoryArgumentError(
+      'the working directory no longer exists; name the service with init --repo <dir>',
+    )
+  }
+  // `process.cwd()` throws in a directory since removed.
+  const here = (): string => {
+    try {
+      return options.cwd()
+    } catch {
+      return gone()
+    }
+  }
+  let project: string
+  if (repo !== undefined) project = await directoryArgument(repo, here, flag)
+  else {
+    project = here()
+    if (!(await isDirectory(project))) gone()
+  }
+  const real = await realpath(project)
   const refuse = (what: string): never => {
     throw new RepositoryArgumentError(
       `init inspects the application repository it runs in, and ${what}; run it from the ` +

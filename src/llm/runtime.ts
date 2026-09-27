@@ -404,6 +404,13 @@ function watched(choice: ModelChoice, seen: (error: APICallError) => void) {
   })
 }
 
+/**
+ * How many times the SDK sends a failed call again — a 429, a 5xx, a host it
+ * could not reach — inside the timeout. Its own default, stated, because the
+ * retry line counts against it.
+ */
+const SDK_RETRIES = 2
+
 /** What an agent's calls ask of a provider beyond the request itself. */
 export interface AgentCall {
   /** How much the model may reason before it answers, where it can be told. */
@@ -512,6 +519,11 @@ export function createClient(options: {
   models?: Partial<Record<AgentName, ModelChoice>>
   /** Seconds one live call may take, retries included. Replay has no clock. */
   timeout?: number
+  /**
+   * Where a retry is said, one line each, while the SDK waits to send the call
+   * again. Absent says nothing, as before. Replay never retries.
+   */
+  notice?: (line: string) => void
 }): LlmClient {
   const timeout = options.timeout ?? DEFAULT_TIMEOUT_SECONDS
 
@@ -551,10 +563,27 @@ export function createClient(options: {
       // determinism here comes from the recording, not from sampling settings.
       // No maxOutputTokens either: see src/llm/README.md. What bounds a call is
       // the timeout, and the SDK's two retries of a 429 or a 5xx happen inside it.
+      //
+      // Each attempt that failed is seen here, and one the SDK will send again
+      // is said: it retried in silence, and a run sat waiting on a 429 with no
+      // line saying why (review, runtime-probe-13). The last failure is not
+      // said — the run ends on it, in the error below.
       let last: APICallError | undefined
+      let attempts = 0
+      const seen = (error: APICallError): void => {
+        last = error
+        attempts += 1
+        if (options.notice === undefined || !error.isRetryable || attempts > SDK_RETRIES) return
+        const said = new ProviderCallError(choice, failureOf(error, KEY_VARIABLES[choice.provider]))
+        options.notice(
+          `${said.message}; retrying the ${request.agent}'s call ` +
+            `(attempt ${attempts + 1} of ${SDK_RETRIES + 1})`,
+        )
+      }
       const response = await within(timeout, choice, (abortSignal) =>
         generateText({
-          model: watched(choice, (error) => void (last = error)),
+          model: watched(choice, seen),
+          maxRetries: SDK_RETRIES,
           system: request.system,
           messages: toMessages(request.transcript),
           tools: toTools(request.tools),

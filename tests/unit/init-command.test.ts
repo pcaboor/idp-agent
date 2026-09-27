@@ -1,9 +1,11 @@
+import { execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { main } from '../../src/cli/index.js'
 import { catalogInfoEdits, runInitRepo } from '../../src/cli/commands/init.js'
+import { renderPreview } from '../../src/cli/commands/plan.js'
 import { readRepository } from '../../src/context/iac-fs/snapshot.js'
 import { IacFsProvider } from '../../src/context/iac-fs/provider.js'
 import { renderRegistration } from '../../src/core/validate/registration.js'
@@ -19,6 +21,12 @@ import type {
 } from '../../src/llm/client.js'
 import { hashTree } from '../support/tree.js'
 import { listDocumentNames } from '../../src/core/yaml/surgery.js'
+
+/** The line a preview of `init` ends on, in place of `plan`'s about the merge. */
+const INIT_CLOSING =
+  "Nothing is written. To write it, save a run to a file, read it, and apply that file in the " +
+  "service's repository — another run may draft other bytes than these: " +
+  'idpa init > catalog-info.diff, then git apply catalog-info.diff'
 
 const capture = (): { out: string[]; err: string[] } => ({ out: [], err: [] })
 const temp = (): Promise<string> => mkdtemp(path.join(tmpdir(), 'idp-init-'))
@@ -318,10 +326,48 @@ describe('init, per application', () => {
     expect(result.text).toContain('kind: Component')
     expect(result.text).toContain('+  name: billing-api')
     expect(result.text).toContain('lifecycle: production')
-    expect(result.text.trimEnd()).toContain(
-      'Nothing is provisioned yet. The merge is what authorises it.',
-    )
+    // Its own last line: no merge in the declarations repository authorises
+    // a service's catalog-info, and "the merge" sent nobody anywhere (review,
+    // gap-init-real-repos-8).
+    expect(result.text.trimEnd().split('\n').at(-1)).toBe(INIT_CLOSING)
+    expect(result.text).not.toContain('The merge is what authorises it')
     expect(await hashTree(project)).toBe(before)
+  })
+
+  it('ends on how to apply its diff, and that is how it applies', async () => {
+    // What the last line says, done: stdout saved to a file, and the file
+    // handed to git apply in the service's repository, the lines around the
+    // diff included. A file, not a pipe: `idpa init | git apply` runs the
+    // models again, and applies bytes nobody read.
+    const project = await application()
+    const result = await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {} })
+    expect(result.text).toContain('idpa init > catalog-info.diff, then git apply catalog-info.diff')
+    expect(result.text).not.toContain('| git apply')
+
+    execFileSync('git', ['init', '--quiet'], { cwd: project })
+    await writeFile(path.join(project, 'catalog-info.diff'), `${result.text}\n`)
+    execFileSync('git', ['apply', 'catalog-info.diff'], { cwd: project })
+
+    const written = await readFile(path.join(project, 'catalog-info.yaml'), 'utf8')
+    expect(written).toContain('kind: Component')
+    expect(written).toContain('  name: billing-api')
+  })
+
+  it('ends an empty preview on its count: with nothing to apply, no line says how', () => {
+    // `renderPreview` with init's `apply`, over edits that change nothing. The
+    // closing about the merge is plan's, and was never true of a catalog-info;
+    // the line about git apply has nothing to apply.
+    const empty = (apply?: string) =>
+      renderPreview({
+        signed: { plan: { intent: 'declare this service', operations: [] } } as never,
+        edits: [],
+        dropped: [],
+        ...(apply !== undefined ? { apply } : {}),
+      }).text.split('\n')
+
+    expect(empty(INIT_CLOSING).at(-1)).toBe('0 files · nothing written')
+    expect(empty(INIT_CLOSING).join('\n')).not.toContain('git apply')
+    expect(empty().at(-1)).toBe('Nothing is provisioned yet. The merge is what authorises it.')
   })
 
   it('files it where the engine says, never where the model does', async () => {

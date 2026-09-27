@@ -502,6 +502,9 @@ describe('plan with a configured declarations repository', () => {
     expect(err).toContain('plan --from <plan.json> [--repo <directory>]')
     expect(err).toContain('plan "<intent>" [--repo <directory>]')
     expect(err).not.toMatch(/ --repo <directory> \[--json\]/)
+    // plan's usage, not the whole help (review, cli-ux-11).
+    expect(err).not.toContain('idp-agent - turn an intent')
+    expect(err).not.toContain('idp-agent graph')
   })
 
   it('takes --repo over what is configured, without consulting it', async () => {

@@ -594,6 +594,11 @@ const droppedLines = (dropped: readonly DroppedOperation[]): string[] =>
  *
  * `repo` is the declarations repository as the user named it, so the line
  * about standing violations names a command they can run as printed.
+ *
+ * `apply` is said in place of `CLOSING` by a caller whose diff no merge in the
+ * declarations repository authorises — `init`'s, which lands in the service's
+ * own. With it, a run that changes nothing ends on its count: there is nothing
+ * to apply, and the sentence about the merge was never true of it.
  */
 export function renderPreview(preview: {
   readonly signed: SignedPlan
@@ -602,6 +607,7 @@ export function renderPreview(preview: {
   readonly recheck?: Recheck | undefined
   readonly repo?: string
   readonly colour?: boolean
+  readonly apply?: string
 }): CommandResult {
   const { signed, edits, dropped, recheck } = preview
   const standing = standingLines(recheck, preview.repo)
@@ -621,7 +627,7 @@ export function renderPreview(preview: {
         ...(standing.length > 0 ? ['', ...standing] : []),
         '',
         '0 files · nothing written',
-        CLOSING,
+        ...(preview.apply === undefined ? [CLOSING] : []),
       ].join('\n'),
       found: true,
       // Exit 3 rather than 0: understood, and this build will not act on it.
@@ -667,7 +673,7 @@ export function renderPreview(preview: {
       paintDiff(visible(diff), preview.colour === true).trimEnd(),
       '',
       `${plural(changed.length, 'file', 'files')} · nothing written`,
-      CLOSING,
+      preview.apply ?? CLOSING,
     ].join('\n'),
     found: true,
   }

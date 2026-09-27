@@ -48,6 +48,7 @@ import {
   initRoot,
   projectRoot,
   skipNotice,
+  validateRoot,
   type DeclarationsCommand,
   type Inspection,
 } from './repository.js'
@@ -128,8 +129,19 @@ export type Command =
    * already held to what each field accepts.
    */
   | { name: 'init'; repo?: string; answers: InitAnswers }
-  | { name: 'help' }
+  /**
+   * `usage`, present when a command was asked for its own (`show --help`):
+   * that command's lines of HELP, rather than all of it.
+   */
+  | { name: 'help'; usage?: Usage }
+  | { name: 'version' }
   | { name: 'error'; message: string }
+
+/**
+ * What HELP has a usage line for: every command, `init platform` apart from
+ * `init`, and `entry`, the phrase. `help` has none — it IS the help.
+ */
+export type Usage = Exclude<(typeof COMMANDS)[number], 'help'> | 'init-platform' | 'entry'
 
 export const HELP = `idp-agent - turn an intent into reviewed infrastructure declarations
 
@@ -155,6 +167,10 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   idp-agent plan --from <plan.json> [--repo <directory>] [--json]
   idp-agent init [--repo <directory>] [--name <name>] [--lifecycle experimental|production|deprecated] [--owner group:<namespace>/<name>]
   idp-agent init platform <directory> --owner @org/team
+  idp-agent version
+
+  -h and --help print this; <command> --help prints that command's usage.
+  --version and -v print the version, as version does.
 
   relations traces an entity's declared relations, each with its whole path
   and the rights and levels on it: what it consumes through its rights and
@@ -185,8 +201,32 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
 
 export function parseArguments(argv: string[]): Command {
   const [commandName, ...rest] = argv
-  if (commandName === undefined || commandName === 'help' || commandName === '--help') {
+  if (
+    commandName === undefined ||
+    commandName === 'help' ||
+    commandName === '--help' ||
+    commandName === '-h'
+  ) {
     return { name: 'help' }
+  }
+  // A command asked for its usage is answered before its arguments are read:
+  // `show --help` was refused as an unknown option, on exit 2 with the whole
+  // HELP, and `ask --help` once went to a model as the question.
+  const usage = usageAsked(commandName, rest)
+  if (usage !== undefined) return { name: 'help', usage }
+
+  if (commandName === 'version' || commandName === '--version' || commandName === '-v') {
+    // Nothing after it: `idpa version of billing-api` is a question that
+    // begins like a command, as `idpa show me the databases` is, and it is
+    // refused rather than answered with a version number — and so is
+    // `--version` with a word after it, or the two spellings would disagree.
+    if (rest.length > 0) {
+      return {
+        name: 'error',
+        message: `${commandName} takes no argument; to ask something, quote the whole phrase: idpa "<phrase>"`,
+      }
+    }
+    return { name: 'version' }
   }
 
   if (commandName === 'init') {
@@ -226,10 +266,8 @@ export function parseArguments(argv: string[]): Command {
         allowPositionals: true,
         strict: true,
       })
-      const directory = positionals[0]
-      if (directory === undefined) {
-        return { name: 'error', message: 'init platform needs a directory' }
-      }
+      const directory = oneDirectory('init platform', positionals)
+      if (typeof directory !== 'string') return directory
       const owner = values.owner
       if (owner === undefined) {
         return {
@@ -250,9 +288,17 @@ export function parseArguments(argv: string[]): Command {
   }
 
   if (commandName === 'validate') {
-    const directory = rest[0]
-    if (directory === undefined) return { name: 'error', message: 'validate needs a directory' }
-    return { name: 'validate', directory }
+    try {
+      // Strict, where the first argument used to be the directory whatever it
+      // was: `validate --help` read a folder named "--help", found nothing
+      // there, and answered "0 violations" on exit 0.
+      const { positionals } = parseArgs({ args: rest, options: {}, allowPositionals: true, strict: true })
+      const directory = oneDirectory('validate', positionals)
+      if (typeof directory !== 'string') return directory
+      return { name: 'validate', directory }
+    } catch (error) {
+      return { name: 'error', message: (error as Error).message }
+    }
   }
 
   if (commandName === 'plan') {
@@ -423,10 +469,84 @@ export const COMMANDS = [
   'plan',
   'init',
   'help',
+  'version',
 ] as const
 
 const isCommand = (word: string): word is (typeof COMMANDS)[number] =>
   COMMANDS.some((name) => name === word)
+
+/**
+ * The usage a command's arguments ask for with `--help` or `-h`, or
+ * `undefined`. Only before a `--`: after it every argument is a word, as
+ * parseArgs reads it, so `ask -- --help` asks about "--help". A phrase asks
+ * for its own line, `idpa "<phrase>"`, and `help` never gets here.
+ */
+function usageAsked(first: string, rest: readonly string[]): Usage | undefined {
+  const all = [first, ...rest]
+  const end = all.indexOf('--')
+  const options = end === -1 ? all : all.slice(0, end)
+  if (!options.some((argument) => argument === '--help' || argument === '-h')) return undefined
+  return usageOfArguments(all)
+}
+
+/**
+ * Whose usage an argument list is about: the command it starts with — `init
+ * platform` apart from `init`, `--version` and `-v` as `version` — or the
+ * phrase. A command typed after its options (`idpa --repo x show …`) is about
+ * the phrase too; its refusal names the command.
+ */
+function usageOfArguments(argv: readonly string[]): Usage {
+  const [first, second] = argv
+  if (first === 'init' && second === 'platform') return 'init-platform'
+  if (first === '--version' || first === '-v') return 'version'
+  if (first === undefined || !isCommand(first) || first === 'help') return 'entry'
+  return first
+}
+
+/**
+ * The lines of HELP for one command: a usage, not the whole page, which a
+ * refused argument used to print in full under a one-line reason.
+ */
+export function usageOf(usage: Usage): string {
+  const starts =
+    usage === 'entry'
+      ? ['  idpa "<phrase>"']
+      : usage === 'init-platform'
+        ? ['  idp-agent init platform ']
+        : [`  idp-agent ${usage} `, `  idp-agent ${usage}\n`]
+  const lines = HELP.split('\n').filter(
+    (line) =>
+      starts.some((start) => `${line}\n`.startsWith(start)) &&
+      // `init`'s lines are not `init platform`'s.
+      !(usage === 'init' && line.startsWith('  idp-agent init platform')),
+  )
+  return `usage:\n${lines.join('\n')}\n\nidpa --help describes every command.\n`
+}
+
+/**
+ * The one directory a command takes, or its refusal: none, an empty one — which
+ * resolves to the working directory, the one directory the argument was typed
+ * to avoid (`"$IAC"` with the variable unset) — or a second, which used to be
+ * dropped in silence. A directory that starts with a dash is refused before
+ * this, by parseArgs, as an option it does not know; `-- -dir` names one.
+ */
+function oneDirectory(
+  command: 'validate' | 'init platform',
+  positionals: readonly string[],
+): string | { name: 'error'; message: string } {
+  const [directory] = positionals
+  if (directory === undefined) return { name: 'error', message: `${command} needs a directory` }
+  if (positionals.length > 1) {
+    return {
+      name: 'error',
+      message: `${command} takes one directory, not ${positionals.length}: ${positionals.join(', ')}`,
+    }
+  }
+  if (directory.trim() === '') {
+    return { name: 'error', message: `${command} needs a directory, and "${directory}" names none` }
+  }
+  return directory
+}
 
 /**
  * `idpa "<phrase>"`: every argument that is not an option, joined — a shell
@@ -497,7 +617,7 @@ function parsePhrase(argv: string[]): Command {
 }
 
 /** The commands that read the declarations and call no model. */
-const KEYLESS: ReadonlySet<string> = new Set(['graph', 'show', 'relations', 'validate', 'help'])
+const KEYLESS: ReadonlySet<string> = new Set(['graph', 'show', 'relations', 'validate', 'help', 'version'])
 
 /**
  * What to say after a phrase could not reach a model, when its first word is
@@ -527,17 +647,20 @@ function slipHint(phrase: string): string | undefined {
  * letters, tolerates one at its own length and none beside it, so `as` and
  * `asks` are words too.
  *
- * No two commands share a first letter, so at most one name is a candidate
- * and there is no nearest to choose.
+ * Two commands share a first letter, `validate` and `version`, and the nearer
+ * of the two is the one meant; no word is within a slip of both — they are
+ * seven edits apart — so there is never a tie to break.
  */
 function nearestCommand(word: string): string | undefined {
   const typed = word.toLowerCase()
-  return COMMANDS.find((name) => {
-    if (typed[0] !== name[0]) return false
+  const within = COMMANDS.flatMap((name) => {
+    if (typed[0] !== name[0]) return []
     const long = name.length >= 4
     const tolerated = typed.length === name.length ? (long ? 2 : 1) : long ? 1 : 0
-    return edits(typed, name) <= tolerated
+    const distance = edits(typed, name)
+    return distance <= tolerated ? [{ name, distance }] : []
   })
+  return within.sort((left, right) => left.distance - right.distance)[0]?.name
 }
 
 /** Edit distance with a swap of neighbours counted as one edit (optimal string alignment). */
@@ -841,9 +964,11 @@ const progress = (err: (chunk: string) => void): EventSink => {
 
 /**
  * 0 succeeded · 1 the query resolved nothing · 2 the arguments were refused ·
- * 3 the request was understood and this build will not act on it.
+ * 3 the request was understood and this build will not act on it · 130 the
+ * person pressed Ctrl-C at a question, the code a shell gives a command
+ * SIGINT ended (128 + 2), which is what a script checks for.
  */
-export const EXIT = { ok: 0, notFound: 1, badUsage: 2, unsupported: 3 } as const
+export const EXIT = { ok: 0, notFound: 1, badUsage: 2, unsupported: 3, interrupted: 130 } as const
 
 const DEFAULT_RECORDINGS = path.resolve(
   fileURLToPath(import.meta.url),
@@ -859,11 +984,20 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   const command = parseArguments(argv)
 
   if (command.name === 'help') {
-    out(HELP)
+    out(command.usage === undefined ? HELP : usageOf(command.usage))
+    return EXIT.ok
+  }
+  if (command.name === 'version') {
+    out(`${VERSION}\n`)
     return EXIT.ok
   }
   if (command.name === 'error') {
-    err(`${command.message}\n\n${HELP}`)
+    // The usage of the command that was refused, not the whole page: a
+    // reason of one line read as a footnote to eighty. A phrase refused still
+    // gets every command — a slip, or a command typed after its options, is
+    // exactly the reader who needs the list.
+    const refused = usageOfArguments(argv)
+    err(`${command.message}\n\n${refused === 'entry' ? HELP : usageOf(refused)}`)
     return EXIT.badUsage
   }
 
@@ -872,15 +1006,18 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     // application from inside it, and `--repo` is how someone standing
     // elsewhere says which one.
     //
-    // Refused before a model is chosen when it is the home directory or the
-    // filesystem root, as `plan` skips them (security-3): a directory is an
-    // argument, and an argument is refused before the configuration is.
+    // Refused before a model is chosen when it is not a directory, or is the
+    // home directory or the filesystem root, as `plan` skips those two
+    // (security-3): a directory is an argument, and an argument is refused
+    // before the configuration is. One that did not exist was inspected — as
+    // nothing — by a model somebody paid for (review, gap-init-real-repos-6).
     let project: string
     try {
-      project = await initRoot(
-        path.resolve(deps.cwd ?? process.cwd(), command.repo ?? '.'),
-        homeOf(deps.env ?? process.env),
-      )
+      project = await initRoot({
+        repo: command.repo,
+        cwd: () => deps.cwd ?? process.cwd(),
+        home: homeOf(deps.env ?? process.env),
+      })
     } catch (error) {
       return failed(error, err)
     }
@@ -923,8 +1060,18 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
 
   // Reads the directory it was handed, so it must not go through the fixture
   // load every other command needs.
+  //
+  // The directory is refused on exit 2 when it is none, as every other
+  // command's is: this is the command CI runs, and a path that was not there
+  // — or a file — answered "0 violations" on exit 0 (review, cli-ux-1).
   if (command.name === 'validate') {
-    const result = await runValidate(command.directory)
+    let result: CommandResult
+    try {
+      const root = await validateRoot(command.directory, () => deps.cwd ?? process.cwd())
+      result = await runValidate(root)
+    } catch (error) {
+      return failed(error, err)
+    }
     out(`${result.text}\n`)
     return result.found ? EXIT.ok : EXIT.notFound
   }
@@ -944,7 +1091,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
       return failed(error, err)
     }
     if (declarations === undefined) {
-      err(`${planNeedsRepository(context)}\n\n${HELP}`)
+      err(`${planNeedsRepository(context)}\n\n${usageOf('plan')}`)
       return EXIT.badUsage
     }
     const notice = sourceNotice('plan', declarations, context)
@@ -1375,15 +1522,37 @@ export const promptOnTerminal = (
     const closed = new Promise<undefined>((resolve) => {
       reader.once('close', () => resolve(undefined))
     })
+    // And against Ctrl-C, which is not a decline. A terminal in raw mode
+    // hands it to readline as a key, not to the process as a signal, and
+    // readline with nobody listening closes — so it read as Ctrl-D, and the
+    // run exited 3 with its questions printed, as if the person had declined
+    // them (review, cli-ux-6). Listened for, it stops the run: exit 130.
+    const interrupted = new Promise<never>((_resolve, reject) => {
+      reader.once('SIGINT', () => reject(new InterruptedError()))
+    })
     return await Promise.race([
       // The lines `renderQuestions` prints, so the prompt and the printed form
       // ask the same thing — the model's reason, the engine's path, and what
       // the field accepts — each cleaned there.
       reader.question(`${questionLines(question).join('\n')}\n  > `),
       closed,
+      interrupted,
     ])
   } finally {
     reader.close()
+  }
+}
+
+/**
+ * Ctrl-C at a question: the person stopped the run, and `main` exits 130, the
+ * code a shell gives a command an interrupt ended. Thrown rather than
+ * returned, because nothing between the prompt and `main` has anything to do
+ * with it but let it through — a decline is an answer, and this is not one.
+ */
+export class InterruptedError extends Error {
+  constructor() {
+    super('interrupted; nothing was written')
+    this.name = 'InterruptedError'
   }
 }
 
@@ -1429,6 +1598,10 @@ function report(result: CommandResult, out: (chunk: string) => void): number {
  * in the one line `llm/failures.ts` wrote for it. Nothing the user typed was
  * wrong, and the same command may well succeed on the next run.
  *
+ * Ctrl-C at a question is exit 130 (`InterruptedError`): the person stopped
+ * the run, which is neither a refusal of what they typed nor a declined
+ * question.
+ *
  * Anything else is still a failure and must not leave as exit 0 with a stack
  * trace: that is indistinguishable from success to a script.
  */
@@ -1455,6 +1628,12 @@ function failed(error: unknown, err: (chunk: string) => void): number {
   if (error instanceof ModelCallError) {
     err(`${inert(error.message)}\n`)
     return EXIT.notFound
+  }
+  if (error instanceof InterruptedError) {
+    // On a line of its own: the prompt it interrupted left the cursor after
+    // its `> `.
+    err(`\n${error.message}\n`)
+    return EXIT.interrupted
   }
   err(`${inert(error instanceof Error ? error.message : String(error))}\n`)
   return EXIT.notFound
@@ -1635,6 +1814,9 @@ async function openSession(
       ...(choice !== undefined ? { choice } : {}),
       ...(models !== undefined ? { models } : {}),
       ...(timeout !== undefined ? { timeout } : {}),
+      // A retry is progress, and said as the other progress lines are: one
+      // line on stderr, inert, while the run waits.
+      notice: (line) => err(`  ! ${whole(line)}\n`),
     }),
     save: async (): Promise<void> => {
       if (mode === 'record' && tape !== undefined) await tape.save()

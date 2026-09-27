@@ -172,7 +172,10 @@ sees it, for the same reason.
 A timer that expires while the SDK waits to retry a 429 or a 5xx, or a host it cannot reach,
 has expired on a provider that did answer: the run ends on that answer — `rate limited
 (HTTP 429)` — rather than on "did not answer". Each attempt's failure is seen through a
-middleware around the adapter, since the SDK says nothing of one until the last fails.
+middleware around the adapter, since the SDK says nothing of one until the last fails; one
+it will send again is said as it waits, through `createClient`'s `notice` — a line on
+stderr, `… rate limited (HTTP 429); retrying the analyst's call (attempt 2 of 3)` — and the
+last is not, since the run ends on it.
 
 The check on a returned turn runs in every mode, so a replayed tape cannot hand an agent a
 turn a live run would have refused. A run that fails on one saves no tape — the command

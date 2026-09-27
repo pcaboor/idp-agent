@@ -159,12 +159,21 @@ Review ids that a later pull request names as fixed, outside the ids the priorit
 
 - agents-llm-5 → [#75](https://github.com/pcaboor/idp-agent/pull/75)
 - agents-llm-11 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
+- build-ci-12 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
+- cli-ux-1 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
+- cli-ux-6 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - cli-ux-7 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
+- cli-ux-8 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
+- cli-ux-11 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - core-yaml-9 → [#50](https://github.com/pcaboor/idp-agent/pull/50), found while stacking #49
+- gap-init-real-repos-6 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
+- gap-init-real-repos-8 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - gap-provider-matrix-2 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
 - gap-provider-matrix-3 → [#75](https://github.com/pcaboor/idp-agent/pull/75), seen and left in #44
 - gap-provider-matrix-4 → [#59](https://github.com/pcaboor/idp-agent/pull/59), for the request timeout; calls are still not streamed (`generateText` in `src/llm/runtime.ts`)
+- runtime-probe-3 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - runtime-probe-8 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
+- runtime-probe-13 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - security-4 → [#58](https://github.com/pcaboor/idp-agent/pull/58) for `show`, `graph`, `ask` and `validate`; [#62](https://github.com/pcaboor/idp-agent/pull/62) cleans what `plan` and `init` print, without naming the id
 - tests-13 → [#56](https://github.com/pcaboor/idp-agent/pull/56), for the temp directories; the 10-minute scenario timeout is unchanged
 
@@ -174,10 +183,12 @@ the comment where `plan`'s source is resolved in `src/cli/index.ts` says so).
 
 ### The sweep (2026-09-27)
 
-The index has 212 rows. 79 are named by a pull request, in the priorities above or in
-"Beyond the priorities". The other 133 were each checked against `main` at `05356af`, read
-only, with a probe where the verdict depended on behaviour. The review's own text is left as
-it was. The order of what is left is in [`docs/roadmap.md`](../roadmap.md#the-queue).
+The index has 212 rows. At the sweep, 79 were named by a pull request, in the priorities
+above or in "Beyond the priorities". The other 133 were each checked against `main` at
+`05356af`, read only, with a probe where the verdict depended on behaviour. The review's own
+text is left as it was. The order of what is left is in
+[`docs/roadmap.md`](../roadmap.md#the-queue). The counts below are the sweep's, and stay
+so: an id a batch fixes since is marked in its row and added to "Beyond the priorities".
 
 | Verdict | high | medium | low | Total |
 |---|---|---|---|---|
@@ -187,9 +198,9 @@ it was. The order of what is left is in [`docs/roadmap.md`](../roadmap.md#the-qu
 | obsolete | 0 | 0 | 0 | 0 |
 | **Total** | 3 | 76 | 54 | 133 |
 
-None of the 133 is critical or info. Of the 121 left open, 26 are trivial to fix, 57 small,
-29 medium and 9 large. 59 need neither a re-record nor the owner, 7 need a re-record only,
-41 need the owner only, and 14 need both.
+None of the 133 is critical or info. Of the 121 the sweep left open, 26 are trivial to fix,
+57 small, 29 medium and 9 large. 59 need neither a re-record nor the owner, 7 need a
+re-record only, 41 need the owner only, and 14 need both.
 
 **Fixed without a pull request naming them**
 
@@ -246,11 +257,11 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | architecture-11 | still true | medium | small | A2 |  | Fail on an empty tree or an unresolved import, scan `.mts`/`.cts`, and a rule naming the `cli/` modules that touch the disk. |
 | build-ci-2 | still true | medium | small | A3 |  | Smoke from an extracted `npm pack` tarball, or at least assert `fixtures/si-demo` is packed. |
 | build-ci-3 | still true | medium | trivial | A3 |  | Clean `dist/` before `tsc`, and a `prepack` running typecheck, test, build and smoke. |
-| cli-ux-1 | still true | medium | small | A1 |  | `validate` resolves its directory like the other commands (exit 2 when it is none) and parses strictly. |
+| cli-ux-1 | still true | medium | small | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) |  | `validate` resolves its directory like the other commands (exit 2 when it is none) and parses strictly. |
 | cli-ux-5 | partly fixed | medium | small |  | owner | A repeatable `plan --answer <path>=<value>` (or `--answers file.json`) through `fillAnswers`, named in the question text. |
-| cli-ux-6 | partly fixed | medium | small | A1 |  | Ctrl-C at a prompt rejects with an interruption, and `main` exits 130; Ctrl-D stays a decline. |
+| cli-ux-6 | partly fixed | medium | small | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) |  | Ctrl-C at a prompt rejects with an interruption, and `main` exits 130; Ctrl-D stays a decline. |
 | cli-ux-10 | still true | medium | medium |  | owner | One versioned `PlanReport` union by `outcome`, with edits and diffs, emitted by both routes and every refusal. |
-| cli-ux-11 | partly fixed | medium | small | A1 |  | `-h`, `--version`, `version` and `<cmd> --help` before `parsePhrase`; strict single positionals; a usage line, not the whole HELP. |
+| cli-ux-11 | partly fixed | medium | small | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) (a refused phrase still prints the whole help, which lists the commands a slip may have meant) |  | `-h`, `--version`, `version` and `<cmd> --help` before `parsePhrase`; strict single positionals; a usage line, not the whole HELP. |
 | cli-ux-12 | partly fixed | medium | large |  | owner | Same as architecture-9, and split `plan.ts` into pipeline, ask loop and render. |
 | core-plan-8 | still true | medium | medium |  | owner | `environmentAnnotation` in `.idp-agent.yml`, threaded in place of `ENV_ANNOTATION`, with a neutral default. |
 | core-plan-9 | still true | medium | medium |  | owner | One function mints an `ApprovedChange` after the five gates, held in a module-private `WeakSet` the writer checks. |
@@ -269,7 +280,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | gap-ask-grounding-7 | still true | medium | small | A5 |  | Strip punctuation and markdown before comparing the Supervisor's word, retry once, then exit 1 with one line. |
 | gap-ask-grounding-9 | still true | medium | large |  | owner | Same as architecture-5 for namespaces; until then set aside a non-default namespace with a warning. |
 | gap-init-real-repos-5 | still true | medium | small |  | owner | Place an Inspector fact only when its value occurs in a file it read; otherwise ask. Same fix as security-5. |
-| gap-init-real-repos-6 | still true | medium | trivial | A1 |  | Same fix as cli-ux-8. |
+| gap-init-real-repos-6 | still true | medium | trivial | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) |  | Same fix as cli-ux-8. |
 | gap-init-real-repos-7 | still true | medium | medium |  | re-record, owner | CODEOWNERS and `.idp-agent.yml` from the git root for a sub-folder; `auth` out of the directory stems; one Component per run documented. |
 | gap-stage5-readiness-2 | still true | medium | small | A4 |  | Refine `repoPath`: relative, no `..`, no hidden segment, basename `catalog-info.y(a)ml`; test both probe paths. |
 | gap-stage5-readiness-3 | still true | medium | large |  | owner | Decide in the stage-5 plan that the base is a commit, read through git, and the contracts without git. |
@@ -285,7 +296,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | product-gap-7 | still true | medium | small |  | owner | Same README section as docs-7; a reconciler example optional. |
 | product-gap-8 | still true | medium | large |  | owner | Schemas built from a registry, extra types from the config; the comment now (domain-backstage-9). |
 | product-gap-9 | partly fixed | medium | medium |  | owner | Same adapter as agents-llm-4, and one Anthropic recording with the owner's key. |
-| runtime-probe-3 | still true | medium | small | A1 |  | `validate` reuses `repositoryRoot`, an unreadable folder is a violation, `rules.ts` lets `PathEscapeError` through, the test matches its title. |
+| runtime-probe-3 | still true | medium | small | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) |  | `validate` reuses `repositoryRoot`, an unreadable folder is a violation, `rules.ts` lets `PathEscapeError` through, the test matches its title. |
 | runtime-probe-9 | partly fixed | medium | small |  | owner | Same channel as cli-ux-5. |
 | runtime-probe-11 | still true | medium | medium | B3 |  | Same primitive as core-yaml-5, in `writeScaffold` and the iac-fs walk. |
 | security-9 | partly fixed | medium | trivial | A3 |  | Same fix as docs-3: its four points are gone, and the gate-order row is the one guarantee left that contradicts the code and the test it names. |
@@ -309,8 +320,8 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | build-ci-8 | partly fixed | low | trivial | A3 |  | `permissions`, `concurrency` and `timeout-minutes` in `ci.yml`; a Windows row optional. |
 | build-ci-9 | still true | low | small |  | owner | `packageManager`, engines `>=22.12`, a `dependabot.yml`, and the pin policy written down. |
 | build-ci-10 | still true | low | small |  | owner | Biome or ESLint plus a format check as `lint` and a CI step; the one-time reformat in its own PR. |
-| build-ci-12 | still true | low | trivial | A1 |  | `-h` as help; `--version`, `-v` and `version` print the package version, exit 0. |
-| cli-ux-8 | still true | low | trivial | A1 |  | `initRoot` refuses a path that is not a directory, exit 2, before a model is chosen. |
+| build-ci-12 | still true | low | trivial | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) |  | `-h` as help; `--version`, `-v` and `version` print the package version, exit 0. |
+| cli-ux-8 | still true | low | trivial | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) |  | `initRoot` refuses a path that is not a directory, exit 2, before a model is chosen. |
 | cli-ux-13 | still true | low | trivial |  | owner | `iacRepo` optional while nothing reads it; `plan --from` reads the config for its environments. |
 | cli-ux-14 | partly fixed | low | trivial | A3 |  | Reword `src/cli/README.md:44-45`, which says `show` takes "the first entity holding a bare name": `resolveEntity` refuses a shared name since [#74](https://github.com/pcaboor/idp-agent/pull/74). `withAnswers` is gone ([#78](https://github.com/pcaboor/idp-agent/pull/78)); the gate order goes with architecture-12. |
 | core-plan-10 | partly fixed | low | small | A4 |  | Switches with `never` defaults in `planEdits` and at the filter sites in sign and policies; a switch on `patch.patch`. |
@@ -326,7 +337,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | gap-ask-grounding-11 | still true | low | small | A5 |  | Print the truncation of the search the cited rows came from, not the session's total. |
 | gap-ask-grounding-12 | still true | low | small |  | re-record | Cap each vocabulary list, and send the Supervisor the request without the vocabulary. |
 | gap-ask-grounding-13 | still true | low | small |  | re-record, owner | Assert the exact consumers block; at the re-record, overview, relation and nothing scenarios and a second provider. |
-| gap-init-real-repos-8 | still true | low | trivial | A1 |  | An `init` closing line saying how to apply the diff. |
+| gap-init-real-repos-8 | still true | low | trivial | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) |  | An `init` closing line saying how to apply the diff. |
 | gap-init-real-repos-9 | still true | low | small | A5 |  | Normalise `read_file` paths, say "not read: under <folder>" or "past the cap", flag non-UTF-8 files. |
 | gap-init-real-repos-10 | still true | low | small |  | owner | Read `git remote get-url origin` (credentials stripped) for `backstage.io/source-location`, or drop "git remote" from §7.3. |
 | gap-provider-matrix-6 | still true | low | trivial | A5 |  | Always send `store: false` to OpenAI, merged with the reasoning effort; pin it in the contract test. |
@@ -338,7 +349,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | product-gap-10 | partly fixed | low | small | A5 |  | Usage on the event stream and one stderr line per run with calls and tokens. |
 | product-gap-11 | still true | low | small |  | owner | Same channel as cli-ux-5. |
 | product-gap-14 | still true | low | trivial | A3 |  | `path.posix.normalize` in `assertRelativeSafe` and `resolveEntityPath`. |
-| runtime-probe-13 | partly fixed | low | small | A1 |  | Refuse an empty or dash-leading directory for `init platform` and `validate`; a retry progress event. |
+| runtime-probe-13 | partly fixed | low | small | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) (a retry is a line on stderr, not a trace event) |  | Refuse an empty or dash-leading directory for `init platform` and `validate`; a retry progress event. |
 | security-5 | still true | low | small |  | owner | Witness each Inspector fact textually, or it is asked; the CODEOWNERS owner as its own class. |
 | security-6 | partly fixed | low | medium |  | re-record, owner | A policy: every grant's consumer and target is named by the request or answered; otherwise ask. |
 | security-10 | still true | low | trivial | A2 |  | Run `secretIn` over each tape's raw text beside the header regex. |

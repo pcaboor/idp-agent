@@ -13,7 +13,7 @@ import type { SignedPlan } from './sign.js'
  *
  * The check is not a second set of rules. It applies the plan **virtually** —
  * builds the snapshot that would exist if the plan landed — and runs
- * `checkRepository` over the result: the same eight rules CI runs, asked about a
+ * `checkRepository` over the result: the same nine rules CI runs, asked about a
  * repository that does not exist yet. That reuse is the whole reason stage 3
  * put those rules in `core/` with no `node:` import.
  *
@@ -118,6 +118,7 @@ const anchoredIn = (violation: Violation, written: Written): boolean => {
     // A folder rule anchors on the folder: writing any file into it is
     // writing into the thing CI refuses.
     case 'missing-witness':
+    case 'unreadable-folder':
       return written.folders.has(violation.file)
     // A duplicate names every file involved but anchors on the first in sort
     // order, so asking about that file alone would clear a plan that edits
@@ -277,7 +278,7 @@ export function recheckPlan(
    * had just called `already-declared`, so the entity came out a duplicate of
    * itself and a partially applied plan was refused. And it modelled creations
    * only, so an update-entity was invisible: `plan` exited 0 on a diff these
-   * same eight rules reject once applied.
+   * same nine rules reject once applied.
    *
    * Parsing the edits instead makes the check and the preview the same object.
    * It is the repository's own habit — write then read back — applied to a
@@ -295,6 +296,7 @@ export function recheckPlan(
     folders: [...new Set([...snapshot.folders, ...[...edited.keys()].map(folderOf)])],
     witnesses: snapshot.witnesses,
     files: [...kept, ...edited.values()],
+    ...(snapshot.unreadable !== undefined ? { unreadable: snapshot.unreadable } : {}),
   }
 
   // A file the plan EDITS is one whose bytes it changes. `already-declared`

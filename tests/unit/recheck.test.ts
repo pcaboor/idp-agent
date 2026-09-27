@@ -617,6 +617,28 @@ describe('recheckPlan attributes each violation', () => {
       ['missing-witness', 'systems'],
     ])
   })
+
+  it('makes a folder it could not list the plan’s when it writes into that folder', () => {
+    // A folder rule too: a plan writing into a folder nobody could list is
+    // decided against what that folder was never seen to hold — a grant it
+    // may already declare, a name it may already use.
+    const locked: RepositorySnapshot = {
+      ...snapshot(),
+      unreadable: [
+        { path: 'dependencies/access', reason: 'EACCES' },
+        { path: 'systems/legacy', reason: 'EACCES' },
+      ],
+    }
+
+    const { violations, standing } = recheck(sign(), locked)
+
+    expect(violations.map((violation) => [violation.rule, violation.file])).toEqual([
+      ['unreadable-folder', 'dependencies/access'],
+    ])
+    expect(standing.map((violation) => [violation.rule, violation.file])).toEqual([
+      ['unreadable-folder', 'systems/legacy'],
+    ])
+  })
 })
 
 /**
