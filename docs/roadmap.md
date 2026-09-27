@@ -9,7 +9,7 @@ What has already shipped is in [`CHANGELOG.md`](../CHANGELOG.md). What the 2026-
 found, and which of its findings are closed, is in its
 [Status section](reviews/2026-09-23-deep-review.md#status).
 
-*Updated 2026-09-26, `main` at `3b642fa`.*
+*Updated 2026-09-27, `main` at `b9b204d`.*
 
 ## Where the project stands
 
@@ -37,20 +37,18 @@ framed in the model's words, Backstage APIs, the relations view, and tracing int
 **In order**, as the owner decided on 2026-09-23, 2026-09-25 and 2026-09-26. Each line says
 what the item is for.
 
-1. **Review priority 7, project-fs's secret filter.** No secret reaches the provider, and no
-   ordinary manifest is withheld as one.
-2. **Review priority 8, an exact "already declared".** The tool never asserts on exit 0 an
+1. **Review priority 8, an exact "already declared".** The tool never asserts on exit 0 an
    access that does not exist.
-3. **Review priority 9, `init` on a real service repository.** The first onboarding gesture
+2. **Review priority 9, `init` on a real service repository.** The first onboarding gesture
    ends on a diff, not a dead end or a duplicate.
-4. **The `backstage-http` read provider: a design note and a stage plan.** Context read from a
+3. **The `backstage-http` read provider: a design note and a stage plan.** Context read from a
    Backstage catalogue, where today it comes from a configured source.
-5. **A sweep of the review.** Each finding no pull request names is classified still true,
+4. **A sweep of the review.** Each finding no pull request names is classified still true,
    fixed or obsolete; the Status section is updated, and the cheap fixes still true are
    batched.
-6. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
+5. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
    the current `main`, read only: what it covers and what it misses.
-7. **Stage 5, write + local branch.** The first write, atomic and idempotent. The owner's own
+6. **Stage 5, write + local branch.** The first write, atomic and idempotent. The owner's own
    work, on branch `feat/s5-cleared`, at the owner's pace.
 
 **Not yet ordered.**
@@ -59,16 +57,16 @@ what the item is for.
   authorisation (ADR-0006).
 - **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal
   that the owner set as the project's end goal (2026-09-23).
-- **The `backstage-http` read provider itself**, once its design note and plan (item 4) are
+- **The `backstage-http` read provider itself**, once its design note and plan (item 3) are
   agreed.
 - **Stage 8, discovery** ([the design note](stage-8-brief.md)). From any
   service repository, generate its catalog-info and discover the dependencies it already
   has, with evidence.
 
-The one order stated beyond these seven is stage 8's own, in its design note (section 11):
-priorities 6 (done, [#79](https://github.com/pcaboor/idp-agent/pull/79)), 7, 8 and 9
-as queued, and stage 5's first two tasks; then slice 1, which needs only priority 7 and can
-start as soon as it lands; then slices 2 and 3, and submission.
+The one order stated beyond these six is stage 8's own, in its design note (section 11):
+priorities 6 (done, [#79](https://github.com/pcaboor/idp-agent/pull/79)), 7 (done,
+[#80](https://github.com/pcaboor/idp-agent/pull/80)), 8 and 9 as queued, and stage 5's first two tasks; then slice 1,
+which needed only priority 7 and can start now; then slices 2 and 3, and submission.
 Submitting rights for a Component declared in its own service repository needs the
 `backstage-http` provider, and submission needs stages 5 and 6.
 
@@ -157,6 +155,39 @@ Each was checked against `main` at `3b642fa`.
 - A repository-contract document (what a declarations repository must hold), a "wire it
   into Backstage" section, and the `credentials.json` the design mentions are not written
   (review priority 10 closed the rest in [#78](https://github.com/pcaboor/idp-agent/pull/78)).
+
+**The secret filter, left from review priority 7**
+
+Checked against this change ([#80](https://github.com/pcaboor/idp-agent/pull/80)).
+
+- **A directory outside git is walked, not refused.** security-3 asked for a git root;
+  `readProject` falls back to the walk, with every name, content and size rule, when git
+  says the directory is in no repository, and the CLI says so on stderr. Refusing would
+  inspect nothing in a service not committed yet, and in every plan-mode recording's
+  application repository, which is a temporary directory; changing the fixture changes what
+  the recordings were sent (`tracking` in `src/context/project-fs/snapshot.ts`).
+- **`init` inspects a directory with no service marker.** `plan` skips one (#63); `init`
+  refuses only the home directory and the filesystem root, so `init` run from
+  `~/Documents` hands that tree to the Inspector (`initRoot` in `src/cli/repository.ts`).
+- **Nothing announces how many files the provider may read** before a run (security-3's
+  "N files readable by <provider>").
+- **The content filter sees only what it lists** (`src/context/project-fs/secrets.ts`,
+  whose header keeps the list): a password under six characters; a literal under a key
+  that does not name a secret (`DB_URL: <literal>` with no `user:password@` in it, a `dsn:`,
+  `auth:` outside a docker `auths` object); a token format not listed (a Stripe test key,
+  Twilio, Datadog…); a value taken for code — a type, a call, a member access, an
+  identifier naming a secret, a plain lowercase word after a spaced key; a syntax not
+  parsed — a YAML anchor's value, a `\`-continued or folded value, `mysql -pX`, a heredoc,
+  a concatenated string; and an encoding past one base64 layer or a `\u` escape. The review
+  suggested a maintained pattern set (gitleaks) and an allow list of what the Inspector
+  needs; neither is built.
+- **A file is withheld whole, never redacted.** A `docker-compose.yml` with one literal
+  development password (`POSTGRES_PASSWORD: postgres`) is lost to the Inspector with
+  everything else it states. Masking the value is the review's other suggestion; it trades
+  a lost file for a file with a hole the model cannot see.
+- **A repository git cannot list is read as nothing**, and so is one whose listing passes
+  32 MiB (about half a million files) or 15 seconds (`GIT_LIMITS`). The reason is on the
+  Inspector's opening line and on stderr.
 
 **Recordings that need the owner's key**
 

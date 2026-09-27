@@ -1,8 +1,10 @@
+import { execFile } from 'node:child_process'
 import { constants } from 'node:fs'
 import { lstat, open, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
 import { assertInsideRepo, PathEscapeError } from '../../core/paths/entity-path.js'
-import type { ProjectFile, ProjectSnapshot, SkippedFile } from './types.js'
+import { secretIn, type SecretClass } from './secrets.js'
+import type { ProjectFile, ProjectRead, Selection, SkippedFile } from './types.js'
 
 /**
  * Reads the APPLICATION repository — the one a service lives in, not the
@@ -40,13 +42,19 @@ export const PROJECT_LIMITS = {
 } as const
 
 /**
- * The three shapes live in `types.ts`, which imports nothing. `agents/` has to
+ * The shapes live in `types.ts`, which imports nothing. `agents/` has to
  * name `ProjectSnapshot` and the architecture test walks its import closure, so
  * a type reachable only through this module would drag `node:fs/promises` into
  * that closure. Re-exported here so this file stays the one import site for
  * everyone who wants the bytes as well as the shape.
  */
-export type { ProjectFile, ProjectSnapshot, SkippedFile } from './types.js'
+export type {
+  ProjectFile,
+  ProjectRead,
+  ProjectSnapshot,
+  Selection,
+  SkippedFile,
+} from './types.js'
 
 /**
  * A walk budget the three public caps do not provide. They bound what is READ
@@ -57,80 +65,12 @@ export type { ProjectFile, ProjectSnapshot, SkippedFile } from './types.js'
 const MAX_DIRECTORIES = 5_000
 
 /**
- * Rule 2: a name is whatever its author chose, so the name test below can
- * always be dodged. This is the test underneath it. `[A-Z0-9 ]` covers RSA,
- * DSA, EC, OPENSSH and PGP headers without letting the wildcard run to the end
- * of a file.
+ * What a secret looks like INSIDE a file lives in `secrets.ts`, as data: key
+ * material, the shapes issuers stamp on their tokens, and a secret assigned a
+ * literal. It is the backstop for "a name is its author's to choose", and it is
+ * applied to every file this module is about to hand over, whatever its name.
+ * Everything below is about names, places and git.
  */
-/**
- * What key material looks like, in the shapes it actually ships in.
- *
- * The rule was one case-sensitive plaintext PEM header, and it let through: a
- * lowercase header, a PuTTY key, an OpenVPN static key, and a PEM body whose
- * header had been stripped — plus every key inside a Kubernetes Secret or a
- * kubeconfig, where the material is base64 and `-----BEGIN` becomes the fixed
- * prefix `LS0tLS1CRUdJTi`.
- *
- * Each alternative is a fixed marker rather than a guess about entropy: a
- * false positive here costs a file that is named in `skipped` and not read,
- * and a false negative costs a key sent to a third party.
- */
-const KEY_MATERIAL = [
-  /-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY/i,
-  /LS0tLS1CRUdJTi/,
-  /PuTTY-User-Key-File-/i,
-  /-----BEGIN OpenVPN Static key/i,
-  /^[ \t]*(?:ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp\d+) AAAA/m,
-]
-
-/**
- * Credentials that are not keys, by the prefix each issuer stamps on them.
- *
- * A prefix is a fact about the token, not a heuristic about the file: these
- * appear in `database.yml`, a Dockerfile, a shell script or a note, and no
- * name rule reaches any of those. What this does NOT cover is a password —
- * `password: hunter2` in a compose file is indistinguishable from
- * `password: ${DB_PASSWORD}` without guessing, and guessing here would refuse
- * half the configuration in a normal project.
- */
-const ASSIGNED_SECRET =
-  /(?:pass(?:wd|word)?|secret(?:[_-]?key)?|api[_-]?key|access[_-]?key|private[_-]?key|auth[_-]?token|token|credentials?|authorization)\s*["']?\s*(?:[:=]|\s+bearer)\s*["']?([^\s"',;}]{6,})/i
-
-/**
- * `CREATE USER app WITH PASSWORD 'x'` — SQL separates the key from the value
- * with a space, so the assignment rule above never reaches it, and an init
- * script is exactly the file a Docker entrypoint leaves in a repository.
- */
-const SQL_PASSWORD = /\bpassword\s+'([^']{6,})'/i
-
-/**
- * `define('DB_PASSWORD', 'x')` — PHP's constant form puts the key and the
- * value in the same call, separated by a comma. `wp-config.php` is the file
- * this exists for, and it is in more repositories than any of the others.
- */
-const PHP_DEFINE = /\bdefine\s*\(\s*["'][^"']*(?:pass(?:wd|word)?|secret|key|token)[^"']*["']\s*,\s*["']([^"']{6,})["']/i
-
-/**
- * A value that names another value rather than being one.
- *
- * `password: ${DB_PASSWORD}`, `${{ secrets.TOKEN }}`, `<your-key-here>`,
- * `%TOKEN%` and an empty string are the normal content of a configuration
- * file, and refusing them would refuse half of every project. A literal is
- * what is left.
- */
-const SUBSTITUTED = /^[$%<{(]|^(?:null|none|changeme|xxx+|\.\.\.|todo)$/i
-
-const CREDENTIAL_MARKERS = [
-  /\bAKIA[0-9A-Z]{16}\b/,
-  /\bASIA[0-9A-Z]{16}\b/,
-  /\bgh[pousr]_[A-Za-z0-9_]{20,}/,
-  /\bglpat-[A-Za-z0-9_-]{20,}/,
-  /\bsk-[A-Za-z0-9]{20,}/,
-  /\bxox[abposr]-[A-Za-z0-9-]{10,}/,
-  /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\./,
-  /\bAIza[0-9A-Za-z_-]{35}\b/,
-  /:\/\/[^\s:@/]+:[^\s:@/]+@/,
-]
 
 /**
  * Directories holding credentials rather than code. `.git/` earns its place
@@ -401,6 +341,181 @@ function resolvedReason(realRoot: string, target: string, isDirectory: boolean):
   return undefined
 }
 
+/**
+ * The reason a model reads for each class `secretIn` returns — the same three
+ * sentences as before the rules moved to `secrets.ts`, so a recorded prompt
+ * that quotes one still matches.
+ */
+const WITHHELD: Readonly<Record<SecretClass, string>> = {
+  'key-material': 'excluded: the content is key material, whatever the file is called',
+  assigned: 'excluded: a secret is assigned a literal value in it',
+  shaped: 'excluded: the content carries something shaped like a credential',
+}
+
+/**
+ * What git tracks under the root, as real-path-relative POSIX paths: the
+ * files, and every directory holding one.
+ */
+interface Tracked {
+  readonly files: ReadonlySet<string>
+  readonly directories: ReadonlySet<string>
+}
+
+type Tracking =
+  | { readonly selection: 'git'; readonly tracked: Tracked }
+  | { readonly selection: 'walk' }
+  | { readonly selection: 'none' }
+
+/**
+ * Bounds on the two git calls. A listing is about 60 bytes a file, so the
+ * output cap reads a repository of half a million files; past it, or past the
+ * timeout, nothing is read rather than something unlisted.
+ */
+const GIT_LIMITS = { timeoutMs: 15_000, maxOutputBytes: 32 * 1024 * 1024 } as const
+
+/**
+ * Configuration no repository gets to choose, on every call. `git ls-files`
+ * runs `core.fsmonitor` — a command line, and a repository's `.git/config` is
+ * whatever its author left in it — so inspecting a repository would otherwise
+ * execute it. A command-line `-c` outranks every configuration file.
+ */
+const GIT_OVERRIDES = ['--no-pager', '-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false']
+
+/**
+ * The environment git runs in: the process's, minus every `GIT_` variable.
+ * `GIT_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE` would each make git answer
+ * about another repository than the one on disk — a pre-commit hook sets all
+ * three — and `GIT_CONFIG_PARAMETERS` would undo the overrides above. The C
+ * locale makes the one message read below the same on every machine;
+ * optional locks off means a read never writes the index.
+ */
+function gitEnvironment(): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {}
+  for (const [name, value] of Object.entries(process.env)) {
+    if (!name.startsWith('GIT_')) environment[name] = value
+  }
+  return {
+    ...environment,
+    LC_ALL: 'C',
+    LANGUAGE: 'C',
+    GIT_OPTIONAL_LOCKS: '0',
+    GIT_TERMINAL_PROMPT: '0',
+  }
+}
+
+type GitOutcome =
+  | { readonly ok: true; readonly stdout: string }
+  | { readonly ok: false; readonly missing: boolean; readonly stderr: string }
+
+/**
+ * Where git is started from: the directory of the running Node binary, never
+ * the inspected repository. Windows looks a program up in the working
+ * directory before the PATH, so a `git.exe` at the root of a repository ran
+ * as soon as the repository was inspected (review); a relative PATH entry
+ * does the same anywhere. The repository is named with `-C` instead.
+ */
+const NEUTRAL_DIRECTORY = path.dirname(process.execPath)
+
+/**
+ * One git call: `execFile`, so no shell ever parses an argument; bounded in
+ * time and in output; started outside the repository, which it reaches by
+ * `-C` and an absolute path — a path that starts with a separator or a drive
+ * cannot be read as an option.
+ */
+const git = (root: string, args: readonly string[]): Promise<GitOutcome> =>
+  new Promise((resolve) => {
+    execFile(
+      'git',
+      [...GIT_OVERRIDES, '-C', root, ...args],
+      {
+        cwd: NEUTRAL_DIRECTORY,
+        env: gitEnvironment(),
+        encoding: 'utf8',
+        timeout: GIT_LIMITS.timeoutMs,
+        maxBuffer: GIT_LIMITS.maxOutputBytes,
+        windowsHide: true,
+      },
+      (error, stdout, stderr) => {
+        if (error === null) {
+          resolve({ ok: true, stdout })
+          return
+        }
+        const code = (error as NodeJS.ErrnoException).code
+        resolve({ ok: false, missing: code === 'ENOENT', stderr: String(stderr) })
+      },
+    )
+  })
+
+/** Whether a `.git` entry — a directory, or the file a worktree writes — sits at `from` or above it. */
+async function gitMarkerAbove(from: string): Promise<boolean> {
+  let directory = from
+  for (;;) {
+    if ((await lstat(path.join(directory, '.git')).catch(() => undefined)) !== undefined) return true
+    const parent = path.dirname(directory)
+    if (parent === directory) return false
+    directory = parent
+  }
+}
+
+/**
+ * Which files are candidates at all: the ones git tracks, when the root is in
+ * a repository (review, security-2 and security-3). An untracked `.env`, a
+ * local override, a build artefact — none of them is part of the service, and
+ * each is exactly where a secret sits; `.gitignore` is where their authors
+ * said so.
+ *
+ * Three answers, and the one that matters is the third:
+ *
+ *   - git says the root is in NO repository, and no `.git` sits at the root
+ *     or above it: `walk`, today's rules on whatever the directory holds. A
+ *     fresh project and a test's temporary directory are this, and so is
+ *     every plan-mode recording's application repository — refusing here
+ *     would inspect nothing where nothing CAN be tracked yet, and the CLI
+ *     says on stderr that the walk was used.
+ *   - git lists the tracked files: `git`.
+ *   - anything else — git absent beside a `.git`, a `.git` file whose gitdir
+ *     is gone (a submodule or a worktree copied out of its superproject), a
+ *     repository git will not read (a foreign owner, a broken index), a top
+ *     level that does not hold the root, a listing past its bounds: `none`,
+ *     and nothing is read. Each is a repository, and walking it would read
+ *     what it holds untracked, the one thing this rule exists to refuse.
+ */
+async function tracking(realRoot: string): Promise<Tracking> {
+  const top = await git(realRoot, ['rev-parse', '--show-toplevel'])
+  if (!top.ok) {
+    const unknown = top.missing || /not a git repository/.test(top.stderr)
+    // git's "not a git repository" is also its answer about a `.git` FILE
+    // whose gitdir no longer exists; the marker on disk decides.
+    return { selection: unknown && !(await gitMarkerAbove(realRoot)) ? 'walk' : 'none' }
+  }
+  // The repository git answered about must hold the root. `core.worktree` in a
+  // repository's own configuration can name any directory as its work tree,
+  // and a listing of that one is not a listing of this.
+  const realTop = await realpath(top.stdout.trim()).catch(() => undefined)
+  if (realTop === undefined || !isInside(realTop, realRoot)) return { selection: 'none' }
+
+  // Relative to the root, and only under it: `ls-files` run in a folder of a
+  // monorepo lists that folder. `-z`, so no path is quoted or split.
+  const listed = await git(realRoot, ['ls-files', '-z', '--cached'])
+  if (!listed.ok) return { selection: 'none' }
+
+  const files = new Set<string>()
+  const directories = new Set<string>([''])
+  for (const entry of listed.stdout.split('\0')) {
+    if (entry === '') continue
+    files.add(entry)
+    const segments = entry.split('/')
+    for (let length = 1; length < segments.length; length += 1) {
+      directories.add(segments.slice(0, length).join('/'))
+    }
+  }
+  return { selection: 'git', tracked: { files, directories } }
+}
+
+/** A real path as git names it: relative to the real root, POSIX. */
+const trackedName = (realRoot: string, target: string): string =>
+  path.relative(realRoot, target).split(path.sep).join('/')
+
 interface Candidate {
   /** Project-relative, POSIX. */
   readonly path: string
@@ -411,8 +526,12 @@ interface Candidate {
 
 interface Walk {
   readonly realRoot: string
+  /** Undefined outside a git repository: then every file the walk reaches is a candidate. */
+  readonly tracked: Tracked | undefined
   readonly candidates: Candidate[]
   readonly skipped: SkippedFile[]
+  /** Entries git does not track: counted, never named. */
+  untracked: number
   directories: number
   truncated: boolean
 }
@@ -440,6 +559,22 @@ async function walk(
   for (const name of [...names].sort()) {
     const absolute = path.join(directory, name)
     const here = prefix === '' ? name : `${prefix}/${name}`
+
+    // An entry git does not track is counted, and neither read nor NAMED:
+    // `skipped` goes to the provider with the files, and the name of a file
+    // nobody committed — `notes/customer-x-incident.md`, a `.env` — is no
+    // more the service's to send than its content (review). Decided on the
+    // entry's own name, first, so no rule below gets to quote it; a tracked
+    // link to an untracked target is still refused on its target further on.
+    // `directory` is always a real path, so this is the name git lists the
+    // entry under, even below a tracked link to a directory.
+    if (state.tracked !== undefined) {
+      const listed = trackedName(state.realRoot, absolute)
+      if (!state.tracked.files.has(listed) && !state.tracked.directories.has(listed)) {
+        state.untracked += 1
+        continue
+      }
+    }
 
     // The relative path through the audited check in `core/paths`, which also
     // refuses a NUL — a NUL truncates a path inside a syscall, so a test after
@@ -497,6 +632,15 @@ async function walk(
         state.skipped.push({ path: here, reason })
         continue
       }
+      // Named once, not file by file: an ignored `tmp/` or `out/` holds
+      // thousands, and not one of them is the project's.
+      if (
+        state.tracked !== undefined &&
+        !state.tracked.directories.has(trackedName(state.realRoot, target))
+      ) {
+        state.skipped.push({ path: here, reason: 'not descended: git tracks nothing in it' })
+        continue
+      }
       // `target` is already a real path — a descent only ever passes one, so a
       // name joined onto it is real unless it is itself a link, and a link was
       // resolved above. No second realpath is needed to compare ancestors.
@@ -541,6 +685,17 @@ async function walk(
     const excluded = resolvedReason(state.realRoot, target, false)
     if (excluded !== undefined) {
       state.skipped.push({ path: here, reason: excluded })
+      continue
+    }
+
+    // Decided on the TARGET, as every rule here is: a tracked link to an
+    // untracked file leads to bytes git does not hold, and those are the bytes
+    // that would be read. Never opened, so its content cannot reach anything.
+    if (
+      state.tracked !== undefined &&
+      !state.tracked.files.has(trackedName(state.realRoot, target))
+    ) {
+      state.skipped.push({ path: here, reason: 'not read: git does not track it' })
       continue
     }
 
@@ -607,7 +762,7 @@ async function readBounded(
 const byPath = (a: { path: string }, b: { path: string }): number =>
   a.path < b.path ? -1 : a.path > b.path ? 1 : 0
 
-export async function readProject(root: string): Promise<ProjectSnapshot> {
+export async function readProject(root: string): Promise<ProjectRead> {
   const resolved = path.resolve(root)
   // The root is resolved once, and every containment decision is made against
   // the REAL one: on macOS a temp directory is reached through a symlink, so
@@ -623,17 +778,45 @@ export async function readProject(root: string): Promise<ProjectSnapshot> {
       files: [],
       skipped: [{ path: '.', reason: 'refused: the project root is not a readable directory' }],
       truncated: false,
+      selection: 'none',
     }
   }
 
+  const chosen = await tracking(realRoot)
+  if (chosen.selection === 'none') {
+    // The reason names no git message: git's stderr can quote a path outside
+    // the project, and this string goes to a model.
+    return {
+      root: realRoot,
+      files: [],
+      skipped: [
+        {
+          path: '.',
+          reason: 'refused: git could not list the files this repository tracks, so none was read',
+        },
+      ],
+      truncated: false,
+      selection: 'none',
+    }
+  }
+  const selection: Selection = chosen.selection
+
   const state: Walk = {
     realRoot,
+    tracked: chosen.selection === 'git' ? chosen.tracked : undefined,
     candidates: [],
     skipped: [],
+    untracked: 0,
     directories: 1,
     truncated: false,
   }
   await walk(state, realRoot, '', [realRoot])
+  if (state.untracked > 0) {
+    state.skipped.push({
+      path: '.',
+      reason: `not read: ${state.untracked} ${state.untracked === 1 ? 'path' : 'paths'} git does not track, and not named`,
+    })
+  }
 
   // Sorted before the caps are applied, not after: the caps decide WHICH files
   // are read, so two runs agree on the content only if they agree on the order
@@ -694,30 +877,13 @@ export async function readProject(root: string): Promise<ProjectSnapshot> {
     // latin1: every byte maps to a character, so the header test cannot be
     // defeated by an invalid UTF-8 sequence before it.
     const text = bytes.toString('latin1')
-    if (KEY_MATERIAL.some((marker) => marker.test(text))) {
-      state.skipped.push({
-        path: candidate.path,
-        reason: 'excluded: the content is key material, whatever the file is called',
-      })
-      continue
-    }
-    const assigned =
-      ASSIGNED_SECRET.exec(text) ?? SQL_PASSWORD.exec(text) ?? PHP_DEFINE.exec(text)
-    if (assigned?.[1] !== undefined && !SUBSTITUTED.test(assigned[1])) {
-      state.skipped.push({
-        path: candidate.path,
-        reason: 'excluded: a secret is assigned a literal value in it',
-      })
-      continue
-    }
-    if (CREDENTIAL_MARKERS.some((marker) => marker.test(text))) {
-      // The reason names the class, never the token: this string travels to a
-      // model in the snapshot's own `skipped` list, and quoting the secret to
-      // explain why the secret was withheld would be the whole defect again.
-      state.skipped.push({
-        path: candidate.path,
-        reason: 'excluded: the content carries something shaped like a credential',
-      })
+    const secret = secretIn(text)
+    if (secret !== undefined) {
+      // Withheld whole, never redacted — `secrets.ts` says why — and named by
+      // the class, never the token: this string travels to a model in the
+      // snapshot's own `skipped` list, and quoting the secret to explain why
+      // the secret was withheld would be the whole defect again.
+      state.skipped.push({ path: candidate.path, reason: WITHHELD[secret] })
       continue
     }
 
@@ -757,5 +923,6 @@ export async function readProject(root: string): Promise<ProjectSnapshot> {
     files,
     skipped,
     truncated: state.truncated,
+    selection,
   }
 }

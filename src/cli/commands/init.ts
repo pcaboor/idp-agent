@@ -18,6 +18,7 @@ import { serializeEntity } from '../../core/yaml/serialize.js'
 import { insertDocument, listDocumentNames } from '../../core/yaml/surgery.js'
 import type { LlmClient } from '../../llm/client.js'
 import { readConfig, seededVocabulary } from '../config.js'
+import { selectionNotice } from '../repository.js'
 import { loadTemplates } from '../../scaffold/templates.js'
 import { scaffoldLayout } from '../../scaffold/layout.js'
 import { writeScaffold, type FileIO } from '../../scaffold/write.js'
@@ -240,6 +241,12 @@ export interface InitOptions {
   readonly emit: EventSink
   /** Only a caller that knows it holds a terminal asks for colour. */
   readonly colour?: boolean
+  /**
+   * Where a line about how the application repository was read goes — stderr,
+   * from `cli/index.ts` — when its files were not chosen from what git tracks
+   * (`selectionNotice`). Absent, nothing is said.
+   */
+  readonly notice?: (line: string) => void
 }
 
 export async function runInitRepo(options: InitOptions): Promise<CommandResult> {
@@ -250,6 +257,8 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
   // Taken on this side of the line, with every exclusion and cap applied:
   // `agents/` reaches no disk, so the bytes are read here and handed over.
   const snapshot = await readProject(options.project)
+  const notice = selectionNotice(options.project, snapshot)
+  if (notice !== undefined) options.notice?.(notice)
 
   const facts = await inspect(options.client, snapshot, options.emit)
   const request = requestOf(facts)

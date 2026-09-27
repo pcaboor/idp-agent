@@ -8,7 +8,7 @@
  * closure and break the guarantee SECURITY.md makes — not because an agent
  * would then read a disk, but because nothing would stop the next one.
  *
- * `snapshot.ts` re-exports all three, so the reader stays the single import
+ * `snapshot.ts` re-exports them all, so the reader stays the single import
  * site for anyone who wants the bytes as well as the shape.
  */
 
@@ -42,4 +42,30 @@ export interface ProjectSnapshot {
    * named in `skipped`, and the rest of the project was read.
    */
   readonly truncated: boolean
+}
+
+/**
+ * How the files a snapshot holds were chosen, before any rule judged them.
+ *
+ *   git   the directory is in a git repository, and only the files git TRACKS
+ *         were candidates: an untracked `.env`, a local override or a build
+ *         artefact is named in `skipped` and never opened;
+ *   walk  git says the directory is in no repository — a fresh project, a
+ *         directory a test made — so every file the walk reached was a
+ *         candidate, under the same name, content and size rules;
+ *   none  nothing was read, and `skipped` says why: a repository whose tracked
+ *         files git could not list, or a root that is not a directory.
+ */
+export type Selection = 'git' | 'walk' | 'none'
+
+/**
+ * What `readProject` returns: a snapshot, and how its files were chosen.
+ *
+ * `selection` is for the CLI, which says it on stderr, and for nobody else. It
+ * is not on `ProjectSnapshot`, which is what the Inspector is handed, so no
+ * field carries it to a model: what the plan-mode recordings were sent is what
+ * a run still sends.
+ */
+export interface ProjectRead extends ProjectSnapshot {
+  readonly selection: Selection
 }

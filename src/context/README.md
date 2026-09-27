@@ -113,10 +113,15 @@ lives in. `readProject(root)` returns the text of what it read and a `skipped` e
 reason, for every single thing it did not — a file dropped without a word is a file the user
 believes was read. It exists here rather than in `agents/` because no module reachable from an
 agent may import a filesystem, and everything it returns is on its way to a model at a third
-party: hence the exclusion list (`.env*`, key material, credential files, `.git/`, `node_modules/`
-and hidden directories bar `.github`), the content test for a PEM header behind an innocent name,
-the `lstat`-then-`realpath` symlink refusal, and three caps — 200 files, 64 KB each, 1 MB in total.
-`truncated` is true only when a cap stopped the read, never when one file was skipped.
+party: hence only the files git tracks when the directory is in a git repository (`git ls-files`,
+with no shell and none of the repository's own commands; an untracked path is counted, never
+named), the exclusion list (`.env*`, key
+material, credential files, `.git/`, `node_modules/` and hidden directories bar `.github`), the
+content test of `project-fs/secrets.ts` — key material, a known issuer's token, a secret assigned
+a literal, every match examined, escaped and base64 text decoded — the `lstat`-then-`realpath` symlink refusal, and three caps —
+200 files, 64 KB each, 1 MB in total. `truncated` is true only when a cap stopped the read, never
+when one file was skipped; `selection` says whether the files were git's, a walk's outside git, or
+none, and only the CLI reads it.
 
 `context/` may reach the network later — `backstage/` will be an HTTP client. `core/` never may,
 and `tests/architecture/dependencies.test.ts` fails the build if that slips.

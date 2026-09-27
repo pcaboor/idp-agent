@@ -468,10 +468,12 @@ never which attempt this is, never what an earlier gate said.
 
 The Inspector never touches a disk, because nothing reachable from `agents/` may (§ 5.5).
 `context/project-fs` reads the repository on the deterministic side and hands over a
-snapshot, with every exclusion already applied: `.env*`, key material, credential files,
-`.git/`, `node_modules/` and hidden directories bar `.github`, plus a content check for a
-PEM header behind an innocent name, a symlink refusal, and three caps — 200 files, 64 KB
-each, 1 MB in total. `list_files` and `read_file` read that snapshot and nothing else, so
+snapshot, with every exclusion already applied: only the files git tracks when the
+directory is in a git repository; `.env*`, key material, credential files, `.git/`,
+`node_modules/` and hidden directories bar `.github`; a content check on every file
+(`secrets.ts`) for key material, a known issuer's token shape and a secret assigned a
+literal, every match examined and the file withheld whole; a symlink refusal; and three
+caps — 200 files, 64 KB each, 1 MB in total. `list_files` and `read_file` read that snapshot and nothing else, so
 "confined to the current repository" is a property of the data the agent was handed rather
 than a check it performs.
 

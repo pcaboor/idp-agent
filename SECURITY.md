@@ -32,7 +32,7 @@ names the test that fails if it stops being true.
 
 | to | when | what |
 |---|---|---|
-| the model provider | a model-backed command | your request; the agents' instructions; a summary of the declarations repository (kinds, types, environments, owners in use); the entities the agents' tools read from it; for a change or `init`, the files the Inspector reads from the application repository — at most 200 files, 64 KiB each, 1 MiB in all, minus what `project-fs` withholds (below); and your key, in the header that provider reads it from |
+| the model provider | a model-backed command | your request; the agents' instructions; a summary of the declarations repository (kinds, types, environments, owners in use); the entities the agents' tools read from it; for a change or `init`, the files the Inspector reads from the application repository — only the files git tracks when it is a git repository, at most 200 files, 64 KiB each, 1 MiB in all, minus what `project-fs` withholds (below); and your key, in the header that provider reads it from |
 | an MLflow server | `IDP_MLFLOW_TRACKING_URI` is set | one trace per model-backed run, holding the full prompts and answers above — never the key |
 
 The endpoint is the SDK's default for that provider, unless `ANTHROPIC_BASE_URL` or
@@ -69,10 +69,23 @@ printed, not on the output stream as a whole, so what is guaranteed is what the 
 below cover.
 
 **Secrets in an inspected repository.** `context/project-fs` decides what leaves an
-application repository for the provider: environment files, key material, credential
-folders, hidden files, binaries, links out of the project and files over the caps are
-withheld, and each is listed as skipped by its class, never by its value. **That filter is
-incomplete** — see *Known to be incomplete*.
+application repository for the provider. In a git repository only the files git tracks are
+candidates: an untracked `.env`, a local override or a build artefact is never opened, nor
+named — the count of untracked paths is all the provider is sent. git is run with no shell,
+with no `GIT_` variable, with `core.fsmonitor` off, and from the directory of the Node
+binary, the repository named with `-C`: no command the repository's own configuration names
+is executed, and no `git.exe` the repository ships is found first, as Windows would from
+the working directory. A repository git cannot list — a broken index, a `core.worktree`
+naming another directory, a `.git` file whose gitdir is gone, git missing beside a `.git` —
+is read as nothing. A directory outside git is walked, and the CLI says so on stderr.
+Either way, environment files, key material, credential folders, hidden files, binaries,
+links out of the project and files over the caps are withheld, and so is any file whose
+content holds key material, a token of a known issuer's shape, or a secret assigned a
+literal value — every match in the file examined, a placeholder before a literal no
+longer enough — withheld whole, never redacted. Each is listed as skipped by its class,
+never by its value. The filter sees what it lists, and no more — see *Known to be
+incomplete*. `init` refuses to inspect the home directory and the filesystem root, and a
+change skips them unless `--project` names them.
 
 **The key.** It is read from the provider's own variable, never from a repository or a
 configuration file, and neither `.idp-agent.yml` nor the personal `config.yml` has a
@@ -86,8 +99,9 @@ ships (`tools/mlflow/compose.yml`) publishes it on `127.0.0.1` only. MLflow's ow
 `MLFLOW_TRACKING_URI` is never read: it is routinely exported for other tools, and
 honouring it would send this tool's prompts there without anyone asking for a trace. Keep
 `IDP_TRACE_DIR` outside the application repository, or in a hidden folder inside it:
-`project-fs` skips hidden folders, so a trace kept anywhere else there is read back by the
-next run's Inspector.
+`project-fs` skips hidden folders, and in a git repository every file git does not track, so
+a trace kept anywhere else in a directory outside git is read back by the next run's
+Inspector.
 
 ## Guaranteed today, with the test that enforces it
 
@@ -103,6 +117,10 @@ next run's Inspector.
 | No computed path leaves the repository; a traversing name or annotation is refused, not sanitised | `tests/invariants/core.test.ts` — *every computed path stays inside the repository* (property-based); `tests/unit/entity-path.test.ts` — *refuses a traversal escape*, *refuses an annotation that traverses out of the repository* |
 | The Inspector reads nothing outside the application repository, links included | `tests/unit/project-fs.test.ts` — *refuses a symlink pointing outside the project*, *an alias is not a disguise* |
 | Environment files and key material are withheld from the model | `tests/unit/project-fs.test.ts` — *excludes every environment file, whatever its case or suffix*, *excludes key material by name, whatever the case*, *skips a private key hiding behind an innocent name* |
+| In a git repository only tracked files are read: an untracked one is never opened nor named, a tracked link to one is refused, git runs no command the repository configures and no git the repository ships, and a repository git cannot list is read as nothing | `tests/unit/project-tracked.test.ts` — *reads the files git tracks and never an untracked one*, *refuses a tracked link to an untracked file*, *asks git about this repository, whatever GIT_DIR says*, *never runs a command the repository's own configuration names*, *reads nothing when git cannot list what the repository tracks*, *reads nothing when the repository names another directory as its work tree*, *reads nothing from a checkout whose .git file leads nowhere*, *with no git on the PATH* — *reads nothing beside a .git*, *never runs a git the inspected repository ships* |
+| A file is withheld when any secret in it is a literal, every match examined; each listed key format and assignment syntax is recognised and its near miss is not; an ordinary manifest or source file is read; no rule is slow on a hostile 64 KiB line | `tests/unit/project-secrets.test.ts` — *every match is examined, not only the first (security-1)*, *the formats the deny list missed (security-2)*, *what a reviewer found read, and must be withheld*, *an ordinary manifest is not withheld (gap-init-real-repos-4)*, *ordinary source is not withheld for naming a secret*, *no rule is slow on a hostile line* |
+| From a hostile repository, git or not, no secret-shaped string reaches the snapshot, the Inspector's opening message or any answer of `list_files` and `read_file` | `tests/unit/project-tracked.test.ts` — *what the Inspector is sent carries no secret* |
+| The home directory and the filesystem root are never inspected unasked | `tests/unit/plan-project.test.ts` — *never inspects the home directory or the filesystem root unless --project names it*; `tests/unit/project-tracked.test.ts` — *refuses init in the home directory, before a model is chosen*, *refuses init at the filesystem root* |
 | What a model or a repository file wrote reaches the terminal with nothing a terminal obeys, on `plan`, `relations`, `show`, `graph`, `validate` and `ask` | `tests/unit/plain.test.ts`; `tests/unit/plan-project.test.ts` — *what plan prints that a model or a file wrote*; `tests/unit/relations-command.test.ts` — *a hostile type, environment and name reach no terminal*; `tests/unit/read-commands-hostile.test.ts` — *… reaches no terminal with a byte it obeys*, one per command, and *ask: the overview it prints and the model sentences around it …* |
 | A preview writes nothing: both repositories are byte for byte as they were | `tests/unit/plan-command.test.ts` — *leaves the repository byte-identical*; `tests/unit/plan-intent.test.ts` — *leaves the declarations repository byte-identical*, *leaves the application repository byte-identical too*; `pnpm smoke`, on the built binary |
 | No module reachable from `agents/` touches the disk or the network; one module in `scaffold/` writes | `tests/architecture/dependencies.test.ts` — *no module reachable from agents/ touches the disk or the network*, *nothing in scaffold/ but write.ts imports a writing function* |
@@ -128,14 +146,20 @@ hostile code in this repository. The boundary that does contain something is
 Each is a finding of [the 2026-09-23 review](docs/reviews/2026-09-23-deep-review.md), still
 open.
 
-- **The secret filter of `project-fs`** (review priority 7: security-1, security-2,
-  security-3, gap-init-real-repos-4). A file assigning several secrets is judged by its
-  first match only, so a substituted value first lets a literal one after it through; the
-  key patterns miss common formats, among them `sk-ant-`, `sk-proj-` and `github_pat_`;
-  files git does not track are read as tracked ones are; and a few ordinary manifests are
-  withheld for a false positive. Until it is fixed, do not point the Inspector — `--project`,
-  or a change run from inside a service — at a repository holding literal secrets in
-  files that are not environment or key files.
+- **The secret filter of `project-fs` sees what it lists** (what review priority 7 left,
+  closed by [#80](https://github.com/pcaboor/idp-agent/pull/80)). Read, and so sent: a password shorter than six characters;
+  a literal under a key that does not name a secret (`DB_URL: <literal>` with no
+  `user:password@` in it, `auth:` outside a docker `auths` object, a Secret's data under
+  another `kind`); a token format `src/context/project-fs/secrets.ts` does not list; a
+  value the filter takes for code — a type (`password: String`), a call, a member access,
+  an identifier naming a secret (`password: hashedPassword`), a plain lowercase word after
+  a spaced key (`--password letmein`); a syntax it does not parse — a YAML anchor's value,
+  a value continued with `\` or folded over plain lines, a short flag glued to its value
+  (`mysql -pX`), a heredoc, a concatenated string; and an encoding other than one base64
+  layer or a `\u` escape, with only token shapes and key material looked for in a decoded
+  run. Outside a git repository, files git would not track are read too, under the same
+  rules. Keep literal secrets out of the files a service commits, as ever: the filter is a
+  backstop, not a vault.
 - **Confinement in the declarations repository is lexical** (security-8,
   runtime-probe-11). `iac-fs` follows a symbolic link to a file, wherever it points, and
   `init platform` writes through a linked folder. Both act on a repository you chose; the
