@@ -7,6 +7,7 @@ import { runInitPlatform } from '../../src/cli/commands/init.js'
 import type { AgentEvent } from '../../src/agents/events.js'
 import { hashTree } from '../support/tree.js'
 import { disagreements, memorySink, onlyTrace } from '../support/trace.js'
+import { confirmingEnvironment } from '../support/ask.js'
 
 /**
  * The whole chain, against a recorded model: Inspector → Architect → the five
@@ -110,6 +111,7 @@ const run = async (
   intent: string,
   repo: string,
   project: string,
+  { confirmsEnvironment = true }: { readonly confirmsEnvironment?: boolean } = {},
 ): Promise<{ code: number; out: string; err: string; events: AgentEvent[] }> => {
   const out: string[] = []
   const err: string[] = []
@@ -125,11 +127,18 @@ const run = async (
     err: (chunk) => void err.push(chunk),
     events: (event) => void events.push(event),
     // Somebody at the keyboard, answering the one question a grant always
-    // carries. Without it these scenarios stop at the level and never exercise
-    // the two gates past it — which is the half of the chain a recording is
-    // for. Every other question is declined, so a scenario about an unvouched
-    // owner still ends on that owner.
-    ask: async (question) => (question.path.endsWith('.access') ? 'read' : undefined),
+    // carries, and confirming the environment the draft proposed wherever it
+    // is asked: "in prod" states none, as "read" states no level. Without it
+    // these scenarios stop at those questions and never exercise the two gates
+    // past them — which is the half of the chain a recording is for. Every
+    // other question is declined, so a scenario about an unvouched owner still
+    // ends on that owner.
+    ask: async (question) =>
+      question.path.endsWith('.access')
+        ? 'read'
+        : confirmsEnvironment
+          ? confirmingEnvironment(question)
+          : undefined,
   })
   const stderr = err.join('')
   // A recording whose prompt has drifted replays anyway and warns, and the
@@ -258,8 +267,8 @@ describe('plan "<intent>"', () => {
     'link-ambiguous-env: the request names no environment',
     async () => {
       // "Declare, never infer": silence in the request is not permission. An
-      // environment is echoed or it is a question — never enumerated, because
-      // `prod` always exists.
+      // environment is answered, or the declaration the request points at, or
+      // it is a question — never enumerated, because `prod` always exists.
       const repo = await declarations({
         'catalog/databases/orders-db-prod.yml': ORDERS_DB,
         'systems/billing-api.yml': BILLING_API,
@@ -267,16 +276,24 @@ describe('plan "<intent>"', () => {
       const project = await application({ 'package.json': PACKAGE_JSON })
       const before = await hashTree(repo)
 
+      // Nobody confirms the environment here: the scenario is that it is
+      // asked, and the run ends on the question rather than on a default.
       const { code, out, events } = await run(
         'link-ambiguous-env',
         'give billing-api read access to orders-db',
         repo,
         project,
+        { confirmsEnvironment: false },
       )
 
       expect(await hashTree(repo)).toBe(before)
       endedWell(code, out)
       reachedTheModel(events)
+      expect(
+        events.some(
+          (event) => event.type === 'ask' && event.question.path.endsWith('.metadata.env'),
+        ),
+      ).toBe(true)
     },
     TIMEOUT,
   )

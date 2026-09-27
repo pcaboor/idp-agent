@@ -1,0 +1,25 @@
+{
+  "intent": "open the network flow orders-api-to-payments from component:default/orders-api to resource:default/payments-api, owned by group:default/tiger",
+  "operations": [
+    {
+      "op": "create-entity",
+      "entity": {
+        "kind": "Resource",
+        "metadata": {
+          "name": "orders-api-to-payments",
+          "env": "prod"
+        },
+        "spec": {
+          "type": "network-access",
+          "owner": "group:default/tiger",
+          "dependsOn": [
+            "resource:default/payments-api"
+          ],
+          "dependencyOf": [
+            "component:default/orders-api"
+          ]
+        }
+      }
+    }
+  ]
+}

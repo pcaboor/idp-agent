@@ -6,7 +6,7 @@ import { signPlan, type SignatureContext } from '../../src/core/plan/sign.js'
 import type { Entity } from '../../src/core/schemas/entity.js'
 import { findUnknowns, planSchema, type Plan } from '../../src/core/schemas/plan.js'
 import { ENV_ANNOTATION } from '../../src/core/schemas/vocabulary.js'
-import { saidWithLevels, userSaid } from '../support/provenance.js'
+import { saidInFull, saidWithLevels, userSaid } from '../support/provenance.js'
 
 const INTENT = 'give billing-api read access to orders-db in prod'
 
@@ -271,7 +271,7 @@ describe('what the signature then says about it', () => {
     // claim is that the value passes THIS gate, and a hand-written expectation
     // about `enumerated` would still hold on the day it stopped being true.
     const derived = derive(planOf(access()), OWNERS)
-    const signed = signPlan(derived.plan, context(), saidWithLevels(derived.plan))
+    const signed = signPlan(derived.plan, context(), saidInFull(derived.plan))
     if ('outcome' in signed) throw new Error(`refused: ${JSON.stringify(signed.refusals)}`)
 
     expect(findUnknowns(signed.plan)).toEqual([])

@@ -136,16 +136,48 @@ a policy is for, and what a diff is for after that, and what the merge is for af
 An environment is deliberately not enumerable: `prod` always exists, so accepting it
 because the catalogue uses it would let a model pick production for a request that named no
 environment at all. §4.1 says being authorised in dev grants nothing elsewhere, so an
-environment is echoed — the user named it — or novel, and novel means asked.
+environment is answered, or derived from the declaration the request points at, or novel,
+and novel means asked. **It is never echoed**: no word of the request states one, in any
+language, exactly as no word states a level — see below.
 
 Echoed means named as a **whole word** (`echoes.ts`): letters, marks and digits of any
 script joined by `.`, `_` or `-`, ended by anything else and by a change of script. A
 hyphen joins, so "non-prod", "pre-prod" and "hors-prod" name no `prod` and "lion-ops" no
 `lion`; the price, in the safe direction, is that "en production" names no `prod` either,
 nor does "orders-db-prod" — an environment inside a longer name is no word of the request —
-and the environment is asked, unless the entity named is what a grant is over (below). U+2010 and U+2011 are hyphens too, and a letter of any script
+and nothing reads an environment out of a request's words anyway (below). U+2010 and U+2011 are hyphens too, and a letter of any script
 but Latin ends a token, listed anywhere or not. A composed name is vouched for by runs of its segments that
 are whole words of the request, so `orders-db-prod` still passes on "orders-db in prod".
+
+**The environment comes from the declaration you point at, or you are asked — never from
+words** (the owner's decision of 2026-09-27). A word test cannot read a negation: "not
+prod", "hors prod", "non–prod" with a dash, "prodではなく", "dont use prod" and "nao em
+prod" each leave `prod` a whole word. A lexicon of negations withdrew the word for a while,
+and a verifier found the phrasings it did not hold, each ending on a production diff; no
+list is complete. So `requestedEnvironment` — the one definition the signature of
+`metadata.env`, the question of an update's and the policies read — reads no environment
+word, and states one only through pointing (below) or an answer.
+
+**A negation vetoes the pointing** (`negation.ts`), and that is all it does now: "…pas à
+resource:default/orders-db-prod" names the prod database by its reference in full to
+exclude it, so a request holding a negation marker anywhere points at nothing, and the
+environment is asked. What the negation is about is not read — "no rush, …" asks too, the
+cost of failing closed. `NEGATIONS` is the marker set, by language, as data; a marker is a
+whole word as prose splits it (`proseWords`: a hyphen, a dash and a change of script end
+one), several words in a row, English's `n't` ending a word, `w/o` standing alone, or — in
+Han, kana, Hangul and Thai — found wherever it stands; the accents of Latin letters are
+read on neither side, so "nao" and "plutot que" count. It is a veto and never a guarantee:
+a negation it does not hold, beside a reference in full, still points — at the declaration
+the person named, whose environment the diff shows. An answer is not a word, and no
+negation reaches it.
+
+**A word cancels a pointing, and never states one** (`contradicts` in `environment.ts`).
+"…resource:default/orders-db-prod in dev" names prod in full and says dev, and ended on the
+prod diff: now a word spelling an environment the repository uses — the vocabulary's, or
+one a document declares — other than the one pointed at, found as whole words as prose
+splits them, withdraws the pointing and the environment is asked. The references pointed at
+are set aside first, so `orders-db-pre-prod` says no `prod`; "the dev team" asks too, the
+cost of failing closed; a word the repository never uses as an environment is not read.
 
 ## Where an environment is read, and where it is asked
 
@@ -157,8 +189,8 @@ another. Counting the name as scope let `billing-api-orders-db-prod`, declared d
 over the prod database. `environment-mismatch` still reads the name, against what the user
 stated, because there reading more only refuses more.
 
-**An update's environment is asked** when nothing the user said names the environment of
-the grant it extends — the patch carries none, so the model chose. The question is put at
+**An update's environment is asked** unless the user answered it or pointed at it — the
+patch carries none, so the model chose. The question is put at
 `operations.<n>.environment` (`ENVIRONMENT_FIELD`), a path the operation has no field for,
 with the grant, its environment as the draft's, and the environments in use; `fillAnswers`
 records the answer without writing it into the plan. It is keyed by its access like a
@@ -169,25 +201,34 @@ environment than the grant's is `environment-mismatch`'s to refuse, and the reme
 the grant of that environment — a right declared there, held by the same consumers, and
 what it is over — beside a separate grant. The engine never retargets the operation itself.
 A grant that declares no environment is asked about too, with the environment of what it
-is over (`scopeOf`); a request naming an environment is not asked, and a grant in another
-is refused against it. Nor is a request naming no environment but everything the grant is
-over by its reference in full — `kind:namespace/name`, or `kind:name` in the default
+is over (`scopeOf`); a request naming an environment in words is asked like any other. A
+request naming everything the grant is over by its reference in full is not — `kind:namespace/name`, or `kind:name` in the default
 namespace, each a whole token — each thing declaring the environment the grant hands out:
 "…à resource:default/orders-db-prod" pointed at a declaration, so nothing is inferred, and
 `checkPolicies` counts that environment as stated, holding the consumer to it. All or
 nothing — a grant over two things with one named, a thing declaring no environment, another
 thing named, or the reference inside a longer token, is asked — and a bare name never
-points. Both the word and the pointing are vetoed by what the request mentions: every name
+points. The pointing is vetoed by what the request mentions: every name
 the repository holds (`Namesakes`, read off every file's bytes by `namesakesIn` — entities,
 APIs, documents refused whose name can be read, documents set aside that carry one, and
 namesakes in other namespaces), each with the SET of environments its documents declare,
 found anywhere in the folded request as a plain substring. A mentioned name in another
-environment than the grant's, or words and mentions naming more than one, and the update's
-environment is asked; so it is when a refused document's name cannot be read. One function,
-`requestedEnvironment`, for the question and the policies, so what stops the question is
-what the gates hold the plan to. The cost, in the safe direction: a bare name, or a request
-mentioning several environments' entities, gets the question. Pointing stands in for
-silence only: beside a named or answered environment it adds nothing. An answer held by its path alone vouches only while that path joins
+environment than the grant's, and the update's environment is asked; so it is when a refused document's name cannot be read, and when the
+request holds a negation marker anywhere (`negates`) or a word saying another environment
+(`contradicts`), either of which cancels the pointing. One function,
+`requestedEnvironment`, for the signature, the question and the policies, so what stops the
+question is what the gates hold the plan to. The cost, in the safe direction: a bare name,
+an environment named only in words, a request mentioning several environments' entities,
+or one holding a negation, gets the question. Pointing stands in for silence only: beside
+an answered environment it adds nothing.
+
+**A right the draft creates** is pointed at the same way: its `dependsOn`, every thing the
+repository declares, named in full, one environment, the same vetoes — and its
+`metadata.env` is then signed `derived` from that declaration, not asked. A thing points at
+nothing; a right over a thing the same plan creates, over one declaring no environment, or
+declaring another environment than the one pointed at, is asked. Only a levelled grant is
+read for what it is over when an update extends it (`GrantedOver`), so joining a consumer
+to a network flow is asked, even over a thing named in full. An answer held by its path alone vouches only while that path joins
 the same consumer to the same grant, since the plan holds no value to check it against.
 
 ## The translation nobody owns

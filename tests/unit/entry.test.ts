@@ -17,6 +17,7 @@ import type {
   LlmClient,
 } from '../../src/llm/client.js'
 import { hashTree } from '../support/tree.js'
+import { confirmingEnvironment } from '../support/ask.js'
 
 /**
  * `idpa "<phrase>"`, the one gesture (§7.4): from anywhere, a question about
@@ -122,7 +123,7 @@ const CREATE_ACCESS = {
 }
 
 const answering = (value: string): Ask => async (question) =>
-  question.path.endsWith('.access') ? value : undefined
+  question.path.endsWith('.access') ? value : confirmingEnvironment(question)
 
 /** A change request, drafted and accepted; the Inspector reports if it is asked. */
 const changing = (): LlmClient & { seen: GenerateRequest[] } =>

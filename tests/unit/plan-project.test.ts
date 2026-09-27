@@ -18,6 +18,7 @@ import type {
 } from '../../src/llm/client.js'
 import { hashTree } from '../support/tree.js'
 import { applicationRoot, RepositoryArgumentError } from '../../src/cli/repository.js'
+import { confirmingEnvironment } from '../support/ask.js'
 
 /**
  * Which directory `plan "<intent>"` inspects, and what it prints that a model
@@ -122,7 +123,7 @@ const CREATE_ACCESS = {
 }
 
 const answering = (value: string): Ask => async (question) =>
-  question.path.endsWith('.access') ? value : undefined
+  question.path.endsWith('.access') ? value : confirmingEnvironment(question)
 
 /**
  * `stream` leaves the events to the renderer a real run uses, on `err`, for
@@ -620,8 +621,8 @@ const amending = async ({
   await writeFile(
     from,
     JSON.stringify({
-      // "in prod", or the environment of the grant it extends is asked: the
-      // `prod` inside the reference is part of a longer word (core-plan-3).
+      // The environment of the grant it extends is asked: "in prod" states
+      // none, as no word does, and the run confirms it (`answering`).
       intent:
         `let ${CONSUMER} use resource:default/billing-api-billing-db-prod in prod, ` +
         'the readwrite access',
@@ -819,36 +820,23 @@ describe('what plan prints that a model or a file wrote', () => {
   })
 
   it('a policy message, which quotes the value it refuses', async () => {
-    // The environment is a question, the answer is the payload, and the
-    // answer is vouched for — the user said it — so the policy is what refuses
-    // it, quoting it: the plan touches <it>, but the request said prod. Over
-    // a repository that already uses prod, so the word is an environment.
-    const { root } = await amending()
-    const from = path.join(await temp(), 'plan.json')
-    await writeFile(
-      from,
-      JSON.stringify({
-        intent: 'declare the database orders-db in prod owned by group:default/tiger',
-        operations: [
-          {
-            op: 'create-entity',
-            entity: {
-              kind: 'Resource',
-              metadata: { name: 'orders-db', env: { unknown: 'which environment?' } },
-              spec: { type: 'database', owner: 'group:default/tiger' },
-            },
-          },
-        ],
-      }),
-      'utf8',
-    )
-    const ask: Ask = async (question) => (question.path.endsWith('.env') ? PAYLOAD : undefined)
+    // The environment of the grant the update extends is a question, the
+    // answer is the payload, and an update's answer counts whatever it names —
+    // so the policy is what refuses it, quoting it: the grant is declared
+    // prod, and <it> was answered.
+    const { root, from } = await amending()
+    const ask: Ask = async (question) =>
+      question.path.endsWith('.access')
+        ? 'readwrite'
+        : question.path.endsWith('.environment')
+          ? PAYLOAD
+          : undefined
 
     const { code, out } = await run(['plan', '--from', from, '--repo', root], { ask })
 
     expect(code).toBe(1)
     inert(out)
-    expect(out).toMatch(/^ {8}the plan touches .*evil.*fake\.yml, but .*$/m)
+    expect(out).toMatch(/^ {8}.* is declared prod, and .*evil.*fake\.yml was answered at .*$/m)
   })
 
   it('a plan file that is not JSON, quoted by the parser', async () => {

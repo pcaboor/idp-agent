@@ -328,6 +328,11 @@ function contextsOf(
       vocabulary,
       repoRoot: root,
       declared,
+      // What a right's environment is read off when the request points at
+      // what it is over — the policies' own two maps, so the signature and
+      // the gates read one repository (`requestedEnvironment`).
+      environments,
+      namesakes,
     },
     policy: {
       vocabulary,
@@ -608,9 +613,10 @@ export const renderQuestions = (questions: readonly Question[]): CommandResult =
  * What to do next, true of every question listed. "Fill them in" cannot be
  * followed for an implied one — the environment of the grant an update
  * extends: its path is no field of the plan, `update-entity` is a strict
- * object, and an `environment` written into it is refused at the schema. So
- * with nobody to ask, it is answered by the request's own words, which on
- * `--from` are the plan's `intent`, or at a terminal.
+ * object, and an `environment` written into it is refused at the schema. And
+ * no word of the request states one (`requestedEnvironment`). So with nobody
+ * to ask, it is settled by the request naming what the grant is over by its
+ * reference in full — on `--from`, the plan's `intent` — or at a terminal.
  */
 const closingOf = (questions: readonly Question[]): string[] => {
   const nothing = 'Nothing was previewed, and nothing was written.'
@@ -619,8 +625,8 @@ const closingOf = (questions: readonly Question[]): string[] => {
   const paths = implied.map((question) => question.path)
   return [
     `${paths.join(', ')} ${paths.length === 1 ? 'is not a field' : 'are not fields'} of the ` +
-      'plan: name the environment in the request — a plan’s intent — or run this at a ' +
-      'terminal to be asked.',
+      'plan: name what the grant is over by its reference in full in the request — a ' +
+      'plan’s intent — or run this at a terminal to be asked.',
     implied.length === questions.length
       ? nothing
       : `Fill in the rest and run this again. ${nothing}`,

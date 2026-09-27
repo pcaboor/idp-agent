@@ -10,6 +10,7 @@ import { runInitPlatform } from '../../src/cli/commands/init.js'
 import { main, type MainDeps } from '../../src/cli/index.js'
 import type { AgentName, GenerateResult, LlmClient } from '../../src/llm/client.js'
 import { disagreements, memorySink, onlyTrace, skeletonOf } from '../support/trace.js'
+import { confirmingEnvironment } from '../support/ask.js'
 
 const FIXTURES = path.resolve(import.meta.dirname, '../../fixtures/si-demo')
 
@@ -299,7 +300,10 @@ const running = async (argv: string[], deps: MainDeps): Promise<Ran> => {
   const err: string[] = []
   const events: AgentEvent[] = []
   const code = await main(argv, {
-    ask: async (question) => (question.path.endsWith('.access') ? 'read' : undefined),
+    // The level answered, and the environment confirmed as drafted: neither is
+    // read out of the request's words.
+    ask: async (question) =>
+      question.path.endsWith('.access') ? 'read' : confirmingEnvironment(question),
     events: (event) => void events.push(event),
     out: (chunk) => void out.push(chunk),
     err: (chunk) => void err.push(chunk),

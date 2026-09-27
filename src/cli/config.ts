@@ -128,10 +128,11 @@ const sorted = (values: Iterable<string>): string[] => [...new Set(values)].sort
  *
  * `summariseGraph` builds a vocabulary empirically — it is what the catalogue
  * currently holds — and on a repository with no entities yet that is empty.
- * Empty is what silences the environment policies: `checkPolicies` computes the
- * environments the request named by filtering this list, so an empty one makes
- * `asked` empty and `environment-mismatch` structurally unable to fire, and
- * `environmentsTouched` cannot recognise an environment inside a composed name.
+ * Empty is what silences the environment policies: `checkPolicies` counts an
+ * environment answered for a proposed entity only when it is in this list, so
+ * an empty one makes `asked` empty and `environment-mismatch` structurally
+ * unable to fire, and `environmentsTouched` cannot recognise an environment
+ * inside a composed name.
  * §7.0's `environments` is the declaration that fills the gap before the first
  * entity exists.
  *

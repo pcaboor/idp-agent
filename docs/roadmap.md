@@ -146,6 +146,14 @@ The owner's decisions, dated, each with where it is recorded.
   declarations — while Backstage's content stays untrusted input.
 - No GitHub issues for now: open items are tracked in this file.
 
+**2026-09-27**
+
+- An environment is never taken from the request's words, like an access level; it comes
+  from the declaration of the target the person designates by full reference, or from an
+  answer. Otherwise it is asked, the environments in use listed. A negation lexicon is kept
+  only as a veto on that pointing
+  ([#81](https://github.com/pcaboor/idp-agent/pull/81)).
+
 ## Known debts and open items
 
 Each was checked against `main` at `3b642fa`.
@@ -253,20 +261,36 @@ Checked against this change ([#80](https://github.com/pcaboor/idp-agent/pull/80)
   environment the question shows none as the draft's and no policy compares the answer
   ([#79](https://github.com/pcaboor/idp-agent/pull/79); `scopeOf` in
   `src/core/plan/environment.ts`).
-- **A negation written with a space still names the environment.** "non prod", "hors prod"
-  or "not prod" — and "non–prod" with an en dash — leave `prod` a whole word, so an update
-  joining the prod grant is not asked and ends on a diff. The hyphenated forms are closed
-  ([#79](https://github.com/pcaboor/idp-agent/pull/79)); a negating word before an
-  environment word should withdraw it, or at least ask (`src/core/plan/echoes.ts`).
+- **The negation veto is a list, and a list is never complete.** An environment is no
+  longer read from a request's words at all
+  ([#81](https://github.com/pcaboor/idp-agent/pull/81)), so a negation it misses no
+  longer names an environment; what remains is the pointing. A request holding a negation
+  marker anywhere points at nothing, and the markers cover the languages and phrasings
+  `NEGATIONS` lists (`src/core/plan/negation.ts`), accents read on neither side. A negation
+  in any other language or phrasing, beside a reference in full — "…, prod 안 돼,
+  resource:default/orders-db-prod" — still points, at the declaration the person named,
+  whose environment the diff shows before the merge, unless a word of it says another
+  environment, which cancels the pointing on its own. It fails closed, and the cost is
+  stated: an unrelated "no" beside a reference asks, a name or ticket carrying a marker
+  segment (`no-reply-api`, `PAS-123`) withdraws a pointing too, and so does a word spelling
+  another environment anywhere ("the dev team").
+- **Joining a consumer to a network flow is always asked its environment.** Only a
+  levelled grant is read for what it is over (`GrantedOver`), so an update extending a
+  `network-access` right points at nothing even when the request names what it is over in
+  full ([#81](https://github.com/pcaboor/idp-agent/pull/81)); a creation of one does
+  point. Asked, the safe direction.
 - **The mention check does not fold confusables.** A mention written with a lookalike letter
   (a Cyrillic `о` in `оrders-db-dev`) escapes the veto; the request must still name the target
   by full reference, so the environment reached is the one referenced
   (`src/core/plan/environment.ts`).
 - **A Hangul filler (U+3164), which renders as a blank, is removed like other invisible
   characters,** so `pro<filler>d` reads `prod` (`fold` in `src/core/plan/echoes.ts`).
-- **Only the vocabulary's words are environment words.** "staging" or "development" in a
-  repository whose environments are dev and prod neither state an environment nor veto the
-  pointing (design §7.5).
+- **Only the repository's environments are environment words.** A word states no
+  environment, and one saying another than the declaration pointed at cancels the pointing
+  — but only an environment the vocabulary or a document names: "staging" or "development"
+  in a repository whose environments are dev and prod does not, so "…
+  resource:default/orders-db-prod in staging" still points at prod, which the diff shows
+  (`contradicts` in `src/core/plan/environment.ts`, design §5.3).
 - **Every diff writes the demo company's `company.fr/env` annotation**
   (`ENV_ANNOTATION` in `src/core/schemas/vocabulary.ts`). Making it configurable is stage 8's
   question 6.

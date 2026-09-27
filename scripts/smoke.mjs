@@ -366,10 +366,12 @@ check({
   stderr: /^reading the declarations repository IaC \(.*config\.yml\)/,
   absentFromStderr: DEMO,
 })
+// Decided against IaC, and asked: the database's environment is named only in
+// words, which state none, and nobody is at this keyboard.
 check({
   args: ['plan', '--from', path.join(ROOT, 'examples/declare-database.json')],
-  code: 0,
-  stdout: /\+\+\+ b\/catalog\/databases\/orders-db-prod\.yml/,
+  code: 3,
+  stdout: /^1 question, asked rather than guessed:[\s\S]*operations\.0\.entity\.metadata\.env/m,
   stderr: /^reading the declarations repository IaC \(.*config\.yml\)/,
 })
 // Removed again: every check below expects nothing configured.
@@ -404,18 +406,19 @@ check({
 // A repository that was already wrong before the plan, as a real one usually
 // is: one document the reader rejects, in a file the plan never touches. The
 // re-check refused every plan over it; it is counted in one line now, and the
-// plan is previewed. The scaffolded repository rather than the demo SI, which
-// already declares orders-db-prod and would leave no diff to look for.
-cpSync(PREVIEWED, path.join(ELSEWHERE, 'untidy'), { recursive: true })
+// plan is previewed. A copy of the demo SI, where `open-network.json` points at
+// a declaration and so needs nobody to answer its environment: on a scaffolded
+// repository it would point at nothing, and stop at the question.
+cpSync(path.join(ROOT, 'fixtures/si-demo'), path.join(ELSEWHERE, 'untidy'), { recursive: true })
 writeFileSync(
   path.join(ELSEWHERE, 'untidy/catalog/databases/legacy.yml'),
   '---\napiVersion: backstage.io/v1alpha1\nkind: Resource\nmetadata:\n  name: legacy\n',
 )
 check({
-  args: ['plan', '--from', path.join(ROOT, 'examples/declare-database.json'), '--repo', 'untidy'],
+  args: ['plan', '--from', path.join(ROOT, 'examples/open-network.json'), '--repo', 'untidy'],
   code: 0,
   stdout:
-    /1 error already in the repository, in files this plan does not touch[\s\S]*\+\+\+ b\/catalog\/databases\/orders-db-prod\.yml/,
+    /1 error already in the repository, in files this plan does not touch[\s\S]*\+\+\+ b\/dependencies\/network\/orders-api-to-payments\.yml/,
 })
 
 // A declarations repository that is also the company's Backstage catalogue: a
@@ -453,9 +456,9 @@ check({
   for (const shown of [
     /^impacts \(9\)$/m,
     /^component:default\/billing-api$/m,
-    /^\+\+\+ b\/catalog\/caches\/orders-cache-dev\.yml$/m,
+    /^\+\+\+ b\/dependencies\/network\/orders-api-to-payments\.yml$/m,
     /^unchanged: same files, same bytes, same folders$/m,
-    /^1 question, asked rather than guessed:$[\s\S]*^\(exit 3\)$/m,
+    /^2 questions, asked rather than guessed:$[\s\S]*^\(exit 3\)$/m,
     /^Done\. No model was called/m,
   ]) {
     if (!shown.test(out)) failures.push(`pnpm demo: stdout ${shown}`)

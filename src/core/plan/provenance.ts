@@ -64,11 +64,11 @@ export interface Provenance {
 /**
  * Did the request name this value? Only a person's request can; see `wordsOf`.
  *
- * Exported apart from `stated` for the three readers that ask about the words
- * alone: a composed name vouched for in runs of its segments, the environments
- * a request names for every operation of a plan at once, and whether the
- * request states an update's environment, by a word or by the references it
- * names (`requestedEnvironment`).
+ * Exported apart from `stated` for the readers that ask about the words
+ * alone: a composed name vouched for in runs of its segments, and the
+ * references a request names (`requestedEnvironment`). Never an environment:
+ * a word states none, in any language, and neither does a level (`signPlan`).
+ * An environment is the declaration the request points at, or an answer.
  */
 export const named = (provenance: Provenance, value: string): boolean =>
   provenance.wordsOf === 'user' && echoes(provenance.intent, value)
@@ -79,10 +79,11 @@ export const answered = (provenance: Provenance, path: string, value: string): b
 
 /**
  * Did the user state this value at this field — in the request, or answering
- * for it? The question the derivation asks of an owner, the signature of most
- * leaves, and the policies of an operation's own environment. The two
- * exceptions compose the halves on purpose: a level only an answer vouches for
- * (`answered`), and a composed name only the request's words can (`named`).
+ * for it? The question the derivation asks of an owner, and the signature of
+ * most leaves. The exceptions compose the halves on purpose: a level and an
+ * environment only an answer vouches for (`answered`) — an environment also
+ * the declaration the request points at (`requestedEnvironment`) — and a
+ * composed name only the request's words can (`named`).
  */
 export const stated = (provenance: Provenance, path: string, value: string): boolean =>
   named(provenance, value) || answered(provenance, path, value)

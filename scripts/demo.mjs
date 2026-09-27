@@ -83,7 +83,7 @@ step('2. What billing-api is, and what it depends on', ['show', 'billing-api', '
 const before = hashTree(path.join(ROOT, DEMO_SI))
 step(
   '3. A change, as the diff it would make — the plan comes from a file, so no model is involved',
-  ['plan', '--from', 'examples/declare-cache.json', '--repo', DEMO_SI],
+  ['plan', '--from', 'examples/open-network.json', '--repo', DEMO_SI],
   0,
 )
 

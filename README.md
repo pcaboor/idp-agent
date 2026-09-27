@@ -13,7 +13,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 2467, no API key" src="https://img.shields.io/badge/tests-2467%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 2936, no API key" src="https://img.shields.io/badge/tests-2936%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -53,25 +53,29 @@ impacts (9)
 back as the diff it would make. Here the plan is read from a file that stands where the
 model's draft would, so no model is involved; it still goes through the signature, the
 policies and the re-check against the repository, and the repository is left byte for
-byte as it was:
+byte as it was. Its request names `resource:default/payments-api` by its reference in
+full, and the flow's environment is the one that declaration states — an environment is
+never read from the words of a request:
 
 ```text
-$ node dist/cli/bin.js plan --from examples/declare-cache.json --repo fixtures/si-demo
+$ node dist/cli/bin.js plan --from examples/open-network.json --repo fixtures/si-demo
 --- /dev/null
-+++ b/catalog/caches/orders-cache-dev.yml
-@@ -0,0 +1,12 @@
++++ b/dependencies/network/orders-api-to-payments.yml
+@@ -0,0 +1,14 @@
 +---
 +apiVersion: backstage.io/v1alpha1
 +kind: Resource
 +metadata:
-+  name: orders-cache-dev
++  name: orders-api-to-payments
 +  annotations:
-+    company.fr/env: dev
++    company.fr/env: prod
 +spec:
-+  type: cache
++  type: network-access
 +  owner: group:default/tiger
 +  dependsOn:
-+    - resource:default/redis-shared-dev
++    - resource:default/payments-api
++  dependencyOf:
++    - component:default/orders-api
 
 1 file · nothing written
 Nothing is provisioned yet. The merge is what authorises it.
@@ -81,13 +85,17 @@ Nothing is provisioned yet. The merge is what authorises it.
 reads and writes that same annotation in every repository: it is not configurable yet.
 
 A value nobody can vouch for — in the request, or in the repository — is asked, never
-guessed. In a terminal the question comes at a prompt; piped or in CI, as here, it is
-printed and the run exits 3. [`examples/`](examples) lists every plan with its exit code.
+guessed: here the owner, and the database's environment, which "in prod" does not state.
+In a terminal the question comes at a prompt; piped or in CI, as here, it is printed and
+the run exits 3. [`examples/`](examples) lists every plan with its exit code.
 
 ```text
 $ node dist/cli/bin.js plan --from examples/needs-an-owner.json --repo fixtures/si-demo
-1 question, asked rather than guessed:
+2 questions, asked rather than guessed:
 
+  operations.0.entity.metadata.env
+      nothing vouches for this env; which one is it?
+      the draft says prod · in use: dev, prod, staging
   operations.0.entity.spec.owner
       nothing vouches for this owner; which one is it?
       the draft says group:default/platform-wizards
@@ -121,7 +129,8 @@ idpa "give reporting-worker read access to orders-db-prod in prod"
 A question prints the engine's answer, with the model's sentences around it marked `›`. A
 change is decided against the declarations repository you stand in — a copy of the demo
 SI here, because a change is never previewed against the demo itself. What nobody can
-vouch for is asked at a prompt, the level of a grant always, and the diff follows.
+vouch for is asked at a prompt — the level of a grant always, and the environment unless the
+phrase names what the access is over by its reference in full — and the diff follows.
 Neither writes anything. The CLI reads its environment and never loads a `.env` file:
 [`.env.example`](.env.example) lists every variable it reads, for
 `node --env-file=.env dist/cli/bin.js "<question>" --demo` from the clone. For a change,
@@ -147,8 +156,9 @@ idp-agent sits between the two:
   the exact entities to add, in your repository's own layout.
 - 🔒 **The merge is the approval.** The agent proposes and a human reviews. Nothing is
   provisioned until a pull request is merged.
-- 🧭 **Asks, never guesses.** Every owner, environment and access level must trace back to
-  your request or to what your repository already holds. Anything else becomes a question.
+- 🧭 **Asks, never guesses.** Every owner must trace back to your request or to what your
+  repository already holds, and every environment to a declaration you point at or to your
+  answer; an access level is always yours to answer. Anything else becomes a question.
 - ✂️ **Minimal diffs.** It edits the text surgically and never reformats a file, so a
   reviewer sees one added line, not a reshuffled file.
 - 🧪 **Reproducible without an API key.** The whole suite runs offline from recordings:

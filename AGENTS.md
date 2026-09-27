@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 2467 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 2936 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # runs the built dist/cli/bin.js, which the suite never does,
@@ -401,30 +401,37 @@ which arrives with the plan from whoever drafted it. `plan.ts` records the answe
 
 An environment is deliberately **not** enumerable. `prod` always exists, so accepting one
 because the catalogue uses it would let a model pick production for a request that named
-no environment at all (§4.1). An environment is echoed — the user named it — or novel, and
-novel means asked. `.idp-agent.yml`'s `environments` widens what the deterministic gates
-can *see*; it does not vouch for anything. The user names a value only as a **whole word**
-of the request (`echoes`: letters, marks and digits of any script joined by `.`, `_` or
-`-`), so "non-prod" names no `prod`, and "en production" or "orders-db-prod" names none
-either — asked, the safe direction. The environment a right grants is the one it
+no environment at all (§4.1). **And it is never read from the words of a request**, in any
+language, exactly as a level is not: a word test cannot read a negation — "not prod",
+"prodではなく", "dont use prod" each leave `prod` a whole word — and no list of negations is
+complete. The environment comes from the declaration the person points at, or from their
+answer; otherwise it is asked, the environments in use listed (owner's decision,
+2026-09-27). `.idp-agent.yml`'s `environments` widens what the deterministic gates can
+*see*; it does not vouch for anything. The environment a right grants is the one it
 **declares**, never one its name spells, and a name spelling another is refused
-(`environment-in-name`). And the grant an `update-entity` extends carries an environment
-the patch does not state — its own, or that of what it is over when it declares none — so
-when the request names no environment, it is asked at `operations.<n>.environment`, the
-grant and its environment shown, never a default; an answer naming another environment is
-refused with the grant of that environment as the remedy, never retargeted (design §6.1,
-§7.5). Not asked when the request names everything the grant is over by its **reference in
-full** — `kind:namespace/name`, or `kind:name` in the default namespace, as whole tokens —
-and each declares the environment the grant hands out: the person pointed at that
-declaration, and the gates hold the update to it. A bare name never points. Both that and
-an environment word are vetoed by what the request **mentions**: every name the repository
-holds — entities, APIs, documents refused or set aside, namesakes in other namespaces —
-with every environment any of its documents declares, found anywhere in the folded request
-as a plain substring. A mentioned name in another environment, or a refused document whose
-name cannot be read, and the environment is asked (`requestedEnvironment`, the one
-definition `questionsOf` and `checkPolicies` read). The cost, in the safe direction: a bare
-name, or a request mentioning several environments' entities, gets the question. Characters
-nobody sees (`\p{Default_Ignorable_Code_Point}`) are taken out before a request is read.
+(`environment-in-name`). Pointing is naming everything a right is over by its **reference
+in full** — `kind:namespace/name`, or `kind:name` in the default namespace, as whole tokens
+of the request — each declaring the one environment: for the grant an `update-entity`
+extends, the environment it hands out (its own, or that of what it is over when it
+declares none), and for a right the draft creates over things the repository declares, its
+`metadata.env`, signed `derived`. A thing points at nothing, nor does a bare name, a right
+over a thing the same plan creates, or a draft declaring another environment than the one
+pointed at. The pointing is vetoed by what the request **mentions** — every name the
+repository holds (entities, APIs, documents refused or set aside, namesakes in other
+namespaces) with every environment any of its documents declares, found anywhere in the
+folded request as a plain substring: a mentioned name in another environment, or a refused
+document whose name cannot be read, and it is asked — and by a **negation** marker anywhere
+in the request (`negates`, a list by language), which is a veto and never a guarantee: a
+negation it does not hold, beside a reference in full, still points, at the declaration the
+diff shows — and by a **word** saying another environment the repository uses (`contradicts`):
+a word never states an environment, and "…resource:default/orders-db-prod in dev" is asked. An update's environment is asked at `operations.<n>.environment`, the grant and
+its environment shown, never a default; an answer naming another environment is refused
+with the grant of that environment as the remedy, never retargeted (design §5.3, §6.1,
+§7.5). `requestedEnvironment` is the one definition `signPlan`, `questionsOf` and
+`checkPolicies` read. The cost, in the safe direction: a bare name, an environment named
+only in words, a request mentioning several environments' entities, one holding a
+negation, or one whose words say another environment, gets the question. Characters nobody sees (`\p{Default_Ignorable_Code_Point}`)
+are taken out before a request is read.
 
 Five gates run over a draft, in this order and for this reason: `zod`, `signature`,
 `policy`, `reviewer`, `recheck`. The first three are free, so a draft that cannot survive

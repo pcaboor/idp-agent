@@ -31,11 +31,13 @@ import { userSaid } from '../support/provenance.js'
  * stated one, nothing asked, and the model picked the dev grant or the prod
  * grant freely.
  *
- * §7.5: a picker, never a default. When nothing the user said names the
- * environment of the grant an update targets, the person is asked — shown the
- * grant the draft chose and its environment, and the environments in use — and
- * the answer is held to it: an answer naming another environment is refused,
- * with the grant of that environment as the remedy, and never retargeted.
+ * §7.5: a picker, never a default. Unless the person answered it, or pointed
+ * at what the grant is over by its reference in full, the environment of the
+ * grant an update targets is asked — shown the grant the draft chose and its
+ * environment, and the environments in use — and the answer is held to it: an
+ * answer naming another environment is refused, with the grant of that
+ * environment as the remedy, and never retargeted. A word of the request never
+ * states one (the owner's decision of 2026-09-27), in any language.
  */
 
 const PROD_GRANT = 'resource:default/orders-api-orders-db-prod'
@@ -220,15 +222,16 @@ describe('the question', () => {
     provenance: userSaid(intent, answers),
   })
 
-  it('is asked when nothing the user said names the environment of the grant', () => {
+  it('is asked when the user neither answered nor pointed at the environment of the grant', () => {
     const questions = questionsOf(parsed(UNSCOPED, [joining(PROD_GRANT)]), context(UNSCOPED))
 
     expect(questions).toEqual([
       {
         path: ENVIRONMENT,
         question:
-          `the draft joins ${BILLING} to ${PROD_GRANT}, which is declared prod, and nothing ` +
-          'you said names an environment for it; which environment is this access for?',
+          `the draft joins ${BILLING} to ${PROD_GRANT}, which is declared prod, and an ` +
+          'environment is never read from the words of a request; which environment is this ' +
+          'access for?',
         proposed: 'prod',
         inUse: ['dev', 'prod'],
         implied: true,
@@ -240,8 +243,15 @@ describe('the question', () => {
     ['English', 'give billing-api read access to orders-db in prod'],
     ['French', 'donne à billing-api un accès en lecture à orders-db en prod'],
     ['Japanese', 'billing-apiにprod環境のorders-dbへの読み取りアクセスを付与'],
-  ])('is not asked when the %s request names the grant’s environment', (_language, intent) => {
-    expect(questionsOf(parsed(intent, [joining(PROD_GRANT)]), context(intent))).toEqual([])
+  ])('is asked when the %s request names the grant’s environment in words', (_language, intent) => {
+    // A word states no environment, as it states no level: "not prod" and
+    // "prodではなく" leave `prod` a whole word, and no list of negations is
+    // complete.
+    expect(
+      questionsOf(parsed(intent, [joining(PROD_GRANT)]), context(intent)).map(
+        (question) => question.path,
+      ),
+    ).toEqual([ENVIRONMENT])
   })
 
   it('is asked when the request says "non-prod": a word containing prod names none', () => {
@@ -276,8 +286,8 @@ describe('the question', () => {
         path: ENVIRONMENT,
         question:
           `the draft joins ${BILLING} to resource:default/legacy-grant, which declares no ` +
-          'environment, and nothing you said names an environment for it; which environment ' +
-          'is this access for?',
+          'environment, and an environment is never read from the words of a request; which ' +
+          'environment is this access for?',
         inUse: ['dev', 'prod'],
         implied: true,
       },
@@ -428,7 +438,8 @@ describe('a request naming the thing the grant is over', () => {
   ])('is asked when the request names things in two environments, %s', (_how, intent) => {
     // Both grants: the request names the thing each is over, and another
     // thing in another environment beside it — which one it meant is the
-    // person's to say, and "not" is a word this engine does not read.
+    // person's to say. What "not" or "pas" is about is not read: a negation
+    // anywhere withdraws the pointing on its own (`negates`).
     expect(asks(intent)).toEqual([ENVIRONMENT])
     expect(asks(intent, DEV_GRANT)).toEqual([ENVIRONMENT])
   })
@@ -528,8 +539,9 @@ describe('a request naming the thing the grant is over', () => {
 
     expect(asks(intent)).toEqual([ENVIRONMENT])
     expect(asks(intent, DEV_GRANT)).toEqual([ENVIRONMENT])
-    // The word alone, or beside an entity of its own environment, still says it.
-    expect(asks('give billing-api read access to orders-db in prod')).toEqual([])
+    // The word alone states nothing; beside an entity of its own environment,
+    // named in full, the pointing still says it.
+    expect(asks('give billing-api read access to orders-db in prod')).toEqual([ENVIRONMENT])
     expect(asks(`${OWNER} en prod`)).toEqual([])
   })
 
@@ -661,6 +673,31 @@ describe('a request naming the thing the grant is over', () => {
     expect(environmentQuestions(asked).map((question) => question.proposed)).toEqual(['prod'])
     expect(result.found).toBe(false)
     expect(result.text).not.toMatch(/^\+\+\+ /m)
+  })
+
+  it.each([
+    ['a space', 'give billing-api read access to orders-db, not prod'],
+    ['a space, in French', 'donne à billing-api un accès en lecture à orders-db hors prod'],
+    ['an en dash', 'donne à billing-api un accès en lecture à orders-db en non–prod'],
+    ['a pointing beside it', `${OWNER}, pas en prod`],
+  ])('asks a request negating prod with %s, end to end', async (_how, intent) => {
+    // Each named prod as a whole word, and the prod grant passed as the
+    // environment asked for. A word states none now, negated or not, and a
+    // negation anywhere withdraws the pointing (`negates`).
+    const repo = await repository()
+    const before = await hashTree(repo)
+    const { ask, asked } = answering(undefined)
+
+    const result = await runPlan({
+      from: await planFile(repo, { intent, operations: [joining(PROD_GRANT)] }),
+      repo,
+      ask,
+    })
+
+    expect(environmentQuestions(asked).map((question) => question.proposed)).toEqual(['prod'])
+    expect(result.found).toBe(false)
+    expect(result.text).not.toMatch(/^\+\+\+ /m)
+    expect(await hashTree(repo)).toBe(before)
   })
 })
 
@@ -1283,7 +1320,7 @@ describe('a grant that declares no environment', () => {
     expect(result.text).toContain(`join ${BILLING} to ${DEV_GRANT}`)
   })
 
-  it('refuses a request naming another environment than the one it reaches', async () => {
+  it('asks a request naming another environment than the one it reaches, in words', async () => {
     const repo = await withLegacy()
     const intent = 'give billing-api read access to orders-db in dev'
     const { ask, asked } = answering(undefined)
@@ -1294,26 +1331,26 @@ describe('a grant that declares no environment', () => {
       ask,
     })
 
-    expect(environmentQuestions(asked)).toEqual([])
+    expect(environmentQuestions(asked).map((question) => question.path)).toEqual([ENVIRONMENT])
     expect(result.found).toBe(false)
-    expect(result.text).toContain('policy  environment-mismatch at operations.0.entityRef')
-    expect(result.text).toContain('the plan touches prod, but the request named dev')
+    expect(result.text).not.toMatch(/^\+\+\+ /m)
   })
 })
 
 /**
- * A request naming an environment — any the repository uses — has said what
- * it asks for. An update whose grant is in another is `environment-mismatch`'s
- * to refuse, and a question saying "nothing you said names an environment"
- * would be false, and an answer to it would let the plan through against the
- * request's own words.
+ * A request naming an environment in words has stated nothing — the owner's
+ * decision of 2026-09-27, as a level word states nothing. It used to be what
+ * `environment-mismatch` refused the grant against, until "not prod" and
+ * "prodではなく" each named prod. So it is asked, and the answer is what the
+ * grant is held to: the person answering the word they wrote is refused
+ * against the grant exactly as the word used to be.
  */
 describe('a request naming another environment than the grant’s', () => {
   const intent = 'give billing-api read access to orders-db in dev'
 
-  it('is not asked, and the grant is refused against the request', async () => {
+  it('is asked, and the grant is refused against the answer', async () => {
     const repo = await repository()
-    const { ask, asked } = answering('prod')
+    const { ask, asked } = answering('dev')
 
     const result = await runPlan({
       from: await planFile(repo, { intent, operations: [joining(PROD_GRANT)] }),
@@ -1321,13 +1358,14 @@ describe('a request naming another environment than the grant’s', () => {
       ask,
     })
 
-    expect(environmentQuestions(asked)).toEqual([])
+    expect(environmentQuestions(asked).map((question) => question.path)).toEqual([ENVIRONMENT])
     expect(result.found).toBe(false)
     expect(result.text).toContain('policy  environment-mismatch at operations.0.entityRef')
-    expect(result.text).toContain('the plan touches prod, but the request named dev')
+    expect(result.text).toContain(`dev was answered at ${ENVIRONMENT}`)
+    expect(result.text).not.toContain('the request named dev')
   })
 
-  it('asks nothing of the question function either', () => {
+  it('is asked by the question function too', () => {
     const plan = parsed(intent, [joining(PROD_GRANT)])
     expect(
       questionsOf(plan, {
@@ -1337,8 +1375,8 @@ describe('a request naming another environment than the grant’s', () => {
         namesakes: KNOWN,
         over: OVER,
         provenance: userSaid(intent),
-      }),
-    ).toEqual([])
+      }).map((question) => question.path),
+    ).toEqual([ENVIRONMENT])
   })
 })
 
@@ -1382,8 +1420,9 @@ describe('the remedy for an answered environment', () => {
  * An update's environment is asked at a path the plan has no field for, so
  * "fill them in" cannot be followed for it: `update-entity` is a strict
  * object, and an `environment` written into it is refused at the schema.
- * With nobody to ask, the way to answer is the request's own words, or a
- * terminal.
+ * And no word of the request states one. With nobody to ask, the way to
+ * settle it is the request naming what the grant is over by its reference in
+ * full, or a terminal.
  */
 describe('an update’s environment, with nobody to ask', () => {
   it('says how to answer it, since the plan has no field to fill', async () => {
@@ -1395,8 +1434,9 @@ describe('an update’s environment, with nobody to ask', () => {
     })
 
     expect(result.text).toContain(
-      `${ENVIRONMENT} is not a field of the plan: name the environment in the request — a ` +
-        'plan’s intent — or run this at a terminal to be asked.',
+      `${ENVIRONMENT} is not a field of the plan: name what the grant is over by its ` +
+        'reference in full in the request — a plan’s intent — or run this at a terminal to ' +
+        'be asked.',
     )
     expect(result.text).not.toContain('Fill them in')
     expect(result.text).toMatch(/Nothing was previewed, and nothing was written\.$/)

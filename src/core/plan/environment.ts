@@ -1,6 +1,8 @@
-import type { Operation } from '../schemas/plan.js'
-import { fold } from './echoes.js'
+import type { Operation, Plan } from '../schemas/plan.js'
+import { natureOf, RESOURCE_TYPE_NAMES, type ResourceType } from '../schemas/resource-types.js'
+import { fold, proseWords } from './echoes.js'
 import { levelFieldOf, type AccessSubject, type GrantedOver } from './grant.js'
+import { negates } from './negation.js'
 import { named, type Provenance } from './provenance.js'
 import { documentNames, type DocumentName } from '../yaml/serialize.js'
 
@@ -13,10 +15,10 @@ import { documentNames, type DocumentName } from '../yaml/serialize.js'
  * readings of it live in this module because several modules ask them: which
  * environments a NAME says (`checkPolicies`), where an operation's environment
  * is answered (`questionsOf`, `recordAnswers`, `reapplyAnswers`,
- * `checkPolicies`), and what a request states about the environment of the
- * grant an update extends — its words, or the thing it points at, measured
+ * `checkPolicies`), and what a request states about the environment of an
+ * access — never its words, only the declaration it points at, measured
  * against every name the repository holds (`requestedEnvironment`, read by
- * `questionsOf` and `checkPolicies`).
+ * `signPlan`, `questionsOf` and `checkPolicies`).
  */
 
 /**
@@ -74,8 +76,9 @@ export function environmentFieldOf(
  * each as the repository declares it. Never a name: a grant with neither is
  * scoped to nothing known, and says so.
  *
- * Read by `questionsOf` and `checkPolicies`, which holds an answer to the same scope the
- * question showed: two readings of one grant would be two engines.
+ * Read by `questionsOf`, `requestedEnvironment` and `checkPolicies`, which holds an
+ * answer to the same scope the question showed: two readings of one grant would be two
+ * engines.
  */
 export function scopeOf(
   entityRef: string,
@@ -176,24 +179,37 @@ function mentioned(
 }
 
 /**
- * The environment the request points at by naming what a grant is over, and
- * the things it named.
+ * The environment a request states for an access: never by its words, only by
+ * the declaration it points at.
+ *
+ * **An environment is never taken from the words of a request**, exactly as a
+ * level is not (`signPlan`). A word test cannot read a negation — "not prod",
+ * "prodではなく", "dont use prod" and "nao em prod" each leave `prod` a whole
+ * word — and no list of negations is ever complete: a lexicon closed the
+ * phrasings it held and a verifier found the next ones, each ending on a
+ * production diff. So no environment word states anything, in any language.
+ * What states one is a declaration the person pointed at (below), or their
+ * answer at a prompt; anything else is asked, the environments in use listed.
  *
  * "donne à component:default/billing-api un accès en lecture à
- * resource:default/orders-db-prod" names no environment, and asking it which
- * one was the engine ignoring what it had been told: it names the thing the
- * grant is over, and that thing DECLARES prod. The environment follows from a
+ * resource:default/orders-db-prod" names the thing the access is over by its
+ * reference, and that thing DECLARES prod. The environment follows from a
  * declaration the person pointed at, which is not an inference — the same
  * reading of the repository `scopeOf` already hands a grant declaring none.
+ * It holds for the grant an update extends and for a right the draft creates
+ * over the thing alike.
  *
  * It fails closed, and each condition is one a verifier got past before it
  * was there:
  *
- *   EVERY thing the grant is over declares an environment, and the grant
- *   hands out that one and no other (`scopeOf`). A grant over two things with
- *   one named hands out access to the other too; a thing declaring none
- *   points at none; a grant declared dev over a thing declared prod is a
- *   contradiction to ask about.
+ *   EVERY thing the access is over declares an environment, the same one.
+ *   A grant over two things with one named hands out access to the other too;
+ *   a thing declaring none points at none. For an update, the grant hands out
+ *   that one and no other (`scopeOf`): a grant declared dev over a thing
+ *   declared prod is a contradiction to ask about. For a creation, the things
+ *   are the right's `dependsOn`, as the repository declares them — a thing the
+ *   same plan declares is no declaration the person pointed at, and a thing is
+ *   not a right: a database declared on another is asked its own.
  *
  *   Every one of them is named by its REFERENCE, a whole token of the request
  *   (`echoes`): `kind:namespace/name` in full, or `kind:name` when its
@@ -209,39 +225,166 @@ function mentioned(
  *   namesake of the thing in another kind or namespace, a System set aside, a
  *   document refused — and the repository holds no refused document whose
  *   name cannot be read. "orders-db-dev, not orders-db-prod" mentions both
- *   databases, and "not" is a word this reads no more than any other.
+ *   databases, and is asked for that alone.
  *
- * What this costs, stated: a request naming the thing by its bare name, or
- * mentioning the entities of several environments, is asked — the safe
+ *   The request holds no negation, anywhere (`negates`). Which reference a
+ *   "not" or a "pas" is about is not read, so "…pas à
+ *   resource:default/orders-db-prod" points at nothing. The lexicon is a VETO
+ *   on the pointing and never a guarantee: a negation it does not hold, beside
+ *   a reference in full, still points — at the declaration the person named,
+ *   whose environment the diff then shows.
+ *
+ *   No word of the request says another environment the repository uses
+ *   (`contradicts`). A word states none, and it can still cancel one:
+ *   "…resource:default/orders-db-prod in dev" names prod in full and says
+ *   dev, and ended on the prod diff before this was here.
+ *
+ * What this costs, stated: a request naming the thing by its bare name,
+ * naming an environment only in words, mentioning the entities of several
+ * environments, holding a negation about anything at all, or a word spelling
+ * another environment anywhere ("the dev team"), is asked — the safe
  * direction, and the owner's own phrases use references in full.
  *
- * Read through `requestedEnvironment` alone, by the question (`questionsOf`)
- * and by the policies (`checkPolicies`), so what stops the question is what
- * the gates hold the plan to.
+ * The one definition of what a request states about an environment, read by
+ * the signature of a creation's `metadata.env` (`signPlan`), the question of
+ * an update's (`questionsOf`) and the policies (`checkPolicies`), so what
+ * stops the question is what the gates hold the plan to.
  */
 export interface PointedAt {
   readonly env: string
-  /** What the grant is over, every one of it named by the request. */
+  /** What the access is over, every one of it named by the request. */
   readonly things: readonly string[]
 }
 
-function pointedAt(
-  entityRef: string,
-  declared: ReadonlyMap<string, string>,
-  over: GrantedOver,
-  namesakes: Namesakes | undefined,
+/** What the repository says, as the pointing reads it. */
+export interface Declarations {
+  /** ref → the environment each entity the REPOSITORY declares states. */
+  readonly declared: ReadonlyMap<string, string>
+  /** What each levelled grant the repository declares is over (`GrantedOver`). */
+  readonly over: GrantedOver
+  /**
+   * Every name the repository holds, with the environments its documents
+   * declare. Without it nothing is known about what the request mentions, and
+   * nothing points.
+   */
+  readonly namesakes: Namesakes | undefined
+  /**
+   * The environments the repository uses — the vocabulary's. A word of the
+   * request saying one of them, or one any document declares, other than the
+   * environment pointed at cancels the pointing (`contradicts`).
+   */
+  readonly environments: readonly string[]
+}
+
+export function requestedEnvironment(
+  plan: Plan,
+  opIndex: number,
+  repository: Declarations,
   provenance: Provenance,
 ): PointedAt | undefined {
-  const things = over.get(entityRef) ?? []
+  const operation = plan.operations[opIndex]
+  if (operation === undefined) return undefined
+  const { declared, over } = repository
+  if (operation.op === 'update-entity') {
+    const things = over.get(operation.entityRef) ?? []
+    const pointed = pointedAt(things, repository, provenance)
+    if (pointed === undefined) return undefined
+    const [env, ...others] = scopeOf(operation.entityRef, declared, over).environments
+    return env === pointed.env && others.length === 0 ? pointed : undefined
+  }
+  if (operation.op !== 'create-entity' || operation.entity.kind !== 'Resource') return undefined
+  const { type, dependsOn } = operation.entity.spec
+  if (typeof type !== 'string' || !RESOURCE_TYPE_NAMES.includes(type as ResourceType)) {
+    return undefined
+  }
+  if (natureOf(type as ResourceType) !== 'right' || !Array.isArray(dependsOn)) return undefined
+  const things = dependsOn.filter((thing): thing is string => typeof thing === 'string')
+  const created = createdBy(plan)
+  if (things.length !== dependsOn.length || things.some((thing) => created.has(thing))) {
+    return undefined
+  }
+  return pointedAt(things, repository, provenance)
+}
+
+function pointedAt(
+  things: readonly string[],
+  { declared, namesakes, environments }: Declarations,
+  provenance: Provenance,
+): PointedAt | undefined {
   if (things.length === 0) return undefined
-  const [env, ...others] = scopeOf(entityRef, declared, over).environments
+  if (negates(provenance.intent)) return undefined
+  const [env, ...others] = [...new Set(things.map((thing) => declared.get(thing)))]
   if (env === undefined || others.length > 0) return undefined
-  if (!things.every((thing) => declared.get(thing) === env)) return undefined
   if (!things.every((thing) => referenced(provenance, thing))) return undefined
   const all = mentioned(namesakes, provenance)
   if (all === undefined || all.some((one) => one !== env)) return undefined
+  const known = [...environments, ...[...(namesakes?.names.values() ?? [])].flat()]
+  if (contradicts(provenance, things, env, known)) return undefined
   return { env, things }
 }
+
+/**
+ * Does a word of the request say another environment than the one pointed at?
+ *
+ * A word never STATES an environment; it can still cancel one. "…read access
+ * to resource:default/orders-db-prod in dev" names the prod database in full
+ * and says dev: read as a pointing it ended on the prod diff, against the
+ * person's own word. So an environment the repository uses — the vocabulary's,
+ * or one any document declares — spelled as whole words of the request as
+ * prose splits it (`proseWords`: a hyphen, a dash and a change of script end
+ * one, so "dev-side" and `dev環境` hold `dev`), other than the one pointed at,
+ * withdraws the pointing, and the environment is asked.
+ *
+ * The references pointed at are set aside first: `orders-db-pre-prod` spells
+ * `prod` as a part, and naming it is not saying prod. Nothing else is: the
+ * consumer's reference spelling `dev`, or "the dev team", asks too — the cost
+ * of failing closed. A word the repository never uses as an environment is
+ * not read, since what it would name is not known; the diff shows the
+ * environment the person pointed at before the merge.
+ */
+function contradicts(
+  provenance: Provenance,
+  things: readonly string[],
+  env: string,
+  environments: readonly string[],
+): boolean {
+  let text = fold(provenance.intent)
+  for (const thing of things) {
+    const match = REFERENCE.exec(thing)
+    const short = match === null ? [] : [`${match[1] ?? ''}:${match[3] ?? ''}`]
+    for (const form of [thing, ...short]) text = text.split(fold(form)).join(' ')
+  }
+  // The pointed environment's own words are set aside too, so "in pre-prod"
+  // beside a pre-prod declaration says no `prod`.
+  const pointed = proseWords(env)
+  const words = proseWords(text).filter(
+    (_word, at, all) => !covers(all, pointed, at),
+  )
+  return [...new Set(environments.map(fold))].some((other) => {
+    const wanted = proseWords(other)
+    if (wanted.length === 0 || wanted.join(' ') === pointed.join(' ')) return false
+    return words.some((_word, at) => startsAt(words, wanted, at))
+  })
+}
+
+/** Is `wanted` found in a row at `start`? */
+const startsAt = (words: readonly string[], wanted: readonly string[], start: number): boolean =>
+  wanted.every((word, offset) => words[start + offset] === word)
+
+/** Does an occurrence of `wanted` in a row cover the word at `at`? */
+const covers = (words: readonly string[], wanted: readonly string[], at: number): boolean =>
+  wanted.length > 0 &&
+  wanted.some((_word, offset) => at - offset >= 0 && startsAt(words, wanted, at - offset))
+
+/** The references the plan declares: a thing it creates is nobody's pointing. */
+const createdBy = (plan: Plan): ReadonlySet<string> =>
+  new Set(
+    plan.operations.flatMap((operation) =>
+      operation.op === 'create-entity' && typeof operation.entity.metadata.name === 'string'
+        ? [`${operation.entity.kind.toLowerCase()}:default/${operation.entity.metadata.name}`]
+        : [],
+    ),
+  )
 
 const REFERENCE = /^([^:/]+):([^:/]+)\/([^:/]+)$/u
 
@@ -256,51 +399,6 @@ function referenced(provenance: Provenance, ref: string): boolean {
   if (match === null) return false
   const [, kind = '', namespace = '', name = ''] = match
   return named(provenance, ref) || (namespace === 'default' && named(provenance, `${kind}:${name}`))
-}
-
-/**
- * What the request states about the environment of the grant an update
- * extends: the environments its words name, or the one it points at through
- * what the grant is over — the one definition the question (`questionsOf`)
- * and the policies (`checkPolicies`) both read.
- *
- * An environment named as a whole word (`named`) — any the repository uses,
- * or the grant's own — is what was asked, unless the request also mentions a
- * name declared in another (`mentioned`): "give billing-api read access to
- * orders-db-dev in prod" is two environments, and the draft extending the
- * prod grant, over a database nobody named, was the model's choice passed off
- * as the word's. So is a request naming two environments. Either way it is
- * treated as stating none, and asked; so is a word beside a repository whose
- * names cannot all be read. A request naming no environment may point
- * (`pointedAt`).
- *
- * `vocabulary` is the environments the repository uses. For an update alone:
- * a creation's environment is signed where it is written, and nothing here
- * changes what the signature does with it.
- */
-export interface RequestedEnvironment {
-  /** The environments the request's words name for this update: none, or one. */
-  readonly named: readonly string[]
-  /** The one it points at, when it names none. */
-  readonly pointed: PointedAt | undefined
-}
-
-export function requestedEnvironment(
-  entityRef: string,
-  vocabulary: readonly string[],
-  declared: ReadonlyMap<string, string>,
-  over: GrantedOver,
-  namesakes: Namesakes | undefined,
-  provenance: Provenance,
-): RequestedEnvironment {
-  const scope = scopeOf(entityRef, declared, over).environments
-  const words = [...new Set([...vocabulary, ...scope])].filter((env) => named(provenance, env))
-  if (words.length === 0) {
-    return { named: [], pointed: pointedAt(entityRef, declared, over, namesakes, provenance) }
-  }
-  const all = mentioned(namesakes, provenance)
-  const stated = all === undefined ? [] : [...new Set([...words, ...all])]
-  return { named: stated.length === 1 ? words : [], pointed: undefined }
 }
 
 const JOINER = /^[._-]$/u

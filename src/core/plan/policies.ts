@@ -1,4 +1,4 @@
-import { answered, named, type Provenance } from './provenance.js'
+import { answered, type Provenance } from './provenance.js'
 import {
   environmentPath,
   environmentsNamedBy,
@@ -19,7 +19,6 @@ import {
 } from './grant.js'
 import type { AccessLevel, Nature } from '../schemas/resource-types.js'
 import type { Vocabulary } from '../schemas/vocabulary.js'
-import type { Operation } from '../schemas/plan.js'
 import type { SignedPlan } from './sign.js'
 
 /**
@@ -347,88 +346,80 @@ const referencesOf = (entity: unknown): string[] => {
 /**
  * The environments the user stated for one operation, and where each came from.
  *
- * The request's are every operation's: a sentence naming `prod` names it for
- * the whole plan. An answer is the user's word about ONE field: `metadata.env`
- * on a proposed entity, or — for an update, which names its grant by reference
- * and states none of its own — the environment it was asked at
- * (`environmentPath`). So an answer counts for the operation it was typed at,
- * and only while that operation still holds the value typed: `dev` answered
- * for a database in operation 0 says nothing about the grant operation 1
- * joins, and an answer at a path this plan does not hold says nothing about
- * this plan at all. Read plan-wide, either one cleared an
- * `environment-mismatch` the user never spoke to.
+ * Never the request's words: an environment word states nothing, in any
+ * language, as a level word does not (`signPlan`). What states one is an
+ * answer, or the declaration the request points at (`requestedEnvironment`,
+ * the definition the signature and the question read too, so the gates hold
+ * the plan to what stopped the question).
  *
- * `named` for the request, `answered` at the operation's own field — the same
- * two sources `stated` composes when the signature vouches for an environment,
- * which is what makes a plan refused with `dev` typed into the request refused
- * with `dev` typed at a prompt too. Kept apart here because the message says
- * which of the two it was. Measured against the vocabulary either way, so
- * the two sources cannot disagree about what counts: a word the repository has
- * never used as an environment names none, typed anywhere.
+ * An answer is the user's word about ONE field: `metadata.env` on a proposed
+ * entity, or — for an update, which names its grant by reference and states
+ * none of its own — the environment it was asked at (`environmentPath`). So an
+ * answer counts for the operation it was typed at, and only while that
+ * operation still holds the value typed: `dev` answered for a database in
+ * operation 0 says nothing about the grant operation 1 joins, and an answer at
+ * a path this plan does not hold says nothing about this plan at all. A
+ * proposed entity's is measured against the vocabulary, so a word the
+ * repository has never used as an environment names none.
  *
- * For an update, the request's are what `requestedEnvironment` reads — the
- * definition that stops the question, so the gates hold the update to what
- * stopped it. Its words, unless the request also mentions a name declared in
- * another environment, in which case it stated none and is asked; and, where
- * the user stated neither, the environment the request pointed at by naming
- * what its grant is over in full. Silence alone: a request naming an
- * environment, or an answer, is what was asked, and a thing named beside it
- * never widens that to a second scope.
+ * The pointing is every thing the access is over, named by its reference in
+ * full and declaring the one environment, with nothing the request mentions
+ * declared in another, no word of it saying another, and no negation anywhere.
+ * It stands in for silence only: beside an answer, a thing named never widens
+ * it to a second scope.
  */
 interface StatedEnvironments {
   /** Every environment stated for this operation, by either source. */
   readonly all: readonly string[]
-  /** The ones the request named. */
-  readonly named: readonly string[]
   /** The one answered at this operation's own environment, and where. */
   readonly answered: { readonly env: string; readonly path: string } | undefined
-  /** The one the request pointed at through what an update's grant is over. */
+  /** The one the request pointed at through what the access is over. */
   readonly pointed: PointedAt | undefined
 }
 
 function environmentsStated(
   context: PolicyContext,
   provenance: Provenance,
+  plan: SignedPlan['plan'],
   opIndex: number,
-  operation: Operation,
 ): StatedEnvironments {
-  const { vocabulary } = context
-  const update = operation.op === 'update-entity'
-  const requested = update
-    ? requestedEnvironment(
-        operation.entityRef,
-        vocabulary.environments,
-        context.environments,
-        context.over,
-        context.namesakes,
-        provenance,
-      )
-    : undefined
-  const fromRequest =
-    requested?.named ?? vocabulary.environments.filter((env) => named(provenance, env))
+  const operation = plan.operations[opIndex]
+  const update = operation?.op === 'update-entity'
   // An update's answer is to "which environment is this access for?", about
   // a grant the repository declares, so it counts whatever it names: `qa`
-  // answered against a prod grant is a mismatch, not silence. A proposed
-  // entity's is measured against the vocabulary like the request's words.
+  // answered against a prod grant is a mismatch, not silence.
   const path = update
     ? environmentPath(opIndex)
     : `operations.${opIndex}.entity.metadata.env`
-  const own = update ? provenance.answers.get(path) : environmentOf(operation.entity)
+  const own =
+    operation === undefined || operation.op === 'update-entity'
+      ? provenance.answers.get(path)
+      : environmentOf(operation.entity)
   const fromAnswer =
     own !== undefined &&
-    (update || vocabulary.environments.includes(own)) &&
-    !fromRequest.includes(own) &&
+    (update || context.vocabulary.environments.includes(own)) &&
     answered(provenance, path, own)
       ? { env: own, path }
       : undefined
-  const pointed = fromAnswer === undefined ? requested?.pointed : undefined
+  const pointed =
+    fromAnswer === undefined
+      ? requestedEnvironment(
+          plan,
+          opIndex,
+          {
+            declared: context.environments,
+            over: context.over,
+            namesakes: context.namesakes,
+            environments: context.vocabulary.environments,
+          },
+          provenance,
+        )
+      : undefined
   return {
     all: [
-      ...fromRequest,
       ...(fromAnswer === undefined ? [] : [fromAnswer.env]),
       ...(pointed === undefined ? [] : [pointed.env]),
     ],
-    named: fromRequest,
     answered: fromAnswer,
     pointed,
   }
@@ -444,17 +435,13 @@ const environmentOf = (entity: unknown): string | undefined => {
 }
 
 /**
- * Whose word each environment was, for the sentence a person reads. A message
- * saying the request named an environment the user only typed at a prompt
- * would be the engine misquoting the person it is reporting to.
+ * Where each environment came from, for the sentence a person reads: typed at
+ * a prompt, or the declaration of what the request named in full. A message
+ * saying the request named an environment would be the engine misquoting the
+ * person it is reporting to — no word of it states one.
  */
-const statedAsWords = ({
-  named: fromRequest,
-  answered: fromAnswer,
-  pointed,
-}: StatedEnvironments): string =>
+const statedAsWords = ({ answered: fromAnswer, pointed }: StatedEnvironments): string =>
   [
-    ...(fromRequest.length > 0 ? [`the request named ${fromRequest.join(' and ')}`] : []),
     ...(fromAnswer === undefined ? [] : [`${fromAnswer.env} was answered at ${fromAnswer.path}`]),
     ...(pointed === undefined
       ? []
@@ -575,7 +562,7 @@ export function checkPolicies(
     // the one its request pointed at through what the grant is over, too.
     // When they stated none, every environment policy stays silent: the signer
     // or the question already asks, and firing here would report it twice.
-    const asked = environmentsStated(context, provenance, opIndex, operation)
+    const asked = environmentsStated(context, provenance, signed.plan, opIndex)
 
     if (operation.op === 'update-entity') {
       // `operation.patch.consumer` is read straight off the union: §5.3 keeps

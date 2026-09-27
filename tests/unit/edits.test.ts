@@ -6,7 +6,7 @@ import { signPlan } from '../../src/core/plan/sign.js'
 import { findUnknowns, planSchema, type Plan } from '../../src/core/schemas/plan.js'
 import { parseEntity } from '../../src/core/yaml/serialize.js'
 import { listDocumentNames } from '../../src/core/yaml/surgery.js'
-import { saidWithLevels } from '../support/provenance.js'
+import { saidInFull } from '../support/provenance.js'
 
 const vocabulary = {
   kinds: ['Component', 'Resource'],
@@ -31,11 +31,12 @@ const context = (over: Partial<SignatureContext> = {}): SignatureContext => ({
 
 /**
  * Signed against the request the plan carries — a person's own, which is what
- * every fixture here models — with `read` answered for each level it states.
- * A level is asked, never read out of the request, so a fixture that wants a
- * complete plan answers for it, which is what a run does.
+ * every fixture here models — with `read` answered for each level it states
+ * and each creation's environment answered as drafted. Neither is read out of
+ * the request's words, so a fixture that wants a complete plan answers for
+ * both, which is what a run does.
  */
-const signAs = (plan: Plan, c: SignatureContext) => signPlan(plan, c, saidWithLevels(plan))
+const signAs = (plan: Plan, c: SignatureContext) => signPlan(plan, c, saidInFull(plan))
 
 const sign = (intent: string, operations: unknown[]) => {
   const result = signAs(planSchema.parse({ intent, operations }), context())

@@ -36,7 +36,7 @@ describe("the README's keyless commands", () => {
     expect(blocks.map(({ command }) => command)).toEqual(
       expect.arrayContaining([
         'relations mysql-prod-01 --impacts --demo',
-        'plan --from examples/declare-cache.json --repo fixtures/si-demo',
+        'plan --from examples/open-network.json --repo fixtures/si-demo',
         'plan --from examples/needs-an-owner.json --repo fixtures/si-demo',
       ]),
     )

@@ -42,3 +42,26 @@ export const levelsAnswered = (plan: Plan, level = 'read'): Record<string, strin
 /** The request `plan` carries, with `level` answered at each of its levels. */
 export const saidWithLevels = (plan: Plan, level = 'read'): Provenance =>
   userSaid(plan.intent, levelsAnswered(plan, level))
+
+/**
+ * Every `metadata.env` a creation in `plan` states, with the value it states.
+ *
+ * An environment is asked and never read out of the request's words, as a
+ * level is not: it is the declaration the request points at by its reference
+ * in full, or an answer. So a fixture that wants a complete plan over a thing
+ * nobody pointed at answers for it — which is what a run does, one prompt per
+ * entity. Answered at each field, with the value the draft wrote there: the
+ * person confirming what the draft proposed.
+ */
+export const environmentsAnswered = (plan: Plan): Record<string, string> =>
+  Object.fromEntries(
+    plan.operations.flatMap((operation, index) => {
+      if (operation.op !== 'create-entity') return []
+      const { env } = operation.entity.metadata as { env?: unknown }
+      return typeof env === 'string' ? [[`operations.${index}.entity.metadata.env`, env]] : []
+    }),
+  )
+
+/** The request `plan` carries, with its levels and its environments answered. */
+export const saidInFull = (plan: Plan, level = 'read'): Provenance =>
+  userSaid(plan.intent, { ...levelsAnswered(plan, level), ...environmentsAnswered(plan) })

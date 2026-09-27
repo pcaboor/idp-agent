@@ -7,7 +7,12 @@ import type { SignatureContext, SignedPlan } from '../../src/core/plan/sign.js'
 import { findUnknowns, planSchema } from '../../src/core/schemas/plan.js'
 import type { AccessLevel, Nature } from '../../src/core/schemas/resource-types.js'
 import type { Provenance } from '../../src/core/plan/provenance.js'
-import { saidWithLevels, userSaid } from '../support/provenance.js'
+import {
+  environmentsAnswered,
+  saidInFull,
+  saidWithLevels,
+  userSaid,
+} from '../support/provenance.js'
 
 const vocabulary = {
   kinds: ['Component', 'Resource'],
@@ -97,13 +102,15 @@ const policies = (over: Partial<PolicyContext> = {}): PolicyContext => ({
 
 /**
  * Signed against the request the plan carries — a person's own, which is what
- * every fixture here models — with `read` answered for each level it states.
- * A level is asked, never read out of the request, so a fixture that wants a
- * complete plan answers for it, which is what a run does.
+ * every fixture here models — with `read` answered for each level it states,
+ * and the environment the entity declares answered for it. Neither is ever
+ * read out of the request's words, so a fixture that wants a complete plan
+ * answers for both, which is what a run does: the person confirming the
+ * environment the draft proposed.
  */
 const sign = (entity: unknown, intent: string, over: Partial<SignatureContext> = {}): SignedPlan => {
   const parsed = planSchema.parse({ intent, operations: [{ op: 'create-entity', entity }] })
-  const result = signPlan(parsed, signature(over), saidWithLevels(parsed))
+  const result = signPlan(parsed, signature(over), saidInFull(parsed))
   if ('outcome' in result) throw new Error(`refused: ${JSON.stringify(result.refusals)}`)
   return result
 }
@@ -136,9 +143,12 @@ const signUpdate = (
   return result
 }
 
-/** The policies, measured against the request the signed plan carries and no answer. */
+/**
+ * The policies, measured against the request the signed plan carries and the
+ * environment each creation declares, answered as `sign` answered it.
+ */
 const check = (signed: SignedPlan, context: PolicyContext = policies()): PolicyViolation[] =>
-  checkPolicies(signed, context, userSaid(signed.plan.intent))
+  checkPolicies(signed, context, userSaid(signed.plan.intent, environmentsAnswered(signed.plan)))
 
 const of = (violations: readonly PolicyViolation[], policy: string): PolicyViolation | undefined =>
   violations.find((violation) => violation.policy === policy)
@@ -162,9 +172,10 @@ const accessIn = (
 })
 
 describe('environment-mismatch', () => {
-  it('refuses a plan that touches prod when the intent named dev', () => {
+  it('refuses a plan that touches prod when the user answered dev', () => {
     // The design's own example of what Zod cannot catch and a Reviewer was
-    // meant to. It is deterministic, so it does not need a model.
+    // meant to. It is deterministic, so it does not need a model. The answer
+    // is what states dev: the request's "in dev" states nothing.
     const signed = sign(
       { ...accessIn('dev'), metadata: { name: 'billing-api-orders-db-prod', env: 'dev' } },
       'give billing-api read access to orders-db in dev',
@@ -287,7 +298,7 @@ describe('cross-environment-consumer, over what the plan itself declares', () =>
     const result = signPlan(
       parsed,
       signature({ witnessed: new Set(['component:default/billing-api-dev']) }),
-      saidWithLevels(parsed),
+      saidInFull(parsed),
     )
     if ('outcome' in result) throw new Error(`refused: ${JSON.stringify(result.refusals)}`)
     return result
@@ -402,16 +413,19 @@ describe('the policies, over an update-entity', () => {
   // travel ungated: the loop skipped anything that was not a creation, so the
   // one operation §4.1 is most about met no gate at all.
 
-  it('refuses an update joining a prod grant when the request named dev', () => {
-    // The consumer is the draft's: a request mentioning billing-api, declared
-    // prod here, beside "dev" states no environment at all, and is asked.
+  it('refuses an update joining a prod grant when the user answered dev', () => {
+    // The request's "in dev" states nothing: the answer does.
+    const intent = 'let the checkout service read orders-db in dev'
+    const stated = userSaid(intent, { 'operations.0.environment': 'dev' })
     const signed = signUpdate(
       'resource:default/checkout-orders-db-prod',
       'component:default/billing-api',
-      'let the checkout service read orders-db in dev',
+      intent,
+      undefined,
+      stated,
     )
 
-    const violation = of(check(signed, policies()), 'environment-mismatch')
+    const violation = of(checkPolicies(signed, policies(), stated), 'environment-mismatch')
 
     // The engine's own dotted path, as every other violation carries.
     expect(violation?.path).toBe('operations.0.entityRef')
@@ -673,22 +687,21 @@ describe('the list itself', () => {
 })
 
 /**
- * The environments a request names are the ones a policy measures against, and
- * an environment the user typed at a prompt is named just as surely. Reading
- * only the request, a plan refused with `dev` typed into it passed with `dev`
- * answered at its environment.
+ * An environment the user typed at a prompt is what a policy measures
+ * against; the same word in the request is not (the owner's decision of
+ * 2026-09-27: a word states no environment, as it states no level).
  */
 describe('an environment the user answered', () => {
   const REQUEST = 'give billing-api read access to orders-db'
-  // Signed against a request that names dev, so the environment is vouched for
-  // whatever provenance the policy is then handed: what differs below is the
-  // policy's reading of what the user stated, and nothing else.
+  // Signed with the environment answered, so it is vouched for whatever
+  // provenance the policy is then handed: what differs below is the policy's
+  // reading of what the user stated, and nothing else.
   const signed = sign(
     { ...accessIn('dev'), metadata: { name: 'billing-api-orders-db-prod', env: 'dev' } },
     `${REQUEST} in dev`,
   )
 
-  it('counts as asked, exactly as the same word in the request does', () => {
+  it('counts as asked, where the same word in the request does not', () => {
     const typed = checkPolicies(signed, policies(), userSaid(`${REQUEST} in dev`))
     const answered = checkPolicies(
       signed,
@@ -697,35 +710,32 @@ describe('an environment the user answered', () => {
     )
     const neither = checkPolicies(signed, policies(), userSaid(REQUEST))
 
-    expect(of(typed, 'environment-mismatch')?.message).toContain('the plan touches prod')
-    const where = ({ policy, opIndex, path }: PolicyViolation) => ({ policy, opIndex, path })
-    expect(answered.map(where)).toEqual(typed.map(where))
+    expect(of(answered, 'environment-mismatch')?.message).toContain('the plan touches prod')
+    expect(of(typed, 'environment-mismatch')).toBeUndefined()
     expect(of(neither, 'environment-mismatch')).toBeUndefined()
   })
 
-  it('credits the answer, never the request, for an environment the request did not name', () => {
+  it('credits the answer, never the request', () => {
     // Put to the user on stdout and handed back to the Architect: a message
-    // saying the request named `dev` about a request that never did would be
-    // the engine misquoting the person it is reporting to.
-    const typed = of(checkPolicies(signed, policies(), userSaid(`${REQUEST} in dev`)), 'environment-mismatch')
+    // saying the request named `dev` would be the engine misquoting the
+    // person it is reporting to — and reading a word it never reads.
     const answered = of(
       checkPolicies(
         signed,
         policies(),
-        userSaid(REQUEST, { 'operations.0.entity.metadata.env': 'dev' }),
+        userSaid(`${REQUEST} in dev`, { 'operations.0.entity.metadata.env': 'dev' }),
       ),
       'environment-mismatch',
     )
 
-    expect(typed?.message).toContain('the request named dev')
     expect(answered?.message).not.toContain('the request named')
     expect(answered?.message).toContain('dev was answered at operations.0.entity.metadata.env')
   })
 
   it('counts only at a field this plan holds, holding the value that was answered', () => {
-    // The request names prod and the update joins a dev grant. An answer at a
-    // path the plan does not have — or at one holding another value — is not
-    // the user naming the environment this plan touches.
+    // The update joins a dev grant. An answer at a path the plan does not
+    // have — or at one holding another value — is not the user naming the
+    // environment this plan touches, so nothing is stated and nothing refused.
     const update = signUpdate(
       'resource:default/checkout-orders-db-dev',
       'component:default/billing-api',
@@ -738,21 +748,19 @@ describe('an environment the user answered', () => {
       [update, { 'operations.0.entity.metadata.env': 'dev' }],
       [staging, { 'operations.0.entity.metadata.env': 'dev' }],
     ] as const) {
-      const request = plan === update ? plan.plan.intent : `${REQUEST} in prod`
       const violation = of(
-        checkPolicies(plan, policies(), userSaid(request, answers)),
+        checkPolicies(plan, policies(), userSaid(plan.plan.intent, answers)),
         'environment-mismatch',
       )
-      expect(violation?.message).not.toContain('dev was answered')
-      expect(violation?.message).toContain('the request named prod.')
+      expect(violation).toBeUndefined()
     }
   })
 
   it('counts for the operation it answered, and for no other', () => {
     // Operation 0 is a database declared in dev, the user answering dev for
-    // it; operation 1 joins a dev grant on a request that named prod. The
-    // answer was about operation 0's environment and says nothing about 1's.
-    const REQUESTED = 'give component:default/billing-api read access to the orders database in prod'
+    // it; operation 1 joins a dev grant, the user answering prod for it. The
+    // answer about operation 0's environment says nothing about 1's.
+    const REQUESTED = 'give component:default/billing-api read access to the orders database'
     const parsed = planSchema.parse({
       intent: REQUESTED,
       operations: [
@@ -770,6 +778,7 @@ describe('an environment the user answered', () => {
     const stated = userSaid(REQUESTED, {
       'operations.0.entity.metadata.env': 'dev',
       'operations.1.patch.access': 'read',
+      'operations.1.environment': 'prod',
     })
     const result = signPlan(parsed, signature(), stated)
     if ('outcome' in result) throw new Error(`refused: ${JSON.stringify(result.refusals)}`)
@@ -980,10 +989,10 @@ const READ_IN_PROD_REQUEST = 'give billing-api read access to orders-db in prod'
 
 /**
  * A request naming the thing a grant is over, which declares the grant's
- * environment, has stated that environment (`pointedAt`) — and a gate reading
- * it as stated holds the rest of the update to it, as it would the word. It
- * stands in for silence alone: a request naming an environment, or an answer,
- * says what was asked, and the thing named never adds a second scope to it.
+ * environment, has stated that environment (`requestedEnvironment`) — and a
+ * gate reading it as stated holds the rest of the update to it, as it would an
+ * answer. It stands in for silence alone: an answer says what was asked, and
+ * the thing named never adds a second scope to it.
  */
 describe('an environment the request points at through the thing', () => {
   const GRANT = 'resource:default/checkout-orders-db-prod'
@@ -1032,14 +1041,19 @@ describe('an environment the request points at through the thing', () => {
     expect(check(signed)).toEqual([])
   })
 
-  it('never widens an environment the request named', () => {
-    const intent = `give read access to orders-db in dev`
-    const signed = signUpdate(GRANT, 'component:default/billing-api', intent, 'read')
+  it('never widens an environment the user answered', () => {
+    const intent = `give read access to ${THING}`
+    const stated = userSaid(intent, {
+      'operations.0.patch.access': 'read',
+      'operations.0.environment': 'dev',
+    })
+    const signed = signUpdate(GRANT, 'component:default/billing-api', intent, 'read', stated)
 
-    const violation = of(check(signed), 'environment-mismatch')
+    const violation = of(checkPolicies(signed, policies(), stated), 'environment-mismatch')
 
     expect(violation?.path).toBe('operations.0.entityRef')
-    expect(violation?.message).toContain('the plan touches prod, but the request named dev.')
+    expect(violation?.message).toContain('dev was answered at operations.0.environment')
+    expect(violation?.message).not.toContain('the request named')
   })
 
   it('reads a word beside an entity of another environment as nothing stated', () => {
