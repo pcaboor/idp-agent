@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3274 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3340 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -211,7 +211,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 | Folder | Responsibility |
 |---|---|
 | `core/` | schemas (Zod), the nine validation rules and the Backstage registration, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — and the engine's check on an answer's commentary (`core/answer/`) |
-| `context/` | `ContextProvider` (two implementations: `fixtures`, and `iac-fs` behind `--repo`), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries |
+| `context/` | `ContextProvider` (two implementations: `fixtures`, and `iac-fs` behind `--repo`), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries, `backstage/transport.ts` — the only code that will send a catalogue token, over a `fetch` it is handed; nothing calls it yet — and `spawnedEnvironment`, the one builder of a child process's environment |
 | `cli/` | argument parsing, commands, rendering, `.idp-agent.yml` and the personal `config.yml`, which source a command reads — the only layer that writes to stdout |
 | `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |
 | `agents/` | the five agents, the bounded turn, the repair loop, the tool registries — reaches no disk, transitively |
@@ -469,7 +469,7 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   checklist; tick its boxes as you go — Stage 1 shipped with all 36 unticked, which is
   how a plan stops being a status signal.
 - No `switch` on a closed union without `const _exhaustive: never = value` in `default`.
-- **Sixteen** architecture rules are enforced by `tests/architecture/`. `core/` imports
+- **Nineteen** architecture rules are enforced by `tests/architecture/`. `core/` imports
   neither `agents/`, `llm/`, `context/`, `cli/`, `scaffold/`, the disk, the network nor the
   model SDK. `agents/` imports neither `fs`, `child_process` nor a git client — **and
   nothing reachable from it does either**, the test walks the transitive closure. Only
@@ -481,8 +481,13 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   repositories too. Across `src/`, only `scaffold/write.ts`, `cli/recording-fs.ts` and
   `cli/trace-sink.ts` import a writing function — `project-fs/snapshot.ts` opens files, read
   only — each named with the functions it may use, and only `project-fs/snapshot.ts` starts
-  a process (`git ls-files`). `trace/` reaches nothing but types — no disk, no network, no
-  `fetch`, no SDK, nothing of `cli/` — and only `cli/` reaches it. The rules read `.ts`,
+  a process (`git ls-files`), from one call, given the environment `spawnedEnvironment`
+  builds: without any `IDP_BACKSTAGE_*` variable and without any provider key. `trace/` reaches nothing
+  but types — no disk, no network, no `fetch`, no SDK, nothing of `cli/` — and only `cli/`
+  reaches it. Nothing in `context/` names `fetch`, `globalThis`, `global`, `XMLHttpRequest`
+  or `WebSocket`, read in the source with comments stripped because `fetch` needs no import,
+  nor imports a network module, and only `context/backstage/transport.ts` calls the `catalogueFetch` it is handed; nothing
+  reachable from `agents/` is in `context/backstage/` or names any of those words. The rules read `.ts`,
   `.mts` and `.cts`, and fail on a folder that is not there and on an import that resolves
   to no file, rather than passing over nothing. Add a rule when you add a layer — and
   re-count this number when you do, because it is the one that drifts first:

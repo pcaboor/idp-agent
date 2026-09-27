@@ -149,6 +149,270 @@ const DISK =
   /^(node:)?(fs|fs\/promises|child_process|worker_threads|module)$|^(simple-git|isomorphic-git|nodegit)$/
 const NETWORK = /^(node:)?(http|https|net|dgram|tls)$|^(undici|axios|node-fetch|got)$/
 
+/** A file's name under `root`, with `/` whatever the platform. */
+const nameUnder = (root: string, file: string): string => path.relative(root, file).split(path.sep).join('/')
+
+/**
+ * Source with its comments taken out. A scanner, not a pattern: a `//` in a
+ * URL string, or the `/*` of `'*\/*'`, starts no comment, and a pattern that
+ * took them for one dropped the code after them unread. Strings, templates
+ * (their `${…}` read as code) and regular expressions are kept as written;
+ * whether a `/` opens a regular expression is told by what comes before it,
+ * as a tokenizer tells it.
+ */
+function stripped(text: string): string {
+  let out = ''
+  let at = 0
+  let depth = 0
+  // The brace depth each open `${` of a template returns to, innermost last.
+  const templates: number[] = []
+
+  /** From inside a template to its closing backtick, or to its next `${`. */
+  const templateTail = (): void => {
+    while (at < text.length) {
+      const c = text[at]
+      if (c === '\\') {
+        out += text.slice(at, at + 2)
+        at += 2
+        continue
+      }
+      out += c
+      at += 1
+      if (c === '`') return
+      if (c === '$' && text[at] === '{') {
+        out += '{'
+        at += 1
+        templates.push(depth)
+        depth += 1
+        return
+      }
+    }
+  }
+
+  /** A `/` after a value divides; anywhere else it opens a regular expression. */
+  const regexMayStart = (): boolean => {
+    const before = out.trimEnd()
+    const last = before.at(-1)
+    if (last === undefined) return true
+    if (/[\w$]/.test(last)) {
+      return /(?:^|[^\w$.])(?:return|typeof|instanceof|in|of|new|delete|void|throw|case|do|else|yield|await)$/.test(before)
+    }
+    return !/[)\]}'"`]/.test(last)
+  }
+
+  while (at < text.length) {
+    const c = text[at]
+    const next = text[at + 1]
+    if (c === '/' && next === '/') {
+      const end = text.indexOf('\n', at)
+      at = end === -1 ? text.length : end
+    } else if (c === '/' && next === '*') {
+      const end = text.indexOf('*/', at + 2)
+      at = end === -1 ? text.length : end + 2
+      out += ' '
+    } else if (c === "'" || c === '"') {
+      let end = at + 1
+      while (end < text.length && text[end] !== c && text[end] !== '\n') end += text[end] === '\\' ? 2 : 1
+      out += text.slice(at, end + 1)
+      at = end + 1
+    } else if (c === '`') {
+      out += c
+      at += 1
+      templateTail()
+    } else if (c === '}' && templates.length > 0 && depth - 1 === templates.at(-1)) {
+      templates.pop()
+      depth -= 1
+      out += c
+      at += 1
+      templateTail()
+    } else if (c === '/' && regexMayStart()) {
+      let end = at + 1
+      let inClass = false
+      while (end < text.length && text[end] !== '\n' && (inClass || text[end] !== '/')) {
+        if (text[end] === '\\') end += 1
+        else if (text[end] === '[') inClass = true
+        else if (text[end] === ']') inClass = false
+        end += 1
+      }
+      out += text.slice(at, end + 1)
+      at = end + 1
+    } else {
+      if (c === '{') depth += 1
+      else if (c === '}') depth -= 1
+      out += c
+      at += 1
+    }
+  }
+  return out
+}
+
+/**
+ * Any mention of the global, not only a call: `const f = fetch; f(url)`,
+ * `fetch.call(…)`, `Reflect.apply(fetch, …)` and `global.fetch` all name it.
+ * The one exemption is a `fetch` right after an escaped dot, `\.fetch`, which
+ * is text inside a regular expression: `project-fs/secrets.ts`'s `ENV\.fetch\(`.
+ */
+const NAMES_FETCH = /(?<!\\\.)\bfetch\b/
+const NAMES_A_GLOBAL_WAY_OUT = /\bglobalThis\b|\bglobal\b|\bXMLHttpRequest\b|\bWebSocket\b/
+
+/** The one module that calls the `fetch` it is handed, as `options.catalogueFetch(`. */
+const TRANSPORT = 'context/backstage/transport.ts'
+
+/**
+ * What context/ under `root` does that the first `fetch` rule refuses. `fetch`
+ * needs no import, so NETWORK cannot see it (the limit SECURITY.md states),
+ * which is why the trace/ rule already refuses the word. The transport is
+ * handed a `catalogueFetch` and calls it as `options.catalogueFetch(`; no
+ * other file calls one. And a road out by import is refused as well: a
+ * network module, statically or at run time, and a module loaded at run time
+ * by a name the source does not spell.
+ */
+async function fetchOffences(root: string): Promise<string[]> {
+  const offending: string[] = []
+  for (const file of await sourceFiles(path.join(root, 'context'))) {
+    const name = nameUnder(root, file)
+    const code = stripped(await readFile(file, 'utf8'))
+    if (NAMES_A_GLOBAL_WAY_OUT.test(code)) offending.push(`${name} names a global way out`)
+    if (NAMES_FETCH.test(code)) offending.push(`${name} names fetch`)
+    for (const pattern of PATTERNS) {
+      for (const match of code.matchAll(pattern)) {
+        const specifier = match[1] ?? match[2] ?? ''
+        if (NETWORK.test(specifier)) offending.push(`${name} imports ${specifier}`)
+      }
+    }
+    for (const match of code.matchAll(/\b(?:import|require)\s*\(([^)]*)\)/g)) {
+      const argument = (match[1] ?? '').trim()
+      if (!/^(['"])[^'"]*\1$/.test(argument)) offending.push(`${name} loads ${argument} at run time`)
+    }
+    const calls = name === TRANSPORT ? /(?<!\boptions\.)\bcatalogueFetch\s*\(/ : /\bcatalogueFetch\s*\(/
+    if (calls.test(code)) offending.push(`${name} calls a catalogueFetch`)
+  }
+  return offending
+}
+
+/**
+ * What the closure of agents/ under `root` reaches that the second rule
+ * refuses: a module of context/backstage/, or a file naming `fetch` or a
+ * global way out. The catalogue is read before any model is called, and this
+ * is what keeps a model's words from ever becoming a request.
+ */
+async function agentsReachOffences(root: string): Promise<string[]> {
+  const offending: string[] = []
+  const reached = new Set<string>()
+  for (const entry of await sourceFiles(path.join(root, 'agents'))) {
+    for (const { specifier } of await closureOf(entry, reached)) {
+      if (/(^|\/)backstage\//.test(specifier)) offending.push(`agents/ reaches ${specifier}`)
+    }
+  }
+  for (const file of [...reached].sort()) {
+    const name = nameUnder(root, file)
+    const code = stripped(await readFile(file, 'utf8'))
+    if (NAMES_A_GLOBAL_WAY_OUT.test(code)) offending.push(`${name} names a global way out`)
+    if (NAMES_FETCH.test(code)) offending.push(`${name} names fetch`)
+  }
+  return offending
+}
+
+/**
+ * Every module that may start a process, with how many calls of a
+ * child_process function it makes and the function whose result each call is
+ * given as `env`. They are the only modules the rule on writers lets import
+ * child_process, so a module added there is stated here too.
+ */
+const SPAWNS: Readonly<Record<string, { readonly calls: number; readonly env: string }>> = {
+  // `git()`, which every git command of the Inspector goes through.
+  'context/project-fs/snapshot.ts': { calls: 1, env: 'gitEnvironment' },
+}
+
+/**
+ * Every mention of a child_process function, not only a call: a value passed
+ * on (`promisify(execFile)`) or a namespace's (`cp.execFile(`) starts a
+ * process all the same. The one exemption is `.exec`, a regular expression's
+ * method: the module cannot hold child_process's under a namespace, which
+ * `spawnOffences` refuses.
+ */
+const NAMES_A_PROCESS = /(?<![\w$])(?:execFile|execFileSync|spawn|spawnSync|execSync|fork)\b|(?<![\w$.])exec\b/g
+
+/** An `import` of child_process, the one place its functions are named without being used. */
+const IMPORTS_CHILD_PROCESS = /^\s*import\s+([^'";]*?)\s*from\s*['"]((?:node:)?child_process)['"];?/gm
+
+/** From the bracket at `open` to the one that closes it, brackets counted, strings not read. */
+const enclosed = (code: string, open: number, pair: '()' | '{}'): string => {
+  let depth = 0
+  for (let at = open; at < code.length; at += 1) {
+    if (code[at] === pair[0]) depth += 1
+    else if (code[at] === pair[1] && --depth === 0) return code.slice(open, at + 1)
+  }
+  return code.slice(open)
+}
+
+/** The body of `function name(…) {…}` in `code`, or undefined when there is none. */
+const bodyOf = (code: string, name: string): string | undefined => {
+  const declared = new RegExp(`\\bfunction\\s+${name}\\s*\\(`).exec(code)
+  if (declared === null) return undefined
+  const open = code.indexOf('{', declared.index)
+  return open === -1 ? undefined : enclosed(code, open, '{}')
+}
+
+/**
+ * What the modules of `spawns` under `root` do that the third rule refuses.
+ * Node's child_process uses `process.env` when `env` is omitted, so a second
+ * call with no `env` would hand a child the token and the keys: the count is
+ * what refuses it, and it counts every mention of a child_process function
+ * outside its import. So the module takes those functions by their own
+ * names — never the whole module, never under another name — and each
+ * mention is a call that passes `env: <its function>()`; that function starts
+ * from `spawnedEnvironment(`, and the module names `process.env` nowhere, so
+ * it has no other environment to build one from.
+ */
+async function spawnOffences(
+  root: string,
+  spawns: Readonly<Record<string, { readonly calls: number; readonly env: string }>>,
+): Promise<string[]> {
+  const offending: string[] = []
+  for (const [name, { calls, env }] of Object.entries(spawns)) {
+    const file = path.join(root, name)
+    const code = stripped(await readFile(file, 'utf8'))
+    for (const { specifier, name: imported } of await diskNamesOf(file)) {
+      if (/child_process$/.test(specifier) && imported === '*') {
+        offending.push(`${name} takes the whole of ${specifier}`)
+      }
+    }
+    for (const [, clause = '', specifier = ''] of code.matchAll(IMPORTS_CHILD_PROCESS)) {
+      for (const part of /\{([^}]*)\}/.exec(clause)?.[1]?.split(',') ?? []) {
+        const [imported, local] = part.trim().split(/\s+as\s+/)
+        if (local !== undefined && imported !== undefined && !imported.startsWith('type ')) {
+          offending.push(`${name} takes ${imported} from ${specifier} under another name`)
+        }
+      }
+    }
+    if (/\bprocess\s*(?:\.\s*env\b|\[\s*['"`]env['"`]\s*\])/.test(code)) {
+      offending.push(`${name} names process.env`)
+    }
+    const used = code.replace(IMPORTS_CHILD_PROCESS, '')
+    const found = [...used.matchAll(NAMES_A_PROCESS)]
+    if (found.length !== calls) {
+      offending.push(`${name} starts a process in ${found.length} places; the rule states ${calls}`)
+    }
+    for (const mention of found) {
+      const after = mention.index + mention[0].length
+      const call = /^\s*\(/.exec(used.slice(after))
+      if (call === null) {
+        offending.push(`${name}: ${mention[0]} is named without being called`)
+        continue
+      }
+      const given = enclosed(used, after + call[0].length - 1, '()')
+      if (!new RegExp(`\\benv\\s*:\\s*${env}\\(\\)`).test(given)) {
+        offending.push(`${name}: ${mention[0]}(…) is not given env: ${env}()`)
+      }
+    }
+    if (env !== 'spawnedEnvironment' && !/\bspawnedEnvironment\s*\(/.test(bodyOf(code, env) ?? '')) {
+      offending.push(`${name}: ${env} does not start from spawnedEnvironment`)
+    }
+  }
+  return offending
+}
+
 describe('architecture', () => {
   it('core/ does not import agents/ or llm/', async () => {
     const offending = (await importsUnder(path.join(SOURCE_ROOT, 'core'))).filter(({ specifier }) =>
@@ -288,7 +552,7 @@ describe('architecture', () => {
       'context/project-fs/snapshot.ts': ['open'],
     }
     // `git ls-files`, and nothing else starts a process.
-    const spawns = new Set(['context/project-fs/snapshot.ts'])
+    const spawns = new Set(Object.keys(SPAWNS))
     const offending: string[] = []
     for (const file of await sourceFiles(SOURCE_ROOT)) {
       const name = path.relative(SOURCE_ROOT, file)
@@ -353,9 +617,7 @@ describe('architecture', () => {
     const offending: string[] = []
     for (const file of await sourceFiles(path.join(SOURCE_ROOT, 'trace'))) {
       const name = path.relative(SOURCE_ROOT, file)
-      const code = (await readFile(file, 'utf8'))
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .replace(/\/\/.*$/gm, '')
+      const code = stripped(await readFile(file, 'utf8'))
       for (const match of code.matchAll(statement)) {
         const typeOnly = match[1] !== undefined
         const specifier = match[2] ?? match[3] ?? ''
@@ -385,6 +647,24 @@ describe('architecture', () => {
       }
     }
     expect(offending).toEqual([])
+  })
+
+  it('nothing in context/ names fetch or a global, and only the transport calls what it is handed', async () => {
+    // The catalogue token leaves through one function, `catalogueTransport`'s
+    // request, over the `fetch` cli/ hands it (docs/backstage-http-brief.md
+    // § 4). A second road out of context/ would be a second place to send it.
+    expect(await fetchOffences(SOURCE_ROOT)).toEqual([])
+  })
+
+  it('nothing reachable from agents/ is in context/backstage/, names fetch or names a global', async () => {
+    expect(await agentsReachOffences(SOURCE_ROOT)).toEqual([])
+  })
+
+  it('every process src/ starts is given spawnedEnvironment', async () => {
+    // A child is handed the environment it starts with, and `git` runs in
+    // every inspected repository: without the Backstage token and without any
+    // provider key (`context/spawned-environment.ts`).
+    expect(await spawnOffences(SOURCE_ROOT, SPAWNS)).toEqual([])
   })
 })
 
@@ -469,5 +749,138 @@ describe('the architecture rules themselves', () => {
     expect(await names('aliased.ts')).toEqual(['node:fs *', 'node:fs/promises *'])
     expect(await names('loader.ts')).toEqual(['node:module *', 'worker_threads *'])
     expect(await names('after.ts')).toEqual(['node:fs writeFile'])
+  })
+
+  it('refuses every way context/ can name fetch or a global, and only those', async () => {
+    const root = await tree({
+      'context/call.ts': "await fetch('x')\n",
+      'context/kept.ts': 'const f = fetch\nf(url)\n',
+      'context/this.ts': 'globalThis.fetch(url)\n',
+      'context/node.ts': 'global.fetch(url)\n',
+      'context/type.ts': 'type F = typeof globalThis.fetch\n',
+      'context/socket.ts': 'new WebSocket(url)\nnew XMLHttpRequest()\n',
+      // Text inside a regular expression: `secrets.ts`'s pattern.
+      'context/pattern.ts': 'const reads = /ENV\\.fetch\\(/\n',
+      'context/said.ts': '// fetch(url) through globalThis\n/* global.fetch */\nexport const x = 1\n',
+      'context/other.ts': 'deps.catalogueFetch(url)\n',
+      'context/backstage/transport.ts': 'await options.catalogueFetch(url, init)\n',
+      // What looks like a comment inside a string, a template or a regular
+      // expression hides nothing after it.
+      'context/address.ts': "const u = 'https://evil.example'; await fetch(u)\n",
+      'context/accept.ts': "const h = { accept: '*/*' }\nawait fetch(u)\n/** doc */\n",
+      'context/template.ts': "const t = `${'//'}/*`; await fetch(u)\n",
+      'context/slashes.ts': 'const r = /\\/\\//; await fetch(u)\n',
+      // A quote in a comment opens no string.
+      'context/quoted.ts': "// don't\nawait fetch(u)\n",
+      // A road out by import rather than by a global.
+      'context/raw.ts': "import https from 'node:https'\n",
+      'context/late.ts': "const net = await import('node:net')\nconst w = require('undici')\n",
+      'context/named.ts': 'const m = await import(name)\n',
+    })
+    expect((await fetchOffences(root)).sort()).toEqual(
+      [
+        'context/address.ts names fetch',
+        'context/accept.ts names fetch',
+        'context/template.ts names fetch',
+        'context/slashes.ts names fetch',
+        'context/quoted.ts names fetch',
+        'context/raw.ts imports node:https',
+        'context/late.ts imports node:net',
+        'context/late.ts imports undici',
+        'context/named.ts loads name at run time',
+        'context/call.ts names fetch',
+        'context/kept.ts names fetch',
+        'context/this.ts names a global way out',
+        'context/this.ts names fetch',
+        'context/node.ts names a global way out',
+        'context/node.ts names fetch',
+        'context/type.ts names a global way out',
+        'context/type.ts names fetch',
+        'context/socket.ts names a global way out',
+        'context/other.ts calls a catalogueFetch',
+      ].sort(),
+    )
+
+    // The transport calls what it is handed as `options.catalogueFetch(`, and
+    // no other way: a destructured one is a second name to call it by.
+    const destructured = await tree({
+      'context/backstage/transport.ts': 'const { catalogueFetch } = options\nawait catalogueFetch(url, init)\n',
+    })
+    expect(await fetchOffences(destructured)).toEqual(['context/backstage/transport.ts calls a catalogueFetch'])
+  })
+
+  it('refuses what agents/ reaches in context/backstage/, or that names fetch or a global', async () => {
+    const root = await tree({
+      'agents/reader.ts': "import { x } from './helper.js'\n",
+      'agents/helper.ts': "export const x = 1\nexport const y = await fetch('x')\n",
+      'agents/typed.ts': "import type { CatalogueTransport } from '../context/backstage/transport.js'\n",
+      'agents/wide.ts': 'export const z = globalThis\n',
+      'context/backstage/transport.ts': 'export interface CatalogueTransport {}\n',
+    })
+    expect((await agentsReachOffences(root)).sort()).toEqual(
+      [
+        // A type import counts: the walk reads every specifier, erased or not.
+        'agents/ reaches ../context/backstage/transport.js',
+        'agents/helper.ts names fetch',
+        'agents/wide.ts names a global way out',
+      ].sort(),
+    )
+    const clean = await tree({ 'agents/a.ts': "import { b } from './b.js'\n", 'agents/b.ts': 'export const b = 1\n' })
+    expect(await agentsReachOffences(clean)).toEqual([])
+  })
+
+  it('refuses a process started without spawnedEnvironment', async () => {
+    const spawns = { 'spawns.ts': { calls: 1, env: 'gitEnvironment' } }
+    const good = [
+      "import { execFile } from 'node:child_process'",
+      "import { spawnedEnvironment } from './spawned-environment.js'",
+      'function gitEnvironment(): NodeJS.ProcessEnv {',
+      '  return { ...spawnedEnvironment(), LC_ALL: "C" }',
+      '}',
+      "const git = () => execFile('git', ['status'], { env: gitEnvironment() }, (error) => {})",
+      "const matched = /x/.exec('x')",
+      '',
+    ].join('\n')
+    expect(await spawnOffences(await tree({ 'spawns.ts': good }), spawns)).toEqual([])
+
+    const second = `${good}execFile('git', ['log'], { cwd: '/' })\n`
+    expect(await spawnOffences(await tree({ 'spawns.ts': second }), spawns)).toEqual([
+      'spawns.ts starts a process in 2 places; the rule states 1',
+      'spawns.ts: execFile(…) is not given env: gitEnvironment()',
+    ])
+
+    const inherited = good.replace('...spawnedEnvironment()', '...process.env')
+    expect(await spawnOffences(await tree({ 'spawns.ts': inherited }), spawns)).toEqual([
+      'spawns.ts names process.env',
+      'spawns.ts: gitEnvironment does not start from spawnedEnvironment',
+    ])
+
+    const other = good.replace('{ env: gitEnvironment() }', "{ env: { PATH: '/bin' } }")
+    expect(await spawnOffences(await tree({ 'spawns.ts': other }), spawns)).toEqual([
+      'spawns.ts: execFile(…) is not given env: gitEnvironment()',
+    ])
+
+    // A function of child_process by any other road: a namespace, an alias,
+    // a value passed on, a module loaded at run time. Each would start a
+    // process the count and the `env` check never see.
+    const namespace = `${good.replace("import { execFile }", 'import * as cp')}cp.execFile('sh', ['-c', 'env'])\n`
+    expect(await spawnOffences(await tree({ 'spawns.ts': namespace }), spawns)).toEqual([
+      'spawns.ts takes the whole of node:child_process',
+      'spawns.ts starts a process in 2 places; the rule states 1',
+      'spawns.ts: execFile(…) is not given env: gitEnvironment()',
+    ])
+    const aliased = `${good.replace('{ execFile }', '{ execFile, spawn as go }')}go('sh')\n`
+    expect(await spawnOffences(await tree({ 'spawns.ts': aliased }), spawns)).toEqual([
+      'spawns.ts takes spawn from node:child_process under another name',
+    ])
+    const promised = `${good}const run = promisify(execFile)\nawait run('sh')\n`
+    expect(await spawnOffences(await tree({ 'spawns.ts': promised }), spawns)).toEqual([
+      'spawns.ts starts a process in 2 places; the rule states 1',
+      'spawns.ts: execFile is named without being called',
+    ])
+    const loaded = `${good}const cp = await import('node:child_process')\n`
+    expect(await spawnOffences(await tree({ 'spawns.ts': loaded }), spawns)).toEqual([
+      'spawns.ts takes the whole of node:child_process',
+    ])
   })
 })

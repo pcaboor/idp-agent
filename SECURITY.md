@@ -124,7 +124,8 @@ Inspector.
 | The home directory and the filesystem root are never inspected unasked | `tests/unit/plan-project.test.ts` — *never inspects the home directory or the filesystem root unless --project names it*; `tests/unit/project-tracked.test.ts` — *refuses init in the home directory, before a model is chosen*, *refuses init at the filesystem root* |
 | What a model or a repository file wrote reaches the terminal with nothing a terminal obeys, on `plan`, `relations`, `show`, `graph`, `validate` and `ask` | `tests/unit/plain.test.ts`; `tests/unit/plan-project.test.ts` — *what plan prints that a model or a file wrote*; `tests/unit/relations-command.test.ts` — *a hostile type, environment and name reach no terminal*; `tests/unit/read-commands-hostile.test.ts` — *… reaches no terminal with a byte it obeys*, one per command, and *ask: the overview it prints and the model sentences around it …* |
 | A preview writes nothing: both repositories are byte for byte as they were | `tests/unit/plan-command.test.ts` — *leaves the repository byte-identical*; `tests/unit/plan-intent.test.ts` — *leaves the declarations repository byte-identical*, *leaves the application repository byte-identical too*; `pnpm smoke`, on the built binary |
-| No module reachable from `agents/` touches the disk or the network; only named modules write, and one starts a process | `tests/architecture/dependencies.test.ts` — *no module reachable from agents/ touches the disk or the network*, *nothing in scaffold/ but write.ts imports a writing function*, *only the named modules write, and only one starts a process*, *only the named modules of cli/ touch the disk*; the rules fail on a missing folder or an unresolved import — *the architecture rules themselves* |
+| No module reachable from `agents/` touches the disk or the network, reaches `context/backstage/` or names `fetch`; nothing in `context/` names `fetch`; only named modules write, and one starts a process | `tests/architecture/dependencies.test.ts` — *no module reachable from agents/ touches the disk or the network*, *nothing reachable from agents/ is in context/backstage/, names fetch or names a global*, *nothing in context/ names fetch or a global, and only the transport calls what it is handed*, *nothing in scaffold/ but write.ts imports a writing function*, *only the named modules write, and only one starts a process*, *only the named modules of cli/ touch the disk*; the rules fail on a missing folder or an unresolved import — *the architecture rules themselves* |
+| No child process is handed a provider key or the Backstage token: `git`, in every inspected repository, runs without any `*_API_KEY` and without `IDP_BACKSTAGE_TOKEN` or any other `IDP_BACKSTAGE_*` variable | `tests/unit/spawned-environment.test.ts` — *is what git runs in when the Inspector reads a directory*, *drops the Backstage token and every provider key, and keeps the rest*, *drops every IDP_BACKSTAGE_ variable: a swapped pair puts the token in the URL one*; `tests/architecture/dependencies.test.ts` — *every process src/ starts is given spawnedEnvironment* |
 | `init platform` never overwrites and never deletes | `tests/unit/scaffold-write.test.ts` — *leaves a hand-edited file byte for byte*, *does not delete anything that was already there* |
 | The key reaches its provider, in its header, and nothing else: no request body, no trace, no tracking server, no output — on each of the three providers, for a question and for a change | `tests/contract/key-reach.test.ts` — *the {anthropic, mistral, openai} key on a real run*: *reaches its provider in its header, and nothing else, on a question*, *… on a change* |
 | A missing key is refused with exit 2, naming the variable, before any agent runs | `tests/unit/model-failures.test.ts` — *is refused for … with exit 2, naming …, before any agent runs*, one per provider |
@@ -138,9 +139,17 @@ Inspector.
 catches the threat it names — a contributor who adds an import without noticing where it
 lands — and it is not a sandbox. `globalThis.fetch`, `process.binding`, `eval` and
 ``import(`node:${name}`)`` need no import at all, and a specifier the rules do not list
-passes. Read them as a build-time convention with teeth, never as a boundary that contains
-hostile code in this repository. The boundary that does contain something is
-`context/project-fs`, enforced at runtime.
+passes. The `fetch` rules are **textual**: `fetch` needs no import, so the source of
+`context/` and of every file reachable from `agents/` is read, comments stripped by a
+scanner that knows strings, templates and regular expressions, for the word `fetch` and for
+`globalThis`, `global`, `XMLHttpRequest` and `WebSocket`, and only
+`context/backstage/transport.ts` may call the `catalogueFetch` it is handed; `context/`
+imports no network module either, and loads no module by a name its source does not spell.
+The process rule is textual too: a module that starts a process takes child_process's
+functions by their own names, and every mention of one is a call given the environment
+`spawnedEnvironment` builds. A way out those words do not name passes them. Read them as a build-time convention with
+teeth, never as a boundary that contains hostile code in this repository. The boundary that
+does contain something is `context/project-fs`, enforced at runtime.
 
 ## Known to be incomplete
 

@@ -139,7 +139,26 @@ files; `selection` says whether the files were git's, a walk's outside git, or n
 `declarations` holds every `catalog-info*.yaml`/`.yml`, read whole and outside the caps — the
 root's from the disk, tracked or not — each with the workspace it sits in, a folder with a
 package manifest of its own, for `init` to compare with and diff against. Only the CLI reads
-these, and none of them reaches a model.
+these, and none of them reaches a model. Its one child process, `git`, runs in the environment
+`spawned-environment.ts` builds: the process's, without `IDP_BACKSTAGE_TOKEN` or any other
+`IDP_BACKSTAGE_*` variable and without any `*_API_KEY`, which `git` in an inspected repository — its hooks and its configuration are its
+author's — has no use for. `spawnedEnvironment` is the one builder of a child process's
+environment, and the architecture rules hold every call that starts a process to it.
 
-`context/` may reach the network later — `backstage/` will be an HTTP client. `core/` never may,
-and `tests/architecture/dependencies.test.ts` fails the build if that slips.
+`backstage/` is where `context/` reaches the network (`backstage-http`, slice 1 of
+`docs/backstage-http-brief.md`), and `backstage/transport.ts` is its one way out: the only code
+that will send a catalogue token. `catalogueTransport` is handed the base URL, the token as a
+value and a `catalogueFetch` — none read from the environment or the global here — and sends
+`GET` on the two routes of `CATALOGUE_REQUESTS` alone, to the base's origin and path, checked
+again once the URL is built (`catalogueUrl`) and before the header exists; with
+`redirect: 'error'`, a 3xx, a response marked redirected or one from another address refused
+unread; every body counted while it streams, per response and per run, and every request
+bounded in time, its body included; a 429 waited for only when it says how long, within the
+bounds of `backstage/limits.ts`, which holds every bound of the note's § 6. A failure is a
+`CatalogueReadError` over the closed `CatalogueFailure`, its message the failure and the
+origin alone: no body, header, cause or token. Nothing calls it yet; the catalogue's
+provider (1.4) and the CLI (1.5) will. Nothing in `context/` names `fetch` or a
+global way out or imports a network module, only the transport calls the `catalogueFetch` it is handed, and nothing reachable
+from `agents/` is in `backstage/` — three rules of `tests/architecture/dependencies.test.ts`, which
+read the source for the word because `fetch` needs no import. `core/` never reaches the network,
+and the same file fails the build if that slips.

@@ -4,6 +4,7 @@ import { constants } from 'node:fs'
 import { lstat, open, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
 import { assertInsideRepo, PathEscapeError } from '../../core/paths/entity-path.js'
+import { spawnedEnvironment } from '../spawned-environment.js'
 import { secretIn, type SecretClass } from './secrets.js'
 import type { Declaration, ProjectFile, ProjectRead, Selection, SkippedFile } from './types.js'
 
@@ -384,16 +385,18 @@ const GIT_LIMITS = { timeoutMs: 15_000, maxOutputBytes: 32 * 1024 * 1024 } as co
 const GIT_OVERRIDES = ['--no-pager', '-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false']
 
 /**
- * The environment git runs in: the process's, minus every `GIT_` variable.
- * `GIT_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE` would each make git answer
- * about another repository than the one on disk — a pre-commit hook sets all
- * three — and `GIT_CONFIG_PARAMETERS` would undo the overrides above. The C
- * locale makes the one message read below the same on every machine;
- * optional locks off means a read never writes the index.
+ * The environment git runs in: a spawned one — the process's, without the
+ * Backstage token and without any provider key, which git in an inspected
+ * repository has no use for and its hooks no right to — minus every `GIT_`
+ * variable. `GIT_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE` would each make
+ * git answer about another repository than the one on disk — a pre-commit
+ * hook sets all three — and `GIT_CONFIG_PARAMETERS` would undo the overrides
+ * above. The C locale makes the one message read below the same on every
+ * machine; optional locks off means a read never writes the index.
  */
 function gitEnvironment(): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = {}
-  for (const [name, value] of Object.entries(process.env)) {
+  for (const [name, value] of Object.entries(spawnedEnvironment())) {
     if (!name.startsWith('GIT_')) environment[name] = value
   }
   return {

@@ -451,7 +451,7 @@ the model's to write (§ 5.3).
 
 ### 5.5 Dependency rules, enforced in CI
 
-Two rules were written here first; **sixteen** are enforced today, in
+Two rules were written here first; **nineteen** are enforced today, in
 `tests/architecture/dependencies.test.ts`. The two founding ones:
 
 1. `core/` never imports `agents/` or `llm/`.
@@ -467,13 +467,20 @@ agent imports it, so a runtime import there would put `ai` inside the agent clos
 the filesystem implementation of the recording store lives in `cli/`, not in `llm/`, for
 the same reason.
 
-The other twelve extend the same idea to the layers added since: `core/` reaches neither
-the network, nor the disk, nor the model SDK, nor `context/`, `cli/` or `scaffold/`; only
-`llm/` imports the model SDK, and `agents/` imports `llm/client.js` and nothing else from
-it; `scaffold/` imports `core/` and nothing else of ours, and exactly one module in it
-writes; only `context/iac-fs` and `context/project-fs` read a user's repository; `trace/`
-reaches nothing but types and never names `fetch`, and only `cli/` reaches it. **Add a
-rule when you add a layer** — the count in this paragraph is the one that drifts first.
+The other seventeen extend the same idea to the layers added since: `core/` reaches neither
+the network, nor the disk, nor the model SDK, nor `context/`, `cli/` or `scaffold/`; nothing
+reachable from `agents/` touches the disk or the network; only `llm/` imports the model SDK,
+and `agents/` imports `llm/client.js` and nothing else from it; `scaffold/` imports `core/`
+and nothing else of ours, and exactly one module in it writes; only `context/iac-fs` and
+`context/project-fs` read a user's repository, and only named modules of `cli/` touch the
+disk; across `src/`, only named modules write, and one starts a process; `trace/` reaches
+nothing but types and never names `fetch`, and only `cli/` reaches it. Three hold the
+catalogue token to one way out: nothing in `context/` names `fetch` or a global way out or
+imports a network module, and only `context/backstage/transport.ts` calls the
+`catalogueFetch` it is handed; nothing reachable from `agents/` is in `context/backstage/`,
+names `fetch` or names a global; and every process `src/` starts is given
+`spawnedEnvironment`, without the Backstage variables or any provider key. **Add a rule
+when you add a layer** — the count in this paragraph is the one that drifts first.
 
 ---
 

@@ -554,7 +554,7 @@ yet, so no real run can send a token in this pull request.
 - Modify: `src/context/project-fs/snapshot.ts` (`gitEnvironment` builds on `spawnedEnvironment`)
 - Modify: `tests/architecture/dependencies.test.ts` (three rules)
 - Create: `tests/unit/backstage-transport.test.ts`, `tests/unit/spawned-environment.test.ts`
-- Modify: `src/context/README.md` (what lives in `backstage/`, which rule holds it), `AGENTS.md` (19 rules, the layering table), `SECURITY.md` ("What the architecture rules are": the `fetch` rule is textual), `CHANGELOG.md`
+- Modify: `src/context/README.md` (what lives in `backstage/`, which rule holds it), `AGENTS.md` (19 rules, the layering table), `SECURITY.md` ("What the architecture rules are": the `fetch` rule is textual), `docs/design.md` (§ 5.5: nineteen, and the three named), `CHANGELOG.md`
 
 **Interfaces:**
 
@@ -609,7 +609,7 @@ export function catalogueTransport(options: {
 export function spawnedEnvironment(env?: NodeJS.ProcessEnv): NodeJS.ProcessEnv
 ```
 
-- [ ] **Step 1: Write the transport's tests (fail: no module)**
+- [x] **Step 1: Write the transport's tests (fail: no module)**
 
 `tests/unit/backstage-transport.test.ts`, each against a hand-written `fetch` that keeps
 every call (`url`, `init`) and answers what the case needs (the fake of 1.4 does not exist
@@ -682,7 +682,7 @@ it('classifies an unreachable host by its code alone', …) // TypeError('fetch 
 Run: `pnpm vitest run tests/unit/backstage-transport.test.ts`. Expected: FAIL, the module
 does not exist.
 
-- [ ] **Step 2: Write the spawned-environment tests (the second fails today)**
+- [x] **Step 2: Write the spawned-environment tests (the second fails today)**
 
 `tests/unit/spawned-environment.test.ts`:
 
@@ -716,7 +716,7 @@ Run it. Expected: the first FAILS (no module), and once it exists the second sti
 `KEY`: `gitEnvironment` (`snapshot.ts:394-406`) copies every variable not starting with
 `GIT_`.
 
-- [ ] **Step 3: Write the architecture rules (fail: no folder)**
+- [x] **Step 3: Write the architecture rules (fail: no folder)**
 
 Three rules in `tests/architecture/dependencies.test.ts`, on the `trace/` rule's pattern
 (source read, comments stripped):
@@ -770,7 +770,19 @@ with no `env` in a module of the `spawns` set.
 Prove each bites before the code exists: add a throwaway `await fetch('x')` to
 `src/context/iac-fs/provider.ts`, watch the first rule name it, delete it.
 
-- [ ] **Step 4: Implement**
+Hardened in review, each case seen failing first: comments are stripped by a scanner that
+knows strings, templates and regular expressions (a `'https://…'` or `'*/*'` hid the code
+after it; the `trace/` rule reads through the same scanner); the first rule also refuses a
+network import in `context/` (`NETWORK`, static or dynamic) and a dynamic import of a name
+the source does not spell; the process rule counts every mention of a child_process
+function outside its import, not only a call by its bare name (`cp.execFile(`,
+`promisify(execFile)`), and refuses the whole module or a function taken under another
+name. `spawnedEnvironment` drops every `IDP_BACKSTAGE_*` variable, not only the token: a
+swapped pair puts the token in `IDP_BACKSTAGE_URL`. And the transport races the wait for
+the headers, as well as the body, against the request's bound, and a 429's wait against
+the load's signal.
+
+- [x] **Step 4: Implement**
 
 `transport.ts`, when built: the `base` is checked again — `https:`, or `http:` with
 `isLoopback`; no username, password, search or hash; `pathname` matching
@@ -816,7 +828,7 @@ variables, as now.
 renderer is the first. **Architecture rules touched:** three added (16 → 19); rule 12's
 `spawns` set unchanged.
 
-- [ ] **Step 5: Checks**
+- [x] **Step 5: Checks**
 
 ```bash
 pnpm vitest run tests/unit/backstage-transport.test.ts tests/unit/spawned-environment.test.ts tests/unit/project-tracked.test.ts
