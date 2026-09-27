@@ -1,4 +1,9 @@
-import type { GenerateRequest, GenerateResult, LlmClient } from '../llm/client.js'
+import type {
+  GenerateOptions,
+  GenerateRequest,
+  GenerateResult,
+  LlmClient,
+} from '../llm/client.js'
 import type { TraceBuilder } from './builder.js'
 
 /**
@@ -15,11 +20,11 @@ export function traced(
   builder: Pick<TraceBuilder, 'modelCallStarted' | 'modelCallEnded'>,
 ): LlmClient {
   return {
-    async generate(request: GenerateRequest): Promise<GenerateResult> {
+    async generate(request: GenerateRequest, options?: GenerateOptions): Promise<GenerateResult> {
       const handle = builder.modelCallStarted(request)
       let result: GenerateResult
       try {
-        result = await client.generate(request)
+        result = await client.generate(request, options)
       } catch (thrown) {
         builder.modelCallEnded(handle, { error: thrown })
         throw thrown

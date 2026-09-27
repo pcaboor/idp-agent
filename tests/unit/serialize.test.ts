@@ -267,12 +267,47 @@ describe('parseDocuments, the one reader of entity documents', () => {
     expect(documents).toBe(2)
   })
 
+  it('names every field of an entity or an API the read model does not read', () => {
+    // Stripped by the schemas, and so said here (domain-backstage-7): a field
+    // nothing reads is a fact of the file that reaches no answer.
+    const read = parseDocuments(
+      [
+        '---',
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: Resource',
+        'metadata:',
+        '  name: orders-db',
+        '  namespace: default',
+        '  etag: abc',
+        'spec:',
+        '  type: database',
+        '  owner: group:default/tiger',
+        '  providesApis: [orders]',
+        'status:',
+        '  items: []',
+        '---',
+        'apiVersion: backstage.io/v1alpha1',
+        'kind: Group',
+        'metadata:',
+        '  name: tiger',
+        'spec:',
+        '  type: team',
+        '  children: []',
+        '',
+      ].join('\n'),
+    )
+    expect(read.entities).toHaveLength(1)
+    // A Group is set aside whole, so none of its fields is counted.
+    expect(read.unread).toEqual(['metadata.etag', 'spec.providesApis', 'status'])
+  })
+
   it('counts a null document, which a witness is made of, and rejects nothing for it', () => {
     expect(parseDocuments('---\n')).toEqual({
       entities: [],
       apis: [],
       rejections: [],
       ignored: [],
+      unread: [],
       documents: 1,
     })
   })

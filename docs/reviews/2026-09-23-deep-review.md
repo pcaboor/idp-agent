@@ -158,6 +158,7 @@ priority 6.
 Review ids that a later pull request names as fixed, outside the ids the priorities list:
 
 - agents-llm-5 → [#75](https://github.com/pcaboor/idp-agent/pull/75)
+- agents-llm-10 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5, for the abort signal; no command passes one yet, and calls are still not streamed
 - agents-llm-11 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
 - architecture-11 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2; no rule names `forge/` yet, which does not exist, and a rule over a missing folder now fails
 - architecture-12 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
@@ -178,17 +179,24 @@ Review ids that a later pull request names as fixed, outside the ids the priorit
 - core-yaml-9 → [#50](https://github.com/pcaboor/idp-agent/pull/50), found while stacking #49
 - docs-3 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
 - docs-9 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
+- domain-backstage-7 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5, for `title`, `labels` and `subcomponentOf`; the fields nothing reads are counted on a `not read:` line; `memberOf` and the organisation are `backstage-http` slice 3's
 - domain-backstage-9 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3, for the comment; registry-built schemas are product-gap-8's, and wait for the owner
 - domain-backstage-10 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4
+- gap-ask-grounding-6 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5
+- gap-ask-grounding-7 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5, by normalising and one retry; no forced `classify` tool, which would change what every tape sent the Supervisor
+- gap-ask-grounding-11 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5
 - gap-init-real-repos-6 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - gap-init-real-repos-8 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
+- gap-init-real-repos-9 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5
 - gap-provider-matrix-2 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
 - gap-provider-matrix-3 → [#75](https://github.com/pcaboor/idp-agent/pull/75), seen and left in #44
 - gap-provider-matrix-4 → [#59](https://github.com/pcaboor/idp-agent/pull/59), for the request timeout; calls are still not streamed (`generateText` in `src/llm/runtime.ts`)
+- gap-provider-matrix-6 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5
 - gap-stage5-readiness-2 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4
 - gap-stage5-readiness-7 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4, for the list a failure loses; the writer still neither modifies, renames, deletes nor syncs, which is stage 5's
 - gap-stage5-readiness-9 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2
 - gap-stage5-readiness-14 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
+- product-gap-10 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5, for the count; no budget or `--max-calls`, which is agents-llm-2's
 - product-gap-14 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
 - runtime-probe-3 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - runtime-probe-8 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
@@ -304,11 +312,11 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | docs-7 | still true | medium | small |  | owner | A README section on what the tool produces and what it does not (provisioning is the reconciler's). |
 | docs-8 | partly fixed | medium | small |  | owner | `docs/extending.md` from the existing seams, plugins on the roadmap, a session-model ADR stub. |
 | domain-backstage-6 | still true | medium | medium |  | owner | Same fix as core-plan-8. |
-| domain-backstage-7 | partly fixed | medium | small | A5 |  | Read `title`, `labels` and `subcomponentOf` on the read side, print them on `show`, count stripped keys as set aside. |
+| domain-backstage-7 | partly fixed | medium | small | A5, fixed in [#91](https://github.com/pcaboor/idp-agent/pull/91) (the fields nothing reads are counted on a `not read:` line, not in the overview's set-aside section) |  | Read `title`, `labels` and `subcomponentOf` on the read side, print them on `show`, count stripped keys as set aside. |
 | gap-ask-grounding-2 | still true | medium | medium |  | re-record, owner | Witness only earlier turns' results, cite the call whose rows are reprinted, mark a forced-turn answer partial. |
 | gap-ask-grounding-3 | partly fixed | medium | medium |  | re-record, owner | Tie `nothing` to a call that returned zero rows, an `unknown` outcome, engine refusals on exit 1. |
 | gap-ask-grounding-4 | partly fixed | medium | medium |  | re-record, owner | Engine-verified `holds` and `count` outcomes, rendered by the engine as `relation` is. |
-| gap-ask-grounding-7 | still true | medium | small | A5 |  | Strip punctuation and markdown before comparing the Supervisor's word, retry once, then exit 1 with one line. |
+| gap-ask-grounding-7 | still true | medium | small | A5, fixed in [#91](https://github.com/pcaboor/idp-agent/pull/91) |  | Strip punctuation and markdown before comparing the Supervisor's word, retry once, then exit 1 with one line. |
 | gap-ask-grounding-9 | still true | medium | large |  | owner | Same as architecture-5 for namespaces; until then set aside a non-default namespace with a warning. |
 | gap-init-real-repos-5 | still true | medium | small |  | owner | Place an Inspector fact only when its value occurs in a file it read; otherwise ask. Same fix as security-5. |
 | gap-init-real-repos-6 | still true | medium | trivial | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) |  | Same fix as cli-ux-8. |
@@ -343,7 +351,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | wip-diff-4 | still true | medium | small | A4, fixed in [#90](https://github.com/pcaboor/idp-agent/pull/90) |  | Same change as wip-diff-1: `created()` only counts creations the engine places. |
 | wip-diff-6 | still true | medium | medium |  | owner | Freshness as its own test after the invariants, a record-from-the-first-stale-turn mode, one stated policy. |
 | wip-diff-7 | partly fixed | medium | small |  | owner | Pin each scenario's replayed exit code and outcome line; a golden diff for a creation and an add-dependency-of. |
-| agents-llm-10 | partly fixed | low | small | A5 |  | An optional `signal` on `generate()`, outside the digest, joined to the timeout's controller in `within()`; streaming stays stage 7's. |
+| agents-llm-10 | partly fixed | low | small | A5, fixed in [#91](https://github.com/pcaboor/idp-agent/pull/91) (no command passes a signal yet; streaming stays stage 7's) |  | An optional `signal` on `generate()`, outside the digest, joined to the timeout's controller in `within()`; streaming stays stage 7's. |
 | architecture-12 | still true | low | trivial | A3, fixed in [#89](https://github.com/pcaboor/idp-agent/pull/89) |  | Gate order in AGENTS.md and SECURITY.md as the code runs it (recheck before reviewer); name what `cli/` reads. |
 | build-ci-5 | partly fixed | low | trivial | A3, fixed in [#89](https://github.com/pcaboor/idp-agent/pull/89) |  | Bump `package.json` to `0.1.0-rc.2`, as the CHANGELOG announces. |
 | build-ci-6 | partly fixed | low | small |  | owner | Reserve the npm name by publishing; until then every `npx` mention stays commented, `docs/design.md` included. |
@@ -363,21 +371,21 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | domain-backstage-9 | still true | low | trivial | A3, fixed in [#89](https://github.com/pcaboor/idp-agent/pull/89) |  | Rewrite the registry comment: static by decision for v1, configurable only through schema factories. |
 | domain-backstage-10 | partly fixed | low | small | A4, fixed in [#90](https://github.com/pcaboor/idp-agent/pull/90) |  | `EntityGraph` keeps the first declaration of a duplicate, as the plan does, with a test tying them. |
 | gap-ask-grounding-5 | partly fixed | low | trivial |  | re-record | Reword `consumers` (point at `impacts`), and compare `nameContains` case-insensitively. |
-| gap-ask-grounding-6 | still true | low | small | A5 |  | Flatten line breaks and control characters, and bound the length, of every vocabulary value in `formatSummary`. |
+| gap-ask-grounding-6 | still true | low | small | A5, fixed in [#91](https://github.com/pcaboor/idp-agent/pull/91) |  | Flatten line breaks and control characters, and bound the length, of every vocabulary value in `formatSummary`. |
 | gap-ask-grounding-8 | partly fixed | low | small |  | re-record, owner | Let `ask` force the read road, as `plan` forces the change road. |
-| gap-ask-grounding-11 | still true | low | small | A5 |  | Print the truncation of the search the cited rows came from, not the session's total. |
+| gap-ask-grounding-11 | still true | low | small | A5, fixed in [#91](https://github.com/pcaboor/idp-agent/pull/91) |  | Print the truncation of the search the cited rows came from, not the session's total. |
 | gap-ask-grounding-12 | still true | low | small |  | re-record | Cap each vocabulary list, and send the Supervisor the request without the vocabulary. |
 | gap-ask-grounding-13 | still true | low | small |  | re-record, owner | Assert the exact consumers block; at the re-record, overview, relation and nothing scenarios and a second provider. |
 | gap-init-real-repos-8 | still true | low | trivial | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) |  | An `init` closing line saying how to apply the diff. |
-| gap-init-real-repos-9 | still true | low | small | A5 |  | Normalise `read_file` paths, say "not read: under <folder>" or "past the cap", flag non-UTF-8 files. |
+| gap-init-real-repos-9 | still true | low | small | A5, fixed in [#91](https://github.com/pcaboor/idp-agent/pull/91) |  | Normalise `read_file` paths, say "not read: under <folder>" or "past the cap", flag non-UTF-8 files. |
 | gap-init-real-repos-10 | still true | low | small |  | owner | Read `git remote get-url origin` (credentials stripped) for `backstage.io/source-location`, or drop "git remote" from §7.3. |
-| gap-provider-matrix-6 | still true | low | trivial | A5 |  | Always send `store: false` to OpenAI, merged with the reasoning effort; pin it in the contract test. |
+| gap-provider-matrix-6 | still true | low | trivial | A5, fixed in [#91](https://github.com/pcaboor/idp-agent/pull/91) |  | Always send `store: false` to OpenAI, merged with the reasoning effort; pin it in the contract test. |
 | gap-provider-matrix-7 | still true | low | medium |  | re-record, owner | Tool errors as `error-json`; reasoning parts carried for the providers that need them. |
 | gap-stage5-readiness-5 | still true | low | medium |  | owner | Same as core-plan-9: an `ApprovedChange` carrying the edits and their before-hashes. |
 | gap-stage5-readiness-7 | still true | low | small | A4, fixed in [#90](https://github.com/pcaboor/idp-agent/pull/90) |  | A `ScaffoldWriteError {written, failed}` so `init platform` says what it left. |
 | gap-stage5-readiness-12 | still true | low | small |  | owner | Reword design §4.3 for shared grant files; a plan identity for branch names in the stage-5 plan. |
 | gap-stage5-readiness-14 | partly fixed | low | trivial | A3, fixed in [#89](https://github.com/pcaboor/idp-agent/pull/89) |  | Gate order in AGENTS.md (twice) and the `Gate` union as the code runs: recheck, then reviewer. |
-| product-gap-10 | partly fixed | low | small | A5 |  | Usage on the event stream and one stderr line per run with calls and tokens. |
+| product-gap-10 | partly fixed | low | small | A5, fixed in [#91](https://github.com/pcaboor/idp-agent/pull/91) |  | Usage on the event stream and one stderr line per run with calls and tokens. |
 | product-gap-11 | still true | low | small |  | owner | Same channel as cli-ux-5. |
 | product-gap-14 | still true | low | trivial | A3, fixed in [#89](https://github.com/pcaboor/idp-agent/pull/89) |  | `path.posix.normalize` in `assertRelativeSafe` and `resolveEntityPath`. |
 | runtime-probe-13 | partly fixed | low | small | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) (a retry is a line on stderr, not a trace event) |  | Refuse an empty or dash-leading directory for `init platform` and `validate`; a retry progress event. |

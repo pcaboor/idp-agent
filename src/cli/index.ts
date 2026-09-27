@@ -21,8 +21,10 @@ import { runAsk } from './commands/ask.js'
 import { runEntry } from './commands/entry.js'
 import { randomBytes } from 'node:crypto'
 import type { AgentEvent, EventSink } from '../agents/events.js'
+import { ClassificationError } from '../agents/supervisor.js'
 import { createTraceBuilder } from '../trace/builder.js'
 import { traced } from '../trace/client.js'
+import { counted, usageLine } from './usage.js'
 import type { Attributes } from '../trace/model.js'
 import { exportTrace, sinksFromEnv, type TraceSink } from './trace-sink.js'
 import { EntityGraph } from '../context/graph/entity-graph.js'
@@ -896,11 +898,15 @@ export function renderEvent(event: AgentEvent): string | undefined {
     case 'refused':
       return `! ${event.agent} refused: ${said(event.reason)}`
     case 'stopped':
-      // No reason: it is the error the command prints next, as its last line,
+      // No reason: it is the error `failed` prints, as the run's last line,
       // and said here too it would reach the user twice.
       return `! ${event.agent} stopped`
     case 'ask':
     case 'answer:ready':
+      return undefined
+    case 'usage':
+      // One per model call, which is noise on a terminal: the run's total is
+      // one line at its end (`usageLine`), said by `agentBacked`.
       return undefined
     case 'agent:end':
     case 'attempt:start':
@@ -1221,7 +1227,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   const { provider, source } = read
   const repository = overviewName(source)
 
-  const { entities, rejected, ignored } = await provider.load()
+  const { entities, rejected, ignored, unread } = await provider.load()
   // Reported, never dropped in silence: that silent drop is the catalogue
   // behaviour this tool exists to compensate for (design 4.4).
   // Both halves are the file's own words: a path is a name somebody chose, and
@@ -1231,6 +1237,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     err(`skipped ${whole(rejection.source)}: ${whole(rejection.reason)}\n`)
   }
   if (ignored.length > 0) err(`${notLoaded(ignored)}\n`)
+  if (unread.length > 0) err(`${notRead(unread)}\n`)
   // A repository that declares nothing answers every question with a miss —
   // "No entity named", "No entity matches" — which reads as a fact about the
   // name or the filter. The likeliest cause is the other one: `--repo` pointed
@@ -1491,6 +1498,26 @@ function notLoaded(ignored: readonly Ignored[]): string {
 }
 
 /**
+ * Every field the read model does not read, as ONE line, counted by path for
+ * the reason `notLoaded` counts by kind: a catalogue whose every Component
+ * lists `consumesApis` would otherwise say so once per Component. A path is
+ * a key a file wrote, so it is flattened like any other text this tool did
+ * not write (domain-backstage-7).
+ */
+function notRead(unread: readonly string[]): string {
+  const byPath = new Map<string, number>()
+  for (const field of unread) {
+    const label = oneLine(field)
+    byPath.set(label, (byPath.get(label) ?? 0) + 1)
+  }
+  const counts = [...byPath]
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([field, count]) => `${field} ×${String(count)}`)
+  const fields = unread.length === 1 ? 'field' : 'fields'
+  return `not read: ${String(unread.length)} ${fields} this tool does not model (${counts.join(', ')})`
+}
+
+/**
  * Colour belongs to a terminal, and only main knows whether it holds one: an
  * injected `out` is a string sink — a test, a pipe, the TUI at stage 7 — and
  * painting it would put escape codes in someone's assertion.
@@ -1639,6 +1666,13 @@ function failed(error: unknown, err: (chunk: string) => void): number {
     err(`${inert(error.message)}\n`)
     return EXIT.notFound
   }
+  // The Supervisor's model gave no word, twice: exit 1, as a call that could
+  // not succeed is, not 3 — nothing was understood and declined
+  // (gap-ask-grounding-7). One line, never cut: it quotes the model's text.
+  if (error instanceof ClassificationError) {
+    err(`${inertLine(error.message, Number.POSITIVE_INFINITY)}\n`)
+    return EXIT.notFound
+  }
   if (error instanceof InterruptedError) {
     // On a line of its own: the prompt it interrupted left the cursor after
     // its `> `.
@@ -1698,7 +1732,6 @@ async function agentBacked(
   // MLflow's own id for the trace, `tr-` and the OTLP id, so the line pastes
   // straight into its search.
   if (builder !== undefined) err(`· trace tr-${builder.traceId}\n`)
-  const client = builder === undefined ? session.client : traced(session.client, builder)
   const emit: EventSink =
     builder === undefined
       ? shown
@@ -1706,6 +1739,21 @@ async function agentBacked(
           builder.onEvent(event)
           shown(event)
         }
+  // Every call counted, on both paths out, and the count said once: after what
+  // the command printed as its result, and before a failure's line, which
+  // stays the run's last (product-gap-10). Once, though both paths ask: a tape
+  // that fails to save is a failure after the result.
+  const metered = counted(
+    builder === undefined ? session.client : traced(session.client, builder),
+    emit,
+  )
+  const client = metered.client
+  let costSaid = false
+  const cost = (): void => {
+    const line = costSaid ? undefined : usageLine(metered.usage())
+    costSaid = true
+    if (line !== undefined) err(`${line}\n`)
+  }
 
   let code: number
   let outputs: unknown
@@ -1715,11 +1763,13 @@ async function agentBacked(
     // Recording in memory and never writing it down is the whole run wasted,
     // and it is silent: the turns are there, the file never appears.
     await session.save()
+    cost()
     code = report(result, out)
     // Without the terminal's escape sequences: the diff may be coloured, and
     // MLflow's preview of the root prints them as they are.
     outputs = { exitCode: code, text: plain(result.text) }
   } catch (error) {
+    cost()
     code = failed(error, err)
     thrown = error instanceof Error ? error.message : String(error)
     outputs = { exitCode: code, error: thrown }

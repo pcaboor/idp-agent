@@ -1,3 +1,4 @@
+import { isUtf8 } from 'node:buffer'
 import { execFile } from 'node:child_process'
 import { constants } from 'node:fs'
 import { lstat, open, readdir, realpath } from 'node:fs/promises'
@@ -1106,7 +1107,13 @@ export async function readProject(root: string): Promise<ProjectRead> {
       break
     }
 
-    files.push({ path: candidate.path, text: bytes.toString('utf8') })
+    files.push({
+      path: candidate.path,
+      text: bytes.toString('utf8'),
+      // Said, not left for the model to infer from U+FFFD: a file that holds
+      // one on purpose would read the same (gap-init-real-repos-9).
+      ...(isUtf8(bytes) ? {} : { undecodable: true as const }),
+    })
     total += bytes.length
   }
   // Handed over in path order, whatever order they were read in (`byBudget`).

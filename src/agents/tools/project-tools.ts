@@ -107,6 +107,34 @@ const readInputSchema = z.strictObject({
   path: z.string().min(1).max(512),
 })
 
+/**
+ * A path as `read_file` compares it: composed (NFC), with the spellings of one
+ * file taken out — a leading `./`, a doubled slash, a `.` segment, a `..` that
+ * climbs back down. `undefined` for a path that starts at `/` or climbs above
+ * the root: no file of the snapshot is there, and none is looked for.
+ *
+ * Only the spelling moves. It is still an exact match on what it spells —
+ * `package.jso` is not `package.json` — for the reason given where it is used.
+ */
+function normalised(path: string): string | undefined {
+  if (path.startsWith('/')) return undefined
+  const segments: string[] = []
+  for (const segment of path.normalize('NFC').split('/')) {
+    if (segment === '' || segment === '.') continue
+    if (segment === '..') {
+      if (segments.pop() === undefined) return undefined
+      continue
+    }
+    segments.push(segment)
+  }
+  return segments.join('/')
+}
+
+/** What `read_file` says beside a text that is not all the file holds. */
+const UNDECODABLE =
+  'not UTF-8: each byte sequence that does not decode reads as U+FFFD, so this text is not ' +
+  'all the file says'
+
 const failed = (tool: string, error: z.ZodError): ToolOutcome =>
   // Returned, not thrown: the loop has to be able to continue after a bad call,
   // and the model has to be able to read what was wrong with it.
@@ -176,17 +204,27 @@ export function buildProjectTools(snapshot: ProjectSnapshot): {
       if (call.name === 'read_file') {
         const parsed = readInputSchema.safeParse(call.args)
         if (!parsed.success) return failed('read_file', parsed.error)
-        const wanted = parsed.data.path
+        const wanted = normalised(parsed.data.path)
+        const named = (path: string): boolean => path.normalize('NFC') === wanted
 
-        const file = snapshot.files.find((candidate) => candidate.path === wanted)
+        const file = snapshot.files.find((candidate) => named(candidate.path))
         // Exact match only. No nearest path, deliberately — the same refusal
         // `get_entity` makes, for the same reason (design 4.1): a near miss read
         // as the file that was asked for is a fact attributed to the wrong file.
+        // `./package.json` is not a near miss: it spells the same path.
         if (file !== undefined) {
-          return { result: { path: file.path, text: file.text }, rows: 1, truncated: 0 }
+          return {
+            result: {
+              path: file.path,
+              text: file.text,
+              ...(file.undecodable === true ? { encoding: UNDECODABLE } : {}),
+            },
+            rows: 1,
+            truncated: 0,
+          }
         }
 
-        const excluded = snapshot.skipped.find((entry) => entry.path === wanted)
+        const excluded = snapshot.skipped.find((entry) => named(entry.path))
         if (excluded !== undefined) {
           // The reason, not "no such file". A model told the manifest is missing
           // goes looking elsewhere; a model told it was excluded knows the fact
@@ -194,7 +232,23 @@ export function buildProjectTools(snapshot: ProjectSnapshot): {
           return refused(`not read: ${excluded.reason}`)
         }
 
-        return refused('this snapshot holds no file at that path')
+        // A folder set aside is named once, never file by file, so a file in
+        // it matches no entry: the folder, and why, is what the model is told.
+        const holds = (entry: { path: string }): boolean =>
+          entry.path !== '.' && wanted?.startsWith(`${entry.path.normalize('NFC')}/`) === true
+        const under = snapshot.skipped.find(holds)
+        if (under !== undefined) {
+          return refused(`not read: it is under ${under.path}/, ${under.reason}`)
+        }
+
+        // A cap names the file it stopped at and counts the rest: a file past
+        // it is in no list, and "no file" would be a claim nobody can make.
+        return refused(
+          snapshot.truncated
+            ? 'this snapshot holds no file at that path; a cap stopped the read, and a file ' +
+                'past it is neither read nor listed'
+            : 'this snapshot holds no file at that path',
+        )
       }
 
       if (call.name === REPORT_TOOL) {

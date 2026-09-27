@@ -1,6 +1,6 @@
 import { answerQuestion } from '../../agents/analyst.js'
-import { ClassificationError, classify, type Classification } from '../../agents/supervisor.js'
-import { formatSummary } from '../../agents/summary.js'
+import { classify } from '../../agents/supervisor.js'
+import { formatSummary, vocabularyValue } from '../../agents/summary.js'
 import { buildTools } from '../../agents/tools/graph-tools.js'
 import { summariseGraph } from '../../context/graph/summary.js'
 import { ENV_ANNOTATION, refOf, type EntityGraph } from '../../context/graph/entity-graph.js'
@@ -78,19 +78,15 @@ export async function classified(
   options: AskOptions,
   change: () => Promise<CommandResult>,
 ): Promise<CommandResult> {
-  const { graph, client, intent, emit, err } = options
+  const { graph, client, intent, emit } = options
   const { summary, vocabulary } = summariseGraph(graph)
   const summaryText = formatSummary(summary, vocabulary)
 
-  let classification: Classification
-  try {
-    classification = await classify(client, { intent, summary: summaryText }, emit)
-  } catch (error) {
-    if (!(error instanceof ClassificationError)) throw error
-    // It quotes what the Supervisor said instead of a word: the model's text.
-    err(`${oneLine(error.message)}\n`)
-    return { text: '', found: false, unsupported: true }
-  }
+  // A Supervisor that gave no word twice throws `ClassificationError`, and it
+  // is let through: exit 1, as a call that could not succeed is, and printed
+  // where every failure is, after the run's usage line (`failed`,
+  // gap-ask-grounding-7).
+  const classification = await classify(client, { intent, summary: summaryText }, emit)
 
   switch (classification) {
     case 'MUTATION':
@@ -130,12 +126,14 @@ async function answered(
   const commentary = checkCommentary(answer, {
     entities: graph.all().map((entity) => known(graph, entity, tools.declaredNowhere)),
     witnessed,
+    // As the opening message listed them: a value a line break was flattened
+    // out of was read in its one-line spelling (`formatSummary`).
     vocabulary: [
       ...vocabulary.kinds,
       ...vocabulary.types,
       ...vocabulary.environments,
       ...vocabulary.owners,
-    ],
+    ].map(vocabularyValue),
     question: intent,
     clean: (text) => inertLine(text, Number.POSITIVE_INFINITY),
   })

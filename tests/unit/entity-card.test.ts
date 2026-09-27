@@ -87,6 +87,79 @@ describe("artist-web, the owner's own case", () => {
   })
 })
 
+describe('what a file says an entity is, read rather than stripped (domain-backstage-7)', () => {
+  const PART = `apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: artist-lookup
+  title: Artist Lookup
+  labels:
+    tier: gold
+    example.com/team: artists
+spec:
+  type: service
+  lifecycle: production
+  owner: artist-relations-team
+  subcomponentOf: artist-web
+`
+
+  it('reads a title, the labels and what a component is part of, and writes them back', () => {
+    const { entities, rejections } = parseDocuments(PART)
+    expect(rejections).toEqual([])
+    const [entity] = entities
+    expect(entity?.metadata.title).toBe('Artist Lookup')
+    expect(entity?.metadata.labels).toEqual({ tier: 'gold', 'example.com/team': 'artists' })
+    // Backstage's default kind for the field, in full like a system.
+    expect(entity?.kind === 'Component' && entity.spec.subcomponentOf).toBe(
+      'component:default/artist-web',
+    )
+    expect(parseEntity(serializeEntity(entity!))).toEqual(entity)
+    // artist-web's label, which was stripped, round-trips too.
+    expect(parseDocuments(ARTIST_WEB).entities[0]?.metadata.labels).toEqual({
+      'example.com/custom': 'custom_label_value',
+    })
+  })
+
+  it('show prints them', async () => {
+    const { code, out } = await run(['show', 'artist-lookup', '--repo', await repository({ 'part.yml': PART })])
+    expect(code).toBe(0)
+    expect(out).toContain('  title        Artist Lookup\n')
+    expect(out).toContain('  labels       example.com/team=artists, tier=gold\n')
+    expect(out).toContain('  part of      component:default/artist-web\n')
+  })
+
+  it('counts on stderr the fields it does not read, rather than stripping them in silence', async () => {
+    const unread = `${PART}  consumesApis:
+    - billing
+relations:
+  - type: ownedBy
+    targetRef: group:default/artists
+`.replace('  name: artist-lookup', '  name: artist-lookup\n  uid: 7f2c')
+    const { code, err } = await run(['show', 'artist-lookup', '--repo', await repository({ 'part.yml': unread })])
+    expect(code).toBe(0)
+    expect(err).toContain(
+      'not read: 3 fields this tool does not model (metadata.uid ×1, relations ×1, spec.consumesApis ×1)\n',
+    )
+  })
+
+  it.each([
+    ['a label', PART.replace('    tier: gold', '    tier: 1'), 'metadata.labels.tier'],
+    ['a title', PART.replace('  title: Artist Lookup', '  title: 12'), 'metadata.title'],
+  ])('refuses %s that is not text, as Backstage does, and says so', (_, text, where) => {
+    // Stripped before these were read, so the entity loaded; now read, a
+    // number there is refused as Backstage refuses it — like an annotation —
+    // and the reason says whose rule it is.
+    const { entities, rejections } = parseDocuments(text)
+    expect(entities).toEqual([])
+    expect(rejections).toEqual([`${where}: expected text, which Backstage requires`])
+  })
+
+  it('says nothing of a file whose every field it reads', async () => {
+    const { err } = await run(['show', 'artist-web', '--repo', await repository()])
+    expect(err).not.toContain('not read')
+  })
+})
+
 describe('the read commands, on a file that writes escapes into its own rejection', () => {
   // eslint-disable-next-line no-control-regex -- asserting their absence
   const CONTROLS = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F]/

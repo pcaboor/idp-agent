@@ -59,7 +59,7 @@ const collect = (): { events: AgentEvent[]; emit: (event: AgentEvent) => void } 
 const ROOT = '/private/var/folders/zz/billing-api'
 
 const snapshotOf = (
-  files: Array<{ path: string; text: string }>,
+  files: Array<{ path: string; text: string; undecodable?: true }>,
   skipped: Array<{ path: string; reason: string }> = [],
   truncated = false,
 ): ProjectSnapshot => ({ root: ROOT, files, skipped, truncated })
@@ -403,6 +403,67 @@ describe('buildProjectTools', () => {
     const outcome = buildProjectTools(snapshot).run(toolCall('read_file', { path: '.env' }))
     expect(JSON.stringify(outcome.result)).toContain('credentials')
     expect(outcome.rows).toBe(0)
+  })
+
+  it('reads a path written with ./, a doubled slash or a dot segment as the file it names', () => {
+    // gap-init-real-repos-9: "./package.json" answered "no file at that path",
+    // and a model told so reports a manifest it could have read as unknown.
+    const tools = buildProjectTools(snapshot)
+    for (const path of ['./package.json', 'src//index.ts', 'src/./index.ts', 'src/lib/../index.ts']) {
+      expect(tools.run(toolCall('read_file', { path })).rows, path).toBe(1)
+    }
+    expect(tools.run(toolCall('read_file', { path: './src/index.ts' })).result).toEqual({
+      path: 'src/index.ts',
+      text: 'export {}',
+    })
+    // Nothing above the root, whatever the segments say.
+    expect(tools.run(toolCall('read_file', { path: '../billing-api/package.json' })).rows).toBe(0)
+  })
+
+  it('reads a path in either Unicode normalisation as the file it names', () => {
+    // macOS writes a name decomposed; a model writes it composed.
+    const decomposed = 'docs/cafe\u0301.md'
+    const tools = buildProjectTools(snapshotOf([{ path: decomposed, text: 'menu' }]))
+    const outcome = tools.run(toolCall('read_file', { path: 'docs/caf\u00e9.md' }))
+    expect(outcome.result).toEqual({ path: decomposed, text: 'menu' })
+  })
+
+  it('says a file under an excluded folder was not read, naming the folder and why', () => {
+    const tools = buildProjectTools(
+      snapshotOf(
+        [{ path: 'package.json', text: '{}' }],
+        [{ path: 'deploy/secrets', reason: 'excluded: a folder that exists to hold secrets' }],
+      ),
+    )
+    const outcome = tools.run(toolCall('read_file', { path: 'deploy/secrets/values.yaml' }))
+    expect(outcome.error).toBe(
+      'not read: it is under deploy/secrets/, excluded: a folder that exists to hold secrets',
+    )
+  })
+
+  it('says a file may lie past the cap when a cap stopped the read', () => {
+    const capped = snapshotOf([{ path: 'package.json', text: '{}' }], [], true)
+    expect(buildProjectTools(capped).run(toolCall('read_file', { path: 'zz/late.ts' })).error).toBe(
+      'this snapshot holds no file at that path; a cap stopped the read, and a file past it ' +
+        'is neither read nor listed',
+    )
+    // Uncapped, a missing file is only missing.
+    expect(buildProjectTools(snapshot).run(toolCall('read_file', { path: 'zz/late.ts' })).error).toBe(
+      'this snapshot holds no file at that path',
+    )
+  })
+
+  it('says a file that is not UTF-8 was read with replacement characters', () => {
+    const tools = buildProjectTools(
+      snapshotOf([{ path: 'README.md', text: 'caf\ufffd', undecodable: true }]),
+    )
+    expect(tools.run(toolCall('read_file', { path: 'README.md' })).result).toEqual({
+      path: 'README.md',
+      text: 'caf\ufffd',
+      encoding:
+        'not UTF-8: each byte sequence that does not decode reads as U+FFFD, so this text is ' +
+        'not all the file says',
+    })
   })
 
   it('returns an error rather than throwing when arguments do not parse', () => {

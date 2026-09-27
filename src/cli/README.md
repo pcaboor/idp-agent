@@ -183,7 +183,8 @@ assigns it to `process.exitCode`.
 `root`, `cwd`, `out`, `err` — so `tests/unit/main.test.ts` captures output into arrays and runs against
 `tests/golden/broken-si`. Entities the provider rejected go to `err`, never dropped in silence,
 one `skipped` line each; documents it set aside as a kind this tool does not model go there
-too, as one `not loaded:` line counting them by kind.
+too, as one `not loaded:` line counting them by kind; and the fields of a read entity the
+read model does not read, as one `not read:` line counting them by path.
 
 **Which repository a change inspects.** `plan "<intent>"`, and a phrase classified as a
 change, read the declarations repository the preview is decided against, and may read an
@@ -310,3 +311,12 @@ repositories in its inputs and `idp.exit_code` on it, and fails only when the ru
 (`docs/tracing-design.md` §4.1); stderr names it `· trace tr-<hex>`, as MLflow does.
 `MainDeps.traceSinks` and `MainDeps.fetch` are the test seams
 (`tests/unit/trace-wiring.test.ts`).
+
+**What a run cost.** `agentBacked` also wraps the client with `counted` (`usage.ts`): each
+model call that returned is a `usage` event carrying what its provider reported, and the
+run ends on one stderr line, `· 3 model calls: 5700 input tokens, 103 output tokens`. It
+follows what the command printed as its result — `cannot answer`, a change request put to
+`ask`, a miss — and comes before a failure's line, which stays the last: every failure,
+the Supervisor's two answers that were no word included, is thrown to `failed`. A count no call reported is said to be
+missing, never printed as 0, and one only some calls reported says of how many: a tape
+recorded before usage was stored holds none. A run that made no call says nothing.

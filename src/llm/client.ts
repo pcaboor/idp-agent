@@ -51,6 +51,20 @@ export interface GenerateResult {
   usage?: TokenUsage
 }
 
+/**
+ * What a caller hands `generate` beside the request, never inside it: the
+ * recording digest is taken over the request, and nothing here may move it.
+ */
+export interface GenerateOptions {
+  /**
+   * Stops the call: it rejects with the signal's reason, and nothing is sent
+   * again. Joined to IDP_TIMEOUT's bound, which still holds beside it. No
+   * command passes one yet — nothing stops a run mid-call before stage 7's
+   * chat — and a replay honours it too (agents-llm-10).
+   */
+  readonly signal?: AbortSignal
+}
+
 export interface LlmClient {
-  generate(request: GenerateRequest): Promise<GenerateResult>
+  generate(request: GenerateRequest, options?: GenerateOptions): Promise<GenerateResult>
 }

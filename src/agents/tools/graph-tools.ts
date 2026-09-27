@@ -43,6 +43,14 @@ export interface ToolOutcome {
    */
   error?: string
   /**
+   * Every entity this call returned — its rows, what a row names, the steps of
+   * a path — as `witnessed` gained them. Not sent to the model: it is what
+   * says which search an answer's references came from, and so whose cut
+   * rows the answer is short by (`answerQuestion`'s `truncated`). Absent when
+   * the call returned none.
+   */
+  returned?: readonly string[]
+  /**
    * The references beside the rows that name nothing (`danglingReferences`),
    * on the Analyst's registry. Not rows, since none is an entity, but read: a
    * turn that showed one found what the catalogue declares, and is not a
@@ -446,16 +454,22 @@ export function buildTools(
    * witnessed as a row's are: the engine returned them. The reference itself
    * never is, so an answer naming it as an entity is refused.
    */
-  const report = (entities: CatalogueEntity[], unresolved: Unresolved[] = []): ToolOutcome => {
+  const report = (
+    entities: CatalogueEntity[],
+    unresolved: Unresolved[] = [],
+    start?: string,
+  ): ToolOutcome => {
     const shown = entities.slice(0, QUERY_LIMITS.maxRows)
     const truncated = entities.length - shown.length
     const readings = shown.map(read)
-    for (const { refs } of readings) for (const ref of refs) witnessed.add(ref)
+    const returned = new Set<string>(start === undefined ? [] : [start])
+    for (const { refs } of readings) for (const ref of refs) returned.add(ref)
     const dangling = boundedOf(apis ? unresolved : [])
     for (const { ref, declaredBy, sameName } of dangling.shown) {
       declaredNowhere.add(ref)
-      for (const entity of [declaredBy, ...sameName]) witnessed.add(entity)
+      for (const entity of [declaredBy, ...sameName]) returned.add(entity)
     }
+    for (const ref of returned) witnessed.add(ref)
     return {
       // Truncation is stated, never silent: a model that believed it had seen
       // everything would answer "those are all of them" and be wrong.
@@ -466,6 +480,7 @@ export function buildTools(
       },
       rows: shown.length,
       truncated,
+      ...(returned.size === 0 ? {} : { returned: [...returned] }),
       ...(dangling.shown.length === 0 ? {} : { dangling: dangling.shown.length }),
     }
   }
@@ -482,30 +497,35 @@ export function buildTools(
    * the model is shown is witnessed.
    */
   const related = (result: RelationResult): ToolOutcome => {
-    witnessed.add(result.subject.ref)
-    if (result.to !== undefined) witnessed.add(result.to.ref)
+    const returned = new Set<string>()
+    const witness = (ref: string): void => {
+      witnessed.add(ref)
+      returned.add(ref)
+    }
+    witness(result.subject.ref)
+    if (result.to !== undefined) witness(result.to.ref)
     const rows: RelationReading[] = []
     const dangling: Array<Dangling & { path: PathStep[] }> = []
     for (const row of [...result.rows, ...(result.nearMisses?.rows ?? [])]) {
       const reached = reachedBy(row)
       const before = reached.nowhere === undefined ? row.steps : row.steps.slice(0, -1)
-      for (const step of before) witnessed.add(step.ref)
+      for (const step of before) witness(step.ref)
       if (reached.nowhere === undefined) {
         rows.push(readingOf(result, row))
         continue
       }
       const shown = danglingOf(reached.nowhere)
       declaredNowhere.add(shown.ref)
-      for (const entity of [shown.declaredBy, ...shown.sameName]) witnessed.add(entity)
+      for (const entity of [shown.declaredBy, ...shown.sameName]) witness(entity)
       dangling.push({ ...shown, path: before.map(pathStepOf) })
     }
     const shared = result.shared?.rows ?? []
     for (const meeting of shared) {
-      for (const row of meeting.paths) for (const step of row.steps) witnessed.add(step.ref)
+      for (const row of meeting.paths) for (const step of row.steps) witness(step.ref)
     }
     // A cycle names entities of the graph too, each one the walk returned.
     const cycles = result.cycles.slice(0, RELATION_LIMITS.cycles)
-    for (const cycle of cycles) for (const ref of cycle) witnessed.add(ref)
+    for (const cycle of cycles) for (const ref of cycle) witness(ref)
     const truncated = result.total - result.rows.length
     const cut = (list: { rows: readonly unknown[]; total: number } | undefined): number =>
       list === undefined ? 0 : list.total - list.rows.length
@@ -536,6 +556,7 @@ export function buildTools(
       },
       rows: rows.length,
       truncated,
+      ...(returned.size === 0 ? {} : { returned: [...returned] }),
       ...(dangling.length === 0 ? {} : { dangling: dangling.length }),
     }
   }
@@ -667,16 +688,16 @@ export function buildTools(
         // proposed value's provenance is measured against, and its plan-mode
         // tapes were recorded against that set as it was. A reference the graph
         // does not hold witnesses nothing.
-        const start = apis ? graph.get(ref) : undefined
-        if (start !== undefined) witnessed.add(refOf(start))
+        const found = apis ? graph.get(ref) : undefined
+        const start = found === undefined ? undefined : refOf(found)
         if (direction === 'dependencies') {
-          return report(graph.dependenciesOf(ref), graph.unresolvedOf(ref, 'dependsOn'))
+          return report(graph.dependenciesOf(ref), graph.unresolvedOf(ref, 'dependsOn'), start)
         }
         if (direction === 'dependants') {
-          return report(graph.dependantsOf(ref), graph.unresolvedOf(ref, 'dependencyOf'))
+          return report(graph.dependantsOf(ref), graph.unresolvedOf(ref, 'dependencyOf'), start)
         }
         if (direction === 'consumers') {
-          return report(graph.consumersOf(ref), graph.unresolvedConsumersOf(ref))
+          return report(graph.consumersOf(ref), graph.unresolvedConsumersOf(ref), start)
         }
         const _exhaustive: never = direction
         return _exhaustive

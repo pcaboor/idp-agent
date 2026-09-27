@@ -50,6 +50,21 @@ describe('readProject', () => {
     expect(pathsOf(snapshot)).toEqual(['src/index.ts'])
   })
 
+  it('marks a file that is not UTF-8, and only such a file', async () => {
+    // Latin-1 read as UTF-8 comes out with U+FFFD where each accented letter
+    // was, and nothing said the text was not the file's (gap-init-real-repos-9).
+    const root = await projectWith({ 'README.md': 'caf\u00e9 cr\u00e8me', 'notes.md': 'déjà vu' })
+    await writeFile(path.join(root, 'README.md'), Buffer.from('caf\xe9 cr\xe8me', 'latin1'))
+    const snapshot = await readProject(root)
+    expect(snapshot.files.find((file) => file.path === 'README.md')).toMatchObject({
+      undecodable: true,
+    })
+    expect(snapshot.files.find((file) => file.path === 'notes.md')).toEqual({
+      path: 'notes.md',
+      text: 'déjà vu',
+    })
+  })
+
   it('reads a manifest', async () => {
     const root = await projectWith({
       'package.json': '{\n  "name": "billing-api"\n}\n',

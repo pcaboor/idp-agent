@@ -30,7 +30,12 @@ const fakeTools = (refs: string[], truncated = 0) => ({
   run: (call: { name: string; args: unknown }): ToolOutcome =>
     call.name === 'answer'
       ? { result: call.args, rows: 0, truncated: 0 }
-      : { result: { rows: refs.map((ref) => ({ ref })) }, rows: refs.length, truncated },
+      : {
+          result: { rows: refs.map((ref) => ({ ref })) },
+          rows: refs.length,
+          truncated,
+          ...(refs.length === 0 ? {} : { returned: refs }),
+        },
 })
 
 const collect = (): { events: AgentEvent[]; emit: (event: AgentEvent) => void } => {
@@ -240,6 +245,74 @@ describe('answerQuestion', () => {
     const { emit } = collect()
     const outcome = await answerQuestion(client, fakeTools([A], 3), INPUT, emit)
     expect(outcome.truncated).toBe(3)
+  })
+
+  it('carries the truncation of the search the cited rows came from, not the session total', async () => {
+    // A search that cut 7 rows, then one that cut 3 and found what the answer
+    // cites: the answer is short by the second search's rows, and the note
+    // used to say 10 (gap-ask-grounding-11).
+    const B = 'resource:default/orders-db-prod'
+    const outcomes: Record<string, ToolOutcome> = {
+      wide: { result: { rows: [{ ref: A }] }, rows: 1, truncated: 7, returned: [A] },
+      narrow: { result: { rows: [{ ref: B }] }, rows: 1, truncated: 3, returned: [B] },
+    }
+    const tools = {
+      specs: [],
+      witnessed: new Set([A, B]),
+      run: (call: { name: string; args: unknown }): ToolOutcome =>
+        call.name === 'answer'
+          ? { result: call.args, rows: 0, truncated: 0 }
+          : (outcomes[(call.args as { nameContains: string }).nameContains] as ToolOutcome),
+    }
+    const answering = (refs: string[]) =>
+      scripted([
+        turnCalling('search_entities', { nameContains: 'wide' }),
+        turnCalling('search_entities', { nameContains: 'narrow' }),
+        turnCalling('answer', { outcome: 'entities', refs }),
+      ])
+    const { emit } = collect()
+    expect((await answerQuestion(answering([B]), tools, INPUT, emit)).truncated).toBe(3)
+    expect((await answerQuestion(answering([A]), tools, INPUT, emit)).truncated).toBe(7)
+    // Rows from both: each search's cut counts, once.
+    expect((await answerQuestion(answering([A, B]), tools, INPUT, emit)).truncated).toBe(10)
+  })
+
+  it('keeps the cut of the search a row came from when the model then looks the row up', async () => {
+    // A wide search, then get_entity on each row it keeps — the pattern of
+    // the question-unanswerable-ranking tape. The lookup is of a reference the
+    // model already held: it does not say where the list came from, and
+    // letting it did drop the note of the 3 rows the search cut.
+    const B = 'resource:default/orders-db-prod'
+    const tools = {
+      specs: [],
+      witnessed: new Set([A, B]),
+      run: (call: { name: string; args: unknown }): ToolOutcome => {
+        if (call.name === 'answer') return { result: call.args, rows: 0, truncated: 0 }
+        if (call.name === 'get_entity') {
+          const { ref } = call.args as { ref: string }
+          return { result: { rows: [{ ref }] }, rows: 1, truncated: 0, returned: [ref] }
+        }
+        return { result: { rows: [{ ref: A }, { ref: B }] }, rows: 2, truncated: 3, returned: [A, B] }
+      },
+    }
+    const client = scripted([
+      turnCalling('search_entities', { kind: 'Resource' }),
+      turnCalling('get_entity', { ref: A }),
+      turnCalling('get_entity', { ref: B }),
+      turnCalling('answer', { outcome: 'entities', refs: [A, B] }),
+    ])
+    const { emit } = collect()
+    expect((await answerQuestion(client, tools, INPUT, emit)).truncated).toBe(3)
+  })
+
+  it('counts a search run twice once', async () => {
+    const client = scripted([
+      turnCalling('search_entities', { kind: 'Resource' }),
+      turnCalling('search_entities', { kind: 'Resource' }),
+      turnCalling('answer', { outcome: 'entities', refs: [A] }),
+    ])
+    const { emit } = collect()
+    expect((await answerQuestion(client, fakeTools([A], 3), INPUT, emit)).truncated).toBe(3)
   })
 
   it('reports no truncation when nothing was cut', async () => {

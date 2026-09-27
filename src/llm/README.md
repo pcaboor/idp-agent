@@ -98,9 +98,16 @@ diagnostic run — so its calls ask for a **low reasoning effort** (`AGENT_CALLS
 
 | provider | sent for the Supervisor |
 |---|---|
-| OpenAI | `reasoningEffort: 'low'`, `reasoningSummary: null`, to a model that takes a low effort (`takesLowEffort`), and nothing to any other. The summary is held off because the adapter asks for a detailed one whenever an effort is set. |
+| OpenAI | `reasoningEffort: 'low'`, `reasoningSummary: null`, to a model that takes a low effort (`takesLowEffort`), and nothing to any other. The summary is held off because the adapter asks for a detailed one whenever an effort is set. Beside it, `store: false`, which every agent's call to OpenAI carries (below). |
 | Anthropic | nothing: extended thinking is off unless it is asked for |
 | Mistral | nothing: its adapter's effort is `high` or `none`, and there is no low |
+
+Every agent's call to OpenAI says `store: false`, in the same `providerOptions`: left
+unsent it is true on the Responses API, and the conversation — the files the Inspector read
+from the user's repository among it — would be kept at OpenAI, though no call here refers
+back to a stored one. On a reasoning model the adapter then asks for the reasoning as
+encrypted content, which nothing here sends back. Anthropic and Mistral keep no
+conversation to opt out of, and are sent no flag.
 
 Which OpenAI model takes a low effort is read off the shape of its id, since no model is
 named in the code, and in doubt it is sent nothing — the model then reasons at its default,
@@ -137,6 +144,13 @@ abort, so it is never retried, and the run ends on `ModelTimeoutError`. Before t
 request to gpt-6-luna waited five minutes on undici's headers timeout and was then retried
 in silence. The signal is an argument of the call, not a field of the request, so it never
 enters a recording's digest.
+
+A caller can stop a call too: `generate(request, { signal })` (`GenerateOptions` in
+`client.ts`). The signal is joined to the timeout's, the call rejects with the caller's own
+reason and is not sent again, and a signal already aborted sends nothing — in replay as
+well, where it spends no turn number. It sits beside the request for the digest's reason.
+No command passes one yet; it is the way in for stage 7's chat, which still has no
+streaming (agents-llm-10).
 
 What a call can end on, and the line each becomes (`failures.ts`, exit 1 in `cli/index.ts`):
 

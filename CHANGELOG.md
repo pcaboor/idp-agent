@@ -34,6 +34,17 @@ Each pull request adds its line here.
 
 ### Fixed
 
+- What reaches a model, and what a run reports: every vocabulary value of the summary is
+  flattened to one line and bounded; the Supervisor reads a word its model decorated
+  (`Question.`, `**QUESTION**`), asks once more, then ends on exit 1 with one line naming
+  `IDP_SUPERVISOR_MODEL`; `ask`'s truncation note is the search's the cited rows came from;
+  `title`, `labels` and `subcomponentOf` are read and shown by `show` — a title or a label
+  that is not text now refuses its entity, as Backstage does, where it was stripped — and the
+  fields nothing reads are counted on one `not read:` line; `read_file` normalises a path, names the excluded
+  folder or the cap a file is behind, and flags a file that is not UTF-8; every OpenAI call
+  says `store: false`; `generate()` takes an optional abort signal; and a model-backed run
+  ends with one stderr line counting its calls and tokens, each call a `usage` event
+  ([#91](https://github.com/pcaboor/idp-agent/pull/91)).
 - What the plan engine lets vouch and dispatch: an operation no longer vouches for a reference
   to itself, nor for a Component the edits drop, and a grant whose `dependsOn` names a right is
   refused by a ninth policy, `right-over-a-right`; `planEdits`, the signature, the policies and

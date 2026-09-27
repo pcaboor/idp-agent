@@ -14,6 +14,7 @@ import {
 } from 'ai'
 import type {
   AgentName,
+  GenerateOptions,
   GenerateRequest,
   ModelToolSpec,
   GenerateResult,
@@ -261,13 +262,16 @@ function usable(result: GenerateResult, callee: Callee): GenerateResult {
 }
 
 /**
- * Runs `call` with an abort signal that fires after `seconds`, and gives up on
- * it then whether or not the call honours the signal.
+ * Runs `call` with an abort signal that fires after `seconds`, or when the
+ * caller's `stop` does, and gives up on it then whether or not the call
+ * honours the signal.
  *
  * The abort reason is a `TimeoutError` by name, which the SDK reads as an
  * abort: it neither wraps it nor retries it. The race is what makes the bound
  * hold for a fetch that ignores its signal — the answer is the timeout error
- * either way, and the request is released either way.
+ * either way, and the request is released either way. A caller's stop is the
+ * same abort with the caller's reason, and the call rejects with that reason:
+ * it is the caller's to say why, and not a failure of the model.
  *
  * The signal is an argument of the call, never a field of the request: the
  * recording digest is taken over the request, and a timeout that entered it
@@ -277,7 +281,9 @@ async function within<T>(
   seconds: number,
   callee: Callee,
   call: (signal: AbortSignal) => Promise<T>,
+  stop?: AbortSignal,
 ): Promise<T> {
+  stop?.throwIfAborted()
   const controller = new AbortController()
   const expiry = new ModelTimeoutError(callee, seconds)
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -287,12 +293,23 @@ async function within<T>(
       reject(expiry)
     }, seconds * 1000)
   })
+  let onStop: (() => void) | undefined
+  const stopped = new Promise<never>((_, reject) => {
+    if (stop === undefined) return
+    onStop = () => {
+      controller.abort(stop.reason)
+      reject(stop.reason as Error)
+    }
+    stop.addEventListener('abort', onStop, { once: true })
+  })
   try {
-    return await Promise.race([call(controller.signal), expired])
+    return await Promise.race([call(controller.signal), expired, stopped])
   } catch (error) {
+    if (stop?.aborted === true) throw stop.reason
     throw controller.signal.aborted ? expiry : error
   } finally {
     clearTimeout(timer)
+    if (onStop !== undefined) stop?.removeEventListener('abort', onStop)
   }
 }
 
@@ -436,26 +453,30 @@ export const AGENT_CALLS: Partial<Record<AgentName, AgentCall>> = {
  * An agent's call settings, as the one provider and model it calls understand
  * them.
  *
- *   openai     `reasoningEffort`, and `reasoningSummary: null` — to a model
- *              that takes a low effort (`takesLowEffort`), and nothing to any
- *              other. The summary is held off because the adapter asks for a
- *              detailed one whenever an effort is set, and a summary is output
- *              nobody here reads.
+ *   openai     `store: false`, on every agent's call. Left unsent it is true
+ *              on the Responses API, and the conversation — the files the
+ *              Inspector read from the user's repository among it — is kept
+ *              at OpenAI for nothing: no call here refers back to a stored
+ *              one (gap-provider-matrix-6). Then `reasoningEffort`, and
+ *              `reasoningSummary: null` — to a model that takes a low effort
+ *              (`takesLowEffort`), and nothing to any other. The summary is
+ *              held off because the adapter asks for a detailed one whenever
+ *              an effort is set, and a summary is output nobody here reads.
  *   anthropic  nothing. Extended thinking is off unless it is asked for, which
- *              is the low effort wanted, and a budget is not a level.
+ *              is the low effort wanted, and a budget is not a level. It keeps
+ *              no conversation to opt out of.
  *   mistral    nothing. Its adapter's effort is `high` or `none`, on the models
  *              that take one; there is no low.
  */
 export function providerOptionsOf(
   choice: ModelChoice,
   call: AgentCall | undefined,
-): Record<string, Record<string, string | null>> | undefined {
-  if (call?.effort === undefined) return undefined
+): Record<string, Record<string, string | boolean | null>> | undefined {
   switch (choice.provider) {
     case 'openai':
-      return takesLowEffort(choice.model)
-        ? { openai: { reasoningEffort: call.effort, reasoningSummary: null } }
-        : undefined
+      return call?.effort !== undefined && takesLowEffort(choice.model)
+        ? { openai: { store: false, reasoningEffort: call.effort, reasoningSummary: null } }
+        : { openai: { store: false } }
     case 'anthropic':
     case 'mistral':
       return undefined
@@ -532,7 +553,10 @@ export function createClient(options: {
   const turns = new Map<string, number>()
 
   return {
-    async generate(request: GenerateRequest): Promise<GenerateResult> {
+    async generate(request: GenerateRequest, call?: GenerateOptions): Promise<GenerateResult> {
+      // Before a turn is read or a request built: a stopped run spends no
+      // turn number, so the tape it replays is not shifted by it.
+      call?.signal?.throwIfAborted()
       // The number is spent only once the call succeeds. A refused forced tool
       // choice is retried as an open one, which is two physical calls for one
       // logical turn while recording and one while replaying — a failed call
@@ -591,7 +615,10 @@ export function createClient(options: {
           ...(providerOptions !== undefined ? { providerOptions } : {}),
           abortSignal,
         }),
+        call?.signal,
       ).catch((error: unknown) => {
+        // The caller's own reason, as it gave it: nothing failed at the provider.
+        if (call?.signal?.aborted === true) throw error
         throw translated(error, choice, last)
       })
 

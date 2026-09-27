@@ -39,6 +39,23 @@ describe('traced', () => {
     expect(call.usage).toEqual({ totalTokens: 7 })
   })
 
+  it('hands the inner client the options it was given: a signal must reach the call', async () => {
+    // `agentBacked` wraps the session's client in this, then in `counted`: a
+    // wrapper that dropped the options would make every caller's signal
+    // silently ignored (agents-llm-10).
+    const seen: unknown[] = []
+    const inner: LlmClient = {
+      generate: async (_, options) => {
+        seen.push(options)
+        return { text: 'QUESTION', toolCalls: [], finishReason: 'stop' }
+      },
+    }
+    const options = { signal: new AbortController().signal }
+    await traced(inner, building()).generate(REQUEST, options)
+    expect(seen).toEqual([options])
+    expect(seen[0]).toBe(options)
+  })
+
   it('rethrows the very error the inner client threw, after closing the call as failed', async () => {
     const thrown = new Error('502 from the gateway')
     const inner: LlmClient = { generate: () => Promise.reject(thrown) }

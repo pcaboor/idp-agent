@@ -762,13 +762,14 @@ type AgentEvent =
   | { type: 'gate:passed';   attempt: 1 | 2 | 3; gate: Gate }
   | { type: 'retry';         agent: AgentName; reason: string }
   | { type: 'plan:ready';    operations: number }
+  | { type: 'usage';         agent: AgentName; usage?: TokenUsage }
   | { type: 'derived';       path: string; owner: string; from: readonly string[] }
   | { type: 'overridden';    path: string; owner: string; determined: string; from: readonly string[] }
   | { type: 'reapplied';     path: string; value: string; entity: string; answeredAt: string; replaced?: string }
   | { type: 'ask';           question: Question }
 ```
 
-Three details in that list were learned rather than designed.
+Four details in that list were learned rather than designed.
 
 `plan:ready` carries a **count, not the plan**. An event says that something happened; one
 carrying the plan itself would be a second way for the plan to travel, next to the signed
@@ -785,7 +786,12 @@ every attempt of the other, and the rendered sequence went backwards within a ru
 `stopped` says why an agent ended when its model call threw — a timeout, a provider failure
 — and `agent:end` is what closes it. The error goes on to the caller, which prints it. So
 `cli/index.ts` renders `stopped` without its reason: with it, the one line a failed call
-ends on was printed twice, the first time as the agent refusing.
+ends on was printed twice, the first time as the agent refusing. The Supervisor stops the
+same way when its model gave neither word twice: nothing was judged.
+
+`usage` is one model call that returned, and the tokens its provider reported — absent, not
+0, when it reported none. The CLI emits it around the client rather than an agent, and the
+terminal prints the run's total once, at its end.
 
 Ink consumes the stream at stage 7; tests consume the same stream and assert the sequence,
 and `cli/index.ts` renders one line per event on **stderr** until then — stdout carries

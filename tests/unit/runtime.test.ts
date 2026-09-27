@@ -73,6 +73,41 @@ describe('createClient in replay', () => {
     await expect(client.generate(ask('supervisor'))).rejects.toThrow(/IDP_RECORDING=record/)
   })
 
+  it('replays nothing once the signal has aborted, and spends no turn on it', async () => {
+    const client = await replaying()
+    const stop = new AbortController()
+    stop.abort(new Error('stopped'))
+    await expect(client.generate(ask('supervisor'), { signal: stop.signal })).rejects.toThrow(
+      'stopped',
+    )
+    expect((await client.generate(ask('supervisor'))).text).toBe('QUESTION')
+  })
+
+  it('replays a turn whatever signal comes with the call: it is no part of the digest', async () => {
+    const warned: string[] = []
+    const tape = await openRecording({
+      scenario: 'demo',
+      store,
+      mode: 'replay',
+      warn: (line) => void warned.push(line),
+    })
+    const client = createClient({ tape, mode: 'replay' })
+    const plain = await client.generate(ask('analyst'))
+    const signalled = createClient({
+      tape: await openRecording({
+        scenario: 'demo',
+        store,
+        mode: 'replay',
+        warn: (line) => void warned.push(line),
+      }),
+      mode: 'replay',
+    })
+    const withSignal = await signalled.generate(ask('analyst'), {
+      signal: new AbortController().signal,
+    })
+    expect(withSignal).toEqual(plain)
+  })
+
   it('never builds a provider, so replay needs no key and no adapter', async () => {
     // The whole point: a contributor replays a recording made against a model
     // they do not have credentials for.

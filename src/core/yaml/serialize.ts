@@ -1,5 +1,11 @@
 import { Document, Scalar, parse, parseAllDocuments, visit, type YAMLError } from 'yaml'
-import { apiSchema, entitySchema, type Api, type Entity } from '../schemas/entity.js'
+import {
+  apiSchema,
+  entitySchema,
+  unreadFieldsOf,
+  type Api,
+  type Entity,
+} from '../schemas/entity.js'
 import { reasonOf } from '../schemas/reject.js'
 import { ENV_ANNOTATION } from '../schemas/vocabulary.js'
 
@@ -43,19 +49,23 @@ const STRINGIFY_OPTIONS = {
  *
  * `links` and `system` are written where Backstage's own examples put them,
  * after the tags and after the owner, so an entity read from a repository
- * round-trips. The engine's own writes never carry either — a proposal has no
- * field for them (plan.ts) — so nothing this tool writes changed when they
- * were added. `providesApis` is the same case, after the system as Backstage
- * writes it.
+ * round-trips — and so are a `title`, after the name, `labels`, after the
+ * description, and `subcomponentOf`, after the system. The engine's own
+ * writes carry none of them — a proposal has no field for them (plan.ts) — so
+ * nothing this tool writes changed when they were added. `providesApis` is
+ * the same case, after the system and `subcomponentOf`, as Backstage writes
+ * it.
  *
  * An API is not written here at all: it is read and never proposed, and what
  * is kept of its definition is that it is there, which is no document.
  */
 function ordered(entity: Entity): Record<string, unknown> {
   const metadata: Record<string, unknown> = { name: entity.metadata.name }
+  if (entity.metadata.title !== undefined) metadata.title = entity.metadata.title
   if (entity.metadata.description !== undefined) {
     metadata.description = entity.metadata.description
   }
+  if (entity.metadata.labels !== undefined) metadata.labels = entity.metadata.labels
   if (Object.keys(entity.metadata.annotations).length > 0) {
     metadata.annotations = entity.metadata.annotations
   }
@@ -82,6 +92,9 @@ function ordered(entity: Entity): Record<string, unknown> {
   }
   spec.owner = entity.spec.owner
   if (entity.spec.system !== undefined) spec.system = entity.spec.system
+  if (entity.kind === 'Component' && entity.spec.subcomponentOf !== undefined) {
+    spec.subcomponentOf = entity.spec.subcomponentOf
+  }
   if (entity.kind === 'Component' && entity.spec.providesApis !== undefined) {
     spec.providesApis = entity.spec.providesApis
   }
@@ -403,6 +416,12 @@ export function parseDocuments(text: string): {
   apis: Api[]
   rejections: string[]
   ignored: IgnoredDocument[]
+  /**
+   * What the entities and APIs read here hold and the read model does not
+   * read, one path per key and document (`unreadFieldsOf`): set aside, and
+   * counted where the documents set aside are.
+   */
+  unread: string[]
   /** Documents in the stream, the null ones a witness is made of included. */
   documents: number
 } {
@@ -410,6 +429,7 @@ export function parseDocuments(text: string): {
   const apis: Api[] = []
   const rejections: string[] = []
   const ignored: IgnoredDocument[] = []
+  const unread: string[] = []
   const readings = readDocuments(text)
 
   for (const reading of readings) {
@@ -433,16 +453,20 @@ export function parseDocuments(text: string): {
     }
     if (READ_KINDS.has(kindOf(reading.value) ?? '')) {
       const api = apiSchema.safeParse(reading.value)
-      if (api.success) apis.push(api.data)
-      else rejections.push(reasonOf(api.error, reading.value))
+      if (api.success) {
+        apis.push(api.data)
+        unread.push(...unreadFieldsOf(reading.value))
+      } else rejections.push(reasonOf(api.error, reading.value))
       continue
     }
     const parsed = entitySchema.safeParse(reading.value)
-    if (parsed.success) entities.push(parsed.data)
-    else rejections.push(reasonOf(parsed.error, reading.value))
+    if (parsed.success) {
+      entities.push(parsed.data)
+      unread.push(...unreadFieldsOf(reading.value))
+    } else rejections.push(reasonOf(parsed.error, reading.value))
   }
 
-  return { entities, apis, rejections, ignored, documents: readings.length }
+  return { entities, apis, rejections, ignored, unread, documents: readings.length }
 }
 
 /** A name a document carries, and the environment it declares, if any. */

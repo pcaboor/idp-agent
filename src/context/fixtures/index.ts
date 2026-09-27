@@ -37,6 +37,7 @@ export class FixtureProvider implements ContextProvider {
     const entities: CatalogueEntity[] = []
     const rejected: Rejection[] = []
     const ignored: Ignored[] = []
+    const unread: string[] = []
 
     for (const file of await yamlFiles(this.rootDir)) {
       const source = path.relative(this.rootDir, file)
@@ -48,8 +49,9 @@ export class FixtureProvider implements ContextProvider {
       entities.push(...read.entities, ...read.apis)
       rejected.push(...read.rejections.map((reason) => ({ source, reason })))
       ignored.push(...read.ignored.map((document) => ({ source, ...document })))
+      unread.push(...read.unread)
     }
 
-    return { entities, rejected, ignored }
+    return { entities, rejected, ignored, unread }
   }
 }

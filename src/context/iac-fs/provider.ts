@@ -36,6 +36,7 @@ export class IacFsProvider implements ContextProvider {
       ignored: files.flatMap((file) =>
         file.ignored.map((document) => ({ source: file.path, ...document })),
       ),
+      unread: files.flatMap((file) => file.unread ?? []),
     }
   }
 }

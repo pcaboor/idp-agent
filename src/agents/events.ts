@@ -1,6 +1,6 @@
 import type { Question } from '../core/plan/clarify.js'
 import type { Answer } from '../core/schemas/query.js'
-import type { AgentName } from '../llm/client.js'
+import type { AgentName, TokenUsage } from '../llm/client.js'
 import type { Gate } from './repair.js'
 
 /**
@@ -44,7 +44,9 @@ export type AgentEvent =
   | { type: 'refused'; agent: AgentName; reason: string }
   /**
    * An agent's loop ended because the call beneath it threw — the model timed
-   * out, the provider failed — and the error goes on to the caller.
+   * out, the provider failed — and the error goes on to the caller. Or, for
+   * the Supervisor, because the model gave neither word twice: the call
+   * succeeded and carried nothing to classify.
    *
    * Not `refused`: nothing was judged, and a line saying the Inspector refused
    * is read as the Inspector having an opinion. `agent:end` is what closes
@@ -92,7 +94,9 @@ export type AgentEvent =
   | { type: 'attempt:end'; attempt: 1 | 2 | 3; stopped?: string }
   | { type: 'gate:passed'; attempt: 1 | 2 | 3; gate: Gate }
   /**
-   * An agent handing its own malformed terminal call back to the model.
+   * An agent handing its own malformed terminal call back to the model — or
+   * the Supervisor its answer that was neither word, said once the second
+   * answer is one: a second miss is a `stopped`, not a correction.
    *
    * A different fact from `repair`, and it used to share its field: two
    * counters under one name, one restarting inside every attempt of the other,
@@ -102,6 +106,15 @@ export type AgentEvent =
    */
   | { type: 'retry'; agent: AgentName; reason: string }
   | { type: 'plan:ready'; operations: number }
+  /**
+   * One model call returned, and the tokens its provider reported for it —
+   * `usage` absent when it reported none, never a count of 0. Emitted by the
+   * CLI around the client, not by an agent: a call is the runtime's fact, and
+   * an agent would have to remember to say it (product-gap-10). The terminal
+   * prints the run's total once, at its end; a trace already carries each
+   * call's count on its span.
+   */
+  | { type: 'usage'; agent: AgentName; usage?: TokenUsage }
   /**
    * The engine took a field away from the model rather than asking for it.
    *

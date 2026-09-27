@@ -37,6 +37,12 @@ export interface LoadResult {
   entities: CatalogueEntity[]
   rejected: Rejection[]
   ignored: Ignored[]
+  /**
+   * The fields the entities hold and the read model does not read —
+   * `relations`, `spec.consumesApis` — one path per key and document. Set
+   * aside like a document of an unmodelled kind, and said like one.
+   */
+  unread: string[]
 }
 
 export interface ContextProvider {

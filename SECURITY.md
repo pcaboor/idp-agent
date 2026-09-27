@@ -38,9 +38,10 @@ names the test that fails if it stops being true.
 The endpoint is the SDK's default for that provider, unless `ANTHROPIC_BASE_URL` or
 `OPENAI_BASE_URL` is set in your environment: the SDK reads those itself, and the key then
 goes to the URL they name. [`.env.example`](.env.example) lists them with every variable
-this tool reads. Retention is the provider's: this tool sends no retention option, so each
-provider's default applies — on OpenAI's Responses API, that default is to store the
-response.
+this tool reads. Retention is otherwise the provider's: every call to OpenAI's Responses API
+says `store: false`, where the default is to store the response (held by
+`tests/contract/providers.test.ts`); Anthropic and Mistral are sent no retention option, and
+their defaults apply.
 
 ## The threat model
 
