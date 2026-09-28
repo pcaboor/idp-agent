@@ -1,9 +1,10 @@
 # `backstage-http` slice 3 — the organisation in the read model
 
-**Status: 3.1 built** ([#99](https://github.com/pcaboor/idp-agent/pull/99)). Three
-stacked pull requests, 3.1 to 3.3, and one owner step after them (the keyed recordings); 3.2
-and 3.3 are not started. The owner's answers to the three questions are
-[below](#questions-for-the-owner), settled on 2026-09-28.
+**Status: 3.1 built** ([#99](https://github.com/pcaboor/idp-agent/pull/99)), **3.2 built**
+([#100](https://github.com/pcaboor/idp-agent/pull/100)). Three stacked pull requests, 3.1
+to 3.3, and one owner step after them (the keyed recordings); 3.3 is not started. The
+owner's answers to the three questions are [below](#questions-for-the-owner), settled on
+2026-09-28.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking. **Tick them as you go.**
 
@@ -1046,7 +1047,7 @@ instead of `none`: `none: <ref>, the <field> <subject> names, is read as a name 
 the why being `this source holds no <Kind>` or `a declarations repository's <Kind> files are
 not read as the whole organisation`.
 
-- [ ] **Step 1: Write the tests (fail: no such relation)**
+- [x] **Step 1: Write the tests (fail: no such relation)**
 
 ```typescript
 describe('relations over the organisation', () => {
@@ -1084,7 +1085,7 @@ read line by line against the table above, and committed: new files, the point o
 All are the file road's but `invoicing-worker-owned-by.txt`, which is the fake's, the one
 where the roads differ.
 
-- [ ] **Step 2: The walks**
+- [x] **Step 2: The walks**
 
 `stepOf`, `Walk` and `walked` take a `GraphNode`: `stepOf` of an organisation node carries
 its kind and, for a Group, System or Domain that states one, its type; a User states none,
@@ -1094,7 +1095,7 @@ and its step says `(undeclared)` where a type goes, as an absent environment doe
 subject with `graph.node(ref)`; a relation asked of a node of a kind it does not start from
 computes no row (`holds` is false), as `provides` of a database does today.
 
-- [ ] **Step 3: The command**
+- [x] **Step 3: The command**
 
 `RELATION_FLAGS` (`index.ts:709`) is `[...OWN_RELATIONS, ...ORGANISATION_RELATIONS]`, twelve
 flags (`OWN_RELATIONS` is `RELATIONS` less `between`, `query.ts:104-110`; `--to` stays apart);
@@ -1109,7 +1110,7 @@ node with no flag prints its kind's relations that hold something, in the table'
 **Exhaustive switches:** the heading and arrow maps of `render/relations.ts`, and every
 `switch` on `Relation` the compiler finds now taking `Relation | OrganisationRelation`.
 
-- [ ] **Step 4: Checks**
+- [x] **Step 4: Checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -1118,13 +1119,56 @@ pnpm typecheck && pnpm test && pnpm build && pnpm smoke
 git status --short tests/golden/relations-demo tests/recordings    # nothing
 ```
 
+*As built in 3.2*, where the code asked for something the plan did not say:
+- **The usage text is `HELP` in `src/cli/index.ts`**, not `src/cli/usage.ts`, which is the
+  line a run's model calls end on; `HELP`'s `relations` line and paragraph name the six.
+- **`EntityGraph` gains three small reads** the walks need and 3.1 did not expose: the
+  judged kinds kept, `unreadOrganisationOf(ref, field)` — what a node declares in one field
+  that no node carries and that is not declared nowhere: set aside where judged, a name where
+  not — and `holdsKind(kind)`, which picks the name line's why.
+- **A judged reference naming a document set aside** ends its row on a step of its own,
+  `setAside`, printed `— in the catalogue, not read`: the words `entity-graph.ts` already used
+  for it, since the plan named the case and no mark.
+- **An organisation relation's table says NODE** where the others say ENTITY (a Group is a
+  node, not an entity, as `show`'s candidates say), and the name line's field is said in
+  words: `owner`, `system`, `domain`, `parent domain`, `group` (a `memberOf`), `member`,
+  `parent`, `child`; a reference of no organisation kind is `this source holds nothing of
+  that name`.
+- **The Analyst's `get_relations` still asks of an entity alone**: `relationsOf` now resolves
+  a Group too, so `graph-tools.ts` refuses a ref `graph.get` does not hold with the words it
+  used for one naming nothing, and its `Dangling.field` type widens (no byte moves; the
+  field is always a `DeclaredField` there). What the Analyst is shown is 3.3's.
+- **The owner guide runs the fake on port 7011**: 7007 may be the owner's Docker Backstage.
+- **An absent type is `-`**, as an absent environment is in these tables, where Step 2 said
+  `(undeclared)`: a User's TYPE, and a System's or a Domain's that states none
+  (`ada-member-of.txt`, `engineering-has-member.txt`, `billing-api-part-of.txt`).
+- **Each walk follows only the kinds its edges are of**, which the table says in words ("a
+  Group's child Groups", "the owner's parent Groups") and the reader does not enforce: it
+  keeps a reference's own kind, so a Group's `children` may name a Component or a User, its
+  `parent` a User, its `members` a Group, and a `spec.system` a Component. A hierarchy edge
+  is read from a Group only and ends on a Group only, `owned-by`'s first hop is the owner
+  alone (a Group or a User), `member-of` reads a User's Groups or a Group's parent Groups,
+  `has-member` a Group's Users and child Groups, and `part-of` ends on a System or a Domain.
+  Such a reference resolves to a node, so it is no row and never declared nowhere; what
+  `show`'s card lists of it is 3.1's and unchanged.
+- **An entity relation asked of an organisation node computes no row**, even where a
+  `dependsOn` or a `providesApis` names the Group (it resolves, and makes the Group no
+  dependency), and `between` is asked of two entities: `relations tiger --to billing-api`
+  and `relations billing-api --to tiger` both answer `No entity named "tiger".`, as before
+  3.2, since both ends of `--to` resolve through `resolveEntity`.
+- **An organisation node's overview says a relation read only as a name**, in the relation's
+  one line, where "no relation declared" alone would be false: `relations grace --repo
+  tests/golden/organisation` prints `member of (0)` and the line that `group:default/ghost`
+  is read as a name (exit 1). An entity's overview is unchanged: its relations carry none.
+
 - [ ] **Step 5: The pull request** (after the owner's go-ahead)
 
 ```bash
-git add src/core/schemas/query.ts src/context/graph/relations.ts src/context/README.md \
-  src/cli/commands/relations.ts src/cli/render/relations.ts src/cli/index.ts src/cli/usage.ts \
+git add src/core/schemas/query.ts src/context/graph/relations.ts src/context/graph/entity-graph.ts \
+  src/context/README.md src/agents/tools/graph-tools.ts \
+  src/cli/commands/relations.ts src/cli/render/relations.ts src/cli/index.ts \
   src/cli/README.md tests/unit/organisation-relations.test.ts tests/golden/relations-organisation \
-  CHANGELOG.md AGENTS.md README.md docs/design.md docs/plans/backstage-http-slice-3.md
+  CHANGELOG.md AGENTS.md README.md docs/design.md docs/roadmap.md docs/plans/backstage-http-slice-3.md
 git commit -m "feat(cli): trace ownership, membership and system membership with idpa relations"
 ```
 
@@ -1156,14 +1200,15 @@ node dist/cli/bin.js relations invoicing-worker --owned-by --repo tests/golden/o
 # declarations repository's Group files are not read as the whole organisation     (exit 1)
 node dist/cli/bin.js relations billing-api --owned-by --demo
 # none: group:default/tiger, the owner billing-api names, is read as a name here: this source holds no Group  (exit 1)
-node tools/fake-backstage.ts --root tests/golden/organisation --no-org --port 7008   # in a second terminal
-env -u IDP_BACKSTAGE_TOKEN -u IDP_REPO IDP_BACKSTAGE_URL=http://127.0.0.1:7008/api/catalog node dist/cli/bin.js relations invoicing-worker --owned-by
+node tools/fake-backstage.ts --root tests/golden/organisation --no-org --port 7011   # in a second terminal
+env -u IDP_BACKSTAGE_TOKEN -u IDP_REPO IDP_BACKSTAGE_URL=http://127.0.0.1:7011/api/catalog node dist/cli/bin.js relations invoicing-worker --owned-by
 # tests/golden/relations-organisation/invoicing-worker-owned-by.txt: one row, ending on
 # group:default/lion, declared nowhere in the catalogue this token reads           (exit 0)
-node tools/fake-backstage.ts          # in a third terminal: the demo SI and org.yaml
-env -u IDP_BACKSTAGE_TOKEN -u IDP_REPO IDP_BACKSTAGE_URL=http://127.0.0.1:7007/api/catalog node dist/cli/bin.js relations tiger --owns
+# stop it, then: the demo SI and org.yaml, on the same port
+node tools/fake-backstage.ts --port 7011
+env -u IDP_BACKSTAGE_TOKEN -u IDP_REPO IDP_BACKSTAGE_URL=http://127.0.0.1:7011/api/catalog node dist/cli/bin.js relations tiger --owns
 # the 14 entities of the demo SI tiger owns, each at depth 1                       (exit 0)
-env -u IDP_BACKSTAGE_TOKEN -u IDP_REPO IDP_BACKSTAGE_URL=http://127.0.0.1:7007/api/catalog node dist/cli/bin.js relations billing-api --owned-by
+env -u IDP_BACKSTAGE_TOKEN -u IDP_REPO IDP_BACKSTAGE_URL=http://127.0.0.1:7011/api/catalog node dist/cli/bin.js relations billing-api --owned-by
 # group:default/tiger at depth 1, group:default/engineering at depth 2             (exit 0)
 node dist/cli/bin.js relations mysql-prod-01 --impacts --demo
 # tests/golden/relations-demo/mysql-prod-01-impacts.txt, byte for byte            (exit 0)

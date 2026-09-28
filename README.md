@@ -13,7 +13,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 3621, no API key" src="https://img.shields.io/badge/tests-3621%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 3646, no API key" src="https://img.shields.io/badge/tests-3646%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -217,9 +217,13 @@ both depend on (1)
 
 `--consumes`, `--consumed-by`, `--depends-on`, `--impacts`, `--provides` and
 `--provided-by` pick one relation; with none, every relation that holds something is
-printed. `--depth <n>` follows more hops (`--consumes` stops at what each right is over),
-and every bound the walk reaches is said under the table, never left for you to assume the
-list complete.
+printed. The organisation has six of its own, over the Groups, Users, Systems and Domains a
+repository's files or a catalogue declare: `--owns` (what a team or a person owns, down its
+child teams), `--owned-by` (the owner, and the groups above), `--member-of`,
+`--has-member`, `--part-of` (a service's System, then its Domain) and `--has-part`.
+`--depth <n>` follows more hops (`--consumes` stops at what each right is over), and every
+bound the walk reaches is said under the table, never left for you to assume the list
+complete.
 
 The same answer is one question away. Asked in words, the model only **chooses** the
 entity and the relation, from references a tool returned; the engine computes the paths
@@ -348,7 +352,7 @@ classifies and only answers, declining a change.
 ```bash
 idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource|API] [--repo <dir> | --demo]
 idp-agent show <name-or-reference> [--repo <dir> | --demo]
-idp-agent relations <name-or-reference> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --to <name-or-reference>] [--depth <n>] [--repo <dir> | --demo]
+idp-agent relations <name-or-reference> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-reference>] [--depth <n>] [--repo <dir> | --demo]
 idp-agent ask "<question>" [--repo <dir> | --demo] [--quiet]  # needs IDP_PROVIDER, IDP_MODEL and its key
 idp-agent validate <directory>                     # what the generated CI runs
 idp-agent init platform <dir> --owner @org/team    # the only command that writes
@@ -369,7 +373,7 @@ repository — `idpa init > catalog-info.diff`, then `git apply catalog-info.dif
 
 | Command | What it does |
 |---|---|
-| `relations` | Trace one entity's relations, several hops deep, each with its path, the rights on it and their levels: `--consumes`, `--consumed-by`, `--depends-on`, `--impacts`, `--provides`, `--provided-by`, or `--to <entity>` for every path between two. No model. |
+| `relations` | Trace one entity's relations, several hops deep, each with its path, the rights on it and their levels: `--consumes`, `--consumed-by`, `--depends-on`, `--impacts`, `--provides`, `--provided-by`, or `--to <entity>` for every path between two; and the organisation's: `--owns`, `--owned-by`, `--member-of`, `--has-member`, `--part-of`, `--has-part`. No model. |
 | `graph`, `show` | Walk the dependency graph: who depends on what, which services reach a database. `show` also says what an entity is — its description, system, tags and links, when its file declares them. A Backstage `kind: API` is read too — `graph --kind API`, and on `show` who provides it (`spec.providesApis`) and the rights that reach it — though no plan ever declares one. No model. |
 | `idpa "<phrase>"` | A question is answered, a change is previewed; the classification is said on stderr (`· question`, `· mutation`). Needs a model. |
 | `ask` | Answers a question about your platform. The model picks the queries; the engine answers them, and prints the model's short introduction and conclusion around the answer, checked and marked `›`. Asked about the catalogue as a whole — *talk about this project* — it prints an overview the engine writes: counts by kind, type, environment, owner, system and tag, a few entities in their own descriptions, rights and their levels, the most-reached resources, dangling references, and what it could not read. |

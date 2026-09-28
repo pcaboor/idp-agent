@@ -58,26 +58,38 @@ A Group, a User, a System or a Domain prints `render/organisation.ts`'s card, la
 entity's, each list cut at 25 rows and the rest counted; an entity's `owner` and `system`
 lines carry `nowhere`'s mark only where a catalogue read that kind whole.
 
-`runRelations(graph, options)` (`commands/relations.ts`) is `idpa relations`: keyless, and
-a read command like `show`, whose resolution it shares — `show.ts`'s `resolveEntity`, so a
-name means the same entity to both and an ambiguous one gets the same refusal, word for
-word, `--to`'s included. A name two entities carry exactly — a component and the Resource
-of its API — is ambiguous too, and only those two are listed: the first the graph held
-would be an accident of the order files were read in. It computes with
+`runRelations(graph, options)` (`commands/relations.ts`) is `idpa relations`: keyless, and a
+read command like `show`, whose resolution it shares — `show.ts`'s `resolveNode`, entities
+first, so a name means the same node to both, a Group or a System named after a service
+never makes that name ambiguous, and an ambiguous one gets the same refusal, word for word;
+`--to`'s two ends are entities, each through `resolveEntity`, so a Group is refused at
+either end in the same words. A name two entities carry exactly — a component and the
+Resource of its API — is ambiguous too, and only those two are listed: the first the graph
+held would be an accident of the order files were read in. It computes with
 `context/graph/relations.ts` and nothing else: one relation (`--consumes`, `--consumed-by`,
-`--depends-on`, `--impacts`, `--provides`, `--provided-by`, `OWN_RELATIONS`), every path to
-another entity (`--to`, never with a relation flag), or, with neither, every relation that
-holds something. `--depth` is a whole number from 1 to `RELATION_LIMITS.maxDepth`. Exit
-codes are `show`'s: `0` something was found, a row declared nowhere included, or between
-two entities an entity both reach; `1` an unknown or ambiguous name, a relation that holds
-nothing, two entities no path links and that reach nothing in common — a near miss alone is
-not a relation — an entity asked about its paths to itself; `2` the arguments — two
-relation flags, one beside `--to`, a bad `--depth`, more than one name. `ask` answers a
-`relation` answer with this same function (`asked: true`), so its block is this command's,
-byte for byte, save the way further past a bound: the whole command, `--depth` being no
-option of a question.
+`--depends-on`, `--impacts`, `--provides`, `--provided-by`, `OWN_RELATIONS`; `--owns`,
+`--owned-by`, `--member-of`, `--has-member`, `--part-of`, `--has-part`,
+`ORGANISATION_RELATIONS`), every path to another entity (`--to`, never with a relation
+flag), or, with neither, every relation that holds something — an entity's in
+`OVERVIEW_ORDER`, as before, and an organisation node's in `ORGANISATION_RELATIONS`' order.
+`--depth` is a whole number from 1 to `RELATION_LIMITS.maxDepth`. Exit codes are `show`'s:
+`0` something was found, a row declared nowhere included, or between two entities an entity
+both reach; `1` an unknown or ambiguous name, a relation that holds nothing, two entities no
+path links and that reach nothing in common — a near miss alone is not a relation — an
+entity asked about its paths to itself; `2` the arguments — two relation flags, one beside
+`--to`, a bad `--depth`, more than one name. `ask` answers a `relation` answer with this
+same function (`asked: true`), so its block is this command's, byte for byte, save the way
+further past a bound: the whole command, `--depth` being no option of a question.
 `tests/unit/relations-command.test.ts` holds the owner's three questions to their bytes and
-the demo SI to `tests/golden/relations-demo/`.
+the demo SI to `tests/golden/relations-demo/`; `tests/unit/organisation-relations.test.ts`
+holds the organisation's to `tests/golden/relations-organisation/`. An organisation
+relation's table says NODE where the others say ENTITY, its arrows point from what is held —
+an owned node, a member, a part — to what holds it, a path ending on a judged reference set
+aside says `in the catalogue, not read`, and a relation whose first hop is only a name says
+so in one line instead of `none`, in the overview of an organisation node too: `none:
+group:default/tiger, the owner billing-api names, is read as a name here: this source holds
+no Group` (or `a declarations repository's Group files are not read as the whole
+organisation`).
 
 **Rendering.** `renderTable(headers, rows)` and `renderEntityDetail(graph, entity)` take
 data and return a string. Pure functions, asserted directly in `tests/unit/render.test.ts`.

@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3621 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3646 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -141,21 +141,23 @@ entities; `relations`, which traces an entity's relations from the declarations 
 multi-hop, both directions, each row with its whole path, the rights on it and their
 levels, the environment at each step, and a reference declared nowhere marked where the
 path ends; between two entities, the paths where one depends on the other, else the
-nearest entities both reach — with no model (`context/graph/relations.ts`, rendered by
-`cli/render/relations.ts`); `ask`, answered by the Supervisor and the Analyst against
-recordings with no API key, a relation question included: the model chooses the entity and
-the relation, and the engine writes `relations`' block; `validate`, nine rules over an
-IaC repository; `init platform`, which writes thirteen files — the Backstage registration
-among them — and clobbers nothing; the read commands and a question over a Backstage
-catalogue (`backstage-http` slice 1, ADR-0011; `pnpm demo:backstage` runs them against a fake
-on loopback); the organisation — Groups, Users, Systems and Domains, read-only nodes beside
-the entities, from files and from a catalogue alike, which `show` prints and the overview
-counts (`backstage-http` slice 3.1); and stage 4's two previews, which write nothing to a
-repository:
+nearest entities both reach; and over the organisation, what a team owns down its child
+teams, who owns an entity and the groups above, a person's groups, a group's members, and
+what a System or a Domain holds and what holds it (`backstage-http` slice 3.2) — with no
+model (`context/graph/relations.ts`, rendered by `cli/render/relations.ts`); `ask`,
+answered by the Supervisor and the Analyst against recordings with no API key, a relation
+question included: the model chooses the entity and the relation, and the engine writes
+`relations`' block; `validate`, nine rules over an IaC repository; `init platform`, which
+writes thirteen files — the Backstage registration among them — and clobbers nothing; the
+read commands and a question over a Backstage catalogue (`backstage-http` slice 1,
+ADR-0011; `pnpm demo:backstage` runs them against a fake on loopback); the organisation —
+Groups, Users, Systems and Domains, read-only nodes beside the entities, from files and
+from a catalogue alike, which `show` prints and the overview counts (`backstage-http` slice
+3.1); and stage 4's two previews, which write nothing to a repository:
 
 ```bash
 idpa "<phrase>" [--repo <dir> | --demo | --backstage] [--project <dir>] [--json] [--quiet]  # question or change
-idp-agent relations <name-or-ref> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --to <name-or-ref>] [--depth <n>] [--repo <dir> | --demo | --backstage]  # no model
+idp-agent relations <name-or-ref> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-ref>] [--depth <n>] [--repo <dir> | --demo | --backstage]  # no model
 idp-agent plan --from <plan.json> --repo <dir>   # no model, and none is possible
 idp-agent plan "<intent>" --repo <dir> [--json]  # Inspector, Architect, five gates
 idp-agent init [--repo <dir>] [--name <n>] [--lifecycle <l>] [--owner <ref>]  # the catalog-info.yaml it would write

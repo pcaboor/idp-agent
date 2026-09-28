@@ -1,0 +1,6 @@
+component:default/billing-api
+
+part of (2)
+  NODE                    TYPE     ENV  DEPTH  PATH
+  system:default/billing  product  -    1      billing-api → billing
+  domain:default/finance  -        -    2      billing-api → billing → finance

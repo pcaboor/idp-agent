@@ -86,7 +86,19 @@ follows from the documentation of the tools involved.
   step, and a reference declared nowhere where the path ends. No edge is added by
   convention (a right's name, a folder), and a flow nothing declares is not a relation
   here. The command (`idpa relations`) and the Analyst's `relation` answer print the same
-  computation; the model only chooses which (ADR-0007).
+  computation; the model only chooses which (ADR-0007). The organisation is walked the
+  same way, six relations of its own beside those (`ORGANISATION_RELATIONS`): what a
+  Group or a User **owns**, down a Group's child Groups; who a node is **owned by**, and
+  the Groups above that owner; what a User or a Group is a **member of**, and a Group's
+  members (**has member**), Users and child Groups; what a node is **part of** — its
+  System, that System's Domain, the Domains above — and what a System or a Domain **has**
+  as parts. Each edge is read from both ends, as a dependency is (a Group's `children` and
+  a child's `parent`, a Group's `members` and a User's `memberOf`), and runs between the
+  kinds it is of: a child or a parent is a Group, a member a User, a whole a System or a
+  Domain, so a Group's `children` naming a User is no edge of it. A reference naming
+  nothing ends a path only where a catalogue read its kind whole; elsewhere it is a name,
+  and a relation whose first hop is only such a name says so in one line, instead of a
+  bare "none".
 - **The environment is part of an access's identity.** Being authorised in dev grants
   nothing in staging: two distinct entities.
 - **Declare, never infer.** What the catalogue does not know is reported as unknown,

@@ -1,0 +1,8 @@
+domain:default/finance
+
+has parts (4)
+  NODE                                TYPE      ENV   DEPTH  PATH
+  system:default/billing              product   -     1      finance ← billing
+  component:default/billing-api       service   -     2      finance ← billing ← billing-api
+  component:default/invoicing-worker  service   -     2      finance ← billing ← invoicing-worker
+  resource:default/billing-db-prod    database  prod  2      finance ← billing ← billing-db-prod

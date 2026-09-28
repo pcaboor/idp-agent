@@ -3,11 +3,19 @@ import {
   reachedBy,
   rightsOn,
   type Meeting,
+  type Named,
   type RelationResult,
   type RelationRow,
   type Step,
 } from '../../context/graph/relations.js'
-import { OWN_RELATIONS, type OwnRelation, type Relation } from '../../core/schemas/query.js'
+import type { OrganisationField } from '../../context/graph/entity-graph.js'
+import {
+  ORGANISATION_RELATIONS,
+  OWN_RELATIONS,
+  type OrganisationRelation,
+  type OwnRelation,
+  type Relation,
+} from '../../core/schemas/query.js'
 import { ENTITY_LIMITS, NOWHERE, nowhere } from './entity.js'
 import { oneLine } from './plain.js'
 import { renderTable } from './table.js'
@@ -29,8 +37,11 @@ import { renderTable } from './table.js'
 
 const shown = (text: string): string => oneLine(text, ENTITY_LIMITS.text)
 
+/** A relation read from one node alone: every one but `between`. */
+type OneEnd = OwnRelation | OrganisationRelation
+
 /** What each relation is called on its section's title. */
-const TITLES: Record<Relation, string> = {
+const TITLES: Record<Relation | OrganisationRelation, string> = {
   consumes: 'consumes',
   'consumed-by': 'consumed by',
   'depends-on': 'depends on',
@@ -38,22 +49,54 @@ const TITLES: Record<Relation, string> = {
   provides: 'provides',
   'provided-by': 'provided by',
   between: 'paths to',
+  owns: 'owns',
+  'owned-by': 'owned by',
+  'member-of': 'member of',
+  'has-member': 'has members',
+  'part-of': 'part of',
+  'has-part': 'has parts',
 }
 
 /**
  * Between two steps of a path. An arrow always points from what depends to
  * what it depends on, so a path read from the entity asked about runs
  * against the arrows when the relation walks toward what needs it. Providing
- * is not depending (design 4.1), so it is said in words.
+ * is not depending (design 4.1), so it is said in words. In the organisation
+ * an arrow points the same way, from what is held — an owned node, a member,
+ * a part — to what holds it.
  */
-const SEPARATORS: Record<OwnRelation, string> = {
+const SEPARATORS: Record<OneEnd, string> = {
   consumes: ' → ',
   'depends-on': ' → ',
   'consumed-by': ' ← ',
   impacts: ' ← ',
   provides: ' provides ',
   'provided-by': ' is provided by ',
+  owns: ' ← ',
+  'owned-by': ' → ',
+  'member-of': ' → ',
+  'has-member': ' ← ',
+  'part-of': ' → ',
+  'has-part': ' ← ',
 }
+
+/** The organisation's relations, whose rows are nodes: a Group, a User, a System are no entities. */
+const ORGANISATION: ReadonlySet<string> = new Set(ORGANISATION_RELATIONS)
+
+/** What a field of the organisation is called in a sentence about the node that declares it. */
+const FIELD_WORDS: Record<OrganisationField, string> = {
+  owner: 'owner',
+  system: 'system',
+  domain: 'domain',
+  subdomainOf: 'parent domain',
+  memberOf: 'group',
+  members: 'member',
+  parent: 'parent',
+  children: 'child',
+}
+
+/** What a reference ending a path is, beside it: declared nowhere, or in the catalogue and not read. */
+export const SET_ASIDE = 'in the catalogue, not read'
 
 /**
  * The order the overview says them in: what it reaches, who reaches it, then
@@ -89,11 +132,15 @@ const grantOf = (step: Step): string => {
 const stepText = (step: Step): string =>
   step.right?.level === undefined ? nameOf(step) : `${nameOf(step)} (${step.right.level})`
 
-/** A path, and what its last step is called when it names nothing (`said`, `NOWHERE` by default). */
+/**
+ * A path, and what its last step is called when it names nothing (`said`,
+ * `NOWHERE` by default) or names a document set aside (`SET_ASIDE`).
+ */
 function pathText(row: RelationRow, separator: string, said: string): string {
   const last = reachedBy(row)
   const path = row.steps.map(stepText).join(separator)
-  return last.nowhere === undefined ? path : `${path} — ${nowhere(last.nowhere, said)}`
+  if (last.nowhere !== undefined) return `${path} — ${nowhere(last.nowhere, said)}`
+  return last.setAside === true ? `${path} — ${SET_ASIDE}` : path
 }
 
 const indent = (text: string, by: string): string =>
@@ -121,14 +168,14 @@ function accessCells(row: RelationRow): [string, string] {
 }
 
 function table(result: RelationResult, said: string): string {
-  const relation = result.relation as OwnRelation
+  const relation = result.relation as OneEnd
   const separator = SEPARATORS[relation]
   // Of a consumer and of what it reaches, the access is the answer: the level
   // and the right it comes from. ENV is always the entity's own.
   const access = relation === 'consumes' || relation === 'consumed-by'
   const headers = access
     ? ['ENTITY', 'TYPE', 'ENV', 'ACCESS', 'VIA', 'DEPTH', 'PATH']
-    : ['ENTITY', 'TYPE', 'ENV', 'DEPTH', 'PATH']
+    : [ORGANISATION.has(relation) ? 'NODE' : 'ENTITY', 'TYPE', 'ENV', 'DEPTH', 'PATH']
   const rows = result.rows.map((row) => {
     const reached = reachedBy(row)
     const head = [shown(reached.ref), shown(reached.type ?? '-'), shown(reached.env ?? '-')]
@@ -212,7 +259,7 @@ function notes(result: RelationResult, road: Road): string[] {
     )
   }
   const separator =
-    result.relation === 'impacts' || result.relation === 'consumed-by' ? ' ← ' : ' → '
+    result.relation === 'between' || SEPARATORS[result.relation] !== ' ← ' ? ' → ' : ' ← '
   for (const cycle of result.cycles.slice(0, RELATION_LIMITS.cycles)) {
     const names = cycle.map((ref) => nameOf({ ref }))
     lines.push(`a cycle, not followed: ${names.join(separator)}`)
@@ -282,10 +329,41 @@ function betweenSections(result: RelationResult, road: Road, said: string): stri
   ]
 }
 
+/**
+ * Why a reference the subject declares is read as a name and not judged: the
+ * source holds no node of its kind, or holds some that are not the whole
+ * organisation — a declarations repository keeps the Group files it happens
+ * to keep.
+ */
+function whyNamed(name: Named): string {
+  if (name.kind === undefined) return 'this source holds nothing of that name'
+  return name.held
+    ? `a declarations repository's ${name.kind} files are not read as the whole organisation`
+    : `this source holds no ${name.kind}`
+}
+
+/**
+ * An empty relation: "none", or, when what the subject declares for the first
+ * hop is only read as a name, one line for each saying so — "none" alone
+ * would read as "declares nothing" of a file that names an owner.
+ */
+function emptyBody(result: RelationResult): string {
+  const named = result.named ?? []
+  if (named.length === 0) return 'none'
+  const subject = nameOf(result.subject)
+  return named
+    .map(
+      (name) =>
+        `none: ${shown(name.to)}, the ${FIELD_WORDS[name.field]} ${subject} names, ` +
+        `is read as a name here: ${whyNamed(name)}`,
+    )
+    .join('\n')
+}
+
 /** A relation's sections: one for a relation read from one end, several for `between`. */
 function sections(result: RelationResult, road: Road, said: string): string[] {
   if (result.relation === 'between') return betweenSections(result, road, said)
-  const body = result.rows.length === 0 ? 'none' : table(result, said)
+  const body = result.rows.length === 0 ? emptyBody(result) : table(result, said)
   return [section(TITLES[result.relation], result.total, body, notes(result, road))]
 }
 
@@ -305,8 +383,12 @@ export function renderRelation(result: RelationResult, road: Road = 'command', s
 }
 
 /**
- * Every relation of one entity that holds something, in `OVERVIEW_ORDER`, or
- * the one line that says none does.
+ * Every relation of one node that holds something — an entity's in
+ * `OVERVIEW_ORDER`, an organisation node's in `ORGANISATION_RELATIONS`' —
+ * or the one line that says none does. An organisation relation whose first
+ * hop is only read as a name is said too, in its one line (`emptyBody`):
+ * "no relation declared" is false of a User whose file names a Group. An
+ * entity's relations never carry a name, so its overview is what it was.
  */
 export function renderRelationsOverview(
   subject: Step,
@@ -314,7 +396,7 @@ export function renderRelationsOverview(
   road: Road = 'command',
   said: string = NOWHERE,
 ): string {
-  const held = results.filter(holds)
+  const held = results.filter((result) => holds(result) || (result.named ?? []).length > 0)
   if (held.length === 0) return `${shown(subject.ref)}\n\nno relation declared`
   return [shown(subject.ref), ...held.flatMap((result) => sections(result, road, said))].join('\n\n')
 }
