@@ -38,6 +38,15 @@ Each pull request adds its line here.
   variable and without any provider key, which `git` inherited until now; three architecture rules
   hold `fetch` to the transport. Nothing calls it yet
   ([#94](https://github.com/pcaboor/idp-agent/pull/94)).
+- `BackstageProvider` reads a catalogue's Components, Resources and APIs whole and every
+  other kind as references, pages by cursor, and returns the demo SI served by a catalogue
+  exactly as the files read it: `relations` and `status` dropped, other namespaces and
+  values this tool does not model set aside and counted, each entity through the file
+  reader, ordered by location; a catalogue read in part is refused — a cursor seen twice, an
+  item with no uid, or fewer distinct uids than the catalogue announced, repeats or not. A
+  fake Backstage, `tools/fake-backstage.ts`, pages as Backstage does and serves the demo SI
+  on `127.0.0.1:7007`. The CLI does not read one yet
+  ([#95](https://github.com/pcaboor/idp-agent/pull/95)).
 
 ### Changed
 

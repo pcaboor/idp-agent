@@ -4,6 +4,12 @@ import type { CatalogueEntity } from '../core/schemas/entity.js'
 export interface Rejection {
   source: string
   reason: string
+  /**
+   * `kind:namespace/name`, lower case, when the source is a catalogue's item:
+   * its `source` is then the ref and the file the catalogue read it from, and
+   * the grouped `skipped` line names it by this alone.
+   */
+  ref?: string
 }
 
 /**
@@ -19,6 +25,30 @@ export interface Ignored {
   kind?: string
   /** `kind:namespace/name`, when it states a name — see `IgnoredDocument`. */
   ref?: string
+  /**
+   * Set aside by the catalogue read's pre-pass, not by the reader: what the
+   * catalogue accepted and this tool does not model
+   * (`context/backstage/translate.ts`). Counted under its own term, "set aside
+   * by the catalogue read", never among the kinds not modelled.
+   */
+  prePass?: { rule: PrePassRule; value: string }
+}
+
+/** Why the pre-pass set an item aside, one rule per row of the note's § 5 table. */
+export type PrePassRule = 'namespace' | 'lifecycle' | 'resource-type' | 'name-case' | 'api-version' | 'shape'
+
+/**
+ * What a catalogue read cost and saw, for the notice (1.5): the distinct uids
+ * served across both reads, the pages, the bytes, the time, and how many uids
+ * were served twice in a read that was still whole. It holds no token and no
+ * URL.
+ */
+export interface Census {
+  served: number
+  pages: number
+  bytes: number
+  ms: number
+  repeated: number
 }
 
 /**
@@ -43,6 +73,8 @@ export interface LoadResult {
    * aside like a document of an unmodelled kind, and said like one.
    */
   unread: string[]
+  /** Set by `BackstageProvider` only: a file road has nothing to count. */
+  census?: Census
 }
 
 export interface ContextProvider {

@@ -133,6 +133,15 @@ catalogue contains in the words its repository wrote. An `apis` section — how 
 how many a service provides — appears only where the repository declares one, and an API a
 right reaches is counted among the most reached objects. `runAsk` gets the
 source and what the reader set aside and rejected from `main`, which already has them.
+`setAsideLine(ignored)` and `skippedLines(rejected)` (`render/catalogue-read.ts`) are what a
+catalogue read will say on stderr beside `not loaded:` (1.5 prints them): what the pre-pass
+set aside, grouped by rule with its count, "set aside by the catalogue read", and what the
+reader refused, grouped by reason, "skipped" — one line per reason where the file road
+prints one per file, since a catalogue holds thousands. Every value quoted there was chosen
+by the catalogue: each is `inertLine`d, as the file road's `skipped` line is (nothing a
+terminal obeys, the bidi controls spelled out), and cut to 80 characters, a rule lists five
+values then `and K more`, a line three refs then `…`, and a reason is cut at 200
+(`tests/unit/catalogue-read-lines.test.ts`).
 
 **An answer's commentary (ADR-0008).** `runAsk` prints the model's `intro` above the
 engine's block and its `conclusion` under it, a blank line between each, the block's bytes

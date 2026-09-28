@@ -14,7 +14,7 @@ one stale, and what to do when your change does.
 | `scenarios/` | the whole chain against a recorded model: `plan-mode.test.ts` and `question-mode.test.ts` |
 | `recordings/` | the tapes those two replay, one JSON file per scenario |
 | `setup/` | what runs before every test file, below |
-| `support/` | helpers shared by tests |
+| `support/` | helpers shared by tests; `fake-backstage.ts`, the fake catalogue as an injected `fetch`, below |
 
 ## Before every test file
 
@@ -32,6 +32,23 @@ one stale, and what to do when your change does.
 - `setup/tmp.ts` points the temp directory at one directory per run, removed at the end.
 
 `unit/offline.test.ts` and `unit/personal-config.test.ts` fail if any of that stops holding.
+
+## The fake Backstage
+
+A catalogue is never reached over a socket here. `tools/fake-backstage.ts` serves a folder of
+YAML (`fixtures/si-demo` by default) as Backstage serves it — a namespace, a uid, an etag,
+`relations[]` and the two locations the catalogue sets on every entity, `spec` as written —
+and pages as Backstage pages: the cursor carries the filter, the position and `totalItems`,
+`limit` and `fields` are read from each request, 200 when none is sent, with no cap.
+`support/fake-backstage.ts` hands its `handler` to the transport as the `catalogueFetch`,
+keeps every request in `sent`, and answers the faults a test names — a status, a hang, a
+cursor seen twice, a uid served on two pages, a `totalItems` above what is served, an item
+added to a page that its read did not ask for. Every test
+above the transport reads a catalogue through it (`unit/backstage-*.test.ts`), and
+`unit/fake-backstage.test.ts` holds it to Backstage's paging. Run as a program,
+`node tools/fake-backstage.ts` (Node 22.18 or later) listens on `127.0.0.1:7007` for the demo;
+no test starts it, and what it answers one request, a request no `Request` can be built
+from included, is `answerOf`'s, tested apart from the socket.
 
 ## The tapes
 
