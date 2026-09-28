@@ -57,6 +57,15 @@ Each pull request adds its line here.
   control byte a catalogue serves reaches the terminal, a reference the token cannot see
   reads "declared nowhere in the catalogue this token reads", and a recording never reads
   a catalogue ([#96](https://github.com/pcaboor/idp-agent/pull/96)).
+- Each vocabulary list the Supervisor and the Analyst are shown holds at most 30 values, the
+  most frequent, then "and K more"; the Architect still sees every value of the declarations
+  repository, the gates keep the whole vocabulary, the demo's prompts and every tape are
+  unchanged, and the commentary check is handed the lists as shown (review
+  domain-backstage-8). `pnpm demo:backstage` runs the README's relations against the fake
+  Backstage on a free loopback port, with no catalogue token, and stops it; `pnpm smoke` runs
+  it where Node strips types. ADR-0011 records why the catalogue is read once per run, before
+  any model; the design, the README and the adopting page describe the provider as built, and
+  slice 1 of `backstage-http` is closed ([#97](https://github.com/pcaboor/idp-agent/pull/97)).
 
 ### Changed
 

@@ -3,8 +3,9 @@
 `ContextProvider` (`provider.ts`) is the only seam between this tool and wherever the SI is
 described: `readonly name`, and `load(): Promise<LoadResult>`. It exists because that source
 changes on a schedule the rest of the code must not feel — fixtures in stages 1-2, `iac-fs` from
-stage 4, `backstage-http` at MVP (design.md § 3). Three implementations exist, and `cli/`
-constructs two of them; the third, `BackstageProvider`, is below. `FixtureProvider`
+stage 4, `backstage-http` for the read commands and questions from its slice 1 (design.md § 3,
+ADR-0011). Three implementations exist, and `cli/` constructs each; the third,
+`BackstageProvider`, for a configured catalogue, is below. `FixtureProvider`
 reads the demo SI, a directory laid out exactly like an IaC repository. `IacFsProvider`
 (`iac-fs/provider.ts`) reads a user's declarations repository through `readRepository`, so
 `ask`, `graph` and `show` given `--repo` see the files `plan` and `validate` see, and a rejection's
@@ -61,6 +62,13 @@ a declarations repository's grants name services declared elsewhere — every da
 what the reader set aside and rejected — and, only where there are any, the Backstage APIs and
 how many a service provides. Exact where `summary.ts` buckets — that one is a prompt, this is
 read by a person — and every list sorted count first, then name.
+
+`graph/summary.ts`'s `summariseGraph` is that prompt's data: the counts in buckets, the
+dangling references exactly, the vocabulary — every kind, type, environment and owner in use,
+which the gates read whole — and `counts`, how many entities state each value. The Supervisor's
+and the Analyst's summary is handed the counts, and past 30 values a list shows the 30 most
+frequent and how many more (`shownVocabulary` in `agents/summary.ts`), since a company
+catalogue's owners are unbounded; the Architect's is handed none, and shows every value.
 
 `EntityGraph.from(entities)` indexes them by `refOf(entity)` (`kind:default/name`) and answers
 read-only questions: `get`, `search` over `SearchCriteria` (env read from `ENV_ANNOTATION`), and
@@ -184,7 +192,8 @@ graph's `aside` set takes it as it takes a Group. Everything else goes through `
 the file road's reader; entities are ordered by `backstage.io/managed-by-location`, then
 ref, which is the file road's order wherever a location holds one entity, and a rejection's
 `source` is its ref and that location. `tests/unit/backstage-provider.test.ts` proves the
-demo SI served by the fake (`tools/fake-backstage.ts`) reads as its files do.
+demo SI served by the fake (`tools/fake-backstage.ts`) reads as its files do, and
+`pnpm demo:backstage` runs the built binary against that fake on a loopback port.
 
 Nothing in `context/` names `fetch` or a
 global way out or imports a network module, only the transport calls the `catalogueFetch` it is handed, and nothing reachable

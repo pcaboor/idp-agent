@@ -10,7 +10,8 @@
  * `files` left every check green, because the clone still had the folder the
  * package did not (review, build-ci-2).
  *
- * Run after `pnpm build`. No network, no API key, no Docker.
+ * Run after `pnpm build`. No network beyond a loopback fake it starts itself
+ * (`pnpm demo:backstage`), no API key, no Docker.
  */
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -28,6 +29,7 @@ import {
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { strippingRefusal } from './type-stripping.mjs'
 
 const ROOT = path.resolve(fileURLToPath(import.meta.url), '../..')
 
@@ -555,6 +557,58 @@ check({
     if (!shown.test(out)) failures.push(`pnpm demo: stdout ${shown}`)
   }
   console.log(`  ${failures.length === before ? 'ok  ' : 'FAIL'} pnpm demo`)
+}
+
+// `pnpm demo:backstage`: the same relations read from a fake Backstage the
+// script starts on 127.0.0.1, on a port the system chooses so two runs never
+// collide, and stops. The fake is TypeScript Node runs as it is, which
+// `engines` does not promise: where this Node cannot, the demo is skipped and
+// said to be, and the smoke goes on (CI's Node 22 and 24 run it).
+//
+// It runs with a token and a URL exported, as in a shell set up for the
+// company's Backstage: CLEAN_ENV drops every IDP_ name, so without them the
+// demo's removal of the token would never run here. The token holds a newline,
+// which no header carries: a step handed it is refused before any request
+// (exit 2), and a step handed the URL reads a host that does not exist.
+{
+  const refusal = strippingRefusal()
+  if (refusal !== undefined) {
+    console.log(`  skipped pnpm demo:backstage: ${refusal}`)
+  } else {
+    checks += 1
+    const DEMO_TOKEN = 'smoke-demo-token\nno header carries this'
+    const run = spawnSync(process.execPath, [path.join(ROOT, 'scripts/demo-backstage.mjs')], {
+      cwd: ELSEWHERE,
+      env: {
+        ...CLEAN_ENV,
+        IDP_BACKSTAGE_TOKEN: DEMO_TOKEN,
+        IDP_BACKSTAGE_URL: 'https://example.invalid/api/catalog',
+      },
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 120_000,
+    })
+    const out = run.stdout ?? ''
+    const before = failures.length
+    if (run.status !== 0) {
+      failures.push(`pnpm demo:backstage: expected exit 0, got ${run.status}\n${run.stderr}`)
+    }
+    if (`${out}${run.stderr ?? ''}`.includes('smoke-demo-token')) {
+      failures.push('pnpm demo:backstage: the exported token reached its output')
+    }
+    for (const shown of [
+      /^\$ env -u IDP_BACKSTAGE_TOKEN IDP_BACKSTAGE_URL=http:\/\/127\.0\.0\.1:\d+\/api\/catalog node dist\/cli\/bin\.js relations mysql-prod-01 --impacts$/m,
+      /^reading the Backstage catalogue at 127\.0\.0\.1:\d+ \(IDP_BACKSTAGE_URL\): 36 entities: 33 read, 3 not modelled;/m,
+      /^impacts \(9\)$/m,
+      /^component:default\/billing-api$/m,
+      /^\+\+\+ b\/dependencies\/network\/orders-api-to-payments\.yml$/m,
+      /^the fake Backstage was sent no request while the change was previewed$/m,
+      /^Done\. No model was called and no key was read; the fake Backstage is stopped\.$/m,
+    ]) {
+      if (!shown.test(out)) failures.push(`pnpm demo:backstage: stdout ${shown}`)
+    }
+    console.log(`  ${failures.length === before ? 'ok  ' : 'FAIL'} pnpm demo:backstage`)
+  }
 }
 
 // The templates live outside dist/, so nothing in the suite notices if they

@@ -1,4 +1,4 @@
-import type { SiSummary, Vocabulary } from '../context/graph/summary.js'
+import type { SiSummary, Vocabulary, VocabularyCounts } from '../context/graph/summary.js'
 
 /**
  * The most code points of one vocabulary value the prompt carries. Wider than
@@ -33,24 +33,88 @@ export function vocabularyValue(value: string): string {
 }
 
 /**
- * The values as listed: each flattened, then the ones that read the same
- * given once, in the order they came, and one that reads as nothing left out.
+ * The most values of one vocabulary list the Supervisor and the Analyst are
+ * shown (review, domain-backstage-8). A catalogue of 300 Groups put 300
+ * owners in every prompt of theirs; a list of 30 or fewer, as every demo list
+ * is, prints exactly as it did, so no recorded digest moves.
  */
-const listed = (values: readonly string[]): string[] => [
-  ...new Set(values.map(vocabularyValue).filter((value) => value !== '')),
-]
+export const VOCABULARY_LIST_LIMIT = 30
+
+/**
+ * The values as listed, each with how often it came: each flattened, then the
+ * ones that read the same given once, in the order they came, their counts
+ * summed, and one that reads as nothing left out.
+ */
+const listed = (
+  values: readonly string[],
+  counts: ReadonlyMap<string, number> | undefined,
+): Map<string, number> => {
+  const shown = new Map<string, number>()
+  for (const value of values) {
+    const flat = vocabularyValue(value)
+    if (flat === '') continue
+    shown.set(flat, (shown.get(flat) ?? 0) + (counts?.get(value) ?? 1))
+  }
+  return shown
+}
+
+/** Code-unit order, as `sorted` in `context/graph/summary.ts` orders a list. */
+const byValue = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0)
+
+/** One list as the prompt shows it. */
+const shownList = (
+  values: readonly string[],
+  counts: ReadonlyMap<string, number> | undefined,
+): { values: string[]; more: number } => {
+  const all = listed(values, counts)
+  if (counts === undefined || all.size <= VOCABULARY_LIST_LIMIT) return { values: [...all.keys()], more: 0 }
+  const kept = [...all]
+    // The most frequent first, a tie broken by value: the same 30 on every run.
+    .sort(([left, leftCount], [right, rightCount]) => rightCount - leftCount || byValue(left, right))
+    .slice(0, VOCABULARY_LIST_LIMIT)
+    .map(([value]) => value)
+    .sort(byValue)
+  return { values: kept, more: all.size - kept.length }
+}
+
+/**
+ * Each list as the prompt shows it: flattened, deduplicated, and — given the
+ * counts — past 30 the 30 most frequent, a tie broken by value, alphabetically,
+ * with how many more. Without the counts every value is kept, as the
+ * Architect's and init's summaries keep them. This is what the commentary
+ * check is handed: a value the model was shown is one it read (ADR-0008).
+ */
+export function shownVocabulary(
+  vocabulary: Vocabulary,
+  counts?: VocabularyCounts,
+): { [K in keyof Vocabulary]: { values: string[]; more: number } } {
+  return {
+    kinds: shownList(vocabulary.kinds, counts?.kinds),
+    types: shownList(vocabulary.types, counts?.types),
+    environments: shownList(vocabulary.environments, counts?.environments),
+    owners: shownList(vocabulary.owners, counts?.owners),
+  }
+}
 
 /**
  * The prompt text the model sees about the SI. Deterministic bytes: the
  * recording digest depends on it, so an unstable ordering here would warn on
  * every replay. Computed in `context/` and handed over as plain data — an
  * agent never holds a graph.
+ *
+ * With `counts`, each list is capped (`shownVocabulary`): the Supervisor's and
+ * the Analyst's summary, which may be a whole company catalogue's. Without,
+ * every value is printed, as the Architect's and init's are: they read a
+ * declarations repository, and what the Architect is shown is not moved.
  */
-export function formatSummary(summary: SiSummary, vocabulary: Vocabulary): string {
-  const list = (label: string, values: readonly string[]): string => {
-    const shown = listed(values)
-    return `  ${label}: ${shown.length === 0 ? '(none declared)' : shown.join(', ')}`
-  }
+export function formatSummary(
+  summary: SiSummary,
+  vocabulary: Vocabulary,
+  counts?: VocabularyCounts,
+): string {
+  const shown = shownVocabulary(vocabulary, counts)
+  const list = (label: string, { values, more }: { values: string[]; more: number }): string =>
+    `  ${label}: ${values.length === 0 ? '(none declared)' : values.join(', ')}${more > 0 ? `, and ${String(more)} more` : ''}`
 
   return [
     'si:',
@@ -59,9 +123,9 @@ export function formatSummary(summary: SiSummary, vocabulary: Vocabulary): strin
     `  resources: ${summary.resources}`,
     `  dangling references: ${summary.danglingReferences}`,
     'vocabulary:',
-    list('kinds', vocabulary.kinds),
-    list('types', vocabulary.types),
-    list('environments', vocabulary.environments),
-    list('owners', vocabulary.owners),
+    list('kinds', shown.kinds),
+    list('types', shown.types),
+    list('environments', shown.environments),
+    list('owners', shown.owners),
   ].join('\n')
 }

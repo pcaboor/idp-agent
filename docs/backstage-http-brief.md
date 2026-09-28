@@ -426,7 +426,7 @@ that reports reaching it.
 | time per load | 120 s | refused |
 | cursor loop | a `nextCursor` already seen | refused: "the catalogue returned the same page twice" |
 | a uid seen twice | kept once | counted in the notice: "the catalogue changed while it was read" |
-| count against `totalItems` | the first page's `totalItems`, per read | fewer read than announced, with no uid repeated: refused, "the catalogue changed while it was read (N expected, M read)"; otherwise stated in the notice |
+| count against `totalItems` | the first page's `totalItems`, per read | fewer read than announced, with no uid repeated: refused, "the catalogue changed while it was read (N expected, M read)"; otherwise stated in the notice (amended: see Built under slice 1) |
 | 429 | wait for `Retry-After` up to 10 s, three times per run | refused, naming the rate limit |
 | JSON shape | depth 64; a `__proto__` or `constructor` key refused, as `Plan` does | the entity set aside, with the reason |
 
@@ -746,6 +746,30 @@ mysql-prod-01 --impacts` against `tools/fake-backstage.ts` prints the README's t
 by 1.6: the same command against the owner's Backstage answers from the live catalogue. No
 recording changes.
 
+**Built** ([#92](https://github.com/pcaboor/idp-agent/pull/92) to
+[#96](https://github.com/pcaboor/idp-agent/pull/96) and
+[#97](https://github.com/pcaboor/idp-agent/pull/97), the plan
+[`docs/plans/backstage-http-slice-1.md`](plans/backstage-http-slice-1.md)), with these
+departures, each for what the code on `main` or Backstage's source showed. `readValue` sits
+beside a `readDocuments` that already existed, and `declarationsOf` was removed rather than
+extended: the change's repository is `declarationsFor`, resolved before the catalogue is
+requested, so a broken repository setting is exit 2 with nothing sent, on a question too.
+The notice is printed after the load, its counts adding up to what was served, and the
+overview over a catalogue equals `--demo`'s from its second line, its first naming the
+catalogue. `.env.example`, SECURITY.md's rows, the hostile bytes and the "declared nowhere in
+the catalogue this token reads" wording landed in 1.5, the pull request in which a real run
+first reads a catalogue. Every next page is sent with its `limit` and `fields`, since
+Backstage's cursor carries neither. **§ 6's row "count against `totalItems`" is amended**:
+fewer distinct uids than announced is refused whether or not a uid repeated, and an item with
+no uid is refused; a repeat is stated in the notice only when the read is whole. The modelled
+read is always sent, whatever the facets say. The vocabulary cap applies to the Supervisor's
+and the Analyst's summary only: the Architect's and `init`'s read a declarations repository
+and are shown every value. The ADR is [0011](adr/0011-backstage-to-explore.md): 0010 went to
+the stage-5 check. The contract fixture of § 9, the `question-backstage-owner` tape (it
+needs a key) and the closing demo against a real catalogue moved to the next queue item, a
+Backstage in Docker (`docs/roadmap.md`); until then the demo runs against the fake, `pnpm
+demo:backstage`.
+
 1. **`readValue` in core.** Extract the per-value loop from `parseDocuments`, with no change in
    behaviour, and add the golden equivalence of the YAML road before and after.
 2. **Two resolutions.** `sourceOf` split into what a run reads and what a change is decided
@@ -769,7 +793,8 @@ recording changes.
    hostile bytes; the contract fixture and `pnpm demo:backstage`. SECURITY.md's rows,
    `.env.example`, design §7.0 and a new ADR, "Backstage to explore: one snapshot per run; the
    model's words never become a request", with § 15's rejected alternatives. The ADR takes the
-   next free number; stage 8 has reserved 0010 for its evidence ADR.
+   next free number; stage 8 has reserved 0010 for its evidence ADR (amended: 0010 went to the
+   stage-5 check, see Built above).
 
 ### Slice 2 — scale and cache
 

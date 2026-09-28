@@ -36,7 +36,7 @@ harness more verifiable over the one that adds an integration.
 | Axis | Reliable agent harness; GitOps is the playing field |
 | SI context | `ContextProvider` interface, embedded fictional SI by default |
 | Source of truth | Backstage to **explore**, the git repository to **decide on writes** |
-| Provider schedule | fixtures in stages 1-2, `iac-fs` from stage 4, `backstage-http` at MVP |
+| Provider schedule | fixtures in stages 1-2, `iac-fs` from stage 4, `backstage-http` for the read commands and questions from its slice 1 (ADR-0011), never for a change |
 | LLM layer | Vercel AI SDK, low-level mode — multi-provider, loop written by hand |
 | Reliability proof | Record/replay recordings + property-based invariants + negative tests |
 | Terminal | Ink; the harness emits events, the TUI draws them |
@@ -866,11 +866,12 @@ it never enters a repository: `$XDG_CONFIG_HOME/idp-agent/config.yml`, else
 this file says where *this* user keeps the SI they question.
 
 ```yaml
-repo: ~/work/IaC        # the local declarations repository
+repo: ~/work/IaC                                    # the local declarations repository
+backstage: https://backstage.acme.example/api/catalog   # the catalogue it reads questions from
 ```
 
-That is the whole schema today, and `cli/personal.ts` reads it by the same rules: strict,
-so `repos:` is refused by name; absent is nothing configured; present and unparseable is
+That is the whole schema, and `cli/personal.ts` reads it by the same rules: strict,
+so `repos:` is refused by name, and so is `token:`; absent is nothing configured; present and unparseable is
 exit 2, naming the file. `~` is expanded — a bare `~` is YAML's null, so the home
 directory itself is written `"~"` — and a relative path is resolved against the file's own
 directory, so it names the same repository wherever the command is run. `IDP_REPO` in the
@@ -880,31 +881,48 @@ directory it would name another repository in each, and `IDP_REPO=.` would make 
 
 The two files answer different questions and neither reads the other. `iacRepo` and
 `backstage` in `.idp-agent.yml` are what a team agreed for one application: which remote
-its declarations live in, which catalogue it is registered with. `repo` in the personal
-file — and, later, a Backstage URL beside it — is where this person reads the SI from: a
-local checkout on this machine. The read commands and `plan`'s declarations repository
-consult only the personal side; `iacRepo` is a URL, nothing here clones it, and it is not
-a fall-back for `repo`.
+its declarations live in, which catalogue it is registered with. `repo` and `backstage` in
+the personal file are where this person reads the SI from: a local checkout on this
+machine, and the Backstage catalogue API they question. The read commands and `plan`'s
+declarations repository consult only the personal side; `iacRepo` is a URL, nothing here
+clones it, and it is not a fall-back for `repo`. **`.idp-agent.yml`'s `backstage` is never
+requested**: the file is committed and travels with every clone, so a hostile repository
+could aim the person's token at its own server. It stays what a team registered, and
+nothing reads it for a request.
 
 The project has two uses: `init platform` creates the declarations repository once, and
-then `idpa "<phrase>"` (§ 7.4) — and `graph`, `show`, `ask` and `plan` — question it or
-change it from anywhere, not only from inside it. Every one of them reads, first match
-wins: `--repo` (or `--demo`, for a read); the working directory when it is a declarations
-repository; `IDP_REPO`; the file's `repo`. With none, a read takes the fictional demo SI
-and a change is refused, naming all four: a write preview is decided against a
-repository, never a demo (§ 4.4). `plan` used to skip the working directory, as the
+then `idpa "<phrase>"` (§ 7.4) — and `graph`, `show`, `relations`, `ask` and `plan` —
+question it or change it from anywhere, not only from inside it. A read takes, first
+match wins: `--repo`, `--demo` or `--backstage`; the working directory when it is a
+declarations repository; `IDP_BACKSTAGE_URL`; `IDP_REPO`; the file's `backstage`; the
+file's `repo`. The environment beats the file, and at each level a catalogue beats a
+repository, because a person who names both has named the catalogue for reading and the
+repository for deciding. A change is decided against `plan`'s chain, which never holds a
+catalogue: `--repo`; the working directory; `IDP_REPO`; the file's `repo`. With none, a
+read takes the fictional demo SI and a change is refused, naming all four: a write
+preview is decided against a repository, never a demo or a catalogue (§ 4.4). `plan` used to skip the working directory, as the
 service it declares; it is taken on its markers only, which a service's repository does
 not carry, so `cd IaC && idpa "<intent>"` decides against IaC. Every road but `--repo` is
 said on stderr in one line naming the folder and what named it. A configured path that is
 not a directory is exit 2, never a quiet fall back to the demo SI: the user asked for that
 repository.
 
-This is also the slot the `backstage-http` provider (§ 3) plugs into: one decision,
-`cli/source.ts`'s `sourceOf`, returns `{ kind: 'repo' | 'demo', … }`, and a Backstage
-source is one more kind and one more field here. Its token will come from an environment
-variable, never from this file: `config.yml` holds no credential, whatever other files —
-the `credentials.json` above — come to sit beside it in the same directory, and there is
-deliberately no field in it that could carry one.
+**A Backstage catalogue** (`docs/backstage-http-brief.md`, ADR-0011) plugs in here: two
+decisions over one chain in `cli/source.ts`, `sourceOf` for what a run reads and
+`declarationsFor` for what a change is decided against, and a Backstage is one more kind of
+the first and never of the second. Its URL is the catalogue API's base
+(`https://<backend host>/api/catalog`), from `IDP_BACKSTAGE_URL` or the personal file's
+`backstage`, never guessed from the app's URL; it is checked before any request —
+`https:`, or `http:` to a loopback host; no userinfo, query or fragment; no empty, `.` or
+`..` path segment — and a refusal is exit 2 naming the setting. `--backstage` chooses the
+configured catalogue over the working directory and takes no value, since a URL typed on a
+command line would send the token to whatever was typed; with none configured it is exit
+2. The token is `IDP_BACKSTAGE_TOKEN`, from the environment alone, required for any host
+but a loopback one: `config.yml` holds no credential, whatever other files — the
+`credentials.json` above — come to sit beside it in the same directory, and there is
+deliberately no field in it that could carry one. The catalogue is read once per run,
+before any model, whole or not at all: a read that could not be completed is exit 1,
+naming the host and what named it, and never falls back to a repository or the demo.
 
 ### 7.1 First contact — no configuration
 
@@ -1255,6 +1273,8 @@ ADR-0006  the merge request is the act of authorisation
 ADR-0007  the answer crosses the boundary, under a witness check
 ADR-0008  commentary crosses the boundary, labelled and witness-checked
 ADR-0009  a trace is one more reader of the event stream
+ADR-0010  reserved for the stage-5 check (the owner's decision of 2026-09-27)
+ADR-0011  Backstage to explore: one snapshot per run; the model's words never become a request
 ```
 
 ### 12.2 The whole suite runs without an API key
@@ -1309,11 +1329,12 @@ English throughout: code, comments, commits, docs, CLI output.
 Deliberately excluded; do not reintroduce without an explicit decision.
 
 - GitLab (v0.2 — one file to write once stage 5's `ForgeProvider` interface exists; it does not yet)
-- The `backstage-http` provider (MVP). v0.1 ships `fixtures` and `iac-fs`.
-  `iac-fs` cannot be deferred with it: the catalogue lags the repository by about
-  two minutes, so deciding to write against Backstage would propose creating what
-  already exists. The git repository stays the source of truth at write time, in
-  the POC as much as in production.
+- A change decided against the `backstage-http` provider. The provider is built for the
+  read commands and questions (its slice 1, ADR-0011), and it still never decides a
+  change: the catalogue lags the repository by about two minutes, so deciding to write
+  against Backstage would propose creating what already exists. The git repository
+  stays the source of truth at write time, in the POC as much as in production; its
+  cache, the organisation's kinds and the two sources side by side are its later slices.
 - MCP server exposed by `idp-agent` (v0.2)
 - Extraction into a publishable monorepo (v0.2, once usage has revealed the interfaces)
 - Real Kong / Tufin / Jira integrations — they remain described destinations, not code

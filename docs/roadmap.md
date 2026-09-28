@@ -9,7 +9,7 @@ What has already shipped is in [`CHANGELOG.md`](../CHANGELOG.md). What the 2026-
 found, and which of its findings are closed, is in its
 [Status section](reviews/2026-09-23-deep-review.md#status).
 
-*Updated 2026-09-27, `main` at `5bbe537`.*
+*Updated 2026-09-28, `main` at `191f4e4`.*
 
 ## Where the project stands
 
@@ -30,7 +30,9 @@ each:
 
 Since stage 4, the work has gone into the review's priorities and into the question half of
 the product: `--repo` and a configured source, the one gesture `idpa "<phrase>"`, answers
-framed in the model's words, Backstage APIs, the relations view, and tracing into MLflow.
+framed in the model's words, Backstage APIs, the relations view, tracing into MLflow, and
+reading a Backstage catalogue for questions and relations (`backstage-http` slice 1, built
+against a fake; [the note](backstage-http-brief.md)).
 
 ## The queue
 
@@ -39,16 +41,22 @@ Each line says what the item is for. The sweep of the review is done
 ([its verdicts](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27)); its batches are
 here, one pull request each, each naming the check run together at the end.
 
-1. **`backstage-http` slice 1: questions and relations against a Backstage.** The provider
-   reads a catalogue over HTTP ([the design note](backstage-http-brief.md), slice 1), first
-   demonstrated against the fake Backstage on `127.0.0.1:7007`.
-2. **A real Backstage in Docker, for the demo.** One `docker compose up` starts a pinned
+1. **A real Backstage in Docker, for the demo.** One `docker compose up` starts a pinned
    Backstage holding the demo SI, registered through slice 0's Location, with a read token,
    so an evaluator sees the catalogue's pages and `idpa` querying the same Backstage (a
-   built image or a maintained community image: decided then).
-3. **`backstage-http` slice 3: the organisation in the read model.** Groups, Users, Systems
+   built image or a maintained community image: decided then). It carries **the first demo
+   against a real Backstage, which closes `backstage-http` slice 1** —
+   `IDP_BACKSTAGE_URL=<its base> IDP_BACKSTAGE_TOKEN=<its read token> idpa relations
+   mysql-prod-01 --impacts` printing the README's table — **the contract fixture of the
+   note's § 9**, one `by-query` page recorded from it, and **the `question-backstage-owner`
+   tape**, a question answered from a catalogue, which needs the owner's key. Slice 1 is
+   otherwise built ([#92](https://github.com/pcaboor/idp-agent/pull/92) to
+   [#96](https://github.com/pcaboor/idp-agent/pull/96),
+   [#97](https://github.com/pcaboor/idp-agent/pull/97)) and demonstrated against the
+   fake, `pnpm demo:backstage`.
+2. **`backstage-http` slice 3: the organisation in the read model.** Groups, Users, Systems
    and Domains read, so the agents see real owners and the systems services belong to.
-4. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
+3. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
    the current `main`, read only: what it covers and what it misses. It starts with an
    **analysis of the owner's uncommitted stage-5 work** on `feat/s5-cleared`, written on
    `eee67d6` before more than forty pull requests: what still applies, what `main` made
@@ -63,29 +71,29 @@ here, one pull request each, each naming the check run together at the end.
    operation to `targetOf`'s choice over `ProjectRead.declarations` (`filedIn`) — the root's
    `.yml`, or the one catalog-info kept elsewhere — so a `readCatalogInfo` that reads only the
    root's `catalog-info.yaml` would bring back the twin and the capped `before` this removed.
-5. **Stage 5, write + local branch.** The first write, atomic and idempotent — taken on from
+4. **Stage 5, write + local branch.** The first write, atomic and idempotent — taken on from
    the owner's plan and branch, discarding nothing already written, once the check above is
    agreed.
-6. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
+5. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
    hand-written files in every shape, and `signPlan` properties over plans valid by
    construction. `tests/invariants/arbitraries.ts` and `core.test.ts` are also edited on
    `feat/s5-cleared`, so it goes on top of stage 5.
-7. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
+6. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
    gap-stage5-readiness-4: one lstat, realpath and `O_NOFOLLOW` primitive shared from
    `project-fs`, used by `scaffold/write.ts` and by the iac-fs walk, which rejects a
    symbolic link by name. Medium, and what stage 5's writer will need.
-8. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
+7. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
    harness half of agents-llm-9: record from an empty tape, fail on a turn never replayed,
    and digest the JSON Schema the provider is sent. It needs no key, but it prunes dead turns
    and rewrites every tape's digest, so it waits for the owner's go-ahead.
-9. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
+8. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
    catalogue is plugged in.
-10. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
-    authorisation (ADR-0006).
-11. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
+9. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
+   authorisation (ADR-0006).
+10. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
     slices 4 and 5. From any service repository, generate its catalog-info and discover the
     dependencies it already has, with evidence.
-12. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
+11. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
     the project's end goal (2026-09-23).
 
 Within stage 8, its design note (section 11) states its own order:
@@ -204,6 +212,10 @@ The owner's decisions, dated, each with where it is recorded.
   against today's `main`; stage 5, which Claude takes on from the owner's plan and branch;
   batches B1, B3 and B2; slice 2; stage 6; stage 8 with slices 4 and 5; stage 7
   ([#87](https://github.com/pcaboor/idp-agent/pull/87)).
+- ADR 0010 goes to the stage-5 check; the `backstage-http` ADR is
+  [0011](adr/0011-backstage-to-explore.md); stage 8's evidence ADR takes the next free number
+  when it is written ([`stage-8-brief.md`](stage-8-brief.md) says so;
+  [#97](https://github.com/pcaboor/idp-agent/pull/97)).
 
 ## Known debts and open items
 
@@ -284,6 +296,10 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
   and answer tool ([#55](https://github.com/pcaboor/idp-agent/pull/55) says so). They still
   replay and pass. A re-record needs the owner's key, and #54 suggests recording a
   `question-overview` scenario at the same time.
+- **No tape answers a question from a catalogue.** `question-backstage-owner`, a question
+  answered from the fake Backstage, waits for a recording with the owner's key; until then a
+  question read from a catalogue is tested on a scripted client (`MainDeps.client`). It is
+  recorded with the Docker Backstage, queue item 1.
 - **Commentary on plans is not built** (ADR-0008, "Consequences"). It changes what plan mode
   sends, and `tests/scenarios/plan-mode.test.ts` fails on a stale plan-mode recording, so it
   waits for a re-record with a key.
@@ -306,6 +322,25 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
   because four of the five plan-mode recordings search on such values and would need
   re-recording ([#55](https://github.com/pcaboor/idp-agent/pull/55);
   `refuseUnusedValues: false` in `src/cli/commands/plan.ts`).
+
+**Left from `backstage-http` slice 1**
+
+- **An `IDP_REPO` exported in a recording shell is kept from a tape by one setup file, and
+  no test says so while recording.** `tests/setup/shell.ts` keeps the shell whole while a
+  scenario records, the catalogue's two variables excepted, so no tape holds what a
+  catalogue serves. `IDP_REPO` is not among them: what keeps a company repository out of a
+  tape is `tests/setup/personal.ts`, which removes it and moves `XDG_CONFIG_HOME` into the
+  run directory in every worker, a recording one included (checked on `191f4e4`), while
+  `personal-config.test.ts` asserts it only on a run that does not record. Out of slice 1
+  (the owner's decision of 2026-09-27).
+- **A value a search refusal named, and the summary did not show, is dropped from the
+  commentary.** The commentary check is handed the lists as the summary shows them, 30 per
+  list (domain-backstage-8), while a search on a value nobody uses is refused with the first
+  ten values in use by code-unit order (`listed` in `src/agents/tools/graph-tools.ts`). On a
+  list of more than 30 those ten are seldom among the 30 most frequent, so a sentence naming
+  one is dropped as not read: the safe direction, but short of ADR-0008's "a value the
+  model was shown". Either the refusal names the values the summary shows, or the check is
+  handed what a refusal named ([#97](https://github.com/pcaboor/idp-agent/pull/97)).
 
 **Behaviour**
 
@@ -466,8 +501,7 @@ vocabulary), product-gap-6 (no offset and no system, lifecycle or tag criteria i
 - **Toolchain and release.** build-ci-10 (a linter and formatter), build-ci-9 (a dependency
   policy), build-ci-6 (reserving the npm name).
 
-*Belongs elsewhere.* domain-backstage-8 (a bound on each vocabulary list) is `backstage-http`
-slice 1; gap-stage5-readiness-6 (compare before writing) is stage 5's writer; architecture-10
+*Belongs elsewhere.* gap-stage5-readiness-6 (compare before writing) is stage 5's writer; architecture-10
 (one bounded agent loop) and the rest of architecture-6 (exhaustive dispatch beyond batch A4)
 are refactors left unordered.
 

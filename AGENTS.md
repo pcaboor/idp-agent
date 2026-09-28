@@ -19,11 +19,12 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3518 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3535 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
-                      # never does, pnpm demo and every example in examples/README.md's table
+                      # never does, pnpm demo and every example in examples/README.md's table,
+                      # and pnpm demo:backstage where Node strips types (22.18 or later)
 ```
 
 CI runs exactly those five, on Node 22 and 24. A suite that demands a key is a
@@ -100,7 +101,7 @@ registration**, which `init platform` writes with the path registry's folders as
 silence, fails on what Backstage would refuse or what reads outside the repository
 (`registration`, an error), and warns when no target reaches one of the registry's folders.
 
-## Current state — 2026-09-26
+## Current state — 2026-09-28
 
 `main` carries stages 0 through 4; history is linear, no merge commits. Each stage lands
 as a stack of branches, one per task of its plan in `docs/plans/`, rebased and merged
@@ -132,12 +133,13 @@ nearest entities both reach — with no model (`context/graph/relations.ts`, ren
 recordings with no API key, a relation question included: the model chooses the entity and
 the relation, and the engine writes `relations`' block; `validate`, nine rules over an
 IaC repository; `init platform`, which writes thirteen files — the Backstage registration
-among them — and clobbers nothing; and stage 4's two previews, which write nothing to a
-repository:
+among them — and clobbers nothing; the read commands and a question over a Backstage
+catalogue (`backstage-http` slice 1, ADR-0011; `pnpm demo:backstage` runs them against a fake
+on loopback); and stage 4's two previews, which write nothing to a repository:
 
 ```bash
-idpa "<phrase>" [--repo <dir> | --demo] [--project <dir>] [--json] [--quiet]  # question or change
-idp-agent relations <name-or-ref> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --to <name-or-ref>] [--depth <n>] [--repo <dir> | --demo]  # no model
+idpa "<phrase>" [--repo <dir> | --demo | --backstage] [--project <dir>] [--json] [--quiet]  # question or change
+idp-agent relations <name-or-ref> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --to <name-or-ref>] [--depth <n>] [--repo <dir> | --demo | --backstage]  # no model
 idp-agent plan --from <plan.json> --repo <dir>   # no model, and none is possible
 idp-agent plan "<intent>" --repo <dir> [--json]  # Inspector, Architect, five gates
 idp-agent init [--repo <dir>] [--name <n>] [--lifecycle <l>] [--owner <ref>]  # the catalog-info.yaml it would write
@@ -181,7 +183,9 @@ the host and what named it, and never answered from. The URL is checked before a
 and quoted with its userinfo, query and fragment starred; the token comes from
 `IDP_BACKSTAGE_TOKEN` alone and goes to that catalogue alone, in one header
 (`tests/contract/key-reach.test.ts`, every provider, both roads). What it serves reaches the
-Supervisor and the Analyst; nothing read over HTTP reaches a plan's signature, policies,
+Supervisor and the Analyst, whose summary shows at most 30 values of each vocabulary list,
+the most frequent, then how many more (`shownVocabulary`); the Architect's summary and the
+gates keep every value. Nothing read over HTTP reaches a plan's signature, policies,
 re-check or Reviewer, which are decided against the declarations repository. A reference it
 does not serve reads "declared nowhere in the catalogue this token reads".
 
