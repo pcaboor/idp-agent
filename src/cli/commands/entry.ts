@@ -22,11 +22,12 @@ import type { CommandResult } from './result.js'
  * The phrase is classified against what the run reads (`sourceOf`), and a
  * change is decided against `plan`'s chain (`declarationsFor`) — `--repo`, the
  * working directory, `IDP_REPO`, the personal file — resolved apart, never
- * derived from the read. The two are one repository unless a Backstage is
- * read (slice 1.5), so today a change is decided against what it was
- * classified against. Only the demo SI differs, and a change is never
- * previewed against it: `change` refuses that, after the one turn that found
- * out it was a change.
+ * derived from the read. The two are one repository unless a Backstage
+ * catalogue is read: the phrase is then classified from the catalogue, and a
+ * change is still decided against the repository, which the Architect, the
+ * gates and the Reviewer alone are shown. A change with a catalogue and no
+ * repository, or against the demo SI, is refused: `change` refuses that,
+ * after the one turn that found out it was a change.
  *
  * `--json` is the plan road's report, and a question has no JSON form: taken
  * as one, it is answered as `ask` answers, and one line on stderr, after the

@@ -2,9 +2,16 @@ import path from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { parseArgs } from 'node:util'
 import { fileURLToPath } from 'node:url'
+import type { BackstageLimits } from '../context/backstage/limits.js'
+import { BackstageProvider } from '../context/backstage/provider.js'
+import {
+  BACKSTAGE_TOKEN_VARIABLE,
+  CatalogueReadError,
+  type CatalogueFetch,
+} from '../context/backstage/transport.js'
 import { FixtureProvider } from '../context/fixtures/index.js'
 import { IacFsProvider } from '../context/iac-fs/provider.js'
-import type { ContextProvider, Ignored } from '../context/provider.js'
+import type { ContextProvider, Ignored, LoadResult } from '../context/provider.js'
 import { PLAN_LIMITS } from '../core/schemas/plan.js'
 import { ModelCallError } from '../llm/failures.js'
 import {
@@ -42,6 +49,8 @@ import { isForgeHandle } from '../scaffold/codeowners.js'
 import { VERSION } from '../core/index.js'
 import type { LlmClient } from '../llm/client.js'
 import type { CommandResult } from './commands/result.js'
+import { setAsideLine, skippedLines } from './render/catalogue-read.js'
+import { NOWHERE, NOWHERE_IN_CATALOGUE } from './render/entity.js'
 import { inert, inertLine, oneLine, plain } from './render/plain.js'
 import { homeOf } from './personal.js'
 import {
@@ -57,11 +66,14 @@ import {
 } from './repository.js'
 import {
   blameOf,
+  catalogueConfigured,
+  catalogueFailureLine,
   declarationsFor,
   overviewName,
   planNeedsRepository,
   sourceNotice,
   sourceOf,
+  type BackstageSource,
   type RepositorySource,
   type Source,
   type SourceContext,
@@ -81,14 +93,17 @@ import {
 export type PlanSource = { from: string } | { intent: string; project?: string }
 
 /**
- * Where the three read commands read from: `repo`, the declarations repository
- * as `plan --repo` means it, or `demo`, the fictional SI. Neither is the
- * working directory when it is a declarations repository and the demo SI when
- * it is not — absences rather than values, which is what
- * exactOptionalPropertyTypes keeps them. Both is unrepresentable, and refused
- * at parsing.
+ * Where the read commands read from: `repo`, the declarations repository as
+ * `plan --repo` means it, `demo`, the fictional SI, or `backstage`, the
+ * configured catalogue. None is the rest of the chain — the working directory
+ * when it is a declarations repository, what is configured, the demo SI —
+ * absences rather than values, which is what exactOptionalPropertyTypes keeps
+ * them. Two of them is unrepresentable, and refused at parsing.
  */
-export type ReadFrom = { repo?: string; demo?: never } | { demo: true; repo?: never }
+export type ReadFrom =
+  | { repo?: string; demo?: never; backstage?: never }
+  | { demo: true; repo?: never; backstage?: never }
+  | { backstage: true; repo?: never; demo?: never }
 
 export type Command =
   | ({ name: 'graph'; options: GraphOptions } & ReadFrom)
@@ -148,7 +163,7 @@ export type Usage = Exclude<(typeof COMMANDS)[number], 'help'> | 'init-platform'
 
 export const HELP = `idp-agent - turn an intent into reviewed infrastructure declarations
 
-  idpa "<phrase>" [--repo <directory> | --demo] [--project <directory>] [--json] [--quiet]
+  idpa "<phrase>" [--repo <directory> | --demo | --backstage] [--project <directory>] [--json] [--quiet]
 
   The one gesture, from anywhere: a question about the SI is answered, an
   intent to change it is previewed as a plan, and the phrase need not say
@@ -161,10 +176,10 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   frame it with a sentence before and a few after, each checked by the engine
   and marked with ›; --quiet prints the verified answer alone.
 
-  idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource|API] [--repo <directory> | --demo]
-  idp-agent show <name-or-reference> [--repo <directory> | --demo]
-  idp-agent relations <name-or-reference> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --to <name-or-reference>] [--depth <n>] [--repo <directory> | --demo]
-  idp-agent ask "<question>" [--repo <directory> | --demo] [--quiet]
+  idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource|API] [--repo <directory> | --demo | --backstage]
+  idp-agent show <name-or-reference> [--repo <directory> | --demo | --backstage]
+  idp-agent relations <name-or-reference> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --to <name-or-reference>] [--depth <n>] [--repo <directory> | --demo | --backstage]
+  idp-agent ask "<question>" [--repo <directory> | --demo | --backstage] [--quiet]
   idp-agent validate <directory>
   idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json]
   idp-agent plan --from <plan.json> [--repo <directory>] [--json]
@@ -194,6 +209,12 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   the current directory when it is an application repository (a
   catalog-info.yaml or a package manifest at its root), and otherwise drafts
   from the catalogue alone.
+  A Backstage catalogue answers graph, show, relations and a question when
+  IDP_BACKSTAGE_URL, or backstage in the personal config.yml, names its API's
+  base (https://<backend host>/api/catalog), ahead of IDP_REPO and repo but
+  never of --repo or the current directory; --backstage chooses it over both.
+  It is read once per run, with the token in IDP_BACKSTAGE_TOKEN, and a
+  change is still decided against a declarations repository, never it.
   A phrase, ask, plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL, and
   none of them writes. Every model-backed command also needs that provider's
   key (ANTHROPIC_API_KEY, MISTRAL_API_KEY or OPENAI_API_KEY); IDP_TIMEOUT
@@ -759,17 +780,25 @@ function parseRelations(rest: string[]): Command {
   }
 }
 
-/** The two options that say where a read command's SI comes from. */
-const READ_OPTIONS = { repo: { type: 'string' }, demo: { type: 'boolean' } } as const
+/**
+ * The three options that say where a read command's SI comes from.
+ * `--backstage` takes no value: it chooses the configured catalogue, and a URL
+ * typed here would send the configured token to whatever was typed.
+ */
+const READ_OPTIONS = {
+  repo: { type: 'string' },
+  demo: { type: 'boolean' },
+  backstage: { type: 'boolean' },
+} as const
 
 /**
- * `--repo` or `--demo`, each omitted rather than undefined when not given.
- * Both is refused rather than one of them winning: the user named two sources
- * and there is no answer to which one they meant.
+ * `--repo`, `--demo` or `--backstage`, each omitted rather than undefined when
+ * not given. Two of them is refused rather than one winning: the user named
+ * two sources and there is no answer to which one they meant.
  */
 function readFrom(
   command: 'graph' | 'show' | 'relations' | 'ask' | 'idpa',
-  values: { repo?: string | undefined; demo?: boolean | undefined },
+  values: { repo?: string | undefined; demo?: boolean | undefined; backstage?: boolean | undefined },
 ): ReadFrom | { name: 'error'; message: string } {
   if (values.demo === true && values.repo !== undefined) {
     return {
@@ -777,7 +806,16 @@ function readFrom(
       message: `${command} takes --repo <directory> or --demo, never both: one names your declarations repository and the other the fictional SI`,
     }
   }
+  if (values.backstage === true && (values.demo === true || values.repo !== undefined)) {
+    return {
+      name: 'error',
+      message:
+        `${command} takes one of --repo <directory>, --demo or --backstage, never two: --backstage ` +
+        'reads the configured catalogue, and the others a repository or the fictional SI',
+    }
+  }
   if (values.demo === true) return { demo: true }
+  if (values.backstage === true) return { backstage: true }
   return values.repo !== undefined ? { repo: values.repo } : {}
 }
 
@@ -819,6 +857,14 @@ export interface MainDeps {
   traceSinks?: readonly TraceSink[]
   /** The MLflow sink's transport. Injected for tests; a real run uses the global one. */
   fetch?: typeof globalThis.fetch
+  /**
+   * The catalogue's transport. Injected for tests; a real run hands the global
+   * one to the transport, which never reaches for it itself. Distinct from
+   * `fetch`: the catalogue's token is sent through this and nothing else.
+   */
+  catalogueFetch?: CatalogueFetch
+  /** Lowered by a test to reach a bound of the catalogue read; a run keeps `BACKSTAGE_LIMITS`. */
+  catalogueLimits?: Partial<BackstageLimits>
 }
 
 /**
@@ -1214,44 +1260,86 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
 
   // The one decision the read commands make about where the SI comes from;
   // everything after the provider is the same for all three roads.
+  const name = command.name === 'entry' ? 'idpa' : command.name
+  const context = sourceContextOf(deps)
   let read: Read
   try {
     // A phrase finds its SI as `ask` does, and says so in `ask`'s line: its
     // question road IS `ask`'s. Its refusals name `idpa`, which is what was
     // typed.
-    read = await providerOf(command.name === 'entry' ? 'idpa' : command.name, command, deps, err)
+    read = await providerOf(name, command, deps)
   } catch (error) {
     return failed(error, err)
   }
   // What a phrase's change is decided against, resolved on its own: `plan`'s
-  // chain, whatever the question side reads, and none for `--demo`. The same
-  // repository as the read's until a catalogue can be read (slice 1.5), when
-  // this is what still refuses a broken IDP_REPO or file `repo`, exit 2 — and
-  // before the load, so before any request to the catalogue.
+  // chain, whatever the question side reads, and none for `--demo`. A
+  // catalogue answers the read ahead of IDP_REPO and the file's repo, so this
+  // is what still refuses a broken one, exit 2 — and before the load, so
+  // before any request to the catalogue (backstage-read.test.ts pins it).
   let declarations: RepositorySource | undefined
   if (command.name === 'entry') {
     try {
       declarations = await declarationsFor(
         { command: 'idpa', repo: command.repo, demo: command.demo },
-        sourceContextOf(deps),
+        context,
       )
     } catch (error) {
       return failed(error, err)
     }
   }
   const { provider, source } = read
-  const repository = overviewName(source)
 
-  const { entities, rejected, ignored, unread } = await provider.load()
+  // Once per run, before any model is chosen or called. A catalogue that
+  // cannot be read whole ends the run in one line, exit 1, and is never
+  // answered from in part, nor from a repository or the demo SI instead.
+  let loaded: LoadResult
+  try {
+    loaded = await provider.load()
+  } catch (error) {
+    if (error instanceof CatalogueReadError && source.kind === 'backstage') {
+      err(`${inertLine(catalogueFailureLine(error, source, tokenOf(context) !== undefined), Number.POSITIVE_INFINITY)}\n`)
+      return EXIT.notFound
+    }
+    return failed(error, err)
+  }
+  const { entities, rejected, ignored, unread } = loaded
+  // The set-asides of a catalogue read's pre-pass are counted under their own
+  // term, never among the kinds not modelled, so nothing is counted twice.
+  const notModelled = ignored.filter(({ prePass }) => prePass === undefined)
+  const setAside = ignored.length - notModelled.length
+
+  // Said after the load, so a catalogue's line carries what it served.
+  // Nothing is printed during a load, so a repository's or the demo SI's
+  // stderr is what it always was.
+  const notice = sourceNotice(name, source, context, {
+    counts: {
+      ...(loaded.census === undefined ? {} : { census: loaded.census }),
+      entities: entities.length,
+      notModelled: notModelled.length,
+      setAside,
+      skipped: rejected.length,
+    },
+    catalogue:
+      source.kind === 'repo' && source.origin.by === 'working-directory' && (await catalogueConfigured(context)),
+  })
+  if (notice !== undefined) err(`${notice}\n`)
   // Reported, never dropped in silence: that silent drop is the catalogue
   // behaviour this tool exists to compensate for (design 4.4).
   // Both halves are the file's own words: a path is a name somebody chose, and
   // a reason quotes the key it faults. Flattened and cleaned, never cut — the
-  // line is how the user finds the file and what to fix in it.
-  for (const rejection of rejected) {
-    err(`skipped ${whole(rejection.source)}: ${whole(rejection.reason)}\n`)
+  // line is how the user finds the file and what to fix in it. A catalogue's
+  // are grouped by reason instead: one line each would flood a terminal on a
+  // catalogue of thousands (`catalogue-read.ts`).
+  if (source.kind === 'backstage') {
+    for (const line of skippedLines(rejected)) err(`${line}\n`)
+  } else {
+    for (const rejection of rejected) {
+      err(`skipped ${whole(rejection.source)}: ${whole(rejection.reason)}\n`)
+    }
   }
-  if (ignored.length > 0) err(`${notLoaded(ignored)}\n`)
+  if (notModelled.length > 0) err(`${notLoaded(notModelled)}\n`)
+  const aside = setAsideLine(ignored)
+  if (aside !== undefined) err(`${aside}\n`)
   if (unread.length > 0) err(`${notRead(unread)}\n`)
   // A repository that declares nothing answers every question with a miss —
   // "No entity named", "No entity matches" — which reads as a fact about the
@@ -1270,16 +1358,37 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   // file — and naming that something, which is what the user goes and fixes.
   // A working directory is read because its witnesses say it is a declarations
   // repository, so an empty one is the freshly scaffolded state and there is
-  // nothing to blame.
+  // nothing to blame. A catalogue that serves nothing is blamed as one: what
+  // it serves is what its token may read.
   const blamed = blameOf(source)
   if (blamed !== undefined && entities.length === 0 && rejected.length === 0 && !catalogue) {
-    err(`${oneLine(source.label)} declares no entity; ${oneLine(blamed)} names the declarations repository\n`)
+    err(
+      source.kind === 'backstage'
+        ? `the Backstage catalogue at ${oneLine(source.label)} serves no entity this token reads; ${oneLine(blamed)} names it\n`
+        : `${oneLine(source.label)} declares no entity; ${oneLine(blamed)} names the declarations repository\n`,
+    )
   }
 
   const graph = EntityGraph.from(
     entities,
     ignored.flatMap(({ ref }) => (ref === undefined ? [] : [ref])),
   )
+  // A catalogue serves only what its token may read, so a reference it does
+  // not serve may be declared all the same; a repository's is declared
+  // nowhere. What the agents' tools say to a model does not change.
+  const said = source.kind === 'backstage' ? NOWHERE_IN_CATALOGUE : NOWHERE
+  // The overview names what it read and counts what it could not: the same
+  // facts as the lines above, for the answer that describes the whole source.
+  const asking = {
+    ...overviewName(source),
+    ignored,
+    rejected: rejected.length,
+    ...(source.kind === 'backstage' ? { nowhere: said } : {}),
+  }
+  // The load precedes `agentBacked`, so no span covers it: a catalogue read is
+  // said as root attributes of the run, as the Inspector's skip is, and never
+  // its token (brief § 8).
+  const attributes = source.kind === 'backstage' ? sourceAttributes(source, loaded) : undefined
 
   if (command.name === 'entry') {
     // What `ask` is handed, word for word, so the question road is `ask`'s —
@@ -1287,11 +1396,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     const asked = {
       graph,
       intent: command.phrase,
-      source: {
-        ...(repository !== undefined ? { repo: repository } : {}),
-        ignored,
-        rejected: rejected.length,
-      },
+      source: asking,
       err,
       colour: colourOf(deps),
       quiet: command.quiet === true,
@@ -1331,6 +1436,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
         command: 'entry',
         scenario: 'entry',
         ...(hint === undefined ? {} : { hint }),
+        ...(attributes === undefined ? {} : { attributes }),
         // Resolved, as `plan`'s are: the repositories a change would read,
         // when there are any, whichever road the Supervisor then takes.
         inputs: {
@@ -1373,20 +1479,18 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
       deps,
       err,
       out,
-      { command: 'ask', scenario: 'question', inputs: { command: 'ask', intent: command.intent } },
+      {
+        command: 'ask',
+        scenario: 'question',
+        inputs: { command: 'ask', intent: command.intent },
+        ...(attributes === undefined ? {} : { attributes }),
+      },
       async (client, emit) =>
       runAsk({
         graph,
         client,
         intent: command.intent,
-        // An overview names what it read and counts what it could not: the
-        // same facts as the lines above, for the answer that describes the
-        // whole catalogue.
-        source: {
-          ...(repository !== undefined ? { repo: repository } : {}),
-          ignored,
-          rejected: rejected.length,
-        },
+        source: asking,
         emit,
         err,
         colour: colourOf(deps),
@@ -1399,7 +1503,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     case 'graph':
       return report(runGraph(graph, command.options), out)
     case 'show':
-      return report(runShow(graph, command.query), out)
+      return report(runShow(graph, command.query, said), out)
     case 'relations':
       // Keyless: computed from the declarations, and no model is chosen.
       return report(
@@ -1408,6 +1512,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
           ...(command.relation !== undefined ? { relation: command.relation } : {}),
           ...(command.to !== undefined ? { to: command.to } : {}),
           ...(command.depth !== undefined ? { depth: command.depth } : {}),
+          nowhere: said,
         }),
         out,
       )
@@ -1426,30 +1531,69 @@ interface Read {
 
 /**
  * The provider for a read command's source. The decision — `--repo`, `--demo`,
- * the working directory, IDP_REPO, the personal file, the demo SI — is
- * `sourceOf`'s, shared with `plan`; this turns it into a reader and says, in one
- * line on stderr before anything else, what is being read. Only `--repo` is
- * silent. stderr, because stdout is the answer and gets piped.
+ * `--backstage`, the working directory, IDP_BACKSTAGE_URL, IDP_REPO, the
+ * personal file, the demo SI — is `sourceOf`'s, shared with `plan`; this turns
+ * it into a reader. `main` says what is being read once it is loaded.
+ *
+ * A catalogue's token is read here, from the environment the source was
+ * resolved in, and nowhere else: `source.ts` only checks that it is there. It
+ * is handed to the provider as a value, with the `fetch` the transport sends
+ * through — the injected one in a test, the global one in a real run.
  */
 async function providerOf(
   name: Exclude<DeclarationsCommand, 'plan'>,
   from: ReadFrom,
   deps: MainDeps,
-  err: (chunk: string) => void,
 ): Promise<Read> {
   const context = sourceContextOf(deps)
-  const source = await sourceOf({ command: name, repo: from.repo, demo: from.demo }, context)
-  const notice = sourceNotice(name, source, context)
-  if (notice !== undefined) err(`${notice}\n`)
+  const source = await sourceOf(
+    { command: name, repo: from.repo, demo: from.demo, backstage: from.backstage },
+    context,
+  )
   switch (source.kind) {
     case 'repo':
       return { source, provider: new IacFsProvider(source.root) }
     case 'demo':
       return { source, provider: new FixtureProvider(deps.root ?? DEFAULT_ROOT) }
+    case 'backstage':
+      return {
+        source,
+        provider: new BackstageProvider({
+          base: new URL(source.url),
+          token: tokenOf(context),
+          catalogueFetch: deps.catalogueFetch ?? globalThis.fetch,
+          ...(deps.catalogueLimits === undefined ? {} : { limits: deps.catalogueLimits }),
+        }),
+      }
     default: {
       const exhaustive: never = source
       return exhaustive
     }
+  }
+}
+
+/** The catalogue's token, from the environment a source is resolved in; empty is unset. */
+const tokenOf = (context: SourceContext): string | undefined => {
+  const token = context.env[BACKSTAGE_TOKEN_VARIABLE]
+  return token === undefined || token === '' ? undefined : token
+}
+
+/**
+ * A catalogue read as a trace's root says it (brief § 8): where — scheme,
+ * host, port and path, never a token, which the URL cannot hold — what it
+ * served, what of that was not read, and what it cost.
+ */
+function sourceAttributes(source: BackstageSource, loaded: LoadResult): Attributes {
+  const url = new URL(source.url)
+  const served = loaded.census?.served ?? loaded.entities.length + loaded.ignored.length + loaded.rejected.length
+  return {
+    'idp.source.kind': 'backstage',
+    'idp.source.origin': `${url.protocol}//${url.host}${url.pathname}`,
+    'idp.source.entities': served,
+    'idp.source.set_aside': served - loaded.entities.length,
+    'idp.source.pages': loaded.census?.pages ?? 0,
+    'idp.source.bytes': loaded.census?.bytes ?? 0,
+    'idp.source.ms': loaded.census?.ms ?? 0,
   }
 }
 

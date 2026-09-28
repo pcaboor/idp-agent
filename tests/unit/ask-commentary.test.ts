@@ -57,7 +57,7 @@ const ask = async (
     graph: await load(),
     client: byAgent(analyst(answer)),
     intent: 'which databases are in prod?',
-    source: { ignored: [], rejected: 0 },
+    source: { from: 'demo', ignored: [], rejected: 0 },
     emit: (event) => void events.push(event),
     err: (chunk) => void errors.push(chunk),
     ...options,
@@ -110,7 +110,7 @@ describe('runAsk frames the verified block with the model commentary', () => {
         analyst: [calling('answer', { outcome: 'nothing', intro: 'I looked.', conclusion: 'None.' })],
       }),
       intent: 'is there a mainframe?',
-      source: { ignored: [], rejected: 0 },
+      source: { from: 'demo', ignored: [], rejected: 0 },
       emit: (event) => void events.push(event),
       err: () => {},
     })
@@ -124,7 +124,7 @@ describe('runAsk frames the verified block with the model commentary', () => {
         analyst: [calling('answer', { outcome: 'overview', intro: 'Here is the catalogue.' })],
       }),
       intent: 'talk about this project',
-      source: { ignored: [], rejected: 0 },
+      source: { from: 'demo', ignored: [], rejected: 0 },
       emit: () => {},
       err: () => {},
     })
@@ -225,7 +225,7 @@ describe('--quiet', () => {
   })
 
   it('is in the help', () => {
-    expect(HELP).toMatch(/idp-agent ask "<question>" \[--repo <directory> \| --demo\] \[--quiet\]/)
+    expect(HELP).toMatch(/idp-agent ask "<question>" \[--repo <directory> \| --demo \| --backstage\] \[--quiet\]/)
     expect(HELP).toMatch(/idpa "<phrase>" .*\[--quiet\]/)
   })
 
@@ -235,7 +235,7 @@ describe('--quiet', () => {
       graph: await load(),
       client: byAgent({ supervisor: [saying('MUTATION')] }),
       intent: 'give billing-api read access to orders-db-prod',
-      source: { ignored: [], rejected: 0 },
+      source: { from: 'demo', ignored: [], rejected: 0 },
       emit: () => {},
       err: (chunk) => void errors.push(chunk),
       json: false,

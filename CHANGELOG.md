@@ -47,6 +47,16 @@ Each pull request adds its line here.
   fake Backstage, `tools/fake-backstage.ts`, pages as Backstage does and serves the demo SI
   on `127.0.0.1:7007`. The CLI does not read one yet
   ([#95](https://github.com/pcaboor/idp-agent/pull/95)).
+- `graph`, `show`, `relations`, `ask` and `idpa "<phrase>"` read a Backstage catalogue when
+  one is configured — `IDP_BACKSTAGE_URL`, or `backstage:` in the personal `config.yml`, or
+  `--backstage` to choose it — read once per run before any model, with its token from
+  `IDP_BACKSTAGE_TOKEN` alone; a change is still decided against the declarations
+  repository, and nothing read from the catalogue vouches for a plan; a misconfiguration is
+  exit 2 and an unreachable or partial catalogue exit 1, never a fall back; the key-reach
+  test proves the token reaches the catalogue alone, on every provider, on both roads; no
+  control byte a catalogue serves reaches the terminal, a reference the token cannot see
+  reads "declared nowhere in the catalogue this token reads", and a recording never reads
+  a catalogue ([#96](https://github.com/pcaboor/idp-agent/pull/96)).
 
 ### Changed
 

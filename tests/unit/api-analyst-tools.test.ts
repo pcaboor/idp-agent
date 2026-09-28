@@ -246,7 +246,7 @@ describe('an answer about APIs', () => {
       graph: await load(),
       client: byAgent({ supervisor: [saying('QUESTION')], analyst }),
       intent: 'who provides an API here?',
-      source: { ignored: [], rejected: 0 },
+      source: { from: 'demo', ignored: [], rejected: 0 },
       emit: () => {},
       err: (chunk) => void errors.push(chunk),
     })

@@ -13,13 +13,13 @@ import { oneLine } from './render/plain.js'
  *
  * The other half of design §7.0. `.idp-agent.yml` is committed to an
  * application repository and shared by a team; this file is one person's, on
- * one machine, and never enters a repository. What it holds today is where that
+ * one machine, and never enters a repository. What it holds is where that
  * person's declarations repository is, so `graph`, `show`, `ask` and `plan` can
- * be run from any directory without `--repo`. It is the slot a Backstage source
- * plugs into later — and that source will take its token from an environment
- * variable, like the model keys, never from here: there is deliberately no
- * field that could carry a credential, and the schema is strict, so `token:` is
- * refused by name rather than read.
+ * be run from any directory without `--repo`, and the Backstage catalogue they
+ * read for a question (`source.ts`). That catalogue takes its token from an
+ * environment variable, `IDP_BACKSTAGE_TOKEN`, like the model keys, never from
+ * here: there is deliberately no field that could carry a credential, and the
+ * schema is strict, so `token:` is refused by name rather than read.
  *
  * Located from the environment it is handed and nothing else — never
  * `os.homedir()`, which reads the process's own — so a test that injects an
@@ -110,12 +110,18 @@ export function expandHome(
 }
 
 /**
- * One field today. `strictObject`, so a misspelt key — or a credential somebody
+ * Two fields. `strictObject`, so a misspelt key — or a credential somebody
  * tried to put here — is a named refusal rather than a key dropped in silence.
  */
 const personalSchema = z.strictObject({
   /** The local declarations repository: `~` expanded, relative to this file's directory. */
   repo: z.string().min(1).max(4096).optional(),
+  /**
+   * The Backstage catalogue API's base, a URL as written: never home-expanded
+   * nor resolved against anything. `source.ts` checks it, and only when a run
+   * reaches it.
+   */
+  backstage: z.string().min(1).max(4096).optional(),
 })
 
 export interface PersonalConfig {
@@ -125,6 +131,8 @@ export interface PersonalConfig {
   readonly shown: string
   /** The declarations repository, absolute; absent when the file sets none. */
   readonly repo?: string
+  /** The catalogue API's base, as written; absent when the file sets none. */
+  readonly backstage?: string
 }
 
 /**
@@ -186,13 +194,18 @@ export async function readPersonalConfig(
       `${shown}: repo is empty — a bare ~ is YAML's null; write repo: "~" to name the home directory`,
     )
   }
+  if (isMapping(value) && Object.hasOwn(value, 'backstage') && value['backstage'] === null) {
+    throw refuse(`${shown}: backstage is empty; it names the catalogue API's base, https://<backend host>/api/catalog`)
+  }
   const parsed = personalSchema.safeParse(value ?? {})
   if (!parsed.success) {
     throw refuse(`${shown} is not a configuration — ${reasonOf(parsed.error)}`)
   }
 
+  const { backstage } = parsed.data
+  const read = { file, shown, ...(backstage === undefined ? {} : { backstage }) }
   const written = parsed.data.repo
-  if (written === undefined) return { file, shown }
+  if (written === undefined) return read
   const expanded = expandHome(written, env, platform)
   if (expanded === undefined) {
     throw refuse(
@@ -201,5 +214,5 @@ export async function readPersonalConfig(
   }
   // Against the file's own directory, never the working one: the same file
   // must name the same repository wherever the command is run from.
-  return { file, shown, repo: pathOf(platform).resolve(pathOf(platform).dirname(file), expanded) }
+  return { ...read, repo: pathOf(platform).resolve(pathOf(platform).dirname(file), expanded) }
 }

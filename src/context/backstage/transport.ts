@@ -24,8 +24,8 @@ import { BACKSTAGE_LIMITS, type BackstageLimits } from './limits.js'
  * held in a closure, never in a field of what this module returns or throws.
  * The `fetch` is handed over too: nothing in context/ names the global
  * (`tests/architecture/dependencies.test.ts`). `BackstageProvider` builds it
- * and the load (`load.ts`) sends through it; cli/ constructs neither before
- * 1.5.
+ * and the load (`load.ts`) sends through it; cli/ constructs the provider,
+ * handing it the token and the `fetch` (`providerOf`).
  */
 
 /** The requests the catalogue is ever sent: both read entities, and both check `catalog.entity.read` alone. */
@@ -36,7 +36,7 @@ export const CATALOGUE_REQUESTS = [
 
 export type CatalogueRoute = (typeof CATALOGUE_REQUESTS)[number][1]
 
-/** The only variable the token is read from. cli/ reads it (1.5); no child process is handed it. */
+/** The only variable the token is read from. cli/ reads it; no child process is handed it. */
 export const BACKSTAGE_TOKEN_VARIABLE = 'IDP_BACKSTAGE_TOKEN'
 
 /** The hosts `http:` may reach, and that need no token: this machine, by the three names the note allows. */
@@ -153,7 +153,7 @@ function sentenceOf(failure: CatalogueFailure, origin: string): string {
 }
 
 /**
- * A read that ended, exit 1 once cli/ renders it (1.5). The message is built
+ * A read that ended, exit 1 once cli/ renders it (`catalogueFailureLine`). The message is built
  * from the failure and the origin alone (`scheme://host:port`), and no cause
  * is kept: a cause is a way for a message this module did not write — a
  * server's echo of the request's headers, say — to reach whoever prints it.
@@ -179,7 +179,7 @@ export interface CatalogueTransport {
 /**
  * The function the transport sends with. A type of its own, not the global's:
  * no file in context/ names the global, not even in a type. The global is
- * assignable to it, and cli/ hands it over (1.5).
+ * assignable to it, and cli/ hands it over.
  */
 export type CatalogueFetch = (url: URL, init: RequestInit) => Promise<Response>
 
@@ -190,12 +190,15 @@ export type CatalogueFetch = (url: URL, init: RequestInit) => Promise<Response>
  */
 const HEADER_TOKEN = /^[\x21-\x7e]+$/
 
+/** Whether a header can carry `token` (`HEADER_TOKEN`): `cli/source.ts` refuses one it cannot, exit 2, before any request. */
+export const headerCarries = (token: string): boolean => HEADER_TOKEN.test(token)
+
 /** One or more non-empty segments, and no trailing slash: the base, stated exactly. */
 const BASE_PATH = /^(\/[^/]+)+$/
 
 /**
  * Why `base` cannot be a catalogue's, or undefined when it can. cli/ checks
- * the URL as the person typed it (1.5); this is the same rule on the parsed
+ * the URL as the person typed it (`catalogueBase`); this is the same rule on the parsed
  * one, again, because the transport exists two pull requests before
  * `catalogueBase` and must not rest on it. No reason quotes the URL: its
  * userinfo, query or fragment is where a credential would be.
@@ -323,7 +326,7 @@ export function catalogueUrl(base: URL, route: CatalogueRoute, query: URLSearchP
  * token; and for a token a header cannot carry.
  */
 export function catalogueTransport(options: {
-  /** Checked by cli/ (1.5); checked again here, at construction. */
+  /** Checked by cli/ (`catalogueBase`); checked again here, at construction. */
   base: URL
   /** A value, never read from the environment here. */
   token: string | undefined
@@ -344,7 +347,7 @@ export function catalogueTransport(options: {
   if (token === undefined && !isLoopback(base)) {
     throw new TypeError(`a catalogue that is not on this machine is read with a token, in ${BACKSTAGE_TOKEN_VARIABLE}`)
   }
-  if (token !== undefined && !HEADER_TOKEN.test(token)) {
+  if (token !== undefined && !headerCarries(token)) {
     throw new TypeError(`the value of ${BACKSTAGE_TOKEN_VARIABLE} holds a character a header cannot carry`)
   }
 

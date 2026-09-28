@@ -9,7 +9,7 @@ with plain arrays and asserts on the returned object. `graph`, `show`, `relation
 parse strictly: an option `ask` does not know is refused, never sent to the model as a word of the
 question. A first argument that is no command name is `entry`, the one gesture `idpa
 "<phrase>"`: the positionals joined are the phrase, quoted or not, and `--repo`, `--demo`,
-`--project` and `--json` are parsed as strictly and carried to whichever road it takes. Two
+`--backstage`, `--project` and `--json` are parsed as strictly and carried to whichever road it takes. Two
 things are refused, and nothing else is second-guessed: a command behind its options
 (`--repo IaC show billing-api` is `show` in the wrong order, not the phrase "show
 billing-api"), and a phrase of a single word a slip away from a command name (`grpah`,
@@ -134,7 +134,7 @@ how many a service provides — appears only where the repository declares one, 
 right reaches is counted among the most reached objects. `runAsk` gets the
 source and what the reader set aside and rejected from `main`, which already has them.
 `setAsideLine(ignored)` and `skippedLines(rejected)` (`render/catalogue-read.ts`) are what a
-catalogue read will say on stderr beside `not loaded:` (1.5 prints them): what the pre-pass
+catalogue read says on stderr beside `not loaded:`, after the notice: what the pre-pass
 set aside, grouped by rule with its count, "set aside by the catalogue read", and what the
 reader refused, grouped by reason, "skipped" — one line per reason where the file road
 prints one per file, since a catalogue holds thousands. Every value quoted there was chosen
@@ -217,40 +217,64 @@ handed, so the directory compared is the directory read; with no project it read
 
 **Where the SI comes from.** `source.ts`'s `sourceOf` decides what every command reads —
 `graph`, `show`, `relations`, `ask`, `plan` and a phrase (which asks as `ask` does) — and
-returns a value —
-`{ kind: 'repo', root, label, origin }` or `{ kind: 'demo', label, origin }` — that
-`providerOf` turns into a `ContextProvider` and nothing after it knows which. The read
-commands take, first match wins: `--repo`, resolved against `cwd` and refused with exit 2
-by `repository.ts`'s `declarationsRoot` — the guard `plan` uses too — or `--demo`; `cwd`
-itself when `isDeclarationsRepository` says it is one; `IDP_REPO`, absolute or under `~` —
-a relative one is exit 2, since it would name another repository in every directory; `repo`
-in the personal configuration; the demo SI. `plan` takes the same four, `cwd` included on
-its markers — a service's repository carries none — and never the demo SI: without any of
-them it is refused with exit 2, naming all four, and a phrase the Supervisor calls a change
-is refused the same way. A phrase resolves twice: what it reads (`sourceOf`) and what its
-change is decided against (`declarationsFor`: `plan`'s chain, walked with `idpa`'s name so
-its refusals name what was typed, and nothing for `--demo`), both over one private chain,
-the second before the load. They coincide while no Backstage is read; once one is, the read
-takes it and the change never does. What is not reached is not read: a malformed
-file cannot refuse a run `IDP_REPO` already answered. A configured path that is not a
-directory is exit 2 naming the variable or the file, never the demo SI; a directory with no
-markers is read all the same, as `--repo` reads one. Every road but `--repo` is said in one
-line on `err`, naming the folder and its `origin`, and `--demo` with `--repo` is a parse
-error. A repository is named by its folder's basename, whichever road reached it. A
-Backstage source is one more `kind`, and the exhaustive switches over `Source` — in
-`source.ts` and `providerOf` — are the only places that learn about it; what `main` needs
-of a source goes through them (`overviewName`, `blameOf`), never through a bare
-`kind === 'repo'`. Refusals quote a variable or a file in one flattened line, as the
-notices do. `tests/unit/read-repo.test.ts` and `tests/unit/configured-source.test.ts` hold
-the roads.
+returns a value — `{ kind: 'repo', root, label, origin }`, `{ kind: 'demo', label, origin }`
+or `{ kind: 'backstage', url, label, origin }` — that `providerOf` turns into a
+`ContextProvider` and nothing after it knows which. The read commands take, first match
+wins: `--repo`, resolved against `cwd` and refused with exit 2 by `repository.ts`'s
+`declarationsRoot` — the guard `plan` uses too — `--demo`, or `--backstage`, the configured
+catalogue (refused, exit 2, when none is); `cwd` itself when `isDeclarationsRepository` says
+it is one; `IDP_BACKSTAGE_URL`; `IDP_REPO`, absolute or under `~` — a relative one is exit
+2, since it would name another repository in every directory; `backstage` in the personal
+configuration; `repo` there; the demo SI. At each level a catalogue beats a repository.
+`plan` takes the repository roads alone, `cwd` included on its markers — a service's
+repository carries none — and never the demo SI or a catalogue: without any of them it is
+refused with exit 2, naming all four, and a phrase the Supervisor calls a change is refused
+the same way. A phrase resolves twice: what it reads (`sourceOf`) and what its change is
+decided against (`declarationsFor`: `plan`'s chain, walked with `idpa`'s name so its
+refusals name what was typed, and nothing for `--demo`), both over one private chain, the
+second before the load — so a broken `IDP_REPO` is exit 2 before any request to a
+catalogue, on a question too (`backstage-read.test.ts`). They coincide while no Backstage is
+read; once one is, the read takes it and the change never does. What is not reached is not
+read: a malformed file cannot refuse a run `IDP_REPO` or `IDP_BACKSTAGE_URL` already
+answered. A configured path that is not a directory is exit 2 naming the variable or the
+file, never the demo SI; a directory with no markers is read all the same, as `--repo`
+reads one. Every road but `--repo` is said in one line on `err`, after the load, naming the
+folder or the catalogue's host and its `origin`, and two of `--repo`, `--demo` and
+`--backstage` is a parse error. A repository is named by its folder's basename, whichever
+road reached it. The exhaustive switches over `Source` — `overviewName`, `blameOf`,
+`sourceNotice` and `providerOf` — are the only places that learn about its kind; what
+`main` needs of a source goes through them, never through a bare `kind === 'repo'`.
+Refusals quote a variable or a file in one flattened line, as the notices do.
+`tests/unit/read-repo.test.ts` and `tests/unit/configured-source.test.ts` hold the roads.
+
+**A Backstage catalogue.** The URL — `IDP_BACKSTAGE_URL`, or `backstage` in the personal
+file, never `.idp-agent.yml` and never the command line — is checked before any request
+(`catalogueBase`): https:, or http: to 127.0.0.1, ::1 or localhost; no space or control
+character, which the parser drops; no userinfo, query or fragment, as typed or parsed; a path, with no empty, `.` or `..` segment, encoded or not, and
+none the parser would rewrite. A refusal is exit 2 and quotes the URL as `shownUrl` does —
+userinfo, query and fragment each `***`, and a value that does not parse, or holds a space or
+a control character, by its length alone, since it may be the token — never whole
+(`backstage-source.test.ts`). A host that is not this machine is refused, exit 2, when
+`IDP_BACKSTAGE_TOKEN` is unset or empty, and any host when the token holds a character a
+header cannot carry (`headerCarries`, the transport's own rule), quoting none of it; its
+value is otherwise read in `providerOf` alone and handed to `BackstageProvider` with
+`MainDeps.catalogueFetch` (the global `fetch` in a real run). The notice follows the load and counts what was
+served — `N entities: M read, K not modelled`, then set aside and skipped when there are
+any — then `not loaded:` for the kinds not modelled, `setAsideLine` and `skippedLines`. A
+read that fails is `catalogueFailureLine`, one line naming the host and what named it, exit
+1, never a fall back. A reference the catalogue does not serve reads "declared nowhere in
+the catalogue this token reads" on `show`, `relations` and an answer (`NOWHERE_IN_CATALOGUE`,
+`render/entity.ts`), and the trace's root carries `idp.source.*`, never the token.
+`tests/unit/backstage-read.test.ts` and `tests/contract/key-reach.test.ts` hold it.
 
 **The personal configuration.** `personal.ts` reads `$XDG_CONFIG_HOME/idp-agent/config.yml`,
 else `~/.config/idp-agent/config.yml` (`%APPDATA%\idp-agent\config.yml` on Windows when no
 XDG_CONFIG_HOME is set). It is one person's and never committed, where `.idp-agent.yml`
-(`config.ts`) is a team's and is. The schema is `{ repo? }`, strict, so a misspelt key — or
+(`config.ts`) is a team's and is. The schema is `{ repo?, backstage? }`, strict, so a misspelt key — or
 a `token:` — is exit 2 naming it; `~` is expanded against the home the environment names,
 and a relative path against the file's own directory. A bare `~` is YAML's null, and is
-refused with a message saying to quote it. Absent is nothing configured; unreadable or not
+refused with a message saying to quote it, and a bare `backstage:` as empty. `backstage` is
+a URL as written, never expanded. Absent is nothing configured; unreadable or not
 YAML is exit 2, naming the file. It is located from `MainDeps.env` alone, never
 `os.homedir()`, so a test that injects an environment cannot reach the developer's file.
 

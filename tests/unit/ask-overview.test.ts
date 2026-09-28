@@ -77,7 +77,7 @@ describe('ask for an overview, end to end', () => {
     const { entities } = await new FixtureProvider(FIXTURES).load()
     const expected = renderOverview(
       overviewOf(EntityGraph.from(entities), { ignored: [], rejected: 0 }),
-      {},
+      { from: 'demo' },
     )
 
     expect(code).toBe(0)

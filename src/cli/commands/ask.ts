@@ -15,7 +15,7 @@ import type { CatalogueEntity } from '../../core/schemas/entity.js'
 import { QUERY_LIMITS, type Answer } from '../../core/schemas/query.js'
 import type { EventSink } from '../../agents/events.js'
 import type { LlmClient } from '../../llm/client.js'
-import { renderEntityDetail } from '../render/entity.js'
+import { NOWHERE, renderEntityDetail } from '../render/entity.js'
 import { renderOverview, type OverviewSource } from '../render/overview.js'
 import { inertLine, oneLine } from '../render/plain.js'
 import { renderTable } from '../render/table.js'
@@ -24,10 +24,12 @@ import type { CommandResult } from './result.js'
 
 /**
  * Where the graph was read from, and what the reader could not turn into it.
- * Only the overview prints these; `main` has them, so it hands them over
- * rather than this command reading anything a second time.
+ * The overview prints these; `main` has them, so it hands them over rather
+ * than this command reading anything a second time. `nowhere` is what the
+ * answer's blocks call a reference naming nothing, chosen by the source
+ * (`NOWHERE`); what the agents' tools say to a model does not change.
  */
-export interface AskSource extends OverviewSource, Unread {}
+export type AskSource = OverviewSource & Unread & { readonly nowhere?: string }
 
 /** What `ask` and the one gesture, `idpa "<phrase>"`, both hand over. */
 export interface AskOptions {
@@ -160,7 +162,7 @@ function block(options: AskOptions, answer: Answer, truncated: number): CommandR
       // the search cut on the way is not part of it, so no truncation line.
       return { text: renderOverview(overviewOf(graph, source), source), found: true }
     case 'entities':
-      return renderEntities(graph, answer.refs, truncated)
+      return renderEntities(graph, answer.refs, truncated, source.nowhere ?? NOWHERE)
     case 'relation':
       // Chosen by the model, computed and written by the engine: the entity
       // and the relation are references a tool returned (the Analyst's
@@ -175,6 +177,7 @@ function block(options: AskOptions, answer: Answer, truncated: number): CommandR
           ? { to: answer.to ?? answer.ref }
           : { relation: answer.relation }),
         asked: true,
+        ...(source.nowhere === undefined ? {} : { nowhere: source.nowhere }),
       })
     default: {
       const exhaustive: never = answer
@@ -187,6 +190,7 @@ function renderEntities(
   graph: EntityGraph,
   refs: readonly string[],
   truncated: number,
+  said: string,
 ): CommandResult {
   // Re-read from the graph and sorted: the model's ordering is not one anybody
   // verified, and the entity it named is not the entity we print unless the
@@ -198,7 +202,7 @@ function renderEntities(
 
   if (found.length === 0) return { text: 'No entity matches that question.', found: false }
   if (found.length === 1) {
-    return { text: withTruncation(renderEntityDetail(graph, found[0]!), truncated), found: true }
+    return { text: withTruncation(renderEntityDetail(graph, found[0]!, said), truncated), found: true }
   }
 
   const rows = found.map((entity) => [

@@ -148,7 +148,7 @@ environment, and the architecture rules hold every call that starts a process to
 
 `backstage/` is where `context/` reaches the network (`backstage-http`, slice 1 of
 `docs/backstage-http-brief.md`), and `backstage/transport.ts` is its one way out: the only code
-that will send a catalogue token. `catalogueTransport` is handed the base URL, the token as a
+that sends a catalogue token. `catalogueTransport` is handed the base URL, the token as a
 value and a `catalogueFetch` — none read from the environment or the global here — and sends
 `GET` on the two routes of `CATALOGUE_REQUESTS` alone, to the base's origin and path, checked
 again once the URL is built (`catalogueUrl`) and before the header exists; with

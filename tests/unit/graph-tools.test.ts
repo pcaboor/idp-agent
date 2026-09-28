@@ -362,7 +362,7 @@ describe('the entity a walk starts from', () => {
       graph: await graph(),
       client,
       intent: 'which rights are declared over billing-db-dev?',
-      source: { ignored: [], rejected: 0 },
+      source: { from: 'demo', ignored: [], rejected: 0 },
       emit: () => {},
       err: (chunk) => void errors.push(chunk),
     })

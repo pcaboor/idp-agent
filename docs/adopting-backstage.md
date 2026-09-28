@@ -152,10 +152,15 @@ a target with a glob reads nothing, and the Location lists the files one by one 
 ## The read token for `idpa`
 
 Registering the repository serves Backstage's users. Reading the living catalogue from
-`idpa` is a separate provider, `backstage-http`, which is **designed and not built yet**
-([the design note](backstage-http-brief.md), slice 1). When it lands, it reads one bearer
-token from `IDP_BACKSTAGE_TOKEN` and nowhere else. The token the design note recommends is a
-static external-access token restricted to entity reads, on the operator's side:
+`idpa` is a separate provider, `backstage-http` ([the design note](backstage-http-brief.md),
+slice 1), **built**: set `IDP_BACKSTAGE_URL` — or `backstage:` in the personal `config.yml` —
+to the catalogue API's base, `https://<backend host>/api/catalog`, and `graph`, `show`,
+`relations`, `ask` and a question read the catalogue, once per run, whole or not at all; a
+change is still decided against the declarations repository. It reads one bearer token from
+`IDP_BACKSTAGE_TOKEN` and nowhere else, required for any host but this machine, and sends it
+to that catalogue alone; a token is visible ASCII with no space, and one holding anything else
+(a line break a copy brought along, say) is refused, exit 2, before any request. The token the design note recommends is a static external-access
+token restricted to entity reads, on the operator's side:
 
 ```yaml
 # the company Backstage's app-config

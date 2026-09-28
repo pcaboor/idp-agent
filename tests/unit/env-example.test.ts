@@ -2,7 +2,8 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { REPO_VARIABLE } from '../../src/cli/source.js'
+import { BACKSTAGE_URL_VARIABLE, REPO_VARIABLE } from '../../src/cli/source.js'
+import { BACKSTAGE_TOKEN_VARIABLE } from '../../src/context/backstage/transport.js'
 import { KEY_VARIABLES, PROVIDER_NAMES } from '../../src/llm/providers.js'
 
 /**
@@ -62,6 +63,10 @@ const computed = new Set(
 const COMPUTED: Record<string, readonly string[]> = {
   key: PROVIDER_NAMES.map((provider) => KEY_VARIABLES[provider]),
   REPO_VARIABLE: [REPO_VARIABLE],
+  // The catalogue's URL, in `cli/source.ts`; its token's presence there, and
+  // its value in `cli/index.ts`, the one place it is read.
+  BACKSTAGE_URL_VARIABLE: [BACKSTAGE_URL_VARIABLE],
+  BACKSTAGE_TOKEN_VARIABLE: [BACKSTAGE_TOKEN_VARIABLE],
 }
 
 /** What each adapter's SDK reads from the environment on its own. */

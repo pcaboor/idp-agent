@@ -18,7 +18,7 @@ import { catalogueTransport, type CatalogueFetch } from './transport.js'
  *
  * `load()` throws a `CatalogueReadError` for every failure and returns
  * nothing partial. It names no `fetch`: `catalogueFetch` is handed to the
- * transport as it came, and cli/ constructs this from 1.5.
+ * transport as it came, and cli/ constructs this (`providerOf`).
  */
 export class BackstageProvider implements ContextProvider {
   readonly name = 'backstage-http'

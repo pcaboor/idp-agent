@@ -19,12 +19,34 @@ import { oneLine } from './plain.js'
 export const OVERVIEW_LIMITS = { rows: 5, label: 100, description: 80 } as const
 
 /**
- * Where the overview was read from. `repo` is the repository's name — its
- * folder's, which `main` resolves, so `--repo .` reads as the folder it is and
- * not as a dot. No `repo` is the demo SI, an absence.
+ * Where the overview was read from, by `from`. `repo` is the repository's
+ * name — its folder's, which `main` resolves, so `--repo .` reads as the
+ * folder it is and not as a dot; `catalogue` is a Backstage catalogue's host;
+ * the demo SI names itself. `source.ts`'s `overviewName` makes one from a
+ * source.
  */
-export interface OverviewSource {
-  repo?: string
+export type OverviewSource =
+  | { readonly from: 'repo'; readonly repo: string }
+  | { readonly from: 'catalogue'; readonly catalogue: string }
+  | { readonly from: 'demo' }
+
+/**
+ * What an overview's first line names. Exhaustive, so a new kind of source is
+ * a compile error here rather than an overview naming the demo SI.
+ */
+function fromOf(source: OverviewSource): string {
+  switch (source.from) {
+    case 'repo':
+      return `the repository ${cell(source.repo)}`
+    case 'catalogue':
+      return `the Backstage catalogue at ${cell(source.catalogue)}`
+    case 'demo':
+      return 'the demo SI, a fictional company'
+    default: {
+      const exhaustive: never = source
+      return exhaustive
+    }
+  }
 }
 
 /** A label, a count, and what is counted when the section title does not say. */
@@ -78,12 +100,8 @@ function rows(entries: readonly Entry[], pinned?: Entry): string[] {
 }
 
 export function renderOverview(overview: Overview, source: OverviewSource): string {
-  const from =
-    source.repo === undefined
-      ? 'the demo SI, a fictional company'
-      : `the repository ${cell(source.repo)}`
   const blocks: string[][] = [
-    [`Overview of ${from}: ${plural(overview.entities, 'entity', 'entities')}`],
+    [`Overview of ${fromOf(source)}: ${plural(overview.entities, 'entity', 'entities')}`],
   ]
 
   if (overview.entities === 0) {
@@ -123,6 +141,11 @@ export function renderOverview(overview: Overview, source: OverviewSource): stri
         setAside.unkinded > 0 ? ['not an entity', String(setAside.unkinded)] : undefined,
       ),
     ])
+  }
+  // Counted once, apart from the kinds not modelled: what a catalogue accepted
+  // and the catalogue read set aside; stderr's line names them.
+  if (setAside.catalogueRead > 0) {
+    blocks.push([`set aside  ${plural(setAside.catalogueRead, 'entity', 'entities')} by the catalogue read`])
   }
   if (rejected > 0) {
     blocks.push([

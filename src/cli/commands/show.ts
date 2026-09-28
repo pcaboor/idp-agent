@@ -1,16 +1,18 @@
 import { refOf, type EntityGraph } from '../../context/graph/entity-graph.js'
 import type { CatalogueEntity } from '../../core/schemas/entity.js'
-import { renderEntityDetail } from '../render/entity.js'
+import { NOWHERE, renderEntityDetail } from '../render/entity.js'
 import type { CommandResult } from './result.js'
 
 /**
  * A bare name resolves to a reference; an ambiguous one lists the candidates
- * instead of picking the first. Declare, never infer (design 4.1).
+ * instead of picking the first. Declare, never infer (design 4.1). `said` is
+ * what a reference naming nothing is called, which `main` chooses by the
+ * source (`NOWHERE`).
  */
-export function runShow(graph: EntityGraph, query: string): CommandResult {
+export function runShow(graph: EntityGraph, query: string, said: string = NOWHERE): CommandResult {
   const found = resolveEntity(graph, query)
   if ('text' in found) return found
-  return { text: renderEntityDetail(graph, found.entity), found: true }
+  return { text: renderEntityDetail(graph, found.entity, said), found: true }
 }
 
 /**
