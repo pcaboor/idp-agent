@@ -496,16 +496,196 @@ export const apiSchema = z
 
 export type Api = z.infer<typeof apiSchema>
 
+/**
+ * Backstage's organisation: the four kinds its processor turns into ownership,
+ * membership and system membership (`BuiltinKindsEntityProcessor.ts`). Read,
+ * beside the entities and never among them, and never proposed: `plan.ts` has
+ * no field for any of them.
+ */
+export const ORGANISATION_KINDS = ['Group', 'User', 'System', 'Domain'] as const
+export type OrganisationKind = (typeof ORGANISATION_KINDS)[number]
+
+/**
+ * What the read model reads of an organisation document's metadata: its name,
+ * and its namespace, for the default of a reference that omits its own —
+ * nothing else. Not a title, not a description, not an annotation: an
+ * organisation provider puts a person's email and directory id among the
+ * annotations of every User (Backstage's Microsoft Graph provider,
+ * `defaultUserTransformer`), and what a file holds beyond these two keys is
+ * named on `not read:` (`unreadFieldsOf`) and kept nowhere.
+ */
+export const organisationMetadataSchema = z.object({
+  name: z.string().regex(NAME_PATTERN, 'invalid Backstage name'),
+  namespace: z.unknown().optional(),
+})
+
+/** A reference as Backstage's schema asks for one: a non-empty string, read leniently. */
+const organisationRefSchema = z.string().min(1, 'expected a reference')
+
+/**
+ * Each organisation reference in full, in the entity's namespace, with the kind
+ * Backstage's processor defaults it to: `owner`, `parent`, `children` and
+ * `memberOf` a Group, `members` a User, `domain` and `subdomainOf` a Domain.
+ * Read as `spec.system` and `spec.providesApis` are, for their reason: this
+ * tool never writes one, so a reference the grammar cannot split is kept as
+ * the file wrote it and names nothing, and one in upper case is folded, since
+ * Backstage compares references without regard to case.
+ */
+const ORGANISATION_DEFAULT_KINDS = {
+  owner: 'group',
+  parent: 'group',
+  children: 'group',
+  memberOf: 'group',
+  members: 'user',
+  domain: 'domain',
+  subdomainOf: 'domain',
+} as const
+
+type OrganisationRefField = keyof typeof ORGANISATION_DEFAULT_KINDS
+
+function qualifyOrganisation<
+  A,
+  K,
+  S extends { readonly [F in OrganisationRefField]?: string | readonly string[] | undefined },
+>(entity: {
+  apiVersion: A
+  kind: K
+  metadata: { name: string; namespace?: unknown }
+  spec: S
+}): { apiVersion: A; kind: K; metadata: { name: string }; spec: S } {
+  const { namespace } = entity.metadata
+  const own =
+    namespace === undefined
+      ? 'default'
+      : typeof namespace === 'string' && NAMESPACE_VALUE.test(namespace)
+        ? namespace.toLowerCase()
+        : undefined
+  const full = (ref: string, defaultKind: string): string => {
+    const readable = !SHORT_REF.test(ref) && SHORT_REF.test(ref.toLowerCase()) ? ref.toLowerCase() : ref
+    const [, kind = defaultKind, stated = own, name] = SHORT_REF.exec(readable) ?? []
+    return name === undefined || stated === undefined
+      ? ref
+      : `${kind.toLowerCase()}:${stated.toLowerCase()}/${name}`
+  }
+  const spec: Record<string, unknown> = { ...entity.spec }
+  for (const field of Object.keys(ORGANISATION_DEFAULT_KINDS) as OrganisationRefField[]) {
+    const value = entity.spec[field]
+    const kind = ORGANISATION_DEFAULT_KINDS[field]
+    if (typeof value === 'string') spec[field] = full(value, kind)
+    else if (value !== undefined) spec[field] = [...new Set(value.map((ref) => full(ref, kind)))]
+  }
+  return {
+    apiVersion: entity.apiVersion,
+    kind: entity.kind,
+    metadata: { name: entity.metadata.name },
+    spec: spec as S,
+  }
+}
+
+/** Both versions Backstage's schemas for the four kinds accept. */
+const organisationApiVersion = z.enum(['backstage.io/v1alpha1', 'backstage.io/v1beta1'])
+
+/**
+ * A team, a department, an organisation. What Backstage requires of one is
+ * required here — a type and its children, which may be none — and its parent
+ * and members are read when stated. A child's `parent` and its parent's
+ * `children` are one edge, as a Group's `members` and a User's `memberOf` are
+ * (the graph reads both ends). Refused, it is set aside, never rejected
+ * (`readValue`).
+ */
+export const groupSchema = z
+  .object({
+    apiVersion: organisationApiVersion,
+    kind: z.literal('Group'),
+    metadata: organisationMetadataSchema,
+    spec: z.object({
+      type: z.string().min(1),
+      parent: organisationRefSchema.optional(),
+      children: z.array(organisationRefSchema),
+      members: z.array(organisationRefSchema).optional(),
+    }),
+  })
+  .transform(qualifyOrganisation)
+
+/**
+ * A person: a name and the groups they are a member of, which Backstage
+ * requires and allows to be none. `spec.profile` — a display name, an email,
+ * a picture that can be a data URI of any size — is never read.
+ */
+export const userSchema = z
+  .object({
+    apiVersion: organisationApiVersion,
+    kind: z.literal('User'),
+    metadata: organisationMetadataSchema,
+    spec: z.object({
+      memberOf: z.array(organisationRefSchema),
+    }),
+  })
+  .transform(qualifyOrganisation)
+
+/**
+ * What a product is made of. Its parts name it — a Component's, a Resource's
+ * or an API's `spec.system` — and it names none of them, as Backstage's
+ * processor emits `partOf` from the part. An owner is required, its domain
+ * and type read when stated.
+ */
+export const systemSchema = z
+  .object({
+    apiVersion: organisationApiVersion,
+    kind: z.literal('System'),
+    metadata: organisationMetadataSchema,
+    spec: z.object({
+      owner: organisationRefSchema,
+      domain: organisationRefSchema.optional(),
+      type: z.string().min(1).optional(),
+    }),
+  })
+  .transform(qualifyOrganisation)
+
+/** A business area: its Systems name it, and so do its subdomains. An owner is required. */
+export const domainSchema = z
+  .object({
+    apiVersion: organisationApiVersion,
+    kind: z.literal('Domain'),
+    metadata: organisationMetadataSchema,
+    spec: z.object({
+      owner: organisationRefSchema,
+      subdomainOf: organisationRefSchema.optional(),
+      type: z.string().min(1).optional(),
+    }),
+  })
+  .transform(qualifyOrganisation)
+
+/** The organisation, read: each of the four kinds by its own schema. */
+export const organisationSchema = z.discriminatedUnion('kind', [
+  groupSchema,
+  userSchema,
+  systemSchema,
+  domainSchema,
+])
+
+export type OrganisationEntity = z.infer<typeof organisationSchema>
+
 /** By the kind a document states, as `parseDocuments` routes it: exactly. */
 const shapes = new Map<string, ReturnType<typeof levelsOf>>([
   ['Component', levelsOf(componentSchema)],
   ['Resource', levelsOf(resourceSchema)],
   ['API', levelsOf(apiSchema)],
+  ['Group', levelsOf(groupSchema)],
+  ['User', levelsOf(userSchema)],
+  ['System', levelsOf(systemSchema)],
+  ['Domain', levelsOf(domainSchema)],
 ])
 
 /**
- * The read model: every entity the graph holds. The write model, and the kinds
- * this tool reads and never proposes — today Backstage's API. The write side
- * takes `Entity` and never meets one of these.
+ * The read model's entities: the write model, and the kinds this tool reads
+ * and never proposes — today Backstage's API. The write side takes `Entity`
+ * and never meets one of these. The organisation is read beside them and is
+ * not one of them (`OrganisationEntity`): a Group has no environment and no
+ * type a vocabulary lists, and every table, summary and gate built from the
+ * entities stays what it was.
  */
 export type CatalogueEntity = Entity | Api
+
+/** Every node the graph holds: the read model's entities, and the organisation beside them. */
+export type GraphNode = CatalogueEntity | OrganisationEntity

@@ -1,4 +1,4 @@
-import type { CatalogueEntity } from '../core/schemas/entity.js'
+import type { CatalogueEntity, OrganisationEntity, OrganisationKind } from '../core/schemas/entity.js'
 
 /** Where an entity came from, and why it could not be used. */
 export interface Rejection {
@@ -14,7 +14,7 @@ export interface Rejection {
 
 /**
  * Where a document this tool does not model came from, and what it was: a
- * Group, a System, a mkdocs.yml. Not a failure, so declared apart from
+ * Location, a Group Backstage would refuse, a mkdocs.yml. Not a failure, so declared apart from
  * `Rejection` and printed apart from it: one line for all of them, where a
  * rejection gets a `skipped` line of its own.
  */
@@ -75,6 +75,19 @@ export interface LoadResult {
   unread: string[]
   /** Set by `BackstageProvider` only: a file road has nothing to count. */
   census?: Census
+  /**
+   * The organisation: the Groups, Users, Systems and Domains read, beside the
+   * entities and never among them, so nothing built from `entities` — a
+   * table, a summary, a vocabulary, a gate — sees one. Absent is none.
+   */
+  organisation?: OrganisationEntity[]
+  /**
+   * The organisation kinds read whole, which a reference to is judged against:
+   * a catalogue's, never a repository's. A declarations repository's Group
+   * files are what it happens to hold, not the organisation, so the file road
+   * never sets it. Absent is none.
+   */
+  judged?: readonly OrganisationKind[]
 }
 
 export interface ContextProvider {

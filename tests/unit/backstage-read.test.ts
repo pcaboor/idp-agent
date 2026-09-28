@@ -49,7 +49,11 @@ const component = (name: string, spec: Item, metadata: Item = {}): Item => ({
 })
 
 const demo = (): Item[] => catalogueOf(DEMO)
+/** The demo SI with three of the four teams its entities name: common is missing. */
 const withGroups = (): Item[] => catalogueOf(DEMO, { groups: GROUPS })
+const ORG_YAML = path.resolve(import.meta.dirname, '../../tools/backstage/org.yaml')
+/** The demo SI with the demo's organisation, as the fake program and the Docker Backstage serve it. */
+const withOrganisation = (): Item[] => catalogueOf(DEMO, { org: ORG_YAML })
 
 interface Ran {
   code: number
@@ -66,7 +70,7 @@ interface Options extends MainDeps {
 }
 
 const run = async (argv: string[], options: Options = {}): Promise<Ran> => {
-  const { entities = withGroups(), faults, token, env = { IDP_BACKSTAGE_URL: LOOPBACK }, ...deps } = options
+  const { entities = withOrganisation(), faults, token, env = { IDP_BACKSTAGE_URL: LOOPBACK }, ...deps } = options
   const catalogue = fakeBackstage({ entities, ...(faults === undefined ? {} : { faults }), ...(token === undefined ? {} : { token }) })
   const out: string[] = []
   const err: string[] = []
@@ -174,24 +178,22 @@ describe('what is said about the read', () => {
     const { code, err } = await run(['relations', 'mysql-prod-01', '--impacts'])
     expect(code).toBe(0)
     expect(err).toBe(
-      'reading the Backstage catalogue at 127.0.0.1:7007 (IDP_BACKSTAGE_URL): 36 entities: 33 read, 3 not modelled; ' +
-        'it may lag the declarations repository by minutes; --repo <directory> reads a repository\n' +
-        'not loaded: 3 documents this tool does not model (Group ×3)\n',
+      'reading the Backstage catalogue at 127.0.0.1:7007 (IDP_BACKSTAGE_URL): 40 entities: 40 read, 0 not modelled; ' +
+        'it may lag the declarations repository by minutes; --repo <directory> reads a repository\n',
     )
   })
 
   it('counts what the pre-pass set aside once, apart from the kinds not modelled', async () => {
     const entities = [
-      ...withGroups(),
+      ...withOrganisation(),
       component('beta-svc', { lifecycle: 'beta' }),
       component('pay-svc', {}, { namespace: 'payments' }),
     ]
     const { code, err } = await run(['graph', '--kind', 'Component'], { entities })
     expect(code).toBe(0)
     expect(err).toBe(
-      'reading the Backstage catalogue at 127.0.0.1:7007 (IDP_BACKSTAGE_URL): 38 entities: 33 read, 3 not modelled, 2 set aside; ' +
+      'reading the Backstage catalogue at 127.0.0.1:7007 (IDP_BACKSTAGE_URL): 42 entities: 40 read, 0 not modelled, 2 set aside; ' +
         'it may lag the declarations repository by minutes; --repo <directory> reads a repository\n' +
-        'not loaded: 3 documents this tool does not model (Group ×3)\n' +
         'set aside by the catalogue read: 1 lifecycle not modelled (beta ×1), 1 outside namespace default (payments ×1); first: component:default/beta-svc, component:payments/pay-svc\n',
     )
   })
@@ -207,13 +209,32 @@ describe('what is said about the read', () => {
   })
 
   it('says the catalogue changed while it was read when a uid came twice and the read was still whole', async () => {
-    const twice = structuredClone(withGroups().find((item) => item['kind'] === 'Component') as Item)
+    const twice = structuredClone(withOrganisation().find((item) => item['kind'] === 'Component') as Item)
     const { code, err } = await run(['graph'], { faults: { extraItem: { at: 1, item: twice } } })
     expect(code).toBe(0)
     expect(err.split('\n')[0]).toBe(
-      'reading the Backstage catalogue at 127.0.0.1:7007 (IDP_BACKSTAGE_URL): 36 entities: 33 read, 3 not modelled; ' +
+      'reading the Backstage catalogue at 127.0.0.1:7007 (IDP_BACKSTAGE_URL): 40 entities: 40 read, 0 not modelled; ' +
         'the catalogue changed while it was read (1 served twice); ' +
         'it may lag the declarations repository by minutes; --repo <directory> reads a repository',
+    )
+  })
+
+  it('marks on show exactly the owners naming a team the catalogue does not serve, and adds nothing to graph’s dangling list', async () => {
+    // Three of the demo's four teams: common, which 13 entities name, is missing.
+    const graph = await run(['graph'], { entities: withGroups() })
+    expect(graph.code).toBe(0)
+    expect(graph.out).not.toMatch(/dangling/)
+    const refs = [...graph.out.matchAll(/^(\S+)\s+(Component|Resource)\s/gm)].map(([, name, kind]) => `${String(kind).toLowerCase()}:default/${String(name)}`)
+    expect(refs).toHaveLength(33)
+    const marked: string[] = []
+    for (const ref of refs) {
+      const { out } = await run(['show', ref], { entities: withGroups() })
+      const owner = out.split('\n').find((line) => line.startsWith('  owner '))
+      if (owner?.endsWith('declared nowhere in the catalogue this token reads') === true) marked.push(owner)
+    }
+    expect(marked).toHaveLength(13)
+    expect(new Set(marked)).toEqual(
+      new Set(['  owner        group:default/common  declared nowhere in the catalogue this token reads']),
     )
   })
 
@@ -299,7 +320,7 @@ describe('when the catalogue is read', () => {
         },
       ],
     ] as const) {
-      const catalogue = fakeBackstage({ entities: withGroups() })
+      const catalogue = fakeBackstage({ entities: withOrganisation() })
       const client = scripted(turns, () => catalogue.sent.length)
       const out: string[] = []
       const err: string[] = []
@@ -348,7 +369,7 @@ describe('a change, with a catalogue configured', () => {
       architect: [calling(PROPOSE_TOOL, { operations: example.operations })],
       reviewer: [calling(VERDICT_TOOL, { verdict: 'ok' })],
     })
-    const entities = [...withGroups(), component('catalogue-only-canary', { owner: MARKER })]
+    const entities = [...withOrganisation(), component('catalogue-only-canary', { owner: MARKER })]
     const { code, out, err } = await run([example.intent], { env: { HOME: home }, cwd: await elsewhere(), entities, client })
     expect(code, err).toBe(0)
     expect(out).toContain('+++ b/dependencies/network/orders-api-to-payments.yml')
@@ -381,7 +402,7 @@ describe('a change, with a catalogue configured', () => {
         }),
       ],
     })
-    const entities = [...withGroups(), component('catalogue-only-canary', { owner: MARKER })]
+    const entities = [...withOrganisation(), component('catalogue-only-canary', { owner: MARKER })]
     const { code, out } = await run(['declare the database ledger-db-prod in prod'], {
       env: { HOME: home },
       cwd: await elsewhere(),
@@ -495,8 +516,9 @@ describe('the trace of a run that read a catalogue', () => {
     expect(root).toMatchObject({
       'idp.source.kind': 'backstage',
       'idp.source.origin': REMOTE,
-      'idp.source.entities': 36,
-      'idp.source.set_aside': 3,
+      // The organisation is read, not set aside: its read replaces the refs read.
+      'idp.source.entities': 40,
+      'idp.source.set_aside': 0,
       'idp.source.pages': 2,
     })
     expect(root['idp.source.bytes']).toBeGreaterThan(0)

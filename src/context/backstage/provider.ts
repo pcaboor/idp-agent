@@ -1,4 +1,4 @@
-import type { CatalogueEntity } from '../../core/schemas/entity.js'
+import type { CatalogueEntity, OrganisationEntity } from '../../core/schemas/entity.js'
 import { readValue } from '../../core/yaml/serialize.js'
 import { refOf } from '../graph/entity-graph.js'
 import type { ContextProvider, Ignored, LoadResult, Rejection } from '../provider.js'
@@ -10,11 +10,13 @@ import { catalogueTransport, type CatalogueFetch } from './transport.js'
 /**
  * A Backstage catalogue as a `ContextProvider` (docs/backstage-http-brief.md
  * § 5, § 6): read whole, once, into the same `LoadResult` a folder of YAML
- * fills, through the same reader. Every item of both reads goes through the
+ * fills, through the same reader. Every item of every read goes through the
  * pre-pass (`translate.ts`) and then `readValue`, the file road's per-value
  * reader, so a catalogue meets the very decisions a file does and the same
  * refusal words; `tests/unit/backstage-provider.test.ts` proves the demo SI
- * served by a catalogue reads as its files read.
+ * served by a catalogue reads as its files read. The one thing a catalogue
+ * gives that a folder never does is `judged`: the organisation kinds it read
+ * whole, which a reference to is then judged against.
  *
  * `load()` throws a `CatalogueReadError` for every failure and returns
  * nothing partial. It names no `fetch`: `catalogueFetch` is handed to the
@@ -47,10 +49,12 @@ export class BackstageProvider implements ContextProvider {
     const served = await loadCatalogue(transport, limits)
 
     const read: { entity: CatalogueEntity; ref: string; location?: string; unread: readonly string[] }[] = []
+    // Asked for no annotation, so none has a location: in ref order.
+    const organisation: { node: OrganisationEntity; ref: string; unread: readonly string[] }[] = []
     const rejected: { rejection: Rejection; ref: string; location?: string }[] = []
     const ignored: Ignored[] = []
 
-    for (const item of [...served.whole, ...served.refs]) {
+    for (const item of [...served.whole, ...served.organisation, ...served.refs]) {
       const passed = prePass(item)
       if ('aside' in passed) {
         ignored.push(passed.aside)
@@ -76,6 +80,9 @@ export class BackstageProvider implements ContextProvider {
         case 'api':
           read.push({ entity: reading.api, ref: refOf(reading.api), ...(location !== undefined && { location }), unread: reading.unread })
           break
+        case 'organisation':
+          organisation.push({ node: reading.entity, ref: refOf(reading.entity), unread: reading.unread })
+          break
         case 'entity':
           read.push({ entity: reading.entity, ref: refOf(reading.entity), ...(location !== undefined && { location }), unread: reading.unread })
           break
@@ -87,6 +94,7 @@ export class BackstageProvider implements ContextProvider {
     }
 
     read.sort(catalogueOrder)
+    organisation.sort(catalogueOrder)
     rejected.sort(catalogueOrder)
     // By ref, in code-unit order as the rest; a row with none last, by where it came from.
     ignored.sort((a, b) =>
@@ -103,8 +111,10 @@ export class BackstageProvider implements ContextProvider {
       entities: read.map(({ entity }) => entity),
       rejected: rejected.map(({ rejection }) => rejection),
       ignored,
-      unread: read.flatMap(({ unread }) => unread),
+      unread: [...read, ...organisation].flatMap(({ unread }) => unread),
       census: served.census,
+      ...(organisation.length > 0 && { organisation: organisation.map(({ node }) => node) }),
+      ...(served.judged.length > 0 && { judged: served.judged }),
     }
   }
 }

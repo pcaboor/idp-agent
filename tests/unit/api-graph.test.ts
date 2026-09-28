@@ -46,7 +46,8 @@ describe('the providers', () => {
     expect(rejected).toEqual([
       { source: 'apis/ledger.yml', reason: expect.stringMatching(/^spec\.definition: /) },
     ])
-    expect(ignored.map(({ kind }) => kind)).toEqual(['Group'])
+    // The Group of org/teams.yml is read beside the entities now (backstage-http slice 3).
+    expect(ignored).toEqual([])
   })
 
   it('agree with each other: the fixture reader reads the same entities', async () => {
@@ -210,12 +211,6 @@ describe('validate', () => {
       ['error', 'invalid-entity', 'apis/ledger.yml', expect.stringMatching(/^spec\.definition: /)],
       [
         'warning',
-        'not-modelled',
-        'org/teams.yml',
-        'kind Group is not modelled by this tool; group tiger left as is',
-      ],
-      [
-        'warning',
         'dangling-reference',
         'components/billing-api.yml',
         'component:default/billing-api names api:default/ghost, which nothing declares',
@@ -262,10 +257,10 @@ describe('validate', () => {
     expect(violations.map(({ rule }) => rule)).not.toContain('multiple-entities')
   })
 
-  it('counts the APIs it read among the entities', async () => {
+  it('counts the APIs it read among the entities, and the Group it reads', async () => {
     const { text, found } = await runValidate(GOLDEN)
     expect(found).toBe(false)
-    expect(text.split('\n').at(-1)).toBe('6 entities in 8 files, 1 violations')
+    expect(text.split('\n').at(-1)).toBe('7 entities in 8 files, 1 violations')
   })
 
   it('reads APIs outside the default namespace as it did before: set aside, under their own reference', async () => {

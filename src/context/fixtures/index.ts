@@ -1,6 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { CatalogueEntity } from '../../core/schemas/entity.js'
+import type { CatalogueEntity, OrganisationEntity } from '../../core/schemas/entity.js'
 import { parseDocuments } from '../../core/yaml/serialize.js'
 import type { ContextProvider, Ignored, LoadResult, Rejection } from '../provider.js'
 
@@ -38,6 +38,7 @@ export class FixtureProvider implements ContextProvider {
     const rejected: Rejection[] = []
     const ignored: Ignored[] = []
     const unread: string[] = []
+    const organisation: OrganisationEntity[] = []
 
     for (const file of await yamlFiles(this.rootDir)) {
       const source = path.relative(this.rootDir, file)
@@ -50,8 +51,11 @@ export class FixtureProvider implements ContextProvider {
       rejected.push(...read.rejections.map((reason) => ({ source, reason })))
       ignored.push(...read.ignored.map((document) => ({ source, ...document })))
       unread.push(...read.unread)
+      organisation.push(...read.organisation)
     }
 
-    return { entities, rejected, ignored, unread }
+    // No `judged`: a folder's Group files are what it holds, not the
+    // organisation, so a reference to one of its kinds is never judged here.
+    return { entities, rejected, ignored, unread, ...(organisation.length > 0 && { organisation }) }
   }
 }

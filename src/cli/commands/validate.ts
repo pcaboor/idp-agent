@@ -20,10 +20,11 @@ export async function runValidate(
   const snapshot = await read(root)
   const violations = checkRepository(snapshot)
 
-  // The APIs read are entities too: validated for what the reader requires of
-  // one, and counted with the kinds this tool writes.
+  // The APIs and the organisation read are entities too: validated for what
+  // the reader requires of one, and counted with the kinds this tool writes.
   const entities = snapshot.files.reduce(
-    (total, file) => total + file.entities.length + file.apis.length,
+    (total, file) =>
+      total + file.entities.length + file.apis.length + (file.organisation?.length ?? 0),
     0,
   )
   const errors = violations.filter((violation) => violation.severity === 'error')

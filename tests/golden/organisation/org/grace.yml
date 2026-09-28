@@ -1,0 +1,8 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: grace
+spec:
+  memberOf:
+    - group:default/ghost

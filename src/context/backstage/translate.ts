@@ -10,7 +10,11 @@ import { BACKSTAGE_LIMITS } from './limits.js'
  * Backstage serves "final entities", processed, stitched and annotated. This
  * removes what the catalogue added — `relations`, derived, and a processor
  * can add an edge nothing declared; `status`, alpha; `metadata.uid` and
- * `metadata.etag`, which the load kept to count the read — and sets aside
+ * `metadata.etag`, which the load kept to count the read — and a User's or a
+ * Group's `spec.profile`, which the organisation read never asks for and a
+ * server that ignores `fields` sends anyway: a display name, an email, a
+ * picture that can be a data URI of any size, none of which any answer needs
+ * (the owner's decision, 2026-09-28) — and sets aside
  * what the catalogue accepted and this tool does not model. Refusing those
  * would say "skipped" about something legitimately there, and reading them
  * would turn them into what they are not:
@@ -157,6 +161,9 @@ function aside(item: Item, rule: PrePassRule, value: string, reason: string): { 
   }
 }
 
+/** The kinds Backstage gives a `spec.profile`: a User's is a person's, a Group's a team's. */
+const PROFILED: ReadonlySet<string> = new Set(['user', 'group'])
+
 /**
  * One item, before the reader: set aside, or a copy of it with what the
  * catalogue added taken off and its uid and location handed back beside it.
@@ -180,6 +187,13 @@ export function prePass(item: unknown): PrePassed {
     delete metadata['uid']
     delete metadata['etag']
     value['metadata'] = metadata
+  }
+
+  // A person's or a team's profile goes no further than here, whatever the server sent.
+  const { kind } = value
+  if (typeof kind === 'string' && PROFILED.has(kind.toLowerCase()) && isMapping(value['spec']) && 'profile' in value['spec']) {
+    const { profile: _profile, ...spec } = value['spec']
+    value['spec'] = spec
   }
 
   const why = unmodelled(value)

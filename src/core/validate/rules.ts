@@ -1,4 +1,9 @@
-import { SOURCE_FILE_ANNOTATION, type Api, type Entity } from '../schemas/entity.js'
+import {
+  SOURCE_FILE_ANNOTATION,
+  type Api,
+  type Entity,
+  type OrganisationEntity,
+} from '../schemas/entity.js'
 import { PathEscapeError, resolveEntityPath } from '../paths/entity-path.js'
 import { parseDocuments, type IgnoredDocument } from '../yaml/serialize.js'
 import {
@@ -45,15 +50,23 @@ export interface RepositoryFile {
    * amends, counts or files an API (see `parseDocuments`).
    */
   readonly apis: readonly Api[]
+  /**
+   * Groups, Users, Systems and Domains: read for the read model, counted, and
+   * judged by no rule — a reference to one resolves, and nothing else here
+   * reads it (see `checkRepository`). Absent is none, so the write side's
+   * fixtures, which declare none, need not say so.
+   */
+  readonly organisation?: readonly OrganisationEntity[]
   /** One message per document the schema refused. Reported, never dropped. */
   readonly rejections: readonly string[]
   /**
-   * Documents set aside as someone else's — a Group, a System, a mkdocs.yml.
-   * Reported, never refused, and never an entity to any other rule.
+   * Documents set aside as someone else's — a Location, a Group Backstage
+   * would refuse, a mkdocs.yml. Reported, never refused, and never an entity
+   * to any other rule.
    */
   readonly ignored: readonly IgnoredDocument[]
   /**
-   * What its entities and APIs hold that the read model does not read, one
+   * What its entities, APIs and organisation hold that the read model does not read, one
    * path per key and document (`parseDocuments`). Absent is none — a file
    * that could not be read has no document to hold one.
    */
@@ -108,7 +121,7 @@ export interface UnreadableFolder {
   readonly reason: string
 }
 
-const refOf = (entity: Entity | Api): string =>
+const refOf = (entity: Entity | Api | OrganisationEntity): string =>
   `${entity.kind.toLowerCase()}:default/${entity.metadata.name}`
 
 /** Whether an entity says where it lives, as `resolveEntityPath` reads it. */
@@ -147,6 +160,13 @@ export function checkRepository(snapshot: RepositorySnapshot): Violation[] {
 
   // What a set-aside document declares is not an entity to any rule, but it is
   // there: a reference to it is not dangling, only to something not modelled.
+  // The organisation read joins it, and nothing else: a Group, a User, a
+  // System or a Domain is the catalogue's to settle — two of one name are
+  // resolved there, first location wins — and a rule judging one could refuse
+  // a plan over a file the Architect cannot touch, since the re-check reads
+  // these rules. So a reference to one resolves, as it did when it was set
+  // aside, and no duplicate, no dangling owner and no dangling membership is
+  // ever reported of it.
   const aside = new Set<string>()
 
   // An API is declared like any entity — a reference to it resolves, and two
@@ -161,6 +181,7 @@ export function checkRepository(snapshot: RepositorySnapshot): Violation[] {
       byRef.set(ref, [...(byRef.get(ref) ?? []), file.path])
     }
     for (const { ref } of file.ignored) if (ref !== undefined) aside.add(ref)
+    for (const node of file.organisation ?? []) aside.add(refOf(node))
   }
 
   // A duplicate is one violation naming every file involved: reporting one of
@@ -190,7 +211,10 @@ export function checkRepository(snapshot: RepositorySnapshot): Violation[] {
     // declares Groups and Systems beside the entities this tool manages, and a
     // red build there would push people to move them out — or to delete them.
     // Named, because a document read and never mentioned is one the user
-    // believes was checked.
+    // believes was checked. A Group, a User, a System or a Domain that is read
+    // is no violation at all; one Backstage would refuse is still this
+    // warning, its message saying why, and never an error: the re-check would
+    // make an error in a file a plan edits the plan's.
     for (const ignored of file.ignored) {
       violations.push({
         rule: 'not-modelled',

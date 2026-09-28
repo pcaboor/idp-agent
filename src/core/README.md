@@ -26,7 +26,13 @@ and nothing here can be steered by what it validates. Hence the property tests r
   `kind: API` — a type, a lifecycle, an owner and a definition, as Backstage requires, and
   refused with a reason without one — and keeps of the definition only the literal
   `declared`, so no reader downstream has its text to print or send. `CatalogueEntity` is
-  `Entity | Api`, the read model; the write side takes `Entity` and never meets an API.
+  `Entity | Api`, the read model's entities; the write side takes `Entity` and never meets an
+  API. Backstage's organisation is read beside them, never among them: `groupSchema`,
+  `userSchema`, `systemSchema` and `domainSchema` (`organisationSchema`, `ORGANISATION_KINDS`)
+  require what Backstage requires of each kind, read `metadata.name` and `metadata.namespace`
+  alone (`organisationMetadataSchema`), and write each reference in full with the kind
+  Backstage's processor defaults it to. `GraphNode` is `CatalogueEntity | OrganisationEntity`:
+  what the graph can hold. No proposal schema has a field for any of the four.
   A Component's `spec.providesApis` is read, a short reference taking API as its kind and the
   entity's namespace, and no proposal schema has a field for it. `spec.consumesApis` is not
   read — zod strips it — because consuming something is an access right here, and a second
@@ -41,18 +47,26 @@ and nothing here can be steered by what it validates. Hence the property tests r
   `parseDocuments` is the matching one place YAML becomes entities, for `context/`'s readers and
   for the bytes a plan would write. It is two halves: `readDocuments` turns YAML into values — a
   document the parser faults is a rejection, never the value `toJS()` would have guessed — and
-  `readValue` reads one value, returning one of five readings (`witness`, `rejected`, `ignored`,
-  `api`, `entity`) that `parseDocuments` folds. The `backstage-http` provider will call
-  `readValue` on each item a catalogue serves, so a catalogue meets the very decisions and
+  `readValue` reads one value, returning one of six readings (`witness`, `rejected`, `ignored`,
+  `api`, `organisation`, `entity`) that `parseDocuments` folds. The `backstage-http` provider
+  calls `readValue` on each item a catalogue serves, so a catalogue meets the very decisions and
   refusal words a file does. `readValue` sorts before it judges: a Component or Resource goes to
   the strict `entitySchema` and comes back in `entities`, an API — in any case, as every kind —
-  goes to `apiSchema` and comes back in `apis`, apart, so every caller on the write side (the
-  re-check, the edits, the gates) reads `entities` and cannot amend, count or file an API. Three
-  APIs are set aside as before (`unreadApi`): one under another tool's apiVersion, one outside
-  the `default` namespace, and one named in upper case, which Backstage allows and this grammar
-  does not read. Another kind — a Group, a System — or a mapping with no kind that is plainly
-  another tool's, like a `mkdocs.yml` or a Helm `Chart.yaml`, is `ignored`, returned with a
-  reason and never refused. Anything that looks like a failed entity — an empty kind,
+  goes to `apiSchema` and comes back in `apis`, and a Group, a User, a System or a Domain goes to
+  its own schema (`groupSchema`, `userSchema`, `systemSchema`, `domainSchema`) and comes back in
+  `organisation`, apart, so every caller on the write side (the re-check, the edits, the gates)
+  reads `entities` and cannot amend, count or file either. Of the organisation it reads a name
+  and the references Backstage's processor turns into ownership, membership and system
+  membership, and nothing else: an annotation, a title, a User's `spec.profile` are named on
+  `not read:` (`unreadFieldsOf`) and kept nowhere. One the schema refuses — a Group without its
+  `children`, a System without an owner — is `ignored`, its ref kept and its reason saying what
+  Backstage requires, never a rejection: a Group is usually another team's, and an error in a
+  file a plan edits would refuse the plan (`refusedOrganisation`). Three documents of each of
+  these read kinds are set aside as before (`unreadReadKind`): one under another tool's
+  apiVersion, one outside the `default` namespace, and one named in upper case, which Backstage
+  allows and this grammar does not read. Another kind — a Location, a Template — or a mapping
+  with no kind that is plainly another tool's, like a `mkdocs.yml` or a Helm `Chart.yaml`, is
+  `ignored`, returned with a reason and never refused. Anything that looks like a failed entity — an empty kind,
   Backstage's `apiVersion` or a `metadata` with no kind, a document that is not a mapping — is
   still a rejection. A rejection's reason is `reasonOf`'s (`schemas/reject.ts`): the field's
   dotted path, then what is wrong with it. Handed the document, it tells a field nobody wrote

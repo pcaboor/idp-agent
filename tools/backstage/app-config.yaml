@@ -62,8 +62,9 @@ catalog:
       target: /app/si-demo/catalog-info.yaml
       rules:
         - allow: [Location, Component, API, Resource]
-    # The teams the demo SI names as owners, as a company's organisation data.
+    # The teams the demo SI names as owners, their department and two people,
+    # as a company's organisation data.
     - type: file
       target: /app/org/org.yaml
       rules:
-        - allow: [Group]
+        - allow: [Group, User]

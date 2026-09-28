@@ -114,8 +114,10 @@ describe('ask for an overview, end to end', () => {
     expect(code).toBe(0)
     expect(out.split('\n')[0]).toContain('iac')
     expect(out).not.toMatch(/demo SI/)
-    expect(out).toMatch(/not loaded\s+1 document this tool does not model/)
-    expect(out).toMatch(/^\s+Group\s+1$/m)
+    // The Group is read now (backstage-http slice 3): counted on its own
+    // line, and no longer among what was not loaded.
+    expect(out).toMatch(/^organisation {2}1 group$/m)
+    expect(out).not.toMatch(/not loaded/)
     expect(out).toMatch(/rejected\s+1 document/)
     // The skipped line the rejection is named on is still where it always was.
     expect(err).toContain('skipped broken.yml')

@@ -251,7 +251,7 @@ describe('kind: API', () => {
     }
   })
 
-  it('still sets aside a Group, a System and a Domain, exactly as before', () => {
+  it('sets aside a Group, a System and a Domain Backstage would refuse, saying why, and never as an API', () => {
     const { apis, ignored, rejections } = parseDocuments(
       [
         document('apiVersion: backstage.io/v1alpha1', 'kind: Group', 'metadata:', '  name: tiger'),
@@ -265,17 +265,17 @@ describe('kind: API', () => {
       {
         kind: 'Group',
         ref: 'group:default/tiger',
-        reason: 'kind Group is not modelled by this tool; group tiger left as is',
+        reason: 'Group tiger is not read: spec: required, which Backstage requires',
       },
       {
         kind: 'System',
         ref: 'system:default/payments',
-        reason: 'kind System is not modelled by this tool; system payments left as is',
+        reason: 'System payments is not read: spec: required, which Backstage requires',
       },
       {
         kind: 'Domain',
         ref: 'domain:default/money',
-        reason: 'kind Domain is not modelled by this tool; domain money left as is',
+        reason: 'Domain money is not read: spec: required, which Backstage requires',
       },
     ])
   })

@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3554 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3621 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -100,10 +100,14 @@ refuses a plan once.
 A `validate` warning does not fail the build: a dangling reference is reported and exits 0,
 because a red build there pushes people to delete the declaration, which is what §4.4
 forbids. A document of a kind this tool does not model is also a warning, and exits 0: a
-declarations repository that is also the company's catalogue holds Groups and Systems, and
-they are not ours to refuse. Backstage's APIs are read, not set aside: an API missing what
+declarations repository that is also the company's catalogue holds Locations and Templates,
+and they are not ours to refuse. Backstage's APIs are read, not set aside: an API missing what
 Backstage requires of one is an `invalid-entity` error, as a broken Component is, and a
-`providesApis` naming nothing is a dangling reference. The `kind: Location` of the root
+`providesApis` naming nothing is a dangling reference. Its Groups, Users, Systems and Domains
+are read too, and counted, and **no rule reads them**: one Backstage would refuse — a Group
+without `children`, a System without an owner — is set aside with a `not-modelled` warning
+saying why, never an error, because a Group is usually another team's and the re-check would
+make an error in a file a plan edits the plan's (owner's decision, 2026-09-28). The `kind: Location` of the root
 `catalog-info.yaml` is not set aside either: it is the repository's **Backstage
 registration**, which `init platform` writes with the path registry's folders as targets
 (`core/validate/registration.ts`, `docs/adopting-backstage.md`). `validate` counts it in
@@ -144,7 +148,10 @@ the relation, and the engine writes `relations`' block; `validate`, nine rules o
 IaC repository; `init platform`, which writes thirteen files — the Backstage registration
 among them — and clobbers nothing; the read commands and a question over a Backstage
 catalogue (`backstage-http` slice 1, ADR-0011; `pnpm demo:backstage` runs them against a fake
-on loopback); and stage 4's two previews, which write nothing to a repository:
+on loopback); the organisation — Groups, Users, Systems and Domains, read-only nodes beside
+the entities, from files and from a catalogue alike, which `show` prints and the overview
+counts (`backstage-http` slice 3.1); and stage 4's two previews, which write nothing to a
+repository:
 
 ```bash
 idpa "<phrase>" [--repo <dir> | --demo | --backstage] [--project <dir>] [--json] [--quiet]  # question or change
@@ -196,7 +203,11 @@ Supervisor and the Analyst, whose summary shows at most 30 values of each vocabu
 the most frequent, then how many more (`shownVocabulary`); the Architect's summary and the
 gates keep every value. Nothing read over HTTP reaches a plan's signature, policies,
 re-check or Reviewer, which are decided against the declarations repository. A reference it
-does not serve reads "declared nowhere in the catalogue this token reads".
+does not serve reads "declared nowhere in the catalogue this token reads". The organisation
+is a third read, sent only when the facets name a Group, a User, a System or a Domain, of the
+fields the read model reads and nothing else (`ORGANISATION_FIELDS`: no annotation, no
+profile), under a ceiling of its own; the kinds it read whole are the ones an owner, a
+membership or a system is judged against (`LoadResult.judged`), which a folder never sets.
 
 A change — `plan "<intent>"`, or a phrase the Supervisor calls a `MUTATION` — may read the
 application repository too, and the **Inspector is optional**: it reads the directory
@@ -280,10 +291,11 @@ changing that section first.
   plausible value. A dangling reference is surfaced, never pruned.
 - **Never ignore in silence.** An entity that fails validation is reported, never
   dropped — that silent drop is the catalogue behaviour this tool exists to compensate.
-  A document this tool does not model — a Group, a System, a `mkdocs.yml` — is not refused
-  either, and not dropped: it is set aside and *said* to be, a `not-modelled` warning in
-  `validate`, one summary line in `graph`, `show` and `ask`. The one exception is the root
-  `catalog-info.yaml`'s Location, the Backstage registration, which `validate` reads and
+  A document this tool does not model — a Location, a Template, a `mkdocs.yml` — is not
+  refused either, and not dropped: it is set aside and *said* to be, a `not-modelled` warning
+  in `validate`, one summary line in `graph`, `show` and `ask`. So is a Group, a User, a
+  System or a Domain Backstage would refuse, its warning saying why. The one exception is the
+  root `catalog-info.yaml`'s Location, the Backstage registration, which `validate` reads and
   holds to Backstage's shape.
 - **The read model is wider than the write model.** Backstage's `kind: API` is a node of
   the graph and a Component's `spec.providesApis` an edge — `show`, `graph --kind API`, the
@@ -291,7 +303,15 @@ changing that section first.
   decided against Components and Resources, and an API there is a reference that resolves.
   An API's definition is kept only as `declared`, never printed or sent. `consumesApis`
   is not read at all: consuming is an access right, and a second declaration of it would be
-  a second truth (design §4.1).
+  a second truth (design §4.1). Backstage's **Group, User, System and Domain** are read the
+  same way, from a file and from a catalogue, as the organisation: an index of the graph
+  **beside** the entities, never in `all()`, so no table, summary, vocabulary, gate or tool
+  row sees one, and never proposed. `show` prints a team, a person, a system, a domain; the
+  overview counts them. Of a User only the name and `memberOf` are read — never an
+  annotation, a title or `spec.profile`. A reference to one is judged — "declared nowhere in
+  the catalogue this token reads" — only where a catalogue read its kind whole: a
+  declarations repository's Group files are not the organisation. On the plan road the
+  organisation is a reference that resolves, as it was when it was set aside.
 
 **Authorisation**
 - **The merge is the act of authorisation.** The CLI opens a merge request; it never

@@ -31,10 +31,25 @@ describe('FixtureProvider', () => {
         source: 'billing.yml',
         kind: 'System',
         ref: 'system:default/billing-events',
-        reason: 'kind System is not modelled by this tool; system billing-events left as is',
+        // A System is read now (backstage-http slice 3); one without the
+        // owner Backstage requires is still set aside, saying why.
+        reason: 'System billing-events is not read: spec: required, which Backstage requires',
       },
       { source: 'mkdocs.yml', reason: 'not a catalogue entity: no apiVersion or kind' },
     ])
+  })
+
+  it('reads a System beside the entities, never among them, and judges nothing', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'fixture-organisation-'))
+    await writeFile(
+      path.join(root, 'billing.yml'),
+      'apiVersion: backstage.io/v1alpha1\nkind: System\nmetadata:\n  name: billing-events\nspec:\n  owner: tiger\n',
+    )
+    const loaded = await new FixtureProvider(root).load()
+    expect(loaded.entities).toEqual([])
+    expect(loaded.ignored).toEqual([])
+    expect(loaded.organisation?.map(({ kind, metadata }) => `${kind} ${metadata.name}`)).toEqual(['System billing-events'])
+    expect(loaded.judged).toBeUndefined()
   })
 
   it('reports an invalid entity instead of dropping it silently', async () => {

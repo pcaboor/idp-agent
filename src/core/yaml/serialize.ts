@@ -1,10 +1,15 @@
 import { Document, Scalar, parse, parseAllDocuments, visit, type YAMLError } from 'yaml'
 import {
   apiSchema,
+  domainSchema,
   entitySchema,
+  groupSchema,
+  systemSchema,
   unreadFieldsOf,
+  userSchema,
   type Api,
   type Entity,
+  type OrganisationEntity,
 } from '../schemas/entity.js'
 import { reasonOf } from '../schemas/reject.js'
 import { ENV_ANNOTATION } from '../schemas/vocabulary.js'
@@ -200,9 +205,10 @@ export function readDocuments(text: string): DocumentReading[] {
 }
 
 /**
- * A document read and left alone: part of a real catalogue — a Group, a
- * System, a Location — or not catalogue at all, like a mkdocs.yml. Neither refused nor
- * dropped: `validate` warns about it and the read commands count it.
+ * A document read and left alone: part of a real catalogue — a Location, a
+ * Template, a Group Backstage would refuse — or not catalogue at all, like a
+ * mkdocs.yml. Neither refused nor dropped: `validate` warns about it and the
+ * read commands count it.
  */
 export interface IgnoredDocument {
   /** The kind it declares; absent when it declares none. */
@@ -219,12 +225,32 @@ export interface IgnoredDocument {
 const MODELLED_KINDS = new Set(['component', 'resource'])
 
 /**
- * The kinds this tool reads and never writes, held to their own schema: the
- * read model is wider than the write model (design 4.1). Backstage's API is the
- * one kind a question about a catalogue cannot do without — what a service
- * provides — and the others, a Group or a System, stay set aside.
+ * The kinds this tool reads and never writes, each held to its own schema, by
+ * the lower-case kind: the read model is wider than the write model (design
+ * 4.1). Backstage's API is the one kind a question about a catalogue cannot do
+ * without — what a service provides — and the organisation's four are what an
+ * owner, a membership and a system name: a Group, a User, a System, a Domain.
+ * The write side reads `entities` alone, as before, and never meets one.
+ *
+ * `name` is the kind as Backstage spells it, which a reason says whatever case
+ * the document wrote; `reading` is what `readValue` makes of one the schema
+ * accepts.
  */
-const READ_KINDS = new Set(['api'])
+const READ_KINDS: ReadonlyMap<string, ReadKind> = new Map<string, ReadKind>([
+  ['api', { name: 'API', reading: 'api' }],
+  ['group', { name: 'Group', reading: 'organisation', schema: groupSchema }],
+  ['user', { name: 'User', reading: 'organisation', schema: userSchema }],
+  ['system', { name: 'System', reading: 'organisation', schema: systemSchema }],
+  ['domain', { name: 'Domain', reading: 'organisation', schema: domainSchema }],
+])
+
+type ReadKind =
+  | { readonly name: 'API'; readonly reading: 'api' }
+  | {
+      readonly name: OrganisationEntity['kind']
+      readonly reading: 'organisation'
+      readonly schema: typeof groupSchema | typeof userSchema | typeof systemSchema | typeof domainSchema
+    }
 
 /** The kind a mapping declares, lower-cased, when it declares one as a string. */
 const kindOf = (value: unknown): string | undefined =>
@@ -287,8 +313,9 @@ const shown = (text: string, plain: RegExp): string =>
  * over a Group, it refused it, and a declarations repository that is also the
  * company's catalogue could not pass `validate`. A Component or Resource in any
  * case — Backstage compares kinds case-insensitively, so `kind: component` is
- * one — goes to the schema, an API in any case to its own (`READ_KINDS`) but
- * for the three `unreadApi` sets aside, and so does what looks like a failed
+ * one — goes to the schema, a kind this tool reads (`READ_KINDS`) in any case
+ * to its own but for the three `unreadReadKind` sets aside, and so does what
+ * looks like a failed
  * attempt at an entity: a kind that is empty or not a string, a document that
  * is not a mapping, and a document with no kind that has Backstage's
  * apiVersion, or a `metadata` or a `spec`, which is an entity that lost its
@@ -319,9 +346,11 @@ function ignoredOf(value: unknown): IgnoredDocument | undefined {
   if (MODELLED_KINDS.has(kind.toLowerCase())) return undefined
   const metadata = isMapping(value.metadata) ? value.metadata : {}
   const { name, namespace } = metadata
-  const why = READ_KINDS.has(kind.toLowerCase())
-    ? unreadApi(value.apiVersion, name, namespace)
-    : `kind ${shown(kind, PLAIN_KIND)} is not modelled by this tool`
+  const read = READ_KINDS.get(kind.toLowerCase())
+  const why =
+    read !== undefined
+      ? unreadReadKind(read.name, value.apiVersion, name, namespace)
+      : `kind ${shown(kind, PLAIN_KIND)} is not modelled by this tool`
   if (why === undefined) return undefined
   const reason = (subject: string): string => `${why}; ${subject}left as is`
   if (typeof name !== 'string') return { kind, reason: reason('') }
@@ -334,24 +363,30 @@ function ignoredOf(value: unknown): IgnoredDocument | undefined {
 }
 
 /**
- * Why a `kind: API` is set aside rather than read, or undefined when it is
- * `apiSchema`'s to judge. Each is a document `main` set aside before this tool
- * read APIs, and which reading would get wrong rather than refuse:
+ * Why a document of a kind this tool reads — an API, a Group, a User, a
+ * System, a Domain — is set aside rather than read, or undefined when it is
+ * its schema's to judge. Each is a document `main` set aside before this tool
+ * read the kind, and which reading would get wrong rather than refuse:
  *
  * - another tool's apiVersion (WSO2's gateway declares `kind: API`): not a
  *   Backstage entity, so not this tool's to refuse — an apiVersion missing,
  *   or not text, is a broken header, and goes to the schema;
- * - a namespace other than `default`: every entity of the graph is keyed
+ * - a namespace other than `default`: every node of the graph is keyed
  *   `kind:default/name`, so it would take its namesake's reference, and two
  *   of one name in two namespaces would read as a duplicate. Set aside, it
  *   keeps its own, and a reference to it resolves;
  * - a name Backstage allows and this tool's grammar does not, which is one in
- *   upper case: refused, it would turn `validate` red over an API the
+ *   upper case: refused, it would turn `validate` red over a document the
  *   catalogue ingests and this tool never writes.
  */
-function unreadApi(apiVersion: unknown, name: unknown, namespace: unknown): string | undefined {
+function unreadReadKind(
+  kind: string,
+  apiVersion: unknown,
+  name: unknown,
+  namespace: unknown,
+): string | undefined {
   if (typeof apiVersion === 'string' && !BACKSTAGE_API_VERSION.test(apiVersion)) {
-    return `kind API under ${shown(apiVersion, PLAIN_API_VERSION)} is not Backstage's`
+    return `kind ${kind} under ${shown(apiVersion, PLAIN_API_VERSION)} is not Backstage's`
   }
   if (typeof namespace === 'string' && namespace.toLowerCase() !== 'default') {
     return `namespace ${shown(namespace, PLAIN_NAME)} is not modelled by this tool`
@@ -365,6 +400,41 @@ function unreadApi(apiVersion: unknown, name: unknown, namespace: unknown): stri
     return 'a name in upper case is not one this tool reads'
   }
   return undefined
+}
+
+/**
+ * An organisation document its schema refused, set aside with its ref and
+ * why: never a rejection, where a broken API is one. Three reasons, each from
+ * the code. A repository that is also the company's catalogue declares Groups
+ * and Systems beside the entities this tool manages, and a red build there
+ * would push people to move them out, or to delete them (`rules.ts`,
+ * `not-modelled`). The re-check makes a violation anchored in a file a plan
+ * edits into the plan's (`recheck.ts`), so an error here would refuse a plan
+ * over a Group the Architect cannot touch, and send it to the Architect as a
+ * repair report. And `init` reads `rejections` as why a service's
+ * `catalog-info.yaml` cannot be previewed, which a System beside the Component
+ * would then join. An API is refused because the service's own team declares
+ * it beside the service; a Group or a System is usually another team's.
+ *
+ * Its ref is kept, as a document of a kind not modelled keeps its own, so a
+ * reference to it resolves on every road — the plan's included.
+ */
+function refusedOrganisation(
+  value: Record<string, unknown>,
+  kind: string,
+  reason: string,
+): IgnoredDocument {
+  const metadata = isMapping(value.metadata) ? value.metadata : {}
+  const { name, namespace } = metadata
+  const stated = typeof value.kind === 'string' ? value.kind : kind
+  const why = `${reason}, which Backstage requires`
+  if (typeof name !== 'string') return { kind: stated, reason: `${kind} is not read: ${why}` }
+  const space = typeof namespace === 'string' ? namespace : 'default'
+  return {
+    kind: stated,
+    ref: `${stated}:${space}/${name}`.toLowerCase(),
+    reason: `${kind} ${shown(name, PLAIN_NAME)} is not read: ${why}`,
+  }
 }
 
 /**
@@ -395,33 +465,38 @@ function misdeclaredKind(value: unknown): string | undefined {
  * one, every document set aside as someone else's, and how many documents
  * there were.
  *
- * The entities come back in two lists, by model. `entities` is the write
+ * The entities come back in three lists, by model. `entities` is the write
  * model, and every caller on the write side — the re-check, the edits, the
- * plan's gates — reads it and nothing else, so an API is never a file a plan
- * amends or an entity it counts. `apis` is what the read model adds: the graph,
- * `validate` and the read commands take both. A file's APIs are listed after its
- * other entities, whatever order its documents are in.
+ * plan's gates — reads it and nothing else, so an API or a Group is never a
+ * file a plan amends or an entity it counts. `apis` and `organisation` are
+ * what the read model adds: the graph, `validate` and the read commands take
+ * them. A file's APIs are listed after its other entities, whatever order its
+ * documents are in, and its organisation apart from both. An organisation
+ * document Backstage would refuse is among `ignored`, never `rejections`
+ * (`refusedOrganisation` says why).
  *
  * The one reader of entity documents, in two halves: `readDocuments` turns
  * YAML into values, and `readValue` reads one value. This is the fold of the
  * two. `context/`'s readers call it on what they read from a disk, and `core/`
  * on bytes it is about to write, so a file cannot be conformant to one of them
- * and broken to the other; the `backstage-http` provider will call
- * `readValue` alone, on each item a catalogue serves, so a catalogue meets the
- * very decisions a file does. Rejections are returned rather than thrown for
- * the same reason the readers report them: a file with one bad document still
- * has good ones, and dropping either fact hides a defect.
+ * and broken to the other; the `backstage-http` provider calls `readValue`
+ * alone, on each item a catalogue serves, so a catalogue meets the very
+ * decisions a file does. Rejections are returned rather than thrown for the
+ * same reason the readers report them: a file with one bad document still has
+ * good ones, and dropping either fact hides a defect.
  */
 export function parseDocuments(text: string): {
   entities: Entity[]
   /** Backstage APIs: read, never written, and never among `entities`. */
   apis: Api[]
+  /** Groups, Users, Systems and Domains: read, never written, and never among `entities`. */
+  organisation: OrganisationEntity[]
   rejections: string[]
   ignored: IgnoredDocument[]
   /**
-   * What the entities and APIs read here hold and the read model does not
-   * read, one path per key and document (`unreadFieldsOf`): set aside, and
-   * counted where the documents set aside are.
+   * What the entities, APIs and organisation read here hold and the read
+   * model does not read, one path per key and document (`unreadFieldsOf`):
+   * set aside, and counted where the documents set aside are.
    */
   unread: string[]
   /** Documents in the stream, the null ones a witness is made of included. */
@@ -429,6 +504,7 @@ export function parseDocuments(text: string): {
 } {
   const entities: Entity[] = []
   const apis: Api[] = []
+  const organisation: OrganisationEntity[] = []
   const rejections: string[] = []
   const ignored: IgnoredDocument[] = []
   const unread: string[] = []
@@ -453,6 +529,10 @@ export function parseDocuments(text: string): {
         apis.push(read.api)
         unread.push(...read.unread)
         break
+      case 'organisation':
+        organisation.push(read.entity)
+        unread.push(...read.unread)
+        break
       case 'entity':
         entities.push(read.entity)
         unread.push(...read.unread)
@@ -464,19 +544,25 @@ export function parseDocuments(text: string): {
     }
   }
 
-  return { entities, apis, rejections, ignored, unread, documents: readings.length }
+  return { entities, apis, organisation, rejections, ignored, unread, documents: readings.length }
 }
 
 /**
  * What one document's value is to this tool — `readValue`'s answer, one
- * reading per value and never a throw. The two that read carry `unread`: what
- * the value holds and the read model does not read (`unreadFieldsOf`).
+ * reading per value and never a throw. The three that read carry `unread`:
+ * what the value holds and the read model does not read (`unreadFieldsOf`).
+ * An organisation document its schema refuses is `ignored`, its ref kept.
  */
 export type ValueReading =
   | { readonly as: 'witness' }
   | { readonly as: 'rejected'; readonly reason: string }
   | { readonly as: 'ignored'; readonly document: IgnoredDocument }
   | { readonly as: 'api'; readonly api: Api; readonly unread: readonly string[] }
+  | {
+      readonly as: 'organisation'
+      readonly entity: OrganisationEntity
+      readonly unread: readonly string[]
+    }
   | { readonly as: 'entity'; readonly entity: Entity; readonly unread: readonly string[] }
 
 /**
@@ -494,11 +580,18 @@ export function readValue(value: unknown): ValueReading {
   if (misdeclared !== undefined) return { as: 'rejected', reason: misdeclared }
   const foreign = ignoredOf(value)
   if (foreign !== undefined) return { as: 'ignored', document: foreign }
-  if (READ_KINDS.has(kindOf(value) ?? '')) {
+  const read = isMapping(value) ? READ_KINDS.get(kindOf(value) ?? '') : undefined
+  if (read?.reading === 'api') {
     const api = apiSchema.safeParse(value)
     return api.success
       ? { as: 'api', api: api.data, unread: unreadFieldsOf(value) }
       : { as: 'rejected', reason: reasonOf(api.error, value) }
+  }
+  if (read?.reading === 'organisation' && isMapping(value)) {
+    const node = read.schema.safeParse(value)
+    return node.success
+      ? { as: 'organisation', entity: node.data, unread: unreadFieldsOf(value) }
+      : { as: 'ignored', document: refusedOrganisation(value, read.name, reasonOf(node.error, value)) }
   }
   const parsed = entitySchema.safeParse(value)
   return parsed.success
@@ -555,9 +648,10 @@ export function documentNames(text: string): {
     const metadata = isMapping(value) && isMapping(value.metadata) ? value.metadata : undefined
     const name = metadata?.name
     if (metadata === undefined || typeof name !== 'string') {
-      // The order `parseDocuments` reads in: a misdeclared kind is refused
-      // before anything is set aside.
-      const aside = misdeclaredKind(value) === undefined && ignoredOf(value) !== undefined
+      // Whatever `parseDocuments` sets aside, in its order: a misdeclared kind
+      // is refused before anything is set aside, and an organisation document
+      // its schema refuses — one with no name among them — is set aside.
+      const aside = readValue(value).as === 'ignored'
       if (!aside) unreadable = true
       continue
     }

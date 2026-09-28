@@ -124,9 +124,10 @@ describe('a plan against a repository holding APIs', () => {
     expect(code).toBe(0)
     expect(out).toContain('+++ b/catalog/databases/orders-db-prod.yml')
     expect(out).toContain('+++ b/dependencies/access/billing-api-orders-db-prod.yml')
-    // The broken API, the Group and the dangling providesApis are the
-    // repository's, in files this plan does not touch.
-    expect(out).toContain('1 error and 2 warnings already in the repository, in files this plan does not touch')
+    // The broken API and the dangling providesApis are the repository's, in
+    // files this plan does not touch. The Group is read now, and warned
+    // about no longer (backstage-http slice 3).
+    expect(out).toContain('1 error and 1 warning already in the repository, in files this plan does not touch')
     // No API file is edited, and none is written.
     expect(out).not.toMatch(/^\+\+\+ b\/apis\//m)
     expect(await hashTree(repo)).toBe(before)

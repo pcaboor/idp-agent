@@ -1,11 +1,11 @@
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { BackstageProvider } from '../../src/context/backstage/provider.js'
-import { CatalogueReadError } from '../../src/context/backstage/transport.js'
+import { CatalogueReadError, type CatalogueFetch } from '../../src/context/backstage/transport.js'
 import { FixtureProvider } from '../../src/context/fixtures/index.js'
 import { refOf } from '../../src/context/graph/entity-graph.js'
 import type { LoadResult } from '../../src/context/provider.js'
-import type { CatalogueEntity } from '../../src/core/schemas/entity.js'
+import type { CatalogueEntity, GraphNode } from '../../src/core/schemas/entity.js'
 import { catalogueOf } from '../../tools/fake-backstage.js'
 import { fakeBackstage, type Faults } from '../support/fake-backstage.js'
 
@@ -49,6 +49,18 @@ const byRef = (entities: readonly CatalogueEntity[]): Map<string, CatalogueEntit
   new Map(entities.map((entity) => [refOf(entity), entity]))
 
 const sorted = (values: readonly string[]): string[] => [...values].sort()
+
+const ORGANISATION = path.join(GOLDEN, 'organisation')
+
+/** A fake that ignores `fields`, as a server may: every item comes back whole. */
+const ignoringFields = (entities: readonly Item[]): CatalogueFetch => {
+  const { fetch } = fakeBackstage({ entities, token: TOKEN })
+  return async (url, init) => {
+    const whole = new URL(url)
+    whole.searchParams.delete('fields')
+    return fetch(whole, init)
+  }
+}
 
 const metadataOf = (item: Item): Item => item['metadata'] as Item
 
@@ -135,5 +147,58 @@ describe('BackstageProvider', () => {
     expect(outcome).not.toHaveProperty('result')
     expect((outcome as { error: unknown }).error).toBeInstanceOf(CatalogueReadError)
     expect(((outcome as { error: CatalogueReadError }).error).failure).toEqual({ kind: 'status', status: 500 })
+  })
+
+  it('reads a User served whole by a server that ignores fields, and keeps no email, no directory id and no picture', async () => {
+    const picture = `data:image/png;base64,${'A'.repeat(1024 * 1024)}`
+    const ada: Item = {
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'User',
+      metadata: {
+        name: 'ada.lovelace_acme.example',
+        namespace: 'default',
+        uid: 'a0000000-0000-4000-8000-000000000001',
+        annotations: {
+          'microsoft.com/email': 'ada.lovelace@acme.example',
+          'graph.microsoft.com/user-id': '0f9d3c1e-user-id',
+          [MANAGED_BY]: 'msgraph:default/acme',
+        },
+      },
+      spec: { profile: { displayName: 'Ada Lovelace', email: 'ada.lovelace@acme.example', picture }, memberOf: ['tiger'] },
+    }
+    const loaded = await new BackstageProvider({ base: BASE, token: TOKEN, catalogueFetch: ignoringFields([...catalogueOf(DEMO), ada]) }).load()
+    expect(loaded.organisation).toEqual([
+      {
+        apiVersion: 'backstage.io/v1alpha1',
+        kind: 'User',
+        metadata: { name: 'ada.lovelace_acme.example' },
+        spec: { memberOf: ['group:default/tiger'] },
+      },
+    ])
+    // The pre-pass drops the profile before the reader sees it; the annotations
+    // are the reader's to drop, and to name as not read.
+    expect(loaded.unread).toEqual(['metadata.annotations'])
+    expect(JSON.stringify(loaded)).not.toMatch(/@|user-id|data:image|Lovelace/)
+  })
+
+  it('reads tests/golden/organisation served by a catalogue as the files read it, as sets, but for judged and what was not asked for', async () => {
+    const files = await new FixtureProvider(ORGANISATION).load()
+    const served = await new BackstageProvider(fromFolder(ORGANISATION)).load()
+    const refs = (nodes: readonly GraphNode[] | undefined): string[] => sorted((nodes ?? []).map(refOf))
+    expect(refs(served.entities)).toEqual(refs(files.entities))
+    expect(refs(served.organisation)).toEqual(refs(files.organisation))
+    expect(refs(files.organisation)).toHaveLength(7)
+    const byRefOf = (nodes: readonly GraphNode[] | undefined): Map<string, GraphNode> =>
+      new Map((nodes ?? []).map((node) => [refOf(node), node]))
+    const served_ = byRefOf(served.organisation)
+    for (const [ref, node] of byRefOf(files.organisation)) expect(served_.get(ref)).toEqual(node)
+    expect(served.ignored).toEqual(files.ignored)
+    expect(served.rejected).toEqual(files.rejected)
+    // The files never judge; the catalogue judges the kinds it read whole.
+    expect(files.judged).toBeUndefined()
+    expect(served.judged).toEqual(['Group', 'User', 'System', 'Domain'])
+    // ada's annotations and profile are named from the file, and never asked of a catalogue.
+    expect(files.unread).toEqual(['metadata.annotations', 'spec.profile'])
+    expect(served.unread).toEqual([])
   })
 })
