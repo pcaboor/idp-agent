@@ -1,0 +1,296 @@
+import path from 'node:path'
+import { describe, expect, it } from 'vitest'
+import { loadCatalogue } from '../../src/context/backstage/load.js'
+import type { BackstageLimits } from '../../src/context/backstage/limits.js'
+import { BackstageProvider } from '../../src/context/backstage/provider.js'
+import {
+  CatalogueReadError,
+  catalogueTransport,
+  type CatalogueFailure,
+  type CatalogueFetch,
+} from '../../src/context/backstage/transport.js'
+import { catalogueOf } from '../../tools/fake-backstage.js'
+import { fakeBackstage, type Faults } from '../support/fake-backstage.js'
+
+/**
+ * The load (docs/backstage-http-brief.md § 6): the facet call, the
+ * kind-split reads, the cursor, and every check that keeps a partial read
+ * from being answered from. Each failure is a `CatalogueFailure`, and no
+ * `Served` comes back with it. Every catalogue here is the fake's, paging as
+ * Backstage pages (docs/plans/backstage-http-slice-1.md, row 22).
+ */
+
+const DEMO = path.resolve(import.meta.dirname, '../../fixtures/si-demo')
+const BASE = new URL('https://backstage.canary.example/api/catalog')
+const ORIGIN = 'https://backstage.canary.example'
+const TOKEN = 'canary-backstage-token-0123456789'
+const REFS = 'kind,metadata.namespace,metadata.name,metadata.uid'
+
+type Item = Record<string, unknown>
+
+const demo = catalogueOf(DEMO)
+
+/** Group names: `count` of them, made up here. */
+const teams = (count: number): string[] => Array.from({ length: count }, (_, at) => `team-${String(at).padStart(4, '0')}`)
+
+/** The demo SI with Groups: the demo's three, or `count` of them for a read of several pages. */
+const demoWithGroups = (count?: number): Item[] =>
+  catalogueOf(DEMO, { groups: count === undefined ? ['tiger', 'elephant', 'dodowarriors'] : teams(count) })
+
+/** The demo SI with `count` more Resources: a modelled read of several pages. */
+const demoWithResources = (count: number): Item[] => {
+  const [template] = demo.filter((item) => item['kind'] === 'Resource')
+  const extra = Array.from({ length: count }, (_, at) => {
+    const item = structuredClone(template!)
+    const metadata = item['metadata'] as Item
+    metadata['name'] = `extra-db-${String(at).padStart(4, '0')}`
+    metadata['uid'] = `e0000000-0000-4000-8000-${String(at).padStart(12, '0')}`
+    return item
+  })
+  return [...demo, ...extra]
+}
+
+const transportOf = (fetch: CatalogueFetch, limits: Partial<BackstageLimits> = {}) =>
+  catalogueTransport({ base: BASE, token: TOKEN, catalogueFetch: fetch, limits })
+
+/** The route and query of a request, as it follows the base. */
+const routeAndQuery = (url: string): string => url.slice(BASE.href.length + 1)
+
+/** The error a load ended on; the test fails if it returned anything. */
+const errorOf = async (loading: Promise<unknown>): Promise<CatalogueReadError> => {
+  const thrown = await loading.then(
+    (served) => {
+      throw new Error(`the load returned ${JSON.stringify(served).slice(0, 200)}`)
+    },
+    (error: unknown) => error,
+  )
+  expect(thrown).toBeInstanceOf(CatalogueReadError)
+  return thrown as CatalogueReadError
+}
+
+/** The failure a load ended on. */
+const failureOf = async (loading: Promise<unknown>): Promise<CatalogueFailure> => (await errorOf(loading)).failure
+
+const loaded = (entities: readonly Item[], faults: Faults = {}, limits: Partial<BackstageLimits> = {}) => {
+  const fake = fakeBackstage({ entities, token: TOKEN, faults })
+  return { ...fake, loading: loadCatalogue(transportOf(fake.fetch, limits), limits) }
+}
+
+describe('loadCatalogue', () => {
+  it('asks the facets once, then reads Components, Resources and APIs whole and every other kind as refs', async () => {
+    const { fetch, sent } = fakeBackstage({ entities: demoWithGroups(), token: TOKEN })
+    const served = await loadCatalogue(transportOf(fetch))
+    expect(sent.map(({ url }) => routeAndQuery(url))).toEqual([
+      'entity-facets?facet=kind',
+      'entities/by-query?filter=kind%3Dcomponent&filter=kind%3Dresource&filter=kind%3Dapi&limit=250',
+      'entities/by-query?filter=kind%3Dgroup&fields=kind%2Cmetadata.namespace%2Cmetadata.name%2Cmetadata.uid&limit=250',
+    ])
+    expect(served.whole).toHaveLength(33)
+    expect(served.refs).toHaveLength(3)
+    expect(served.refs[0]).toEqual({ kind: 'Group', metadata: { namespace: 'default', name: expect.any(String), uid: expect.any(String) } })
+    expect(served.census).toMatchObject({ served: 36, pages: 2, repeated: 0 })
+    expect(served.census.bytes).toBeGreaterThan(0)
+  })
+
+  it('sends no refs read when the facets name no other kind', async () => {
+    const { fetch, sent } = fakeBackstage({ entities: demo, token: TOKEN })
+    await loadCatalogue(transportOf(fetch))
+    expect(sent).toHaveLength(2)
+  })
+
+  it('sends each next page its cursor, limit=250 and, for the refs read, the same fields; never filter', async () => {
+    // Backstage's cursor carries the filter, the order and totalItems, not limit or fields
+    // (parseQueryEntitiesParams.ts, createRouter.ts); CatalogClient.queryEntities re-sends both.
+    const { fetch, sent } = fakeBackstage({ entities: demoWithGroups(600), token: TOKEN }) // 600 Groups: three pages of refs
+    const served = await loadCatalogue(transportOf(fetch))
+    const refsPages = sent
+      .map(({ url }) => new URL(url))
+      .filter((url) => url.searchParams.getAll('filter').includes('kind=group') || url.searchParams.has('cursor'))
+    const next = refsPages.filter((url) => url.searchParams.has('cursor'))
+    expect(next).toHaveLength(2)
+    for (const url of next) {
+      expect(url.searchParams.getAll('filter')).toEqual([])
+      expect(url.searchParams.get('limit')).toBe('250')
+      expect(url.searchParams.get('fields')).toBe(REFS)
+    }
+    expect(served.refs).toHaveLength(600)
+    // Projected on every page: a next page sent without fields would come back whole.
+    expect(served.refs.every((item) => !('spec' in (item as Item)))).toBe(true)
+  })
+
+  it('sends the modelled read’s next pages no fields: it is read whole', async () => {
+    const { fetch, sent } = fakeBackstage({ entities: demoWithResources(300), token: TOKEN })
+    const served = await loadCatalogue(transportOf(fetch))
+    const next = sent.map(({ url }) => new URL(url)).filter((url) => url.searchParams.has('cursor'))
+    expect(next).toHaveLength(1)
+    expect([...next[0]!.searchParams.keys()].sort()).toEqual(['cursor', 'limit'])
+    expect(served.whole).toHaveLength(333)
+  })
+
+  it('sends a nextCursor that is a URL on another origin only as the value of cursor, to the base', async () => {
+    const foreign = 'https://evil.example/api/catalog/entities/by-query?x=1'
+    const { fetch, sent } = fakeBackstage({ entities: demo, token: TOKEN, faults: { nextCursor: foreign } })
+    const failure = await failureOf(loadCatalogue(transportOf(fetch))) // the cursor loop refuses the second sight
+    expect(failure).toEqual({ kind: 'same-page' })
+    const second = new URL(sent.find(({ url }) => new URL(url).searchParams.has('cursor'))!.url)
+    expect(`${second.origin}${second.pathname}`).toBe('https://backstage.canary.example/api/catalog/entities/by-query')
+    expect(second.searchParams.get('cursor')).toBe(foreign)
+    expect(sent.every(({ url }) => new URL(url).origin === ORIGIN)).toBe(true)
+  })
+
+  it('sends the modelled read even when the facets name no Component, Resource or API', async () => {
+    const { fetch, sent } = fakeBackstage({
+      entities: demoWithGroups(),
+      token: TOKEN,
+      faults: { facetsOmit: ['Component', 'Resource'] },
+    })
+    const served = await loadCatalogue(transportOf(fetch))
+    expect(sent.map(({ url }) => routeAndQuery(url))[1]).toBe(
+      'entities/by-query?filter=kind%3Dcomponent&filter=kind%3Dresource&filter=kind%3Dapi&limit=250',
+    )
+    expect(served.whole).toHaveLength(33)
+  })
+
+  it('refuses a kind the facets name that the kind grammar refuses: filters are never built from other text', async () => {
+    const odd: Item = { ...structuredClone(demo[0]!), kind: 'Group,kind=user' }
+    ;(odd['metadata'] as Item)['uid'] = 'f0000000-0000-4000-8000-0000000000aa'
+    const { fetch, sent } = fakeBackstage({ entities: [...demo, odd], token: TOKEN })
+    expect(await failureOf(loadCatalogue(transportOf(fetch)))).toEqual({ kind: 'facets-kind' })
+    expect(sent).toHaveLength(1)
+  })
+
+  it('refuses the same page twice: "the catalogue returned the same page twice"', async () => {
+    const { loading } = loaded(demoWithGroups(600), { sameCursorTwice: true })
+    const failure = await failureOf(loading)
+    expect(failure).toEqual({ kind: 'same-page' })
+    expect(new CatalogueReadError(failure, ORIGIN).message).toBe(
+      'the catalogue at https://backstage.canary.example returned the same page twice',
+    )
+  })
+
+  it('keeps a uid seen on two pages once, and counts it in census.repeated, when the read is still whole', async () => {
+    const { loading } = loaded(demoWithGroups(600), { repeatUid: { leaveOut: false } })
+    const served = await loading
+    expect(served.refs).toHaveLength(600)
+    expect(served.census).toMatchObject({ served: 633, repeated: 1 })
+  })
+
+  it('refuses fewer distinct uids than totalItems announced, with no uid repeated', async () => {
+    const { loading } = loaded(demo, { totalItemsAbove: 1 })
+    const failure = await failureOf(loading)
+    expect(failure).toEqual({ kind: 'changed', expected: 34, read: 33 })
+    expect(new CatalogueReadError(failure, ORIGIN).message).toBe(
+      'the catalogue at https://backstage.canary.example changed while it was read (34 expected, 33 read)',
+    )
+  })
+
+  it('refuses one uid served twice and another left out: fewer distinct than announced, repeats or not', async () => {
+    const { loading } = loaded(demoWithGroups(600), { repeatUid: { leaveOut: true } })
+    expect(await failureOf(loading)).toEqual({ kind: 'changed', expected: 600, read: 599 })
+  })
+
+  it('refuses an item of a kind its read did not ask for: a Component in the refs read, a Group in the modelled one', async () => {
+    // A server that ignores filter does not page as Backstage does: a whole
+    // entity smuggled into the refs read would pass the modelled ceiling.
+    const smuggled = structuredClone(demo.find((item) => item['kind'] === 'Component')!)
+    ;(smuggled['metadata'] as Item)['name'] = 'smuggled'
+    ;(smuggled['metadata'] as Item)['uid'] = 'f0000000-0000-4000-8000-0000000000bb'
+    const inRefs = loaded(demoWithGroups(), { extraItem: { at: 2, item: smuggled } })
+    const failure = await failureOf(inRefs.loading)
+    expect(failure).toEqual({ kind: 'unasked-kind', scope: 'refs' })
+    expect(new CatalogueReadError(failure, ORIGIN).message).toBe(
+      'the catalogue at https://backstage.canary.example served an entity of a kind the read did not ask for, ' +
+        'so it does not filter as Backstage does',
+    )
+    const group: Item = { kind: 'Group', metadata: { namespace: 'default', name: 'tiger', uid: 'f0000000-0000-4000-8000-0000000000cc' } }
+    expect(await failureOf(loaded(demoWithGroups(), { extraItem: { at: 1, item: group } }).loading)).toEqual({
+      kind: 'unasked-kind',
+      scope: 'modelled',
+    })
+    const noKind: Item = { metadata: { namespace: 'default', name: 'nothing', uid: 'f0000000-0000-4000-8000-0000000000dd' } }
+    expect(await failureOf(loaded(demo, { extraItem: { at: 1, item: noKind } }).loading)).toEqual({
+      kind: 'unasked-kind',
+      scope: 'modelled',
+    })
+  })
+
+  it('keeps a uid served in both reads once, counts it in census.repeated, and counts it once in census.served', async () => {
+    const billing = demo.find((item) => (item['metadata'] as Item)['name'] === 'billing-api')!
+    const uid = (billing['metadata'] as Item)['uid']
+    const twin: Item = { kind: 'Group', metadata: { namespace: 'default', name: 'billing-team', uid } }
+    const served = await loaded(demoWithGroups(), { extraItem: { at: 2, item: twin } }).loading
+    expect(served.whole).toHaveLength(33)
+    expect(served.refs).toHaveLength(3)
+    expect(served.census).toMatchObject({ served: 36, repeated: 1 })
+  })
+
+  it('names the base’s origin in the error it throws: scheme, host and port, never the path', async () => {
+    // The message comes from transport.origin, not from this file's constant.
+    const base = new URL('https://backstage.canary.example:8443/api/catalog')
+    const { fetch } = fakeBackstage({ entities: demo, token: TOKEN, faults: { sameCursorTwice: true } })
+    const transport = catalogueTransport({ base, token: TOKEN, catalogueFetch: fetch })
+    expect(transport.origin).toBe('https://backstage.canary.example:8443')
+    const error = await errorOf(loadCatalogue(transport, { pageSize: 10 }))
+    expect(error.message).toBe('the catalogue at https://backstage.canary.example:8443 returned the same page twice')
+  })
+
+  it('refuses an item with no string metadata.uid', async () => {
+    const { loading } = loaded(demo, { noUid: true })
+    const error = await errorOf(loading)
+    expect(error.failure).toEqual({ kind: 'no-uid' })
+    expect(error.message).toBe(
+      'the catalogue at https://backstage.canary.example served an entity with no metadata.uid, so the read cannot be proved whole',
+    )
+  })
+
+  it('refuses 20,001 modelled entities, and 200,001 refs of other kinds', async () => {
+    // The limits lowered, the words checked with the real ones.
+    const modelled = loaded(demoWithGroups(), {}, { modelledEntities: 32 })
+    expect(await failureOf(modelled.loading)).toEqual({ kind: 'too-many', scope: 'modelled', limit: 32 })
+    expect(modelled.sent).toHaveLength(2) // refused on the first page, the refs never asked for
+    const refs = loaded(demoWithGroups(), {}, { otherRefs: 2 })
+    expect(await failureOf(refs.loading)).toEqual({ kind: 'too-many', scope: 'refs', limit: 2 })
+
+    expect(new CatalogueReadError({ kind: 'too-many', scope: 'modelled', limit: 20_000 }, ORIGIN).message).toBe(
+      'the catalogue at https://backstage.canary.example, as this token reads it, holds more than 20,000 ' +
+        'Components, Resources and APIs; this version reads at most 20,000 and does not answer from part of a catalogue',
+    )
+    expect(new CatalogueReadError({ kind: 'too-many', scope: 'refs', limit: 200_000 }, ORIGIN).message).toBe(
+      'the catalogue at https://backstage.canary.example, as this token reads it, holds more than 200,000 ' +
+        'entities of other kinds; this version reads at most 200,000 and does not answer from part of a catalogue',
+    )
+  })
+
+  it('refuses on the first page when its totalItems is past the ceiling, before asking for the next', async () => {
+    // 333 announced, 250 on the first page: under the ceiling so far, and past it by the count.
+    const { loading, sent } = loaded(demoWithResources(300), {}, { modelledEntities: 300 })
+    expect(await failureOf(loading)).toEqual({ kind: 'too-many', scope: 'modelled', limit: 300 })
+    expect(sent).toHaveLength(2)
+  })
+
+  it('refuses the ceiling as items arrive, whatever totalItems says', async () => {
+    const { loading } = loaded(demo, { totalItemsAbove: -30 }, { modelledEntities: 32 })
+    expect(await failureOf(loading)).toEqual({ kind: 'too-many', scope: 'modelled', limit: 32 })
+  })
+
+  it('refuses a page that is not the envelope { items, totalItems, pageInfo }', async () => {
+    expect(await failureOf(loaded(demo, { notEnvelope: { at: 1 } }).loading)).toEqual({
+      kind: 'not-envelope',
+      route: 'entities/by-query',
+    })
+    expect(await failureOf(loaded(demo, { notEnvelope: { at: 0 } }).loading)).toEqual({
+      kind: 'not-envelope',
+      route: 'entity-facets',
+    })
+    expect(new CatalogueReadError({ kind: 'not-envelope', route: 'entities/by-query' }, ORIGIN).message).toBe(
+      'the catalogue at https://backstage.canary.example answered entities/by-query with a body that is not what the route serves',
+    )
+  })
+
+  it('refuses a load past 120 s', async () => {
+    // limits.loadMs lowered; the request's own bound, 15 s, is not what ends it.
+    const { fetch } = fakeBackstage({ entities: demo, token: TOKEN, faults: { hang: { at: 1 } } })
+    const loading = new BackstageProvider({ base: BASE, token: TOKEN, catalogueFetch: fetch, limits: { loadMs: 50 } }).load()
+    expect(await failureOf(loading)).toEqual({ kind: 'timeout', scope: 'load', limit: 50 })
+  })
+})

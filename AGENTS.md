@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3340 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3403 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -211,7 +211,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 | Folder | Responsibility |
 |---|---|
 | `core/` | schemas (Zod), the nine validation rules and the Backstage registration, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — and the engine's check on an answer's commentary (`core/answer/`) |
-| `context/` | `ContextProvider` (two implementations: `fixtures`, and `iac-fs` behind `--repo`), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries, `backstage/transport.ts` — the only code that will send a catalogue token, over a `fetch` it is handed; nothing calls it yet — and `spawnedEnvironment`, the one builder of a child process's environment |
+| `context/` | `ContextProvider` (`fixtures`, and `iac-fs` behind `--repo`; `backstage/provider.ts`, a whole catalogue through the file reader or nothing, which `cli/` does not construct yet), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries, `backstage/transport.ts` — the only code that will send a catalogue token, over a `fetch` it is handed — and `spawnedEnvironment`, the one builder of a child process's environment |
 | `cli/` | argument parsing, commands, rendering, `.idp-agent.yml` and the personal `config.yml`, which source a command reads — the only layer that writes to stdout |
 | `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |
 | `agents/` | the five agents, the bounded turn, the repair loop, the tool registries — reaches no disk, transitively |

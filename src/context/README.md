@@ -3,7 +3,8 @@
 `ContextProvider` (`provider.ts`) is the only seam between this tool and wherever the SI is
 described: `readonly name`, and `load(): Promise<LoadResult>`. It exists because that source
 changes on a schedule the rest of the code must not feel — fixtures in stages 1-2, `iac-fs` from
-stage 4, `backstage-http` at MVP (design.md § 3). Two implementations exist. `FixtureProvider`
+stage 4, `backstage-http` at MVP (design.md § 3). Three implementations exist, and `cli/`
+constructs two of them; the third, `BackstageProvider`, is below. `FixtureProvider`
 reads the demo SI, a directory laid out exactly like an IaC repository. `IacFsProvider`
 (`iac-fs/provider.ts`) reads a user's declarations repository through `readRepository`, so
 `ask`, `graph` and `show` given `--repo` see the files `plan` and `validate` see, and a rejection's
@@ -156,8 +157,36 @@ unread; every body counted while it streams, per response and per run, and every
 bounded in time, its body included; a 429 waited for only when it says how long, within the
 bounds of `backstage/limits.ts`, which holds every bound of the note's § 6. A failure is a
 `CatalogueReadError` over the closed `CatalogueFailure`, its message the failure and the
-origin alone: no body, header, cause or token. Nothing calls it yet; the catalogue's
-provider (1.4) and the CLI (1.5) will. Nothing in `context/` names `fetch` or a
+origin alone: no body, header, cause or token.
+
+`backstage/provider.ts`'s `BackstageProvider` builds the transport under one
+`AbortSignal.timeout` for the whole load, and returns a whole catalogue as a `LoadResult` or
+throws a `CatalogueReadError`: nothing partial. `backstage/load.ts`'s `loadCatalogue` asks
+`entity-facets?facet=kind` once — a kind the kind grammar refuses ends the load, since a
+filter is never built from other text — then reads Components, Resources and APIs whole,
+always, and every other kind the facets name as refs (`fields`). Each next page sends the
+cursor, the same `limit` and `fields`, and never `filter`, as Backstage's own client does;
+a cursor seen twice, an item with no string `metadata.uid`, an item of a kind its read's
+filters did not name (a server that ignores `filter` would pass whole entities off as refs),
+a page that is not the envelope,
+fewer distinct uids than the first page's `totalItems` (repeats or not: Backstage pages by a
+key an update does not change) and either ceiling of `limits.ts` each end the load, with
+their `CatalogueFailure`. A uid served twice, in one read or across both, is kept once and
+counted in `LoadResult.census`, whose `served` is the distinct uids of both reads, beside
+the pages, bytes and time. `backstage/translate.ts`'s `prePass`
+then takes off what the catalogue added (`relations`, `status`, `metadata.uid`,
+`metadata.etag`) and sets aside what it accepted and this tool does not model — a
+Component or Resource whose namespace is anything but `default` exactly (`DEFAULT`, or a
+namespace that is not text, would shadow its namesake), a `backstage.io/v1beta1` one, a name
+in upper case, a lifecycle or a Resource type this tool does not write, an item nested past
+64 or holding a `__proto__` or `constructor` key — as an `Ignored` marked `prePass`, so the
+graph's `aside` set takes it as it takes a Group. Everything else goes through `readValue`,
+the file road's reader; entities are ordered by `backstage.io/managed-by-location`, then
+ref, which is the file road's order wherever a location holds one entity, and a rejection's
+`source` is its ref and that location. `tests/unit/backstage-provider.test.ts` proves the
+demo SI served by the fake (`tools/fake-backstage.ts`) reads as its files do.
+
+Nothing in `context/` names `fetch` or a
 global way out or imports a network module, only the transport calls the `catalogueFetch` it is handed, and nothing reachable
 from `agents/` is in `backstage/` — three rules of `tests/architecture/dependencies.test.ts`, which
 read the source for the word because `fetch` needs no import. `core/` never reaches the network,

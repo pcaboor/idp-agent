@@ -23,8 +23,9 @@ import { BACKSTAGE_LIMITS, type BackstageLimits } from './limits.js'
  * The token is a value cli/ reads from the environment and hands over; it is
  * held in a closure, never in a field of what this module returns or throws.
  * The `fetch` is handed over too: nothing in context/ names the global
- * (`tests/architecture/dependencies.test.ts`). Nothing calls this yet; cli/
- * does from 1.5.
+ * (`tests/architecture/dependencies.test.ts`). `BackstageProvider` builds it
+ * and the load (`load.ts`) sends through it; cli/ constructs neither before
+ * 1.5.
  */
 
 /** The requests the catalogue is ever sent: both read entities, and both check `catalog.entity.read` alone. */
@@ -65,12 +66,30 @@ export type CatalogueFailure =
   | { readonly kind: 'too-large'; readonly scope: 'response' | 'run'; readonly limit: number }
   /** A body that is not UTF-8, or not JSON. */
   | { readonly kind: 'not-json' }
+  // The load's own (load.ts): what it reads is whole, or it is not answered from.
+  /** JSON that is not what the route serves: the facets, or the page envelope `{ items, totalItems, pageInfo }`. */
+  | { readonly kind: 'not-envelope'; readonly route: CatalogueRoute }
+  /** A kind the facets name that the kind grammar refuses: a filter is never built from it. */
+  | { readonly kind: 'facets-kind' }
+  /** A `nextCursor` already seen: the catalogue would page forever. */
+  | { readonly kind: 'same-page' }
+  /** An item with no string `metadata.uid`: a read whose items cannot be counted cannot be proved whole. */
+  | { readonly kind: 'no-uid' }
+  /** An item whose kind its read's filters did not name: a server that ignores `filter` does not page as Backstage does. */
+  | { readonly kind: 'unasked-kind'; readonly scope: 'modelled' | 'refs' }
+  /** Fewer distinct uids than the first page's `totalItems`, repeats or not. */
+  | { readonly kind: 'changed'; readonly expected: number; readonly read: number }
+  /** More entities than a run reads: the modelled kinds, read whole, or the references of the others. */
+  | { readonly kind: 'too-many'; readonly scope: 'modelled' | 'refs'; readonly limit: number }
 
 /** A size in the unit it was set in: MiB when it is a whole number of them, bytes otherwise. */
 const sizeOf = (bytes: number): string =>
   bytes % (1024 * 1024) === 0 ? `${bytes / (1024 * 1024)} MiB` : `${bytes} bytes`
 
 const secondsOf = (ms: number): string => `${ms / 1000} s`
+
+/** A count as the note writes one: `20,000`. */
+const countOf = (count: number): string => count.toLocaleString('en-US')
 
 /** What a status says, in words, beside its number. */
 const statusClass = (status: number): string => {
@@ -107,6 +126,25 @@ function sentenceOf(failure: CatalogueFailure, origin: string): string {
         : `${at} sent more than ${sizeOf(failure.limit)} in one run`
     case 'not-json':
       return `${at} answered with a body that is not UTF-8 JSON`
+    case 'not-envelope':
+      return `${at} answered ${failure.route} with a body that is not what the route serves`
+    case 'facets-kind':
+      return `${at} named a kind this tool cannot put in a filter, which is refused`
+    case 'same-page':
+      return `${at} returned the same page twice`
+    case 'no-uid':
+      return `${at} served an entity with no metadata.uid, so the read cannot be proved whole`
+    case 'unasked-kind':
+      return `${at} served an entity of a kind the read did not ask for, so it does not filter as Backstage does`
+    case 'changed':
+      return `${at} changed while it was read (${countOf(failure.expected)} expected, ${countOf(failure.read)} read)`
+    case 'too-many': {
+      const what = failure.scope === 'modelled' ? 'Components, Resources and APIs' : 'entities of other kinds'
+      return (
+        `${at}, as this token reads it, holds more than ${countOf(failure.limit)} ${what}; ` +
+        `this version reads at most ${countOf(failure.limit)} and does not answer from part of a catalogue`
+      )
+    }
     default: {
       const exhaustive: never = failure
       return exhaustive
@@ -134,6 +172,8 @@ export interface CatalogueTransport {
   request(method: 'GET', route: CatalogueRoute, query: URLSearchParams): Promise<unknown>
   /** What the run has spent so far, for the census (1.4). */
   readonly spent: { readonly requests: number; readonly bytes: number; readonly ms: number }
+  /** `scheme://host:port`, which a failure of the load names as this module's do. */
+  readonly origin: string
 }
 
 /**
@@ -458,5 +498,6 @@ export function catalogueTransport(options: {
     get spent() {
       return { requests, bytes, ms }
     },
+    origin,
   }
 }

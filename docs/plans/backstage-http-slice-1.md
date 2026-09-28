@@ -884,7 +884,7 @@ not construct the provider yet.
 
 **Files:**
 - Create: `src/context/backstage/load.ts`, `src/context/backstage/translate.ts`, `src/context/backstage/provider.ts`
-- Modify: `src/context/provider.ts` (`Ignored.prePass`, `LoadResult.census`)
+- Modify: `src/context/provider.ts` (`Ignored.prePass`, `LoadResult.census`), `src/context/backstage/transport.ts` (the load's cases of `CatalogueFailure`, the transport's `origin`)
 - Create: `src/cli/render/catalogue-read.ts`
 - Create: `tools/fake-backstage.ts`, `tests/support/fake-backstage.ts`
 - Create: `tests/unit/backstage-load.test.ts`, `tests/unit/backstage-prepass.test.ts`,
@@ -921,7 +921,7 @@ export class BackstageProvider implements ContextProvider {
   load(): Promise<LoadResult>   // throws CatalogueReadError: a partial read is never returned
 }
 
-// cli/render/catalogue-read.ts — pure, every catalogue value oneLine'd and cut to 80
+// cli/render/catalogue-read.ts — pure, every catalogue value inertLine'd and cut to 80 (the file road's skipped line spells out the bidi controls too)
 export function setAsideLine(ignored: readonly Ignored[]): string | undefined
 export function skippedLines(rejected: readonly Rejection[]): string[]
 
@@ -933,7 +933,7 @@ export function handler(options: { entities: readonly Record<string, unknown>[];
 export function fakeBackstage(options: FakeOptions & { faults?: Faults }): { fetch: CatalogueFetch; sent: Sent[] }
 ```
 
-- [ ] **Step 1: The fake, and its own tests (fail: no module)**
+- [x] **Step 1: The fake, and its own tests (fail: no module)**
 
 `tools/fake-backstage.ts` serves what a real catalogue serves, from a folder of YAML
 (`fixtures/si-demo` by default): every document of every `.yml`/`.yaml` file in path order,
@@ -984,7 +984,7 @@ Run: FAIL, no module.
 checks every file a checked file imports. It uses no syntax type stripping cannot erase (no
 `enum`, no parameter properties, no `namespace`).
 
-- [ ] **Step 2: The pre-pass tests (fail: no module)**
+- [x] **Step 2: The pre-pass tests (fail: no module)**
 
 `tests/unit/backstage-prepass.test.ts`, one test per row of the note's § 5 table:
 
@@ -1004,7 +1004,7 @@ it('sets aside an item nested deeper than 64, or holding a __proto__ or construc
 it('reads a dependsOn naming a custom kind read as refs only as not dangling', …)
 ```
 
-- [ ] **Step 3: The load tests (fail: no module)**
+- [x] **Step 3: The load tests (fail: no module)**
 
 `tests/unit/backstage-load.test.ts`, the failure matrix of the note's § 9 that belongs to the
 load, each giving its `CatalogueFailure` and no `LoadResult`:
@@ -1053,7 +1053,7 @@ it('refuses a page that is not the envelope { items, totalItems, pageInfo }', �
 it('refuses a load past 120 s', …) // limits.loadMs lowered
 ```
 
-- [ ] **Step 4: The provider tests: the equivalence (fail: no module)**
+- [x] **Step 4: The provider tests: the equivalence (fail: no module)**
 
 `tests/unit/backstage-provider.test.ts` is the proof of "the same reader":
 
@@ -1079,7 +1079,7 @@ it('names a rejection by its ref and its location', …) // 'component:default/l
 it('never returns part of a catalogue: a failure on the last page throws, with nothing returned', …)
 ```
 
-- [ ] **Step 5: The grouped lines (fail: no module)**
+- [x] **Step 5: The grouped lines (fail: no module)**
 
 `tests/unit/catalogue-read-lines.test.ts`:
 
@@ -1096,7 +1096,7 @@ it('cleans and cuts every catalogue value to 80 characters: no C0, DEL or C1 sur
 
 Run the five files. Expected: FAIL, the modules do not exist.
 
-- [ ] **Step 6: Implement**
+- [x] **Step 6: Implement**
 
 `load.ts`:
 1. `GET entity-facets?facet=kind`. The envelope is zod-checked
@@ -1115,8 +1115,11 @@ Run the five files. Expected: FAIL, the modules do not exist.
    page's `totalItems` is kept; the envelope is checked with zod
    (`{ items: unknown[]; totalItems: number; pageInfo: { nextCursor?: string } }`).
 4. Every item must hold a string `metadata.uid`, else the load is refused (a read whose items
-   cannot be counted cannot be proved whole). A uid seen before is kept once and counted
-   (`repeated`). At the end of a read, **fewer distinct uids than the first page's
+   cannot be counted cannot be proved whole), and a lower-cased `kind` its read's filters
+   named, else the load is refused (`unasked-kind`; review: a server that ignores `filter`
+   would pass whole entities off as refs, past the modelled ceiling). A uid seen before, in
+   either read, is kept once and counted (`repeated`), so `census.served` is the distinct
+   uids of both reads, the N of the notice. At the end of a read, **fewer distinct uids than the first page's
    `totalItems` is refused**, repeats or not ("the catalogue changed while it was read (N
    expected, M read)"); a repeat in a read that is still whole is kept for the notice
    (Choices: this amends the note's § 6 row). The two ceilings are checked as items arrive.
@@ -1125,7 +1128,8 @@ Run the five files. Expected: FAIL, the modules do not exist.
 `translate.ts`'s `prePass(item)`, in this order: the shape walk (iterative, depth 64,
 `__proto__` or `constructor` as a key: aside, `shape`); `relations` and `status` removed,
 `metadata.uid` and `metadata.etag` removed and returned beside the value; for a Component
-or a Resource: a namespace other than `default` (aside, `namespace`), a `backstage.io/v1beta1`
+or a Resource: a namespace other than `default` exactly, `DEFAULT` or one that is not text
+included (aside, `namespace`), a `backstage.io/v1beta1`
 apiVersion (`api-version`), an upper-case name (`name-case`), a lifecycle outside
 `COMPONENT_LIFECYCLES` (`lifecycle`), a Resource type outside `RESOURCE_TYPE_NAMES`
 (`resource-type`). Each set-aside is an `Ignored` with its kind, its lower-case ref, the
@@ -1142,7 +1146,9 @@ without a location last), each rejection's `source` the ref plus ` (<location>)`
 ordered by ref, and `census`. It throws `CatalogueReadError` for every failure and returns
 nothing partial.
 
-`catalogue-read.ts`: every value quoted is `oneLine(value, 80)`; five distinct values per
+`catalogue-read.ts`: every value quoted is `inertLine(value, 80)`, a reason
+`inertLine(reason, 200)` (review: `oneLine` left U+202E in, where the file road's `skipped`
+line spells it out); five distinct values per
 rule then "and K more"; three refs per line then `…`; the terms are the note's: "not
 modelled", "set aside by the catalogue read", "skipped".
 
@@ -1151,7 +1157,7 @@ the grouped line per `prePass.rule`. **Architecture rules:** the three of 1.3 no
 `load.ts`, `translate.ts` and `provider.ts` too (none names `fetch` or a global, none calls
 a `catalogueFetch`; `agents/` reaches none).
 
-- [ ] **Step 7: Checks**
+- [x] **Step 7: Checks**
 
 ```bash
 pnpm vitest run tests/unit/fake-backstage.test.ts tests/unit/backstage-prepass.test.ts tests/unit/backstage-load.test.ts \
@@ -1165,7 +1171,7 @@ node tools/fake-backstage.ts --port 0 & sleep 1; kill %1   # prints its listenin
 
 ```bash
 git add src/context/backstage/load.ts src/context/backstage/translate.ts src/context/backstage/provider.ts \
-  src/context/provider.ts src/cli/render/catalogue-read.ts tools/fake-backstage.ts tests/support/fake-backstage.ts \
+  src/context/backstage/transport.ts src/context/provider.ts src/cli/render/catalogue-read.ts tools/fake-backstage.ts tests/support/fake-backstage.ts \
   tests/unit/fake-backstage.test.ts tests/unit/backstage-prepass.test.ts tests/unit/backstage-load.test.ts \
   tests/unit/backstage-provider.test.ts tests/unit/catalogue-read-lines.test.ts \
   src/context/README.md src/cli/README.md tests/README.md CHANGELOG.md AGENTS.md README.md
