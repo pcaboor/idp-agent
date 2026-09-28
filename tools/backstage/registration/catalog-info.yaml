@@ -1,0 +1,18 @@
+# The Backstage registration of this repository. Register this file once, in
+# catalog.locations of your Backstage's app-config.yaml, and Backstage ingests
+# every entity filed below. `idp-agent validate` holds it to that.
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: si-demo
+  description: Every entity this declarations repository keeps under catalog/, components/ and dependencies/.
+spec:
+  # A folder with nothing in it yet is not an error.
+  presence: optional
+  targets:
+    - ./catalog/**/*.yml
+    - ./catalog/**/*.yaml
+    - ./components/**/*.yml
+    - ./components/**/*.yaml
+    - ./dependencies/**/*.yml
+    - ./dependencies/**/*.yaml

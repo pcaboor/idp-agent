@@ -1,0 +1,1168 @@
+{
+  "items": [
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/dependencies/access/reporting-billing-db-prod.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "prod"
+        },
+        "name": "reporting-billing-db-prod",
+        "uid": "02a67f39-bd70-4efb-a744-b90e3c5ff3f9",
+        "etag": "2a18f4ec7f7aeb42315120fde87cfddcc34fe685"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database-access",
+        "access": "read",
+        "owner": "group:default/common",
+        "dependsOn": [
+          "resource:default/billing-db-prod"
+        ],
+        "dependencyOf": [
+          "component:default/reporting-worker"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "component:default/reporting-worker"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/billing-db-prod"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/common"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/apis/sirene-api.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "prod"
+        },
+        "name": "sirene-api",
+        "uid": "0584eb6f-55a7-4783-bef7-6c6579eae787",
+        "etag": "8f3e8d5fc0ff5b64c00dcc2994693ed179508f2a"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "api",
+        "owner": "group:default/common"
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/orders-api-to-sirene"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/common"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/dependencies/network/orders-api-to-sirene.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "prod"
+        },
+        "name": "orders-api-to-sirene",
+        "uid": "089aa4e6-ff42-4206-ba6e-d965bdd0b518",
+        "etag": "1e644eb1efdfc5e5013a329c5699d7f2a4ebbf20"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "network-access",
+        "owner": "group:default/common",
+        "dependsOn": [
+          "resource:default/sirene-api"
+        ],
+        "dependencyOf": [
+          "component:default/orders-api"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "component:default/orders-api"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/sirene-api"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/common"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/databases/orders-db-dev.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "dev"
+        },
+        "name": "orders-db-dev",
+        "uid": "0a6abc5d-cff5-4e51-8548-8229fafc0e7f",
+        "etag": "15e29720bef839f42cabb2c8e60576a5f28414ec"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database",
+        "owner": "group:default/tiger",
+        "dependsOn": [
+          "resource:default/mysql-disi6-dev"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/mysql-disi6-dev"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/tiger"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/apis/payments-api.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "prod"
+        },
+        "name": "payments-api",
+        "uid": "12e4cdd5-c438-4497-9a18-c9b5c7e4bca7",
+        "etag": "501632f8250610efe74315153090c2d78cd5a591"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "api",
+        "owner": "group:default/tiger"
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/billing-api-to-payments"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/tiger"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/components/mcp-inpi.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml"
+        },
+        "name": "mcp-inpi",
+        "uid": "1e655b76-bad5-46aa-99e0-195f4647c34a",
+        "etag": "7430b474469651789d211086e380ce1ffbbabcb5"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Component",
+      "spec": {
+        "type": "service",
+        "lifecycle": "production",
+        "owner": "group:default/dodowarriors"
+      },
+      "relations": [
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/mcp-inpi-db-dev"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/mcp-inpi-to-inpi-api"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/dodowarriors"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/dependencies/network/billing-api-to-payments.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "prod"
+        },
+        "name": "billing-api-to-payments",
+        "uid": "2205929a-a469-4463-bc05-440e6a73b608",
+        "etag": "7944315a70ec261e9021d0a3a5d3d1d58a151c95"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "network-access",
+        "owner": "group:default/tiger",
+        "dependsOn": [
+          "resource:default/payments-api"
+        ],
+        "dependencyOf": [
+          "component:default/billing-api"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "component:default/billing-api"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/payments-api"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/tiger"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/dependencies/access/billing-api-cache-dev.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "dev"
+        },
+        "name": "billing-api-cache-dev",
+        "uid": "25f2c604-24f6-461f-80d4-939ae74bec84",
+        "etag": "1898ac6482e9a6d137717bf623b29bf1ba3461e8"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database-access",
+        "access": "readwrite",
+        "owner": "group:default/tiger",
+        "dependsOn": [
+          "resource:default/billing-cache-dev"
+        ],
+        "dependencyOf": [
+          "component:default/billing-api"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "component:default/billing-api"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/billing-cache-dev"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/tiger"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/caches/redis-shared-dev.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "dev"
+        },
+        "name": "redis-shared-dev",
+        "uid": "2804153a-acbc-4592-8cbd-6115f22e555e",
+        "etag": "fa6578276a46ef5779eed03fd54ecbef01af0ecd"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "cache",
+        "owner": "group:default/common"
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/billing-cache-dev"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/common"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/databases/compliance-db-dev.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "dev"
+        },
+        "name": "compliance-db-dev",
+        "uid": "2a68f821-d49d-435d-bcb1-3b84d916babf",
+        "etag": "6fe615d2c372bc2ed5fdbe2b9bf3081c53a3d4f3"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database",
+        "owner": "group:default/common",
+        "dependsOn": [
+          "resource:default/mysql-disi6-dev"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/mcp-compliance-db-dev"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/mysql-disi6-dev"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/common"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/caches/redis-shared-prod.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "prod"
+        },
+        "name": "redis-shared-prod",
+        "uid": "2b6b6123-73a8-45d2-ac2a-cf9663488615",
+        "etag": "580875381dac8ebc1e14fe43f61636c4ffca9307"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "cache",
+        "owner": "group:default/common"
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/orders-cache-prod"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/common"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/apis/inpi-api.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "prod"
+        },
+        "name": "inpi-api",
+        "uid": "3ae7539c-40f0-4728-b105-487c4f16f571",
+        "etag": "3ac154109c9e6ce209e96093ebb492260a899069"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "api",
+        "owner": "group:default/dodowarriors"
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/mcp-inpi-to-inpi-api"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/dodowarriors"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/dependencies/access/orders-api-orders-db-prod.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "prod"
+        },
+        "name": "orders-api-orders-db-prod",
+        "uid": "4fa9889a-ffa9-4164-8863-b5a15deca1a8",
+        "etag": "5762bd4f6cf21b960b1a8f6544e8f308cd11f63f"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database-access",
+        "access": "readwrite",
+        "owner": "group:default/tiger",
+        "dependsOn": [
+          "resource:default/orders-db-prod"
+        ],
+        "dependencyOf": [
+          "component:default/orders-api"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "component:default/orders-api"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/orders-db-prod"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/tiger"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/caches/billing-cache-dev.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "dev"
+        },
+        "name": "billing-cache-dev",
+        "uid": "4fe3634b-9179-44fe-a505-c5f15fd74537",
+        "etag": "d839e05fdd6f1d2402bbd80d9d1ef387d65068c2"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "cache",
+        "owner": "group:default/tiger",
+        "dependsOn": [
+          "resource:default/redis-shared-dev"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/billing-api-cache-dev"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/redis-shared-dev"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/tiger"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/dependencies/access/mcp-inpi-db-dev.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "dev"
+        },
+        "name": "mcp-inpi-db-dev",
+        "uid": "522ae9bc-73e9-412f-896d-503908c14217",
+        "etag": "e4671f033b186e6cf53b9424f2373eae6eefaf98"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database-access",
+        "access": "read",
+        "owner": "group:default/dodowarriors",
+        "dependsOn": [
+          "resource:default/inpi-db-dev"
+        ],
+        "dependencyOf": [
+          "component:default/mcp-inpi"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "component:default/mcp-inpi"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/inpi-db-dev"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/dodowarriors"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/dependencies/access/billing-api-billing-db-dev.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "dev"
+        },
+        "name": "billing-api-billing-db-dev",
+        "uid": "56193747-d4b6-4c05-9e80-16279da98003",
+        "etag": "8efb234613b5918f6f4f711421fc30a4e1463d93"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database-access",
+        "access": "readwrite",
+        "owner": "group:default/tiger",
+        "dependsOn": [
+          "resource:default/billing-db-dev"
+        ],
+        "dependencyOf": [
+          "component:default/billing-api"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "component:default/billing-api"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/billing-db-dev"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/tiger"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/components/billing-api.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml"
+        },
+        "name": "billing-api",
+        "uid": "59073004-2308-445e-a9b9-6fbc65aabb30",
+        "etag": "d6e978cf5d2042c96069a01977fc19f07adaf790"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Component",
+      "spec": {
+        "type": "service",
+        "lifecycle": "production",
+        "owner": "group:default/tiger"
+      },
+      "relations": [
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/billing-api-billing-db-dev"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/billing-api-billing-db-prod"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/billing-api-cache-dev"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/billing-api-to-payments"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/tiger"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/databases/mysql-disi6-rec.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "staging"
+        },
+        "name": "mysql-disi6-rec",
+        "uid": "68027f0d-5902-4136-b0c8-04b063dfe23d",
+        "etag": "2d3506c18935389fe69dbf66cd2abc58f9cbc1ce"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database",
+        "owner": "group:default/common"
+      },
+      "relations": [
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/common"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/components/orders-api.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml"
+        },
+        "name": "orders-api",
+        "uid": "75666119-21dd-4921-a3a6-3e98d09e5542",
+        "etag": "b016d3550446697c9d240c1667341928c61a2020"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Component",
+      "spec": {
+        "type": "service",
+        "lifecycle": "production",
+        "owner": "group:default/tiger"
+      },
+      "relations": [
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/orders-api-orders-db-prod"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/orders-api-to-sirene"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/tiger"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/databases/mysql-disi6-dev.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "dev"
+        },
+        "name": "mysql-disi6-dev",
+        "uid": "7c1e0351-9768-4a43-a0ab-9fa95a934dbf",
+        "etag": "60e046604fff77954447cf975f9a79f602422759"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database",
+        "owner": "group:default/common"
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/billing-db-dev"
+        },
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/compliance-db-dev"
+        },
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/inpi-db-dev"
+        },
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/legacy-watch-dev"
+        },
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/orders-db-dev"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/common"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/databases/inpi-db-dev.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "dev"
+        },
+        "name": "inpi-db-dev",
+        "uid": "7c70d0d9-2ed9-4779-bd4d-d2fcf3d76956",
+        "etag": "31ce17a2299311f81ef62db230c1f4d780187ba1"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database",
+        "owner": "group:default/dodowarriors",
+        "dependsOn": [
+          "resource:default/mysql-disi6-dev"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/mcp-inpi-db-dev"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/mysql-disi6-dev"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/dodowarriors"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/caches/orders-cache-prod.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "prod"
+        },
+        "name": "orders-cache-prod",
+        "uid": "8ba9ab4f-1df1-4392-9d6a-964bf2259dd3",
+        "etag": "2bbba5b8e0951a43e9b0d017777bed2a9df25e70"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "cache",
+        "owner": "group:default/tiger",
+        "dependsOn": [
+          "resource:default/redis-shared-prod"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/redis-shared-prod"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/tiger"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/dependencies/network/mcp-inpi-to-inpi-api.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "prod"
+        },
+        "name": "mcp-inpi-to-inpi-api",
+        "uid": "94145a9c-b325-4649-8db2-0e9fa23545a8",
+        "etag": "d14916d3fe97d7239b4e0fb4a8f485122a09e4bf"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "network-access",
+        "owner": "group:default/dodowarriors",
+        "dependsOn": [
+          "resource:default/inpi-api"
+        ],
+        "dependencyOf": [
+          "component:default/mcp-inpi"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "component:default/mcp-inpi"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/inpi-api"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/dodowarriors"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/databases/mysql-prod-01.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "prod"
+        },
+        "name": "mysql-prod-01",
+        "uid": "9a898bc0-1b93-4f2c-9ae5-ac2e3e5f0233",
+        "etag": "0c6849307ed5f45f4277ce83f9e692af0c78b609"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database",
+        "owner": "group:default/common"
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/billing-db-prod"
+        },
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/compliance-db-prod"
+        },
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/orders-db-prod"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/common"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/dependencies/access/billing-api-billing-db-prod.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "prod"
+        },
+        "name": "billing-api-billing-db-prod",
+        "uid": "9b390996-a920-40ee-97ad-e0e3253c59e6",
+        "etag": "a7fce91df6f18bfc693c1ebdcf5377af504e4a82"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database-access",
+        "access": "readwrite",
+        "owner": "group:default/tiger",
+        "dependsOn": [
+          "resource:default/billing-db-prod"
+        ],
+        "dependencyOf": [
+          "component:default/billing-api"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "component:default/billing-api"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/billing-db-prod"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/tiger"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/databases/billing-db-prod.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "prod"
+        },
+        "name": "billing-db-prod",
+        "uid": "9b3adecd-b85d-41fc-abbf-9e2097ec15b8",
+        "etag": "92aed7af8fdd375d4fff30768e5f628ba3565281"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database",
+        "owner": "group:default/tiger",
+        "dependsOn": [
+          "resource:default/mysql-prod-01"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/billing-api-billing-db-prod"
+        },
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/reporting-billing-db-prod"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/mysql-prod-01"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/tiger"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/components/reporting-worker.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml"
+        },
+        "name": "reporting-worker",
+        "uid": "9bfb623e-a0a5-4d85-9237-3dafcfe5d1f3",
+        "etag": "055deb6fe9a87108379ee6c4471896463d66cd1e"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Component",
+      "spec": {
+        "type": "service",
+        "lifecycle": "production",
+        "owner": "group:default/common"
+      },
+      "relations": [
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/reporting-billing-db-prod"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/common"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/databases/compliance-db-prod.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "prod"
+        },
+        "name": "compliance-db-prod",
+        "uid": "a9a371f0-4f77-4b11-bcbf-1612492d7711",
+        "etag": "78789b5089b8cb5504a37f13f047a1b1a2133e04"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database",
+        "owner": "group:default/common",
+        "dependsOn": [
+          "resource:default/mysql-prod-01"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/mysql-prod-01"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/common"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/dependencies/access/mcp-compliance-db-dev.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "dev"
+        },
+        "name": "mcp-compliance-db-dev",
+        "uid": "b3d99fd5-7f89-46c3-97ad-4a60e3a97335",
+        "etag": "dbeab414f6d2186185a37de40634d5fc8a81ea24"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database-access",
+        "access": "read",
+        "owner": "group:default/common",
+        "dependsOn": [
+          "resource:default/compliance-db-dev"
+        ],
+        "dependencyOf": [
+          "component:default/mcp-eu-compliance"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "component:default/mcp-eu-compliance"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/compliance-db-dev"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/common"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/components/mcp-eu-compliance.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml"
+        },
+        "name": "mcp-eu-compliance",
+        "uid": "c6736f17-4f0d-4817-a348-8a1f541836a2",
+        "etag": "6b143efb5f9359d1d291a3679997e8882ff9cea2"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Component",
+      "spec": {
+        "type": "service",
+        "lifecycle": "production",
+        "owner": "group:default/common"
+      },
+      "relations": [
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/mcp-compliance-db-dev"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/common"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/databases/orders-db-prod.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "prod"
+        },
+        "name": "orders-db-prod",
+        "uid": "c8501bec-49ca-4357-82d0-d977bdbb7867",
+        "etag": "edc5a33b80dbcf556f410613542ea46b9b53168c"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database",
+        "owner": "group:default/tiger",
+        "dependsOn": [
+          "resource:default/mysql-prod-01"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/orders-api-orders-db-prod"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/mysql-prod-01"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/tiger"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/databases/legacy-watch-dev.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "dev"
+        },
+        "name": "legacy-watch-dev",
+        "uid": "e385f0e4-e07e-4450-94e0-f99c8a32930f",
+        "etag": "028b02af0b79190804dcd9872bec8482d59dd27d"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database",
+        "owner": "group:default/elephant",
+        "dependsOn": [
+          "resource:default/mysql-disi6-dev"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/mysql-disi6-dev"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/elephant"
+        }
+      ]
+    },
+    {
+      "metadata": {
+        "namespace": "default",
+        "annotations": {
+          "backstage.io/managed-by-location": "file:/app/si-demo/catalog/databases/billing-db-dev.yml",
+          "backstage.io/managed-by-origin-location": "file:/app/si-demo/catalog-info.yaml",
+          "company.fr/env": "dev"
+        },
+        "name": "billing-db-dev",
+        "uid": "ffae3e04-dfc7-4202-92c1-ee9d8e846fdb",
+        "etag": "8b1be607e71e0b4daeef2dc9812d851fe05d2465"
+      },
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Resource",
+      "spec": {
+        "type": "database",
+        "owner": "group:default/tiger",
+        "dependsOn": [
+          "resource:default/mysql-disi6-dev"
+        ]
+      },
+      "relations": [
+        {
+          "type": "dependencyOf",
+          "targetRef": "resource:default/billing-api-billing-db-dev"
+        },
+        {
+          "type": "dependsOn",
+          "targetRef": "resource:default/mysql-disi6-dev"
+        },
+        {
+          "type": "ownedBy",
+          "targetRef": "group:default/tiger"
+        }
+      ]
+    }
+  ],
+  "totalItems": 33,
+  "pageInfo": {}
+}

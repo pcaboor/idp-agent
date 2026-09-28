@@ -9,7 +9,7 @@ What has already shipped is in [`CHANGELOG.md`](../CHANGELOG.md). What the 2026-
 found, and which of its findings are closed, is in its
 [Status section](reviews/2026-09-23-deep-review.md#status).
 
-*Updated 2026-09-28, `main` at `191f4e4`.*
+*Updated 2026-09-28, `main` at `2fc3d48`.*
 
 ## Where the project stands
 
@@ -32,7 +32,8 @@ Since stage 4, the work has gone into the review's priorities and into the quest
 the product: `--repo` and a configured source, the one gesture `idpa "<phrase>"`, answers
 framed in the model's words, Backstage APIs, the relations view, tracing into MLflow, and
 reading a Backstage catalogue for questions and relations (`backstage-http` slice 1, built
-against a fake; [the note](backstage-http-brief.md)).
+against a fake and demonstrated against a real Backstage 1.55.2 in Docker, `tools/backstage/`;
+[the note](backstage-http-brief.md)).
 
 ## The queue
 
@@ -41,22 +42,9 @@ Each line says what the item is for. The sweep of the review is done
 ([its verdicts](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27)); its batches are
 here, one pull request each, each naming the check run together at the end.
 
-1. **A real Backstage in Docker, for the demo.** One `docker compose up` starts a pinned
-   Backstage holding the demo SI, registered through slice 0's Location, with a read token,
-   so an evaluator sees the catalogue's pages and `idpa` querying the same Backstage (a
-   built image or a maintained community image: decided then). It carries **the first demo
-   against a real Backstage, which closes `backstage-http` slice 1** —
-   `IDP_BACKSTAGE_URL=<its base> IDP_BACKSTAGE_TOKEN=<its read token> idpa relations
-   mysql-prod-01 --impacts` printing the README's table — **the contract fixture of the
-   note's § 9**, one `by-query` page recorded from it, and **the `question-backstage-owner`
-   tape**, a question answered from a catalogue, which needs the owner's key. Slice 1 is
-   otherwise built ([#92](https://github.com/pcaboor/idp-agent/pull/92) to
-   [#96](https://github.com/pcaboor/idp-agent/pull/96),
-   [#97](https://github.com/pcaboor/idp-agent/pull/97)) and demonstrated against the
-   fake, `pnpm demo:backstage`.
-2. **`backstage-http` slice 3: the organisation in the read model.** Groups, Users, Systems
+1. **`backstage-http` slice 3: the organisation in the read model.** Groups, Users, Systems
    and Domains read, so the agents see real owners and the systems services belong to.
-3. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
+2. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
    the current `main`, read only: what it covers and what it misses. It starts with an
    **analysis of the owner's uncommitted stage-5 work** on `feat/s5-cleared`, written on
    `eee67d6` before more than forty pull requests: what still applies, what `main` made
@@ -71,29 +59,29 @@ here, one pull request each, each naming the check run together at the end.
    operation to `targetOf`'s choice over `ProjectRead.declarations` (`filedIn`) — the root's
    `.yml`, or the one catalog-info kept elsewhere — so a `readCatalogInfo` that reads only the
    root's `catalog-info.yaml` would bring back the twin and the capped `before` this removed.
-4. **Stage 5, write + local branch.** The first write, atomic and idempotent — taken on from
+3. **Stage 5, write + local branch.** The first write, atomic and idempotent — taken on from
    the owner's plan and branch, discarding nothing already written, once the check above is
    agreed.
-5. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
+4. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
    hand-written files in every shape, and `signPlan` properties over plans valid by
    construction. `tests/invariants/arbitraries.ts` and `core.test.ts` are also edited on
    `feat/s5-cleared`, so it goes on top of stage 5.
-6. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
+5. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
    gap-stage5-readiness-4: one lstat, realpath and `O_NOFOLLOW` primitive shared from
    `project-fs`, used by `scaffold/write.ts` and by the iac-fs walk, which rejects a
    symbolic link by name. Medium, and what stage 5's writer will need.
-7. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
+6. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
    harness half of agents-llm-9: record from an empty tape, fail on a turn never replayed,
    and digest the JSON Schema the provider is sent. It needs no key, but it prunes dead turns
    and rewrites every tape's digest, so it waits for the owner's go-ahead.
-8. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
+7. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
    catalogue is plugged in.
-9. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
+8. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
    authorisation (ADR-0006).
-10. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
-    slices 4 and 5. From any service repository, generate its catalog-info and discover the
-    dependencies it already has, with evidence.
-11. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
+9. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
+   slices 4 and 5. From any service repository, generate its catalog-info and discover the
+   dependencies it already has, with evidence.
+10. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
     the project's end goal (2026-09-23).
 
 Within stage 8, its design note (section 11) states its own order:
@@ -217,6 +205,15 @@ The owner's decisions, dated, each with where it is recorded.
   when it is written ([`stage-8-brief.md`](stage-8-brief.md) says so;
   [#97](https://github.com/pcaboor/idp-agent/pull/97)).
 
+**2026-09-28**
+
+- The demo Backstage is our own image, not a community image: a minimal Backstage app at a
+  pinned version, our app-config, and nothing else. Built as a committed minimal app derived
+  from create-app 0.9.2, Backstage 1.55.2, with its lockfile (`tools/backstage/`, whose
+  README gives the reasons); the `question-backstage-owner` tape, which needs the owner's key
+  and the owner present, is what is left of `backstage-http` slice 1
+  ([#98](https://github.com/pcaboor/idp-agent/pull/98)).
+
 ## Known debts and open items
 
 Each was checked against `main` at `3b642fa`.
@@ -299,7 +296,10 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
 - **No tape answers a question from a catalogue.** `question-backstage-owner`, a question
   answered from the fake Backstage, waits for a recording with the owner's key; until then a
   question read from a catalogue is tested on a scripted client (`MainDeps.client`). It is
-  recorded with the Docker Backstage, queue item 1.
+  all that is left of `backstage-http` slice 1, whose demo against a real Backstage in Docker
+  and contract fixture closed the queue's former first item
+  ([#98](https://github.com/pcaboor/idp-agent/pull/98)); it needs the owner's key, and
+  the owner present.
 - **Commentary on plans is not built** (ADR-0008, "Consequences"). It changes what plan mode
   sends, and `tests/scenarios/plan-mode.test.ts` fails on a stale plan-mode recording, so it
   waits for a re-record with a key.

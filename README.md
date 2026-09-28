@@ -13,7 +13,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 3535, no API key" src="https://img.shields.io/badge/tests-3535%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 3554, no API key" src="https://img.shields.io/badge/tests-3554%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -501,6 +501,40 @@ impacts (9)
 The table is the one at the top of this page. A token set is sent to whatever catalogue is
 configured, a loopback one included — which is why the fake's command starts with
 `env -u IDP_BACKSTAGE_TOKEN`, and why `pnpm demo:backstage` removes it from what it runs.
+
+### See it in a real Backstage
+
+With Docker, one command builds and starts a real Backstage 1.55.2 holding the demo SI —
+our own minimal image, [`tools/backstage/`](tools/backstage/README.md), registered through
+the Location `init platform` writes and configured as
+[`docs/adopting-backstage.md`](docs/adopting-backstage.md) says — runs `idpa` against it, and
+stops it:
+
+```console
+$ pnpm build && pnpm demo:backstage:docker
+```
+
+Or keep it running with `pnpm backstage:up`, browse the catalogue at `http://127.0.0.1:7007`
+(guest sign-in, a demo convenience), and query the same catalogue from any directory that is
+not a declarations repository, with its read token — a demo value, public in this
+repository:
+
+```console
+$ env -u IDP_REPO IDP_BACKSTAGE_URL=http://127.0.0.1:7007/api/catalog IDP_BACKSTAGE_TOKEN=idpa-demo-read-only-token idpa relations mysql-prod-01 --impacts
+reading the Backstage catalogue at 127.0.0.1:7007 (IDP_BACKSTAGE_URL): 40 entities: 33 read, 7 not modelled; it may lag the declarations repository by minutes; --repo <directory> reads a repository
+not loaded: 7 documents this tool does not model (Group ×4, Location ×3)
+resource:default/mysql-prod-01
+
+impacts (9)
+…
+$ pnpm backstage:down
+```
+
+The table is the one at the top of this page, byte for byte. Everything listens on
+127.0.0.1 only. Without the token the catalogue answers 401 and `idpa` says so, exit 1; the
+token reads and can do nothing else. Guest sign-in means anything on this machine can act as a
+user of this demo catalogue, writes included: the 401 shows `idpa`'s refusal, not a closed
+catalogue, so stop it when you are done.
 
 ## Design principles
 

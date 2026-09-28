@@ -1,0 +1,23 @@
+{
+  "name": "idp-agent-demo-backstage",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The smallest Backstage app that shows the demo SI: the catalogue, its pages and guest sign-in. Built only inside tools/backstage/Dockerfile.",
+  "engines": {
+    "node": "24"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@backstage/cli": "0.36.6",
+    "@backstage/cli-defaults": "0.1.6",
+    "typescript": "~5.8.0"
+  },
+  "resolutions": {
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@yarnpkg/core": "4.9.1"
+  },
+  "packageManager": "yarn@4.13.0+sha512.5c20ba010c99815433e5c8453112165e673f1c7948d8d2b267f4b5e52097538658388ebc9f9580656d9b75c5cc996f990f611f99304a2197d4c56d21eea370e7"
+}

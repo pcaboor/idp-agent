@@ -767,8 +767,30 @@ and the Analyst's summary only: the Architect's and `init`'s read a declarations
 and are shown every value. The ADR is [0011](adr/0011-backstage-to-explore.md): 0010 went to
 the stage-5 check. The contract fixture of § 9, the `question-backstage-owner` tape (it
 needs a key) and the closing demo against a real catalogue moved to the next queue item, a
-Backstage in Docker (`docs/roadmap.md`); until then the demo runs against the fake, `pnpm
-demo:backstage`.
+Backstage in Docker (`docs/roadmap.md`).
+
+**The demo against a real Backstage, and the contract fixture** ([#98](https://github.com/pcaboor/idp-agent/pull/98)),
+on **Backstage 1.55.2**: our own minimal image (`tools/backstage/`, the owner's decision of
+2026-09-28) holds the demo SI, registered through slice 0's Location with the adopting
+page's rules and read token, on 127.0.0.1:7007. `IDP_BACKSTAGE_URL=http://127.0.0.1:7007/api/catalog
+IDP_BACKSTAGE_TOKEN=<its read token> idpa relations mysql-prod-01 --impacts`, from a directory
+that is not a declarations repository, prints the README's table, stdout byte for byte
+`--demo`'s, with no change to the provider; `show`, `graph` and `relations --to` too. With no
+token the catalogue answers 401 and the run is exit 1, naming the variable. `pnpm
+demo:backstage:docker` runs all of it and stops the container. It stands in for "the owner's
+Backstage" of 1.6, whose facts (§ 14) are still to gather. The contract fixture,
+`tests/contract/backstage/by-query-1.55.2.json`, is the page that Backstage answered the
+provider's modelled read with, and `tests/contract/backstage-page.test.ts` reads it offline:
+loaded, it gives what the demo SI's files read, with no fake in between, and through the
+pre-pass and `readValue` it reads as the fake's page is read, entity for entity and in the
+same order. Two departures from § 9: it is recorded from the demo SI — this repository's own
+fixture, which is no company's data — rather than Backstage's example entities, so it is held
+to what the fake serves for the same files; and it is checked against the envelope the load
+reads, not against a copy of catalog-backend's `openapi.yaml`, a second schema nothing here
+reads. The page showed one difference the fake does not reproduce: Backstage stitches the
+inverse of every relation onto its target, so an entity is served relations its own file
+never declares, which the pre-pass drops. The `question-backstage-owner` tape is what is left
+of slice 1: it needs the owner's key, and the owner (`docs/roadmap.md`).
 
 1. **`readValue` in core.** Extract the per-value loop from `parseDocuments`, with no change in
    behaviour, and add the golden equivalence of the YAML road before and after.
@@ -874,8 +896,9 @@ Backstage is out of scope, adopting one made a single registration (§ 2, slice 
    README's paragraph, with no extra notice per run. The stderr line already names the
    catalogue.
 
-**Facts about a real Backstage** — still to gather; until then the demos run against the local
-fake (`tools/fake-backstage.ts`). They gate only the demo against a real catalogue:
+**Facts about a real Backstage** — still to gather for the owner's own; until then the demos
+run against the local fake (`tools/fake-backstage.ts`) and the demo Backstage in Docker
+(`tools/backstage/`, Backstage 1.55.2). They gate only the demo against the owner's catalogue:
 the output of `GET /api/catalog/entity-facets?facet=kind&facet=metadata.namespace`, the
 Backstage version, and whether it sits behind SSO or an identity-aware proxy. Recommended
 reading of the answers: 20,000 modelled entities is enough until slice 2; slice 5 moves before

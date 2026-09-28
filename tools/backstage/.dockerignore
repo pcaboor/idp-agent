@@ -1,0 +1,8 @@
+# The build context is this folder: the app's sources and the demo's files.
+# Whatever a local install or build left behind is not part of it.
+**/node_modules
+**/dist
+**/dist-types
+app/.yarn
+README.md
+compose.yml

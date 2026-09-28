@@ -1,0 +1,69 @@
+# The demo Backstage's whole configuration (tools/backstage/README.md). Two
+# parts are docs/adopting-backstage.md's, as a company would write them: the
+# catalog.locations entry registering the declarations repository, with its
+# rules, and the static read token for idpa. The rest is what a demo on this
+# machine needs, and each part says so.
+
+app:
+  title: idp-agent demo Backstage
+  # The frontend is served by the backend (plugin-app-backend), on its port.
+  baseUrl: http://127.0.0.1:7007
+  # Installs every frontend plugin packages/app depends on.
+  packages: all
+  extensions:
+    # The catalogue is the landing page: there is nothing else to see.
+    - page:catalog:
+        config:
+          path: /
+
+organization:
+  name: Acme (demo)
+
+backend:
+  baseUrl: http://127.0.0.1:7007
+  # Every interface inside the container, so that Docker can forward to it;
+  # compose.yml publishes the port on the host's 127.0.0.1 only.
+  listen: ':7007'
+  # In memory: the catalogue is rebuilt from the files at every start, and the
+  # demo needs no database service.
+  database:
+    client: better-sqlite3
+    connection: ':memory:'
+  auth:
+    # docs/adopting-backstage.md, "The read token for idpa", as written there.
+    # IDPA_CATALOG_TOKEN is set by compose.yml, whose default is a demo value,
+    # public in this repository and never a secret.
+    externalAccess:
+      - type: static
+        options:
+          token: ${IDPA_CATALOG_TOKEN}
+          subject: idp-agent
+        accessRestrictions:
+          - plugin: catalog
+            permission: catalog.entity.read
+
+auth:
+  providers:
+    # Guest sign-in for the pages, a demo convenience only: a guest may do
+    # anything a signed-in user may, and Backstage refuses the guest provider
+    # in production unless told otherwise, which is the line below.
+    guest:
+      dangerouslyAllowOutsideDevelopment: true
+
+catalog:
+  # No catalog.rules: Backstage's defaults (Component, API, Location) apply
+  # globally, and each location below allows what it brings in.
+  locations:
+    # docs/adopting-backstage.md, "Register the repository": one entry naming
+    # the registration init platform writes, rendered by the same code
+    # (tools/backstage/registration/catalog-info.yaml), beside a copy of the
+    # demo SI. `file`, not `url`: the repository is in the image, not on a forge.
+    - type: file
+      target: /app/si-demo/catalog-info.yaml
+      rules:
+        - allow: [Location, Component, API, Resource]
+    # The teams the demo SI names as owners, as a company's organisation data.
+    - type: file
+      target: /app/org/org.yaml
+      rules:
+        - allow: [Group]
