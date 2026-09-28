@@ -129,7 +129,7 @@ plugin.
 
 ## Status
 
-Updated 2026-09-27.
+Updated 2026-09-28.
 
 Not part of the review as delivered: this section tracks what later pull requests did about
 it, and the review around it is left as it was. The pull request that closes a priority or
@@ -180,6 +180,7 @@ Review ids that a later pull request names as fixed, outside the ids the priorit
 - docs-3 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
 - docs-9 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
 - domain-backstage-7 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5, for `title`, `labels` and `subcomponentOf`; the fields nothing reads are counted on a `not read:` line; `memberOf` and the organisation are `backstage-http` slice 3's
+- domain-backstage-8 → [#97](https://github.com/pcaboor/idp-agent/pull/97), `backstage-http` slice 1: a bound of 30 on each vocabulary list, in the Supervisor's and the Analyst's summary, the most frequent then how many more, and the commentary check handed the lists as shown; the Architect's summary and the gates keep every value, and `ContextProvider` keeping only `load()` stays by design ([#84](https://github.com/pcaboor/idp-agent/pull/84))
 - domain-backstage-9 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3, for the comment; registry-built schemas are product-gap-8's, and wait for the owner
 - domain-backstage-10 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4
 - gap-ask-grounding-6 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5
@@ -367,7 +368,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | core-plan-13 | partly fixed | low | trivial | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | Point the three audit attacks at `tests/recordings` and give `plan-outcomes` assertions. |
 | docs-9 | partly fixed | low | trivial | A3, fixed in [#89](https://github.com/pcaboor/idp-agent/pull/89) |  | The Reviewer's real inputs, two scaffold modules read and one writes, `plan/`, `validate/`, `diff/` in core's README. |
 | docs-10 | still true | low | small |  | owner | Name the PR or commit on `main` for "this branch", say `c1bb7d8` is unreachable, drop the `rtk` prefixes, fix test G. |
-| domain-backstage-8 | still true | low | small | slice 1 |  | Cap each vocabulary list at 30 in `formatSummary` — planned as `backstage-http` slice 1. |
+| domain-backstage-8 | still true | low | small | slice 1, fixed in [#97](https://github.com/pcaboor/idp-agent/pull/97) |  | Cap each vocabulary list at 30 in `formatSummary` — planned as `backstage-http` slice 1. |
 | domain-backstage-9 | still true | low | trivial | A3, fixed in [#89](https://github.com/pcaboor/idp-agent/pull/89) |  | Rewrite the registry comment: static by decision for v1, configurable only through schema factories. |
 | domain-backstage-10 | partly fixed | low | small | A4, fixed in [#90](https://github.com/pcaboor/idp-agent/pull/90) |  | `EntityGraph` keeps the first declaration of a duplicate, as the plan does, with a test tying them. |
 | gap-ask-grounding-5 | partly fixed | low | trivial |  | re-record | Reword `consumers` (point at `impacts`), and compare `nameContains` case-insensitively. |

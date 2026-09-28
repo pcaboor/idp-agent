@@ -18,14 +18,30 @@ export interface SiSummary {
 
 export type { Vocabulary } from '../../core/schemas/vocabulary.js'
 
+/**
+ * How many entities state each value of each list: what the Supervisor's and
+ * the Analyst's summary keeps when a list is longer than it shows
+ * (`shownVocabulary`). Beside the vocabulary, never in it — `Vocabulary` is
+ * what the gates read, and they read every value.
+ */
+export type VocabularyCounts = { readonly [K in keyof Vocabulary]: ReadonlyMap<string, number> }
+
 const bucket = (count: number): Bucket =>
   count === 0 ? '0' : count < 10 ? '1-9' : count < 100 ? '10-99' : '100+'
 
 const sorted = (values: Iterable<string>): string[] => [...new Set(values)].sort()
 
+/** Each value and how many times it came. */
+const counted = (values: readonly string[]): Map<string, number> => {
+  const counts = new Map<string, number>()
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1)
+  return counts
+}
+
 export function summariseGraph(graph: EntityGraph): {
   summary: SiSummary
   vocabulary: Vocabulary
+  counts: VocabularyCounts
 } {
   const entities = graph.all()
   const environments: string[] = []
@@ -35,6 +51,9 @@ export function summariseGraph(graph: EntityGraph): {
     // Declare, never infer: an entity with no environment contributes none.
     if (declared !== undefined) environments.push(declared)
   }
+  const kinds = entities.map((entity) => entity.kind)
+  const types = entities.map((entity) => entity.spec.type)
+  const owners = entities.map((entity) => entity.spec.owner)
 
   return {
     summary: {
@@ -54,10 +73,16 @@ export function summariseGraph(graph: EntityGraph): {
     // of a PARTICULAR grant is a fact about that grant; the tools carry it on
     // the row.
     vocabulary: {
-      kinds: sorted(entities.map((entity) => entity.kind)),
-      types: sorted(entities.map((entity) => entity.spec.type)),
+      kinds: sorted(kinds),
+      types: sorted(types),
       environments: sorted(environments),
-      owners: sorted(entities.map((entity) => entity.spec.owner)),
+      owners: sorted(owners),
+    },
+    counts: {
+      kinds: counted(kinds),
+      types: counted(types),
+      environments: counted(environments),
+      owners: counted(owners),
     },
   }
 }

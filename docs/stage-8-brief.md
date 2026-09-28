@@ -742,8 +742,10 @@ Closed by 2.7: the § 4 first run, as a preview, with the picker, the Component,
    outcomes and the picker, the duplicate identifier reported as a catalogue defect, and the
    cited identifier in the report.
 6. **`evidenced`, by recomputation.** The fifth class, verified findings in `Provenance`, the
-   constant set of evidenced paths and its test, the manifest-name rule. ADR-0010, "evidence
-   crosses under a re-read", with the rejected alternatives in § 14. It comes before 2.7
+   constant set of evidenced paths and its test, the manifest-name rule. An ADR, "evidence
+   crosses under a re-read", with the rejected alternatives in § 14, numbered the next free
+   number when it is written: 0010 went to the stage-5 check and 0011 to `backstage-http`
+   (the owner's decision of 2026-09-27). It comes before 2.7
    because an identifier's value must be vouched for.
 7. **`add-identifier`, `identifiers`, and the two-section preview** (after stage 5 tasks 1–2).
    The second closed patch and its materialisation into annotations.

@@ -183,6 +183,32 @@ is a setting on the server, which the tool cannot check from outside. The altern
 Backstage 1.53 or later with the CLI login enabled, is each person's own token
 (`backstage-cli auth print-token`), to which the permission policy applies.
 
+On each person's side, one line in their own `config.yml` (never `.idp-agent.yml`, which is
+committed: a URL there would let any repository aim the token) and the token exported:
+
+```yaml
+# ~/.config/idp-agent/config.yml
+backstage: https://backstage.acme.example/api/catalog
+```
+
+```console
+$ export IDP_BACKSTAGE_TOKEN=…
+$ idpa graph
+reading the Backstage catalogue at backstage.acme.example (~/.config/idp-agent/config.yml): 8,412 entities: 298 read, 8,114 not modelled; it may lag the declarations repository by minutes; --repo <directory> reads a repository
+```
+
+That line is on stderr on every run: the host, never the path or the token, and the counts
+— what the catalogue served, what was read, what this tool does not model (Users, Groups,
+Systems, Domains and Locations, counted by kind on a `not loaded:` line). What the catalogue
+refused is not among them: Backstage does not serve an entity it refused, and resolves a
+duplicate "first location wins" in silence, so `validate` in the declarations repository is
+where those are found. A token the catalogue does not accept is one line, exit 1, and never a
+fall back to the repository:
+
+```text
+the Backstage catalogue at backstage.acme.example (~/.config/idp-agent/config.yml) refused the token (401): IDP_BACKSTAGE_TOKEN is set and not accepted; --repo <directory> reads a repository instead, and `idpa plan` decides a change without the catalogue
+```
+
 ## What a person gains
 
 In Backstage, from the registration alone:
@@ -194,8 +220,9 @@ In Backstage, from the registration alone:
 - the Components declared in the services' own repositories linked to the rights that
   name them.
 
-With the `backstage-http` provider, once built: `idpa` answering questions and relations
-about the whole catalogue from any directory, not only about the declarations repository.
+With the `backstage-http` provider: `idpa` answering questions and relations about the
+whole catalogue from any directory, not only about the declarations repository — read once
+per run, before any model is called ([ADR-0011](adr/0011-backstage-to-explore.md)).
 
 What does not change: a change is still decided in Git. `idpa "<change>"` previews a diff
 against the declarations repository, a person reviews it, and the merge is the act of

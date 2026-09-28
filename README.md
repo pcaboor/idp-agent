@@ -13,7 +13,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 3518, no API key" src="https://img.shields.io/badge/tests-3518%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 3535, no API key" src="https://img.shields.io/badge/tests-3535%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -397,7 +397,8 @@ directory, is a declarations repository, is the `--repo` directory or one of its
 `plan --from` inspects nothing and takes no `--project`.
 
 **Exit codes:** `0` success · `1` negative answer (nothing matched, the repository doesn't
-conform, or a gate refused the plan), or a model call that failed · `2` bad arguments, or no
+conform, or a gate refused the plan), a model call that failed, or a Backstage catalogue that
+could not be read whole · `2` bad arguments or configuration, or no
 model, no key or no usable `IDP_TIMEOUT` or `IDP_SUPERVISOR_MODEL` configured · `3`
 understood but not acted on: a change request put to `ask`, a question the model refused,
 or a value nobody can vouch for · `130` Ctrl-C at a question. An ambiguous name resolves
@@ -420,10 +421,12 @@ repository in every directory, and is refused. In the file, a bare `~` is YAML's
 write `repo: "~"` for the home directory itself.
 
 Every command takes the first of: `--repo` (or `--demo`) · the directory you stand in,
-when it is a declarations repository · `IDP_REPO` · `repo` in that file. With none of them,
-`graph`, `show`, `relations` and a question read the fictional demo SI; a change is refused, naming
-those four ways, because a write preview is decided against your repository, never a
-demo. So `cd IaC && idpa "<intent>"` decides against IaC. Whatever was not typed is said
+when it is a declarations repository · `IDP_REPO` · `repo` in that file — and a question
+and the read commands take a [Backstage catalogue](#read-a-backstage-catalogue) ahead of
+each of the last two, when one is configured. With none of them, `graph`, `show`,
+`relations` and a question read the fictional demo SI; a change is refused, naming those
+four ways, because a write preview is decided against your repository, never a demo or a
+catalogue. So `cd IaC && idpa "<intent>"` decides against IaC. Whatever was not typed is said
 in one line on stderr, naming the folder and where it came from:
 
 ```
@@ -431,9 +434,73 @@ reading the declarations repository IaC (~/.config/idp-agent/config.yml); --repo
 ```
 
 A misspelt key, a file that is not YAML, or a configured path that is not a directory is
-exit 2, naming the variable or the file — never a quiet fall back to the demo SI. This is
-also where a Backstage catalogue will be configured as a source, once that provider
-exists; its token will come from the environment, never from this file.
+exit 2, naming the variable or the file — never a quiet fall back to the demo SI.
+
+### Read a Backstage catalogue
+
+With a Backstage, `graph`, `show`, `relations`, `ask` and a question answer from the
+company's catalogue rather than from one repository: every service's `catalog-info`, the
+real owners, the APIs. Point the same file at the catalogue API's base — not the app's URL
+— or set `IDP_BACKSTAGE_URL`, which beats the file, and export the read token
+([which one to issue](docs/adopting-backstage.md#the-read-token-for-idpa)):
+
+```yaml
+repo: ~/work/IaC                                      # still what a change is decided against
+backstage: https://backstage.acme.example/api/catalog
+```
+
+```console
+$ export IDP_BACKSTAGE_TOKEN=…     # from the environment only: no file and no flag holds it
+$ idpa relations mysql-prod-01 --impacts
+reading the Backstage catalogue at backstage.acme.example (~/.config/idp-agent/config.yml): 36 entities: 33 read, 3 not modelled; it may lag the declarations repository by minutes; --repo <directory> reads a repository
+```
+
+For a read, `IDP_BACKSTAGE_URL` beats `IDP_REPO` and the file's `backstage` beats its `repo`,
+but the environment beats the file: an exported `IDP_REPO` wins over a catalogue set in the
+file. The directory you stand in, when it is a declarations repository, beats them all, and
+`--backstage` chooses the catalogue there.
+It is read over HTTP once per run, **before any model is called**, through the reader a YAML
+file goes through, and a change is still decided against the declarations repository alone.
+The token is sent to that catalogue alone, on two read routes, and nowhere else
+([`SECURITY.md`](SECURITY.md)). A catalogue read in part is never answered from: a server
+that refuses the token, cannot be reached or serves less than it announced is exit 1, one
+line naming the host and what named it; a URL or a token refused before any request is
+exit 2.
+
+What a question reads from the catalogue — names, descriptions, owners, links, from every
+team's `catalog-info`, not only the one reviewed repository — reaches your model provider
+in the agents' tool results, and MLflow when tracing is on. The stderr line names the
+catalogue on every run; there is no other notice. The Supervisor and the Analyst are shown
+at most 30 values of each vocabulary list, the most frequent, so a catalogue of 300 teams
+does not put 300 owners in every prompt.
+
+What the catalogue cannot report: an entity Backstage refused never reaches its API, and a
+duplicate is resolved "first location wins" in silence. A catalogue read reports only what
+this tool's reader refuses; `validate` in the declarations repository reports the rest.
+
+No Backstage to hand? A fake one serves the demo SI, with three Groups, on loopback — Node
+22.18 or later, which runs its TypeScript as it is:
+
+```console
+$ pnpm demo:backstage            # starts it on a free port, runs relations, show and plan --from against it, stops it
+```
+
+or by hand, the fake in one terminal (`node tools/fake-backstage.ts`, on 127.0.0.1:7007)
+and in another:
+
+```console
+$ env -u IDP_BACKSTAGE_TOKEN IDP_BACKSTAGE_URL=http://127.0.0.1:7007/api/catalog node dist/cli/bin.js relations mysql-prod-01 --impacts
+reading the Backstage catalogue at 127.0.0.1:7007 (IDP_BACKSTAGE_URL): 36 entities: 33 read, 3 not modelled; it may lag the declarations repository by minutes; --repo <directory> reads a repository
+not loaded: 3 documents this tool does not model (Group ×3)
+resource:default/mysql-prod-01
+
+impacts (9)
+…
+```
+
+The table is the one at the top of this page. A token set is sent to whatever catalogue is
+configured, a loopback one included — which is why the fake's command starts with
+`env -u IDP_BACKSTAGE_TOKEN`, and why `pnpm demo:backstage` removes it from what it runs.
 
 ## Design principles
 
@@ -461,7 +528,7 @@ firewall automation and ticketing) and adds the multi-agent layer that system ne
 | 4 | Preview only: Inspector, Architect, `Plan`, diff; writes nothing | ✅ |
 | 5 | Write + local branch: atomicity, idempotence | 🚧 |
 | 6 | GitHub pull request: real forge, negative token test | |
-| 6b | [Read the live catalogue](docs/backstage-http-brief.md): questions and relations against a running Backstage (`backstage-http`); no Backstage needed to use the tool | |
+| 6b | [Read the live catalogue](docs/backstage-http-brief.md): questions and relations against a running Backstage (`backstage-http`); no Backstage needed to use the tool | 🚧 |
 | 7 | Polish: Ink TUI, asciinema, npm publish | |
 | 8 | [Discovery](docs/stage-8-brief.md): catalogue an existing service and its dependencies; preview-only until 5–6 land, submission after 6 | |
 
@@ -479,7 +546,8 @@ What comes next and the owner's decisions: [`docs/roadmap.md`](docs/roadmap.md).
 **Is this a Backstage plugin?**
 No. It's a standalone CLI that reads Backstage-compatible `catalog-info` YAML in a Git
 repository, and previews what it would add; writing it is stage 5. It doesn't need a
-running Backstage instance.
+running Backstage instance, and reads one's catalogue when you configure it
+([above](#read-a-backstage-catalogue)); it never writes to it.
 
 **Which LLMs does it support?**
 Anthropic, Mistral and OpenAI, chosen with `IDP_PROVIDER` and `IDP_MODEL`. None is the

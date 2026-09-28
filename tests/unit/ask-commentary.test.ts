@@ -6,7 +6,13 @@ import { runEntry } from '../../src/cli/commands/entry.js'
 import { HELP, main, parseArguments } from '../../src/cli/index.js'
 import { FixtureProvider } from '../../src/context/fixtures/index.js'
 import { EntityGraph } from '../../src/context/graph/entity-graph.js'
-import type { AgentName, GenerateResult, LlmClient } from '../../src/llm/client.js'
+import type { Entity } from '../../src/core/schemas/entity.js'
+import type {
+  AgentName,
+  GenerateRequest,
+  GenerateResult,
+  LlmClient,
+} from '../../src/llm/client.js'
 
 /**
  * An answer reads like a chat (ADR-0008): a sentence of introduction the
@@ -190,6 +196,80 @@ describe('runAsk, when the engine leaves a sentence out', () => {
   it('says nothing about a sentence left out only for length', async () => {
     const { result, errors } = await ask({ ...TABLE, intro: 'One. Two.' })
     expect(result.text.startsWith('› One.\n\n')).toBe(true)
+    expect(errors).toBe('')
+  })
+})
+
+describe('runAsk, over a vocabulary longer than the 30 values it shows', () => {
+  // ADR-0008 lets a sentence carry "a value of the vocabulary the model was
+  // shown". Past 30 values a list is cut (`shownVocabulary`), so the check is
+  // handed the lists as they were printed, not the whole vocabulary: an owner
+  // the model was never shown, and no tool returned, is one it did not read.
+  const TEAMS = Array.from({ length: 300 }, (_, i) => `group:default/team-${String(i).padStart(3, '0')}`)
+  const service = (name: string, owner: string): Entity => ({
+    apiVersion: 'backstage.io/v1alpha1',
+    kind: 'Component',
+    metadata: { name, annotations: {} },
+    spec: { type: 'service', lifecycle: 'production', owner },
+  })
+  const large = async (): Promise<EntityGraph> =>
+    EntityGraph.from([
+      ...(await load()).all(),
+      ...TEAMS.map((owner, i) => service(`svc-${String(i)}`, owner)),
+      // team-299 sorts last and owns the most: it is shown for its frequency.
+      ...Array.from({ length: 8 }, (_, i) => service(`extra-${String(i)}`, 'group:default/team-299')),
+    ])
+
+  const askLarge = async (conclusion: string) => {
+    const errors: string[] = []
+    const seen: GenerateRequest[] = []
+    const scripted = byAgent(analyst({ ...TABLE, conclusion }))
+    const result = await runAsk({
+      graph: await large(),
+      client: {
+        generate: async (request) => {
+          seen.push({ ...request, transcript: [...request.transcript] })
+          return scripted.generate(request)
+        },
+      },
+      intent: 'which databases are in prod?',
+      source: { from: 'demo', ignored: [], rejected: 0 },
+      emit: () => {},
+      err: (chunk) => void errors.push(chunk),
+    })
+    return { result, errors: errors.join(''), seen }
+  }
+
+  it('shows the Supervisor and the Analyst 30 owners, then how many more', async () => {
+    const { seen } = await askLarge('Both are in prod.')
+    const lines = seen
+      .map((request) => {
+        const first = request.transcript[0]
+        return first !== undefined && first.role === 'user' ? first.text : ''
+      })
+      .map((text) => text.split('\n').find((line) => line.startsWith('  owners: ')) ?? '')
+    expect(new Set(seen.map((request) => request.agent))).toEqual(new Set(['supervisor', 'analyst']))
+    // 300 teams and the demo SI's four owners: 30 shown, 274 more.
+    for (const line of lines) expect(line.endsWith(', and 274 more')).toBe(true)
+  })
+
+  it('drops a sentence naming an owner outside the 30 printed, which no tool returned', async () => {
+    const { result, errors } = await askLarge(
+      'Both are in prod. Most services belong to group:default/team-150.',
+    )
+    expect(result.text.endsWith('\n\n› Both are in prod.')).toBe(true)
+    expect(result.text).not.toContain('team-150')
+    expect(errors).toContain('group:default/team-150')
+    expect(errors).toContain('that sentence was left out')
+  })
+
+  it('keeps one naming an owner inside the 30 printed', async () => {
+    const { result, errors } = await askLarge(
+      'Both are in prod. Most services belong to group:default/team-299.',
+    )
+    expect(
+      result.text.endsWith('\n\n› Both are in prod.\n› Most services belong to group:default/team-299.'),
+    ).toBe(true)
     expect(errors).toBe('')
   })
 })

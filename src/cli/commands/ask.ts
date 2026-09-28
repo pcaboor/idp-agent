@@ -1,11 +1,10 @@
 import { answerQuestion } from '../../agents/analyst.js'
 import { classify } from '../../agents/supervisor.js'
-import { formatSummary, vocabularyValue } from '../../agents/summary.js'
+import { formatSummary, shownVocabulary } from '../../agents/summary.js'
 import { buildTools } from '../../agents/tools/graph-tools.js'
 import { summariseGraph } from '../../context/graph/summary.js'
 import { ENV_ANNOTATION, refOf, type EntityGraph } from '../../context/graph/entity-graph.js'
 import { overviewOf, type Unread } from '../../context/graph/overview.js'
-import type { Vocabulary } from '../../core/schemas/vocabulary.js'
 import {
   checkCommentary,
   type CheckedCommentary,
@@ -81,8 +80,12 @@ export async function classified(
   change: () => Promise<CommandResult>,
 ): Promise<CommandResult> {
   const { graph, client, intent, emit } = options
-  const { summary, vocabulary } = summariseGraph(graph)
-  const summaryText = formatSummary(summary, vocabulary)
+  // With the counts: each list capped at 30 (domain-backstage-8). The Supervisor
+  // and the Analyst may be reading a whole company catalogue; the gates never
+  // read this summary, and keep every value.
+  const { summary, vocabulary, counts } = summariseGraph(graph)
+  const summaryText = formatSummary(summary, vocabulary, counts)
+  const shown = shownVocabulary(vocabulary, counts)
 
   // A Supervisor that gave no word twice throws `ClassificationError`, and it
   // is let through: exit 1, as a call that could not succeed is, and printed
@@ -94,7 +97,12 @@ export async function classified(
     case 'MUTATION':
       return change()
     case 'QUESTION':
-      return answered(options, summaryText, vocabulary)
+      return answered(options, summaryText, [
+        ...shown.kinds.values,
+        ...shown.types.values,
+        ...shown.environments.values,
+        ...shown.owners.values,
+      ])
     default: {
       const exhaustive: never = classification
       return exhaustive
@@ -105,12 +113,13 @@ export async function classified(
 /**
  * The Analyst over the graph, shown the summary the Supervisor was shown, and
  * its answer printed: the engine's block, framed by the model's commentary
- * once the engine has checked it.
+ * once the engine has checked it. `vocabulary` is every value that summary
+ * printed, as it printed them.
  */
 async function answered(
   options: AskOptions,
   summaryText: string,
-  vocabulary: Vocabulary,
+  vocabulary: readonly string[],
 ): Promise<CommandResult> {
   const { graph, client, intent, emit } = options
   // The Analyst's registry: Backstage's APIs are found and read, and the
@@ -129,13 +138,9 @@ async function answered(
     entities: graph.all().map((entity) => known(graph, entity, tools.declaredNowhere)),
     witnessed,
     // As the opening message listed them: a value a line break was flattened
-    // out of was read in its one-line spelling (`formatSummary`).
-    vocabulary: [
-      ...vocabulary.kinds,
-      ...vocabulary.types,
-      ...vocabulary.environments,
-      ...vocabulary.owners,
-    ].map(vocabularyValue),
+    // out of was read in its one-line spelling, and a value past a list's 30
+    // was never read at all (`shownVocabulary`).
+    vocabulary,
     question: intent,
     clean: (text) => inertLine(text, Number.POSITIVE_INFINITY),
   })

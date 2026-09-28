@@ -1,5 +1,12 @@
 # `backstage-http` slice 1 — questions and relations against a Backstage
 
+**Status: done.** Tasks 1.1 to 1.6 are built
+([#92](https://github.com/pcaboor/idp-agent/pull/92) to
+[#96](https://github.com/pcaboor/idp-agent/pull/96),
+[#97](https://github.com/pcaboor/idp-agent/pull/97)); what slice 1 still owes — the
+demo against a real Backstage, the note's contract fixture and the `question-backstage-owner`
+tape — is the roadmap's next queue item, the Backstage in Docker (1.6, at its end).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking. **Tick them as you go.**
 
 **Goal.** With a Backstage configured, `graph`, `show`, `relations`, `ask` and `idpa
@@ -1694,7 +1701,7 @@ export function shownVocabulary(vocabulary: Vocabulary, counts?: VocabularyCount
 export function formatSummary(summary: SiSummary, vocabulary: Vocabulary, counts?: VocabularyCounts): string
 ```
 
-- [ ] **Step 1: The cap's tests (fail)**
+- [x] **Step 1: The cap's tests (fail)**
 
 `tests/unit/summary-cap.test.ts`:
 
@@ -1717,13 +1724,13 @@ it('leaves the gates the whole vocabulary', …) // summariseGraph(...).vocabula
 `tests/unit/ask-commentary.test.ts` gains: an owner outside the 30 printed, and not
 witnessed by a tool, is dropped from the commentary; one inside the 30 is kept.
 
-- [ ] **Step 2: The cap only where the note puts it (passes once Step 4 is in)**
+- [x] **Step 2: The cap only where the note puts it (passes once Step 4 is in)**
 
 `tests/unit/summary-cap.test.ts` also holds: the Architect's summary (`plan.ts:1297`) of a
 repository of 300 owners still lists all 300, and so does `init`'s: `formatSummary` without
 `counts` caps nothing.
 
-- [ ] **Step 3: `pnpm demo:backstage` (fails: no script)**
+- [x] **Step 3: `pnpm demo:backstage` (fails: no script)**
 
 `tests/unit/package-scripts.test.ts` (it already holds two of `package.json`'s scripts)
 expects `demo:backstage` to be `node scripts/demo-backstage.mjs`, and `scripts/smoke.mjs` to
@@ -1747,7 +1754,7 @@ later (this is <version>)`, so `pnpm smoke` and `prepack` pass on every Node `en
 allows; CI's `node: [22, 24]` resolves to the latest of each, where it runs.
 `package-scripts.test.ts` pins both branches with `process.features` stubbed.
 
-- [ ] **Step 4: Implement**
+- [x] **Step 4: Implement**
 
 `summariseGraph` counts each value per list as it collects it. `shownVocabulary` applies
 `listed` first (flatten, dedupe, the counts of values that flatten alike summed), then, past
@@ -1805,7 +1812,7 @@ The documents:
 
 **Exhaustive switches:** none new. **Architecture rules:** unchanged at 19.
 
-- [ ] **Step 5: Checks**
+- [x] **Step 5: Checks**
 
 ```bash
 pnpm vitest run tests/unit/summary-cap.test.ts tests/unit/ask-commentary.test.ts \
@@ -1820,10 +1827,12 @@ git status --short tests/recordings tests/golden fixtures tests/invariants src/c
 
 ```bash
 git add src/context/graph/summary.ts src/agents/summary.ts src/cli/commands/ask.ts \
-  scripts/demo-backstage.mjs scripts/smoke.mjs package.json tests/unit/summary-cap.test.ts \
+  scripts/demo-backstage.mjs scripts/type-stripping.mjs scripts/type-stripping.d.mts \
+  scripts/smoke.mjs package.json tests/unit/summary-cap.test.ts \
   tests/unit/ask-commentary.test.ts tests/unit/package-scripts.test.ts \
-  docs/adr/0011-backstage-to-explore.md docs/design.md README.md \
+  docs/adr/0011-backstage-to-explore.md docs/design.md README.md SECURITY.md \
   docs/adopting-backstage.md docs/backstage-http-brief.md docs/roadmap.md docs/reviews/2026-09-23-deep-review.md \
+  docs/stage-8-brief.md docs/plans/backstage-http-slice-1.md \
   AGENTS.md src/context/README.md CHANGELOG.md
 git commit -m "feat: bound the vocabulary a model is shown, and close backstage-http slice 1"
 ```
@@ -1844,7 +1853,7 @@ Base `feat/bhttp-1-5`. CHANGELOG, `### Added`:
 ```bash
 pnpm demo:backstage      # the script removes IDP_BACKSTAGE_TOKEN from what it runs
 # 1. What breaks if mysql-prod-01 fails, read from a Backstage
-#    $ IDP_BACKSTAGE_URL=http://127.0.0.1:<port>/api/catalog node dist/cli/bin.js relations mysql-prod-01 --impacts
+#    $ env -u IDP_BACKSTAGE_TOKEN IDP_BACKSTAGE_URL=http://127.0.0.1:<port>/api/catalog node dist/cli/bin.js relations mysql-prod-01 --impacts
 #    the notice, the Group line, then the README's table          (exit 0)
 # 2. show billing-api, from the same catalogue                   (exit 0)
 # 3. A change is decided against the repository: plan --from …   (exit 0; the fake saw no request)
