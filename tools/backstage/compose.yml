@@ -1,0 +1,33 @@
+# A real Backstage holding the demo SI, for evaluating idp-agent against it
+# (tools/backstage/README.md). Never part of CI, and never needed by
+# `pnpm test`. `pnpm demo:backstage:docker` builds it, starts it, runs the
+# demo against it and stops it.
+#
+# 127.0.0.1 only: idpa's rule lets http reach a loopback catalogue, and
+# nothing listens on the LAN. The frontend is served on the same port.
+name: idp-agent-demo-backstage
+services:
+  backstage:
+    image: idp-agent-demo-backstage:1.55.2
+    build:
+      context: .
+      additional_contexts:
+        si-demo: ../../fixtures/si-demo
+    environment:
+      # The static read token (app-config.yaml, backend.auth.externalAccess).
+      # The default is a demo value, public in this repository: never a secret.
+      IDPA_CATALOG_TOKEN: ${IDPA_CATALOG_TOKEN:-idpa-demo-read-only-token}
+    ports:
+      - 127.0.0.1:7007:7007
+    # Backstage needs no capability, and nothing in the container may gain a
+    # privilege through the image's setuid binaries.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:7007/.backstage/health/v1/readiness').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 60
+      start_period: 10s

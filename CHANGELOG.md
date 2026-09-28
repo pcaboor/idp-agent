@@ -66,6 +66,15 @@ Each pull request adds its line here.
   it where Node strips types. ADR-0011 records why the catalogue is read once per run, before
   any model; the design, the README and the adopting page describe the provider as built, and
   slice 1 of `backstage-http` is closed ([#97](https://github.com/pcaboor/idp-agent/pull/97)).
+- A real Backstage for the demo, in Docker: `pnpm demo:backstage:docker` builds our own
+  minimal Backstage 1.55.2 (`tools/backstage/`: the catalogue, its pages, guest sign-in and
+  nothing else), registers the demo SI through the Location `init platform` writes, issues the
+  static read token `docs/adopting-backstage.md` recommends, publishes on 127.0.0.1 only, and
+  runs `idpa relations mysql-prod-01 --impacts` against it, stdout byte for byte `--demo`'s,
+  with the token refused when absent (401, exit 1) and unable to refresh (403); the page is
+  now verified on a running Backstage, and `tests/contract/backstage/by-query-1.55.2.json`,
+  a page recorded from it, is read offline as the fake's page is
+  ([#98](https://github.com/pcaboor/idp-agent/pull/98)).
 
 ### Changed
 

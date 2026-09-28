@@ -1,0 +1,35 @@
+# The four teams the demo SI names as owners. A company's Groups come from its
+# own organisation data, never from the declarations repository, so they are a
+# location of their own in app-config.yaml, allowed Group and nothing else.
+# Not read by idpa: Groups are counted as not modelled (backstage-http slice 3).
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: common
+spec:
+  type: team
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: dodowarriors
+spec:
+  type: team
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: elephant
+spec:
+  type: team
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: tiger
+spec:
+  type: team
+  children: []

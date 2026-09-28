@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3535 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3554 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -46,6 +46,15 @@ it is set for other tools, and tracing is on only when this tool's variable says
 suite removes both `IDP_MLFLOW_*` from its environment (`tests/setup/personal.ts`) and
 leaves `IDP_TRACE_DIR`, which is how the tapes are traced. A trace carries full prompts;
 `SECURITY.md` says where they go.
+
+The demo Backstage is optional too, needs Docker, and is never part of CI
+(`tools/backstage/README.md`): our own minimal Backstage 1.55.2 holding the demo SI.
+
+```bash
+pnpm build && pnpm demo:backstage:docker         # build, start, wait, run idpa against it, check the 401, stop
+pnpm demo:backstage:docker --record              # also re-records tests/contract/backstage/, after moving the version
+pnpm backstage:up                                # leave it running on 127.0.0.1:7007 (guest sign-in); pnpm backstage:down
+```
 
 **Every number on this page is a measurement, and this page has drifted from all of them
 before** — a test count one short, an architecture-rule count several short, one module

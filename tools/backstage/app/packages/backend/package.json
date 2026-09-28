@@ -1,0 +1,28 @@
+{
+  "name": "backend",
+  "version": "0.0.0",
+  "main": "dist/index.cjs.js",
+  "types": "src/index.ts",
+  "private": true,
+  "backstage": {
+    "role": "backend"
+  },
+  "scripts": {
+    "build": "backstage-cli package build"
+  },
+  "dependencies": {
+    "@backstage/backend-defaults": "0.18.0",
+    "@backstage/plugin-app-backend": "0.5.18",
+    "@backstage/plugin-auth-backend": "0.30.1",
+    "@backstage/plugin-auth-backend-module-guest-provider": "0.2.23",
+    "@backstage/plugin-catalog-backend": "4.0.0",
+    "app": "link:../app",
+    "better-sqlite3": "^12.0.0"
+  },
+  "devDependencies": {
+    "@backstage/cli": "0.36.6"
+  },
+  "files": [
+    "dist"
+  ]
+}

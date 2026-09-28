@@ -50,6 +50,12 @@ above the transport reads a catalogue through it (`unit/backstage-*.test.ts`), a
 no test starts it, and what it answers one request, a request no `Request` can be built
 from included, is `answerOf`'s, tested apart from the socket.
 
+The fake is held to a real one by `contract/backstage-page.test.ts`: `contract/backstage/`
+keeps one `by-query` page recorded from Backstage 1.55.2, the demo Backstage in Docker
+(`tools/backstage/`), which must load as the demo SI's files read, and which the pre-pass and
+`readValue` must read as they read the fake's page for the same files. `pnpm demo:backstage:docker --record` re-records it; nothing in the
+suite starts Docker.
+
 ## The tapes
 
 A tape is every model call a scenario made, the day it was recorded: for each turn, its

@@ -149,6 +149,27 @@ design note describes:
 Bitbucket, Azure DevOps and Gerrit were not verified. Where a forge's reader does not search,
 a target with a glob reads nothing, and the Location lists the files one by one instead.
 
+### Verified on a running Backstage
+
+The demo Backstage ([`tools/backstage/`](../tools/backstage/README.md), Backstage 1.55.2,
+2026-09-28) is this page applied: the registration `init platform` writes for the demo SI,
+registered with the entry above and its `rules`, no `catalog.rules`, and the read token
+below as written. Nothing on this page had to change. What it showed:
+
+- **The rules reach every entity the Location brings in.** Backstage holds an entity to the
+  rules of its origin location, the `catalog.locations` entry, not of the file it was read
+  from (`DefaultCatalogProcessingOrchestrator`, `CatalogRules.ts` in `plugin-catalog-backend`
+  4.0.0): all 28 Resources of the demo SI are ingested.
+- **The same registration reads from disk.** Registered with `type: file` — the repository is
+  in the image, not on a forge — the relative targets resolve against the file's own path and
+  each glob is expanded with `glob`, which matches no dotfile: 33 entities, no witness.
+- **One more Location per entry.** Backstage adds a `generated-…` Location for each
+  `catalog.locations` entry, beside the registration's own; `idpa` counts both among what it
+  does not model.
+- **The token reads, and only reads.** Without it the catalogue answers 401; with it, a
+  refresh or a new location is refused, 403, and listing the locations answers an empty list
+  rather than a refusal.
+
 ## The read token for `idpa`
 
 Registering the repository serves Backstage's users. Reading the living catalogue from
