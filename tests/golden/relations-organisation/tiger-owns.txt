@@ -1,0 +1,8 @@
+group:default/tiger
+
+owns (4)
+  NODE                                          TYPE             ENV   DEPTH  PATH
+  component:default/billing-api                 service          -     1      tiger ← billing-api
+  resource:default/billing-api-billing-db-prod  database-access  prod  1      tiger ← billing-api-billing-db-prod (read)
+  resource:default/billing-db-prod              database         prod  1      tiger ← billing-db-prod
+  system:default/billing                        product          -     1      tiger ← billing

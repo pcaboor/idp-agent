@@ -137,6 +137,29 @@ steps too, and each bound says when it was reached (`stopped`, `total`, `exhaust
 the path, so the answer does not depend on the order files were read in. `cli/`'s
 `relations` prints it and the Analyst's `get_relations` returns it; neither computes.
 
+The organisation is walked by the same `walked`, six relations of its own
+(`ORGANISATION_RELATIONS`, beside `RELATIONS`, which does not change): `owns`, what names a
+Group or a User as owner (`ownedBy`), down a Group's child Groups (`childrenOf`), which are
+walked through and not listed; `owned-by`, the owner and the Groups above it (`parentsOf`);
+`member-of`, a User's Groups (`groupsOf`) or a Group's parents, and theirs; `has-member`, a
+Group's Users (`membersOf`) and child Groups, and theirs; `part-of`, what a node's `system`,
+`domain` or `subdomainOf` names (`wholeOf`), upward; `has-part`, what names a System or a
+Domain (`partsOf`), downward. Each is asked of the kinds it starts from and computes no row
+of another, as `provides` of a database does, and `relationsOf` resolves its subject with
+`graph.node(ref)`, so an entity relation of a Group is empty rather than unknown, even where
+a `dependsOn` names the Group; both of `between`'s ends are entities. Each follows only the
+kinds its edges are of: a Group's hierarchy runs from a Group to Groups, a member is a User,
+an owner a Group or a User, a whole a System or a Domain. The reader keeps a reference's own
+kind, so a Group's `children` naming a User, or its `parent` naming one, resolves to a node
+and is no edge of any walk: no row, and not dangling either. A step of an organisation node
+carries its kind and its type when it states one, never an environment or a right. A judged
+reference naming nothing ends its path as a dangling one does (`unresolvedOrganisationOf`);
+a judged one naming a document set aside ends it on that reference, `setAside` — in the
+catalogue, not read — and never declared nowhere; an unjudged one no node carries is no row,
+and what the subject declares of it for the first hop is `named`, with whether the source
+holds that kind at all (`unreadOrganisationOf`, `holdsKind`). The Analyst's `get_relations`
+still asks of an entity alone until Task 3.3 decides what it is shown of the organisation.
+
 `project-fs/snapshot.ts` reads the other repository: the **application** one, the one a service
 lives in. `readProject(root)` returns the text of what it read and a `skipped` entry, with a
 reason, for every single thing it did not — a file dropped without a word is a file the user

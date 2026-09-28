@@ -39,7 +39,12 @@ import { runGraph, type GraphOptions } from './commands/graph.js'
 import { runShow } from './commands/show.js'
 import { runRelations } from './commands/relations.js'
 import { RELATION_LIMITS } from '../context/graph/relations.js'
-import { OWN_RELATIONS, type OwnRelation } from '../core/schemas/query.js'
+import {
+  ORGANISATION_RELATIONS,
+  OWN_RELATIONS,
+  type OrganisationRelation,
+  type OwnRelation,
+} from '../core/schemas/query.js'
 import { runValidate } from './commands/validate.js'
 import { PlanInputError, questionLines, runIntent, runPlan, type Ask } from './commands/plan.js'
 import { wantsColour } from './render/diff.js'
@@ -116,7 +121,7 @@ export type Command =
   | ({
       name: 'relations'
       query: string
-      relation?: OwnRelation
+      relation?: OwnRelation | OrganisationRelation
       to?: string
       depth?: number
     } & ReadFrom)
@@ -178,7 +183,7 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
 
   idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource|API] [--repo <directory> | --demo | --backstage]
   idp-agent show <name-or-reference> [--repo <directory> | --demo | --backstage]
-  idp-agent relations <name-or-reference> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --to <name-or-reference>] [--depth <n>] [--repo <directory> | --demo | --backstage]
+  idp-agent relations <name-or-reference> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-reference>] [--depth <n>] [--repo <directory> | --demo | --backstage]
   idp-agent ask "<question>" [--repo <directory> | --demo | --backstage] [--quiet]
   idp-agent validate <directory>
   idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json]
@@ -193,8 +198,11 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   relations traces an entity's declared relations, each with its whole path
   and the rights and levels on it: what it consumes through its rights and
   who consumes it, what it depends on and what depends on it, the APIs it
-  provides, or every path to another entity with --to. Without a flag, every
-  relation that holds something. It needs no model and no key.
+  provides, or every path to another entity with --to. It traces the
+  organisation too: what a team or a person owns, down its child teams, who
+  owns something and the groups above, a person's groups and a group's
+  members, and what a System or a Domain holds and what holds it. Without a
+  flag, every relation that holds something. It needs no model and no key.
 
   init previews the catalog-info.yaml of the service it is run in, or adds to
   the one the repository keeps. --name, --lifecycle and --owner answer what
@@ -705,8 +713,14 @@ function edits(a: string, b: string): number {
   return rows[a.length]![b.length]!
 }
 
-/** A relation flag, and the relation it asks for: `--consumed-by` is `consumed-by`. */
-const RELATION_FLAGS = OWN_RELATIONS
+/**
+ * A relation flag, and the relation it asks for: `--consumed-by` is
+ * `consumed-by`. An entity's relations, then the organisation's.
+ */
+const RELATION_FLAGS: ReadonlyArray<OwnRelation | OrganisationRelation> = [
+  ...OWN_RELATIONS,
+  ...ORGANISATION_RELATIONS,
+]
 
 /**
  * `relations <name-or-reference>`: one name, as `show` takes it; at most one

@@ -18,6 +18,8 @@ import {
   refOf,
   type DeclaredField,
   type EntityGraph,
+  type OrganisationField,
+  type OrganisationUnresolved,
   type Unresolved,
 } from '../../context/graph/entity-graph.js'
 import {
@@ -129,12 +131,16 @@ interface ApiRow extends Row {
 interface Dangling {
   ref: string
   declared: false
-  field: DeclaredField
+  /**
+   * Always a `DeclaredField` today: `get_relations` walks `RELATIONS` alone,
+   * and the organisation's fields reach no tool until the Analyst reads it.
+   */
+  field: DeclaredField | OrganisationField
   declaredBy: string
   sameName: string[]
 }
 
-const danglingOf = ({ to, field, from, sameName }: Unresolved): Dangling => ({
+const danglingOf = ({ to, field, from, sameName }: Unresolved | OrganisationUnresolved): Dangling => ({
   ref: to,
   declared: false,
   field,
@@ -713,8 +719,10 @@ export function buildTools(
         })
         // No nearest match, as `get_entity`: an entity is named or it is not.
         // Which of the two references named nothing is said, so the model
-        // knows which one to fix.
-        if (result === undefined) {
+        // knows which one to fix. A Group, a System — which `relationsOf`
+        // also answers of — is no entity here: what the Analyst is shown of
+        // the organisation is decided apart (backstage-http slice 3, 3.3).
+        if (result === undefined || graph.get(ref) === undefined) {
           const missing = graph.get(ref) === undefined ? `"ref" ${ref}` : `"to" ${to ?? ''}`
           return refused(`no such entity: ${missing}`)
         }

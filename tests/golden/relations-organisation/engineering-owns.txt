@@ -1,0 +1,9 @@
+group:default/engineering
+
+owns (5)
+  NODE                                          TYPE             ENV   DEPTH  PATH
+  domain:default/finance                        -                -     1      engineering ← finance
+  component:default/billing-api                 service          -     2      engineering ← tiger ← billing-api
+  resource:default/billing-api-billing-db-prod  database-access  prod  2      engineering ← tiger ← billing-api-billing-db-prod (read)
+  resource:default/billing-db-prod              database         prod  2      engineering ← tiger ← billing-db-prod
+  system:default/billing                        product          -     2      engineering ← tiger ← billing

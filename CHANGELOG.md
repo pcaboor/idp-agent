@@ -83,6 +83,12 @@ Each pull request adds its line here.
   annotation; none of them is ever proposed, one Backstage would refuse is set aside with a
   warning rather than refused, and a plan is decided as before
   ([#99](https://github.com/pcaboor/idp-agent/pull/99)).
+- `idpa relations` traces the organisation: `--owns` and `--owned-by`, `--member-of` and
+  `--has-member`, `--part-of` and `--has-part` — what a team owns, down its child teams;
+  who owns an entity and the groups above them; a person's groups; what a System or a
+  Domain holds — each row with its whole path, read from both ends of a declaration, and,
+  against a catalogue, a reference naming nothing it serves marked where the path ends
+  ([#100](https://github.com/pcaboor/idp-agent/pull/100)).
 
 ### Changed
 

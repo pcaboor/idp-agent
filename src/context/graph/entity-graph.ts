@@ -90,6 +90,22 @@ export interface OrganisationUnresolved {
 }
 
 /**
+ * A reference to the organisation that no node carries and that is not
+ * declared nowhere either: `judged`, its kind read whole and the reference in
+ * the catalogue, set aside and not read (a Group Backstage would refuse);
+ * otherwise a name, of a kind this source was not read whole for, which
+ * says nothing about whether it is declared.
+ */
+export interface OrganisationUnread {
+  readonly from: string
+  readonly field: OrganisationField
+  readonly to: string
+  /** The kind it names, by its own prefix or its field's default (`kindNamed`); absent when neither is one of the four. */
+  readonly kind?: OrganisationKind
+  readonly judged: boolean
+}
+
+/**
  * The organisation a graph holds beside its entities, and the kinds of it that
  * were read whole — a catalogue's, never a repository's (`LoadResult.judged`).
  */
@@ -194,6 +210,8 @@ export class EntityGraph {
   private readonly wholes: Map<string, Set<string>>
   /** Node reference → what it declares of the organisation, judged and naming nothing. */
   private readonly organisationUnresolved: Map<string, OrganisationUnresolved[]>
+  /** The organisation kinds read whole (`OrganisationRead.judged`). */
+  private readonly judged: ReadonlySet<OrganisationKind>
   private readonly dependants: Map<string, Set<string>>
   private readonly derived: Map<string, Set<string>>
   /** API reference → the components that declare they provide it. */
@@ -299,6 +317,7 @@ export class EntityGraph {
     this.parts = new Map()
     this.wholes = new Map()
     this.organisationUnresolved = new Map()
+    this.judged = new Set(organisation.judged)
     const nodes: GraphNode[] = [...declarations, ...this.organisationByRef.values()]
     for (const node of nodes) {
       const ref = refOf(node)
@@ -484,6 +503,32 @@ export class EntityGraph {
    */
   unresolvedOrganisationOf(ref: string, field: OrganisationField): OrganisationUnresolved[] {
     return (this.organisationUnresolved.get(ref) ?? []).filter((found) => found.field === field)
+  }
+
+  /**
+   * What a node declares of the organisation, in one field, that no node
+   * carries and that `unresolvedOrganisationOf` does not call declared
+   * nowhere: set aside where its kind is judged, a name where it is not. In
+   * the order the file declares them, each once. The relations end a path on
+   * the first and say the second is read as a name (`context/graph/relations.ts`).
+   */
+  unreadOrganisationOf(ref: string, field: OrganisationField): OrganisationUnread[] {
+    const node = this.node(ref)
+    if (node === undefined) return []
+    const declared = organisationRefsOf(node).flatMap(([at, targets]) => (at === field ? targets : []))
+    return [...new Set(declared)].flatMap((to): OrganisationUnread[] => {
+      if (this.node(to) !== undefined) return []
+      const kind = kindNamed(to, field)
+      const judged = kind !== undefined && this.judged.has(kind)
+      if (judged && !this.aside.has(to)) return []
+      return [{ from: ref, field, to, ...(kind === undefined ? {} : { kind }), judged }]
+    })
+  }
+
+  /** Whether the graph holds at least one organisation node of `kind`. */
+  holdsKind(kind: OrganisationKind): boolean {
+    for (const node of this.organisationByRef.values()) if (node.kind === kind) return true
+    return false
   }
 
   search(criteria: SearchCriteria): CatalogueEntity[] {

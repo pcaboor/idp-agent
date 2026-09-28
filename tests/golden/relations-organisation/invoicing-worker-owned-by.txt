@@ -1,0 +1,5 @@
+component:default/invoicing-worker
+
+owned by (1)
+  NODE                TYPE  ENV  DEPTH  PATH
+  group:default/lion  -     -    1      invoicing-worker → lion — declared nowhere in the catalogue this token reads

@@ -1,0 +1,6 @@
+user:default/ada
+
+member of (2)
+  NODE                       TYPE        ENV  DEPTH  PATH
+  group:default/tiger        team        -    1      ada → tiger
+  group:default/engineering  department  -    2      ada → tiger → engineering

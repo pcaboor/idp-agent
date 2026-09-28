@@ -1,0 +1,7 @@
+group:default/engineering
+
+has members (3)
+  NODE                  TYPE  ENV  DEPTH  PATH
+  group:default/common  team  -    1      engineering ← common
+  group:default/tiger   team  -    1      engineering ← tiger
+  user:default/ada      -     -    2      engineering ← tiger ← ada

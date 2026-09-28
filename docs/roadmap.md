@@ -45,8 +45,9 @@ here, one pull request each, each naming the check run together at the end.
 1. **`backstage-http` slice 3: the organisation in the read model.** Groups, Users, Systems
    and Domains read, so the agents see real owners and the systems services belong to.
    [Three pull requests](plans/backstage-http-slice-3.md): 3.1 the nodes, done
-   ([#99](https://github.com/pcaboor/idp-agent/pull/99)); 3.2 the relations; 3.3 the
-   Analyst; then the owner's keyed recordings (step R).
+   ([#99](https://github.com/pcaboor/idp-agent/pull/99)); 3.2 the relations, done
+   ([#100](https://github.com/pcaboor/idp-agent/pull/100)); 3.3 the Analyst; then the
+   owner's keyed recordings (step R).
 2. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
    the current `main`, read only: what it covers and what it misses. It starts with an
    **analysis of the owner's uncommitted stage-5 work** on `feat/s5-cleared`, written on

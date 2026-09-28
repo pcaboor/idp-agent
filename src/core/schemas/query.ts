@@ -110,6 +110,33 @@ export const OWN_RELATIONS: readonly OwnRelation[] = RELATIONS.filter(
 )
 
 /**
+ * The relations of the organisation, Backstage's own names for them, each read
+ * from both ends of a declaration and walked several hops:
+ *   - `owns`: what a Group or a User is the owner of, and a Group's child
+ *     Groups' own, down the hierarchy;
+ *   - `owned-by`: who owns it, and the Groups above that owner;
+ *   - `member-of`: a User's Groups, a Group's parents, and theirs;
+ *   - `has-member`: a Group's Users and child Groups, and theirs;
+ *   - `part-of`: the System its `spec.system` names, that System's Domain,
+ *     and the Domains above;
+ *   - `has-part`: what a System or a Domain holds, and what its parts hold.
+ *
+ * A list of its own beside `RELATIONS`, which does not move: the Analyst's
+ * `get_relations`, the `relation` answer and an entity's overview read that
+ * one, and are unchanged by the organisation.
+ */
+export const ORGANISATION_RELATIONS = [
+  'owns',
+  'owned-by',
+  'member-of',
+  'has-member',
+  'part-of',
+  'has-part',
+] as const
+
+export type OrganisationRelation = (typeof ORGANISATION_RELATIONS)[number]
+
+/**
  * `between`'s other end, wherever a relation is asked for. Read as absent
  * when it is not a reference — blank, null, a bare name — rather than
  * refused: the field is shown flat beside every relation, a model fills it,

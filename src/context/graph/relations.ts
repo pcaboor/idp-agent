@@ -1,8 +1,20 @@
 import { declaredLevel } from '../../core/plan/grant.js'
-import type { CatalogueEntity } from '../../core/schemas/entity.js'
-import type { Relation } from '../../core/schemas/query.js'
+import type { CatalogueEntity, GraphNode, OrganisationKind } from '../../core/schemas/entity.js'
+import {
+  ORGANISATION_RELATIONS,
+  type OrganisationRelation,
+  type Relation,
+} from '../../core/schemas/query.js'
 import { levelledOf, natureOf, type AccessLevel } from '../../core/schemas/resource-types.js'
-import { ENV_ANNOTATION, refOf, type EntityGraph, type Unresolved } from './entity-graph.js'
+import {
+  ENV_ANNOTATION,
+  refOf,
+  type EntityGraph,
+  type OrganisationField,
+  type OrganisationUnread,
+  type OrganisationUnresolved,
+  type Unresolved,
+} from './entity-graph.js'
 
 /**
  * Every relation of one entity, computed from the declarations: what it
@@ -21,6 +33,15 @@ import { ENV_ANNOTATION, refOf, type EntityGraph, type Unresolved } from './enti
  * behind an object stops where `consumersOf`'s does — `relations.test.ts`
  * holds the two to one answer. This composes; it never infers (design 4.1).
  *
+ * The organisation is walked the same way (`ORGANISATION_RELATIONS`): what a
+ * Group or a User owns, down a Group's children; who owns a node, and the
+ * Groups above; a person's Groups and a Group's members; what a System or a
+ * Domain holds, and what holds it. Each edge is one the graph reads from both
+ * ends (`ownedBy`, `childrenOf`, `parentsOf`, `membersOf`, `groupsOf`,
+ * `partsOf`, `wholeOf`), and a reference naming nothing ends a path only
+ * where its kind was read whole (`unresolvedOrganisationOf`): elsewhere it is
+ * a name, which says nothing about what is declared.
+ *
  * Bounded twice, and each bound is stated when it is reached, never silent: a
  * depth, past which the walk says it stopped, and a row count, past which the
  * rows cut are counted. A cycle is never walked twice (a hand-edited
@@ -38,19 +59,28 @@ export interface Grant {
 }
 
 /**
- * One entity on a path, as the graph holds it — or a reference that names
- * nothing, which has no kind, type or environment to give, only `nowhere`:
- * who declares it, in which field, and the entities that share its name.
+ * One node on a path, as the graph holds it — an entity, or a Group, a User,
+ * a System or a Domain — or a reference that names nothing, which has no
+ * kind, type or environment to give, only `nowhere`: who declares it, in
+ * which field, and the nodes that share its name.
  */
 export interface Step {
   readonly ref: string
-  readonly kind?: CatalogueEntity['kind']
+  readonly kind?: GraphNode['kind']
+  /** Absent when the node states none: a User never does. */
   readonly type?: string
   /** Absent when the entity declares none: stated as absent, never filled. */
   readonly env?: string
   /** Only on a right. */
   readonly right?: Grant
-  readonly nowhere?: Unresolved
+  readonly nowhere?: Unresolved | OrganisationUnresolved
+  /**
+   * An organisation reference whose kind was read whole and that names a
+   * document the catalogue serves and this tool set aside — a Group Backstage
+   * would refuse: in the catalogue, and not read. It ends the path, and is
+   * never declared nowhere.
+   */
+  readonly setAside?: true
 }
 
 export interface RelationRow {
@@ -83,8 +113,18 @@ export interface Bounded<T> {
   readonly total: number
 }
 
+/**
+ * A reference the subject of an organisation relation declares, in a field
+ * its first hop reads, that no node carries and whose kind this source was
+ * not read whole for: a name, and never a row. `held` says whether the source
+ * holds any node of that kind at all, which is why it is only a name.
+ */
+export interface Named extends OrganisationUnread {
+  readonly held: boolean
+}
+
 export interface RelationResult {
-  readonly relation: Relation
+  readonly relation: Relation | OrganisationRelation
   readonly subject: Step
   /** `between`'s other end. */
   readonly to?: Step
@@ -107,6 +147,11 @@ export interface RelationResult {
    * Present only when there is one.
    */
   readonly nearMisses?: Bounded<RelationRow>
+  /**
+   * An organisation relation only: what the subject declares for its first
+   * hop that is read as a name here (`Named`). Present only when there is one.
+   */
+  readonly named?: readonly Named[]
   /** The depth bound the walk ran under. */
   readonly depth: number
   /** The depth bound was reached with declared edges left unfollowed. */
@@ -155,10 +200,39 @@ export const reachedBy = (row: RelationRow): Step => row.steps[row.steps.length 
 export const rightsOn = (row: RelationRow): Step[] =>
   row.steps.slice(0, -1).filter((step) => step.right !== undefined)
 
-const isRight = (entity: CatalogueEntity): boolean =>
-  entity.kind === 'Resource' && natureOf(entity.spec.type) === 'right'
+const isRight = (node: GraphNode): boolean =>
+  node.kind === 'Resource' && natureOf(node.spec.type) === 'right'
 
-export function stepOf(entity: CatalogueEntity): Step {
+/**
+ * A node as a path shows it. An organisation node carries its kind and the
+ * type it states, and never an environment or a right: a User states no
+ * type, and its step has none, as an entity with no environment has none.
+ */
+export function stepOf(node: GraphNode): Step {
+  switch (node.kind) {
+    case 'Component':
+    case 'Resource':
+    case 'API':
+      return entityStepOf(node)
+    case 'Group':
+      return { ref: refOf(node), kind: node.kind, type: node.spec.type }
+    case 'User':
+      return { ref: refOf(node), kind: node.kind }
+    case 'System':
+    case 'Domain':
+      return {
+        ref: refOf(node),
+        kind: node.kind,
+        ...(node.spec.type === undefined ? {} : { type: node.spec.type }),
+      }
+    default: {
+      const exhaustive: never = node
+      return exhaustive
+    }
+  }
+}
+
+function entityStepOf(entity: CatalogueEntity): Step {
   const env = entity.metadata.annotations[ENV_ANNOTATION]
   const level = entity.kind === 'Resource' ? declaredLevel(entity) : undefined
   return {
@@ -177,9 +251,12 @@ export function stepOf(entity: CatalogueEntity): Step {
   }
 }
 
-const nowhereOf = (unresolved: Unresolved): Step => ({ ref: unresolved.to, nowhere: unresolved })
+const nowhereOf = (unresolved: Unresolved | OrganisationUnresolved): Step => ({
+  ref: unresolved.to,
+  nowhere: unresolved,
+})
 
-const byRef = (left: CatalogueEntity, right: CatalogueEntity): number =>
+const byRef = (left: GraphNode, right: GraphNode): number =>
   refOf(left) < refOf(right) ? -1 : refOf(left) > refOf(right) ? 1 : 0
 
 const pathKey = (row: RelationRow): string => row.steps.map((step) => step.ref).join('\n')
@@ -197,15 +274,18 @@ function ordered(rows: RelationRow[]): RelationRow[] {
 
 /**
  * How one relation walks: which declared hop it follows, which of the
- * subject's own hops it takes, which entities it walks through and which it
- * lists, and what it reports as declared nowhere at each entity it walks.
+ * subject's own hops it takes, which nodes it walks through and which it
+ * lists, and what it reports as declared nowhere — or, for the organisation,
+ * as set aside — at each node it walks.
  */
 interface Walk {
-  readonly next: (ref: string) => CatalogueEntity[]
-  readonly first: (entity: CatalogueEntity) => boolean
-  readonly through: (entity: CatalogueEntity) => boolean
-  readonly listed: (entity: CatalogueEntity) => boolean
-  readonly dangling: (ref: string, depth: number) => Unresolved[]
+  readonly next: (ref: string) => GraphNode[]
+  readonly first: (node: GraphNode) => boolean
+  readonly through: (node: GraphNode) => boolean
+  readonly listed: (node: GraphNode) => boolean
+  readonly dangling: (ref: string, depth: number) => Array<Unresolved | OrganisationUnresolved>
+  /** Judged references naming a document set aside: each ends a row (`Step.setAside`). None when absent. */
+  readonly setAside?: (ref: string) => string[]
 }
 
 /**
@@ -254,7 +334,7 @@ function cyclesOf(start: string, edges: ReadonlyMap<string, readonly string[]>):
  * is kept, and the cycles among them are reported (`cyclesOf`).
  */
 function walked(
-  subject: CatalogueEntity,
+  subject: GraphNode,
   walk: Walk,
   depth: number,
 ): { rows: RelationRow[]; stopped: boolean; cycles: string[][] } {
@@ -278,16 +358,24 @@ function walked(
       .filter((entity) => hops > 0 || walk.first(entity))
       .sort(byRef)
     const dangling = walk.dangling(current, hops)
+    const aside = walk.setAside?.(current) ?? []
     // Kept at the depth bound too: an edge from there back to an entity the
     // walk listed leaves nothing unlisted, and still closes a cycle.
     edges.set(current, next.filter(walk.through).map(refOf))
 
     if (hops >= depth) {
-      if (dangling.length > 0 || next.some((entity) => !onPath.has(refOf(entity)))) stopped = true
+      if (
+        dangling.length > 0 ||
+        aside.length > 0 ||
+        next.some((entity) => !onPath.has(refOf(entity)))
+      ) {
+        stopped = true
+      }
       continue
     }
 
     for (const unresolved of dangling) rows.push({ steps: [...path, nowhereOf(unresolved)] })
+    for (const ref of aside) rows.push({ steps: [...path, { ref, setAside: true }] })
     for (const entity of next) {
       const ref = refOf(entity)
       if (onPath.has(ref)) continue
@@ -312,7 +400,7 @@ function walked(
  */
 function searched(
   graph: EntityGraph,
-  from: CatalogueEntity,
+  from: GraphNode,
   goal: string,
   depth: number,
   budget: { left: number },
@@ -355,17 +443,135 @@ function searched(
 }
 
 /**
- * The relation `relation` from the entity `ref`, or `undefined` when `ref` —
- * or `between`'s `to` — names no entity, or `between` has none: a relation is
- * asked of something declared, and the answer about nothing is not "none".
+ * How each relation of the organisation walks, from the table of
+ * docs/plans/backstage-http-slice-3.md, Task 3.2: the kinds it starts from
+ * (asked of another, it computes no row, as `provides` of a database does),
+ * the edges it follows, what it lists and walks through, and the fields a
+ * node declares it along the way — where a judged reference naming nothing
+ * ends a path, and where the subject's unjudged ones are read as names.
+ */
+interface OrganisationWalk {
+  readonly starts: ReadonlySet<GraphNode['kind']>
+  readonly next: (graph: EntityGraph, ref: string) => GraphNode[]
+  readonly through: (node: GraphNode) => boolean
+  readonly listed: (node: GraphNode) => boolean
+  readonly fields: readonly OrganisationField[]
+}
+
+const kinds = (...list: Array<GraphNode['kind']>): ReadonlySet<GraphNode['kind']> => new Set(list)
+const ofKind =
+  (...list: Array<GraphNode['kind']>) =>
+  (node: GraphNode): boolean =>
+    list.includes(node.kind)
+const anything = (): boolean => true
+
+/**
+ * The nodes of one kind among `nodes`. The reader keeps a reference's own
+ * kind, so a Group's `children` can name a Component or a User, its `parent`
+ * a User, its `members` a Group: none of them is a child, a parent or a
+ * member as the table reads them, and no walk follows it. Such a reference
+ * resolves to a node, so it is no dangling one either: it is no row.
+ */
+const only =
+  (...list: Array<GraphNode['kind']>) =>
+  (nodes: readonly GraphNode[]): GraphNode[] =>
+    nodes.filter(ofKind(...list))
+const groups = only('Group')
+
+/** The owner a node states, when a node answers to it: a Group or a User. */
+function ownerOf(graph: EntityGraph, ref: string): GraphNode[] {
+  const node = graph.node(ref)
+  if (node === undefined || node.kind === 'Group' || node.kind === 'User') return []
+  const owner = graph.node(node.spec.owner)
+  return owner === undefined ? [] : only('Group', 'User')([owner])
+}
+
+/** Whether `ref` is a Group the graph holds: the only node the hierarchy's edges run from. */
+const isGroup = (graph: EntityGraph, ref: string): boolean => graph.node(ref)?.kind === 'Group'
+
+/** What states an owner: every node but a Group and a User. */
+const OWNED = kinds('Component', 'Resource', 'API', 'System', 'Domain')
+
+/**
+ * Each walk's edges, by the kind of the node it stands on: a Group's
+ * hierarchy is read from a Group only, and ends on Groups only, so a User
+ * that a Group names as its parent owns nothing through it. The lists a node
+ * gets are of distinct kinds, so no node is met twice in one hop.
+ */
+const ORGANISATION_WALKS: Readonly<Record<OrganisationRelation, OrganisationWalk>> = {
+  // What names it as owner; through a Group's child Groups, what names them.
+  // A Group reached is a child, walked through and not listed: `has-member`
+  // lists the hierarchy.
+  owns: {
+    starts: kinds('Group', 'User'),
+    next: (graph, at) => [
+      ...graph.ownedBy(at),
+      ...(isGroup(graph, at) ? groups(graph.childrenOf(at)) : []),
+    ],
+    through: ofKind('Group'),
+    listed: (node) => node.kind !== 'Group',
+    fields: ['children'],
+  },
+  // Its owner, then the owner's parent Groups, and theirs.
+  'owned-by': {
+    starts: OWNED,
+    next: (graph, at) => (isGroup(graph, at) ? groups(graph.parentsOf(at)) : ownerOf(graph, at)),
+    through: ofKind('Group'),
+    listed: ofKind('Group', 'User'),
+    fields: ['owner', 'parent'],
+  },
+  // A User's Groups, a Group's parent Groups, and theirs.
+  'member-of': {
+    starts: kinds('User', 'Group'),
+    next: (graph, at) => groups(isGroup(graph, at) ? graph.parentsOf(at) : graph.groupsOf(at)),
+    through: ofKind('Group'),
+    listed: ofKind('Group'),
+    fields: ['memberOf', 'parent'],
+  },
+  // A Group's Users and child Groups, and the children's.
+  'has-member': {
+    starts: kinds('Group'),
+    next: (graph, at) => [...only('User')(graph.membersOf(at)), ...groups(graph.childrenOf(at))],
+    through: ofKind('Group'),
+    listed: ofKind('Group', 'User'),
+    fields: ['members', 'children'],
+  },
+  // What its system, domain or parent domain names, upward: a System or a
+  // Domain, never a Component a `spec.system` names by its own kind.
+  'part-of': {
+    starts: OWNED,
+    next: (graph, at) => only('System', 'Domain')(graph.wholeOf(at)),
+    through: ofKind('System', 'Domain'),
+    listed: anything,
+    fields: ['system', 'domain', 'subdomainOf'],
+  },
+  // What names it, downward. A part naming nothing is that part's own
+  // reference, and none of this walk's.
+  'has-part': {
+    starts: kinds('System', 'Domain'),
+    next: (graph, at) => graph.partsOf(at),
+    through: ofKind('System', 'Domain'),
+    listed: anything,
+    fields: [],
+  },
+}
+
+const ORGANISATION: ReadonlySet<string> = new Set(ORGANISATION_RELATIONS)
+
+/**
+ * The relation `relation` from the node `ref`, or `undefined` when `ref`
+ * names no node, or `between` has no `to` or an end that is no entity: a
+ * relation is asked of something declared, and the answer about nothing is
+ * not "none". Both of `between`'s ends are entities: a path is of declared
+ * dependencies.
  */
 export function relationsOf(
   graph: EntityGraph,
   ref: string,
-  relation: Relation,
+  relation: Relation | OrganisationRelation,
   options: RelationOptions = {},
 ): RelationResult | undefined {
-  const subject = graph.get(ref)
+  const subject = graph.node(ref)
   if (subject === undefined) return undefined
   const limit = options.rows ?? RELATION_LIMITS.rows
   const depth =
@@ -385,6 +591,7 @@ export function relationsOf(
       to?: Step
       shared?: Meeting[]
       nearMisses?: RelationRow[]
+      named?: Named[]
     },
   ): RelationResult => {
     const rows = ordered(found)
@@ -400,6 +607,7 @@ export function relationsOf(
       ...(rest.nearMisses === undefined || rest.nearMisses.length === 0
         ? {}
         : { nearMisses: cut(ordered(rest.nearMisses)) }),
+      ...(rest.named === undefined || rest.named.length === 0 ? {} : { named: rest.named }),
       depth,
       stopped: rest.stopped,
       cycles: rest.cycles,
@@ -407,10 +615,50 @@ export function relationsOf(
     }
   }
 
+  // An entity's relations are asked of an entity. A `dependsOn` or a
+  // `providesApis` naming a Group resolves, and makes the Group no dependency
+  // and no API: asked of an organisation node, they compute no row, as an
+  // organisation relation asked of a kind it does not start from computes none.
+  if (graph.get(ref) === undefined && !ORGANISATION.has(relation)) {
+    return relation === 'between' ? undefined : bounded([], { stopped: false, cycles: [] })
+  }
+
   const walkedBy = (walk: Walk): RelationResult => {
     const found = walked(subject, walk, depth)
     return bounded(found.rows, found)
   }
+
+  /**
+   * An organisation relation, from the table: nothing from a kind it does not
+   * start from. At each node walked, what it declares in the relation's
+   * fields and names nothing — judged, declared nowhere or set aside — ends a
+   * row; what the subject declares there and is not judged is a name, said
+   * beside the rows and never one of them.
+   */
+  const organisationWalkedBy = (organisation: OrganisationWalk): RelationResult => {
+    if (!organisation.starts.has(subject.kind)) return bounded([], { stopped: false, cycles: [] })
+    const unread = (at: string): OrganisationUnread[] =>
+      organisation.fields.flatMap((field) => graph.unreadOrganisationOf(at, field))
+    const found = walked(
+      subject,
+      {
+        next: (at) => organisation.next(graph, at),
+        first: anything,
+        through: organisation.through,
+        listed: organisation.listed,
+        dangling: (at) =>
+          organisation.fields.flatMap((field) => graph.unresolvedOrganisationOf(at, field)),
+        setAside: (at) => unread(at).flatMap(({ judged, to }) => (judged ? [to] : [])),
+      },
+      depth,
+    )
+    const named = unread(ref).flatMap((name): Named[] =>
+      name.judged ? [] : [{ ...name, held: held(name.kind) }],
+    )
+    return bounded(found.rows, { ...found, named })
+  }
+  const held = (kind: OrganisationKind | undefined): boolean =>
+    kind !== undefined && graph.holdsKind(kind)
   const every = (): boolean => true
   const never = (): boolean => false
 
@@ -425,7 +673,7 @@ export function relationsOf(
    * and never counted among them: which entity the file meant is the
    * reader's to decide (design 4.1).
    */
-  const namedAfter = (end: CatalogueEntity, other: string): RelationRow[] => {
+  const namedAfter = (end: GraphNode, other: string): RelationRow[] => {
     const named = ({ sameName }: Unresolved): boolean => sameName.includes(other)
     const down = walked(end, {
       next: (at) => graph.dependenciesOf(at),
@@ -443,7 +691,7 @@ export function relationsOf(
     }, depth)
     return [...down.rows, ...up.rows.map((row) => ({ ...row, backward: true as const }))]
   }
-  const component = (entity: CatalogueEntity): boolean => entity.kind === 'Component'
+  const component = (node: GraphNode): boolean => node.kind === 'Component'
 
   /**
    * `between`'s meeting points, where no path links the two ends: the
@@ -465,7 +713,7 @@ export function relationsOf(
       listed: every,
       dangling: () => [],
     }
-    const shortest = (end: CatalogueEntity) => {
+    const shortest = (end: GraphNode) => {
       const found = walked(end, walk, depth)
       const first = new Map<string, RelationRow>()
       for (const row of ordered(found.rows)) {
@@ -576,6 +824,13 @@ export function relationsOf(
         nearMisses: [...namedAfter(subject, options.to), ...namedAfter(other, ref)],
       })
     }
+    case 'owns':
+    case 'owned-by':
+    case 'member-of':
+    case 'has-member':
+    case 'part-of':
+    case 'has-part':
+      return organisationWalkedBy(ORGANISATION_WALKS[relation])
     default: {
       const exhaustive: never = relation
       return exhaustive
