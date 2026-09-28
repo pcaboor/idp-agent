@@ -47,6 +47,13 @@ export function isLoopback(url: URL): boolean {
 }
 
 /**
+ * Which of a load's three reads a failure is about (`load.ts`): the kinds this
+ * tool models, read whole; the organisation, read for the fields the read
+ * model reads; every other kind, read as refs.
+ */
+export type ReadScope = 'modelled' | 'organisation' | 'refs'
+
+/**
  * Why a read ended. Each case carries what a person needs to act on it, and
  * nothing a server wrote: a status, a class, a code, a bound.
  */
@@ -76,11 +83,11 @@ export type CatalogueFailure =
   /** An item with no string `metadata.uid`: a read whose items cannot be counted cannot be proved whole. */
   | { readonly kind: 'no-uid' }
   /** An item whose kind its read's filters did not name: a server that ignores `filter` does not page as Backstage does. */
-  | { readonly kind: 'unasked-kind'; readonly scope: 'modelled' | 'refs' }
+  | { readonly kind: 'unasked-kind'; readonly scope: ReadScope }
   /** Fewer distinct uids than the first page's `totalItems`, repeats or not. */
   | { readonly kind: 'changed'; readonly expected: number; readonly read: number }
-  /** More entities than a run reads: the modelled kinds, read whole, or the references of the others. */
-  | { readonly kind: 'too-many'; readonly scope: 'modelled' | 'refs'; readonly limit: number }
+  /** More entities than a run reads: the modelled kinds, read whole, the organisation, or the references of the others. */
+  | { readonly kind: 'too-many'; readonly scope: ReadScope; readonly limit: number }
 
 /** A size in the unit it was set in: MiB when it is a whole number of them, bytes otherwise. */
 const sizeOf = (bytes: number): string =>
@@ -98,6 +105,22 @@ const statusClass = (status: number): string => {
   if (status === 404) return 'no catalogue API at this address'
   if (status >= 500) return 'the server failed'
   return 'the request was refused'
+}
+
+/** What a read's entities are called in the sentence that refuses too many of them. */
+function scopeWords(scope: ReadScope): string {
+  switch (scope) {
+    case 'modelled':
+      return 'Components, Resources and APIs'
+    case 'organisation':
+      return 'Groups, Users, Systems and Domains'
+    case 'refs':
+      return 'entities of other kinds'
+    default: {
+      const exhaustive: never = scope
+      return exhaustive
+    }
+  }
 }
 
 /** The sentence a failure is, naming the origin and nothing a server wrote. */
@@ -139,7 +162,7 @@ function sentenceOf(failure: CatalogueFailure, origin: string): string {
     case 'changed':
       return `${at} changed while it was read (${countOf(failure.expected)} expected, ${countOf(failure.read)} read)`
     case 'too-many': {
-      const what = failure.scope === 'modelled' ? 'Components, Resources and APIs' : 'entities of other kinds'
+      const what = scopeWords(failure.scope)
       return (
         `${at}, as this token reads it, holds more than ${countOf(failure.limit)} ${what}; ` +
         `this version reads at most ${countOf(failure.limit)} and does not answer from part of a catalogue`

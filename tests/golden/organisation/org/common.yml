@@ -1,0 +1,9 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: common
+spec:
+  type: team
+  parent: engineering
+  children: []

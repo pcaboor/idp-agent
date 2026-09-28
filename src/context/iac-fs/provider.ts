@@ -7,8 +7,9 @@ import { readRepository } from './snapshot.js'
  *
  * Nothing is read here that `readRepository` does not already read, so the
  * three read commands see exactly the files `plan` and `validate` see — hidden
- * files skipped, an unreadable file rejected rather than thrown, a Group set
- * aside rather than refused. Only the provenance is narrowed: a rejection or a
+ * files skipped, an unreadable file rejected rather than thrown, a Group read
+ * beside the entities, and one Backstage would refuse set aside rather than
+ * refused. Only the provenance is narrowed: a rejection or a
  * set-aside document keeps the file it came from, which is all `LoadResult`
  * has room for, and the path stays repository-relative because it is printed
  * for a human to open.
@@ -20,6 +21,7 @@ export class IacFsProvider implements ContextProvider {
 
   async load(): Promise<LoadResult> {
     const { files, unreadable } = await readRepository(this.root)
+    const organisation = files.flatMap((file) => file.organisation ?? [])
     return {
       entities: files.flatMap((file) => [...file.entities, ...file.apis]),
       rejected: [
@@ -37,6 +39,9 @@ export class IacFsProvider implements ContextProvider {
         file.ignored.map((document) => ({ source: file.path, ...document })),
       ),
       unread: files.flatMap((file) => file.unread ?? []),
+      // Read, and never judged: a repository's Group files are not the
+      // organisation (`LoadResult.judged`).
+      ...(organisation.length > 0 && { organisation }),
     }
   }
 }

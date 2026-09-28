@@ -14,6 +14,13 @@ export const BACKSTAGE_LIMITS = {
   pageSize: 250,
   /** Components, Resources and APIs read whole; past it the read is refused, not answered from. */
   modelledEntities: 20_000,
+  /**
+   * Groups, Users, Systems and Domains, read for the fields the read model
+   * reads of them; past it, refused the same way. Its own, since Users are
+   * most of a company catalogue: at those fields a User is about 260 bytes of
+   * JSON, so 200,000 of them are about 50 MiB, under `bytesPerRun`.
+   */
+  organisationEntities: 200_000,
   /** References of every other kind, read as refs only; past it, refused the same way. */
   otherRefs: 200_000,
   /** One response's body, counted while it streams, before any of it is parsed. */

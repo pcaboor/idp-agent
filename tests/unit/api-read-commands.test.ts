@@ -52,9 +52,11 @@ describe('graph', () => {
         ['orders-api-to-payments', 'Resource', 'network-access', 'prod', 'group:default/lion'],
       ]) + DANGLING,
     )
-    // The broken API is named, the Group is counted, and no API is "not loaded".
+    // The broken API is named, and nothing is "not loaded": the Group is read
+    // now (backstage-http slice 3), and the table and the dangling list are
+    // what they were.
     expect(err).toMatch(/^skipped apis\/ledger\.yml: spec\.definition: /m)
-    expect(err).toContain('not loaded: 1 document this tool does not model (Group ×1)\n')
+    expect(err).not.toContain('not loaded')
   })
 
   it('filters on --kind API', async () => {

@@ -215,12 +215,16 @@ backstage: https://backstage.acme.example/api/catalog
 ```console
 $ export IDP_BACKSTAGE_TOKEN=…
 $ idpa graph
-reading the Backstage catalogue at backstage.acme.example (~/.config/idp-agent/config.yml): 8,412 entities: 298 read, 8,114 not modelled; it may lag the declarations repository by minutes; --repo <directory> reads a repository
+reading the Backstage catalogue at backstage.acme.example (~/.config/idp-agent/config.yml): 8,412 entities: 8,332 read, 80 not modelled; it may lag the declarations repository by minutes; --repo <directory> reads a repository
 ```
 
 That line is on stderr on every run: the host, never the path or the token, and the counts
-— what the catalogue served, what was read, what this tool does not model (Users, Groups,
-Systems, Domains and Locations, counted by kind on a `not loaded:` line). What the catalogue
+— what the catalogue served, what was read, what this tool does not model (Locations,
+Templates and other tools' kinds, counted by kind on a `not loaded:` line). Users, Groups,
+Systems and Domains are read, as the organisation beside the entities: the catalogue is
+asked for their names, types and memberships and nothing else — never a profile, never an
+annotation — and one a server sends anyway is dropped on arrival, so a User's email and
+picture are never kept, printed or sent to a model. What the catalogue
 refused is not among them: Backstage does not serve an entity it refused, and resolves a
 duplicate "first location wins" in silence, so `validate` in the declarations repository is
 where those are found. A token the catalogue does not accept is one line, exit 1, and never a

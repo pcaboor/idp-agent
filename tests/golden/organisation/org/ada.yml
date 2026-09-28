@@ -1,0 +1,14 @@
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: ada
+  annotations:
+    microsoft.com/email: ada@acme.example
+spec:
+  profile:
+    displayName: Ada
+    email: ada@acme.example
+    picture: 'data:image/png;base64,iVBORw0KGgo='
+  memberOf:
+    - tiger

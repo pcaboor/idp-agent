@@ -1,9 +1,10 @@
-import type { CatalogueEntity } from '../../core/schemas/entity.js'
+import type { CatalogueEntity, GraphNode } from '../../core/schemas/entity.js'
 import { natureOf } from '../../core/schemas/resource-types.js'
 import {
   ENV_ANNOTATION,
   refOf,
   type EntityGraph,
+  type OrganisationField,
   type Unresolved,
 } from '../../context/graph/entity-graph.js'
 import { oneLine } from './plain.js'
@@ -38,7 +39,7 @@ export const TAG_LENGTH = 63
  * references the schema already constrains included: one rule for the whole
  * card is one nobody has to re-check when a field is added.
  */
-const shown = (text: string, max: number = ENTITY_LIMITS.text): string => oneLine(text, max)
+export const shown = (text: string, max: number = ENTITY_LIMITS.text): string => oneLine(text, max)
 
 /** `head, head, head, +N more`: the first few, then how many were cut. */
 function counted(values: readonly string[], limit: number): string {
@@ -73,7 +74,7 @@ export const NOWHERE_IN_CATALOGUE = 'declared nowhere in the catalogue this toke
  * and the entities that share its name when there are any. Beside, never in
  * place of: which of them the file meant, if any, is the reader's to decide.
  */
-export function nowhere(unresolved: Unresolved, said: string = NOWHERE): string {
+export function nowhere(unresolved: Pick<Unresolved, 'sameName'>, said: string = NOWHERE): string {
   const names = unresolved.sameName.map((ref) => shown(ref))
   if (names.length === 0) return said
   const listed =
@@ -81,6 +82,73 @@ export function nowhere(unresolved: Unresolved, said: string = NOWHERE): string 
       ? (names[0] ?? '')
       : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`
   return `${said}; ${listed} ${names.length === 1 ? 'has' : 'have'} this name`
+}
+
+/**
+ * A section of a card: its title, then one line per node — a Resource's
+ * environment beside it, as a right's identity carries one (design 4.1) —
+ * then what the card's subject declares of the relation and nothing answers
+ * to, marked where an environment would be (`nowhere`), then references read
+ * as names, unmarked: declared, and naming nothing this source was read whole
+ * for. "none" when all three are empty. With `limit`, the rows past it are
+ * counted on one line: an all-staff Group has thousands of members, and a
+ * list that stops without saying so is read as complete.
+ */
+export function sectionLines(
+  title: string,
+  nodes: readonly GraphNode[],
+  options: {
+    readonly unresolved?: readonly Pick<Unresolved, 'to' | 'sameName'>[]
+    readonly named?: readonly string[]
+    readonly said?: string
+    readonly limit?: number
+  } = {},
+): string[] {
+  const { unresolved = [], named = [], said = NOWHERE, limit = Number.POSITIVE_INFINITY } = options
+  const lines = ['', title]
+  if (nodes.length === 0 && unresolved.length === 0 && named.length === 0) {
+    lines.push('  none')
+    return lines
+  }
+  const resolved = nodes.map((found): [string, string] => [
+    shown(refOf(found)),
+    found.kind === 'Resource'
+      ? shown(found.metadata.annotations[ENV_ANNOTATION] ?? UNDECLARED)
+      : '',
+  ])
+  const missing = unresolved.map((ref): [string, string] => [shown(ref.to), nowhere(ref, said)])
+  const names = named.map((ref): [string, string] => [shown(ref), ''])
+  const rows = [...resolved, ...missing, ...names]
+  const kept = rows.slice(0, limit)
+  // A reference nothing answers to is as long as its file made it — a
+  // `providesApis` the grammar could not split is kept as written — so it
+  // sets the column only while it is as short as an entity's can be. A
+  // longer one is printed with its marker after it, and pads nothing else.
+  const width = Math.max(
+    0,
+    ...kept.map(([ref], at) => (at < resolved.length || ref.length <= REF_WIDTH ? ref.length : 0)),
+  )
+  for (const [ref, after] of kept) lines.push(`  ${ref.padEnd(width)}  ${after}`.trimEnd())
+  const hidden = rows.length - kept.length
+  if (hidden > 0) lines.push(`  +${String(hidden)} more`)
+  return lines
+}
+
+/**
+ * An owner or a system line of a card: the value, and when a catalogue read
+ * its kind whole and it names nothing there, the mark after it.
+ */
+export function referenceLine(
+  graph: EntityGraph,
+  label: string,
+  ref: string,
+  subject: string,
+  field: OrganisationField,
+  said: string,
+): string {
+  const [unresolved] = graph.unresolvedOrganisationOf(subject, field).filter(({ to }) => to === ref)
+  const value = `  ${label.padEnd(11)}  ${shown(ref)}`
+  return unresolved === undefined ? value : `${value}  ${nowhere(unresolved, said)}`
 }
 
 /** An entity's card. `said` is what a reference naming nothing is called (`NOWHERE`). */
@@ -136,14 +204,19 @@ export function renderEntityDetail(graph: EntityGraph, entity: CatalogueEntity, 
     ...(entity.kind === 'Resource' && natureOf(entity.spec.type) === 'right'
       ? [`  access       ${entity.spec.access ?? UNDECLARED}`]
       : []),
-    `  owner        ${shown(entity.spec.owner)}`,
+    // Marked only where a catalogue read the owner's kind whole
+    // (`unresolvedOrganisationOf`): a repository's Group files are not the
+    // organisation, so there the line is what it always was.
+    referenceLine(graph, 'owner', entity.spec.owner, refOf(entity), 'owner', said),
     `  environment  ${shown(entity.metadata.annotations[ENV_ANNOTATION] ?? UNDECLARED)}`,
     // What the entity says it is, in its file's own words. Each line only when
     // there is something on it: unlike an environment, a missing description
     // or system is not a gap in a declaration this tool reviews.
     ...(titled === '' ? [] : [`  title        ${titled}`]),
     ...(described === '' ? [] : [`  description  ${described}`]),
-    ...(system === '' ? [] : [`  system       ${system}`]),
+    ...(system === ''
+      ? []
+      : [referenceLine(graph, 'system', entity.spec.system ?? '', refOf(entity), 'system', said)]),
     // What Backstage calls a subcomponent's parent: printed as the file wrote
     // it, in full when it could be read, like the system.
     ...(parent === '' ? [] : [`  part of      ${parent}`]),
@@ -174,30 +247,7 @@ export function renderEntityDetail(graph: EntityGraph, entity: CatalogueEntity, 
     entities: CatalogueEntity[],
     unresolved: readonly Unresolved[] = [],
   ): void => {
-    lines.push('', title)
-    if (entities.length === 0 && unresolved.length === 0) {
-      lines.push('  none')
-      return
-    }
-    const resolved = entities.map((found): [string, string] => [
-      shown(refOf(found)),
-      found.kind === 'Resource'
-        ? shown(found.metadata.annotations[ENV_ANNOTATION] ?? UNDECLARED)
-        : '',
-    ])
-    const missing = unresolved.map((ref): [string, string] => [shown(ref.to), nowhere(ref, said)])
-    // A reference nothing answers to is as long as its file made it — a
-    // `providesApis` the grammar could not split is kept as written — so it
-    // sets the column only while it is as short as an entity's can be. A
-    // longer one is printed with its marker after it, and pads nothing else.
-    const width = Math.max(
-      0,
-      ...resolved.map(([ref]) => ref.length),
-      ...missing.map(([ref]) => ref.length).filter((length) => length <= REF_WIDTH),
-    )
-    for (const [ref, after] of [...resolved, ...missing]) {
-      lines.push(`  ${ref.padEnd(width)}  ${after}`.trimEnd())
-    }
+    lines.push(...sectionLines(title, entities, { unresolved, said }))
   }
 
   // Who provides an API is always said of one, "none" included: an API no

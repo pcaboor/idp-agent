@@ -120,16 +120,24 @@ describe('the demo Backstage', () => {
       expect(scripts['test']).toBe('vitest run')
     })
 
-    it('registers the teams as organisation data of their own, allowed Group and nothing else', () => {
+    it('registers the organisation as data of its own, allowed Group and User and nothing else', () => {
       const [, org] = at(config, 'catalog', 'locations') as Mapping[]
-      expect(org).toEqual({ type: 'file', target: '/app/org/org.yaml', rules: [{ allow: ['Group'] }] })
-      const groups = parseAllDocuments(read('org.yaml')).map((document) => document.toJS() as Mapping)
-      expect(groups.map((group) => [group['kind'], at(group, 'metadata', 'name')])).toEqual([
+      expect(org).toEqual({ type: 'file', target: '/app/org/org.yaml', rules: [{ allow: ['Group', 'User'] }] })
+      const documents = parseAllDocuments(read('org.yaml')).map((document) => document.toJS() as Mapping)
+      expect(documents.map((document) => [document['kind'], at(document, 'metadata', 'name')])).toEqual([
+        ['Group', 'engineering'],
         ['Group', 'common'],
         ['Group', 'dodowarriors'],
         ['Group', 'elephant'],
         ['Group', 'tiger'],
+        ['User', 'ada'],
+        ['User', 'linus'],
       ])
+      // Every team is engineering's child, and every User's group exists: over
+      // the fake and the Docker Backstage, nothing is declared nowhere.
+      expect(at(documents[0] as Mapping, 'spec', 'children')).toEqual(['common', 'dodowarriors', 'elephant', 'tiger'])
+      const script = readFileSync(path.join(ROOT, 'scripts/demo-backstage-docker.mjs'), 'utf8')
+      expect(script).toContain('const expected = { Group: 5, User: 2, Location: 3 }')
     })
   })
 

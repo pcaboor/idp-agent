@@ -25,6 +25,9 @@ const BASE = new URL('https://backstage.canary.example/api/catalog')
 const ORIGIN = 'https://backstage.canary.example'
 const TOKEN = 'canary-backstage-token-0123456789'
 const REFS = 'kind,metadata.namespace,metadata.name,metadata.uid'
+const ORGANISATION_FIELDS =
+  'apiVersion,kind,metadata.name,metadata.namespace,metadata.uid,' +
+  'spec.type,spec.parent,spec.children,spec.members,spec.memberOf,spec.owner,spec.domain,spec.subdomainOf'
 
 type Item = Record<string, unknown>
 
@@ -36,6 +39,30 @@ const teams = (count: number): string[] => Array.from({ length: count }, (_, at)
 /** The demo SI with Groups: the demo's three, or `count` of them for a read of several pages. */
 const demoWithGroups = (count?: number): Item[] =>
   catalogueOf(DEMO, { groups: count === undefined ? ['tiger', 'elephant', 'dodowarriors'] : teams(count) })
+
+/** `count` Locations, as a catalogue serves one: a kind read as refs, since the organisation is read whole. */
+const locations = (count: number): Item[] =>
+  Array.from({ length: count }, (_, at) => ({
+    apiVersion: 'backstage.io/v1alpha1',
+    kind: 'Location',
+    metadata: {
+      name: `location-${String(at).padStart(4, '0')}`,
+      namespace: 'default',
+      uid: `10000000-0000-4000-8000-${String(at).padStart(12, '0')}`,
+    },
+    spec: { type: 'url', target: `https://github.com/acme/repo-${String(at)}/blob/main/catalog-info.yaml` },
+  }))
+
+/** The demo SI with Locations: three, or `count` of them for a refs read of several pages. */
+const demoWithLocations = (count = 3): Item[] => [...demo, ...locations(count)]
+
+/** A User as a catalogue serves one. */
+const user = (name: string, memberOf: readonly string[]): Item => ({
+  apiVersion: 'backstage.io/v1alpha1',
+  kind: 'User',
+  metadata: { name, namespace: 'default', uid: `20000000-0000-4000-8000-${name.padStart(12, '0')}` },
+  spec: { memberOf },
+})
 
 /** The demo SI with `count` more Resources: a modelled read of several pages. */
 const demoWithResources = (count: number): Item[] => {
@@ -77,18 +104,30 @@ const loaded = (entities: readonly Item[], faults: Faults = {}, limits: Partial<
 }
 
 describe('loadCatalogue', () => {
-  it('asks the facets once, then reads Components, Resources and APIs whole and every other kind as refs', async () => {
-    const { fetch, sent } = fakeBackstage({ entities: demoWithGroups(), token: TOKEN })
+  it('asks the facets once, then reads Components, Resources and APIs whole, the organisation for what the read model reads, and every other kind as refs', async () => {
+    const { fetch, sent } = fakeBackstage({
+      entities: [...demoWithGroups(), user('ada', ['tiger']), ...locations(2)],
+      token: TOKEN,
+    })
     const served = await loadCatalogue(transportOf(fetch))
     expect(sent.map(({ url }) => routeAndQuery(url))).toEqual([
       'entity-facets?facet=kind',
       'entities/by-query?filter=kind%3Dcomponent&filter=kind%3Dresource&filter=kind%3Dapi&limit=250',
-      'entities/by-query?filter=kind%3Dgroup&fields=kind%2Cmetadata.namespace%2Cmetadata.name%2Cmetadata.uid&limit=250',
+      `entities/by-query?filter=kind%3Dgroup&filter=kind%3Duser&fields=${encodeURIComponent(ORGANISATION_FIELDS)}&limit=250`,
+      'entities/by-query?filter=kind%3Dlocation&fields=kind%2Cmetadata.namespace%2Cmetadata.name%2Cmetadata.uid&limit=250',
     ])
     expect(served.whole).toHaveLength(33)
-    expect(served.refs).toHaveLength(3)
-    expect(served.refs[0]).toEqual({ kind: 'Group', metadata: { namespace: 'default', name: expect.any(String), uid: expect.any(String) } })
-    expect(served.census).toMatchObject({ served: 36, pages: 2, repeated: 0 })
+    expect(served.organisation).toHaveLength(4)
+    expect(served.organisation).toContainEqual({
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Group',
+      metadata: { name: 'tiger', namespace: 'default', uid: expect.any(String) },
+      spec: { type: 'team', children: [] },
+    })
+    expect(served.judged).toEqual(['Group', 'User'])
+    expect(served.refs).toHaveLength(2)
+    expect(served.refs[0]).toEqual({ kind: 'Location', metadata: { namespace: 'default', name: expect.any(String), uid: expect.any(String) } })
+    expect(served.census).toMatchObject({ served: 39, pages: 3, repeated: 0 })
     expect(served.census.bytes).toBeGreaterThan(0)
   })
 
@@ -98,14 +137,45 @@ describe('loadCatalogue', () => {
     expect(sent).toHaveLength(2)
   })
 
+  it('sends no organisation read when the facets name none of the four: the requests of today, and judged empty', async () => {
+    const { fetch, sent } = fakeBackstage({ entities: demoWithLocations(), token: TOKEN })
+    const served = await loadCatalogue(transportOf(fetch))
+    expect(sent.map(({ url }) => routeAndQuery(url))).toEqual([
+      'entity-facets?facet=kind',
+      'entities/by-query?filter=kind%3Dcomponent&filter=kind%3Dresource&filter=kind%3Dapi&limit=250',
+      'entities/by-query?filter=kind%3Dlocation&fields=kind%2Cmetadata.namespace%2Cmetadata.name%2Cmetadata.uid&limit=250',
+    ])
+    expect(served.organisation).toEqual([])
+    expect(served.judged).toEqual([])
+  })
+
+  it('judges the kinds the facets named: a catalogue serving Groups and no Users judges Group alone', async () => {
+    const { fetch } = fakeBackstage({ entities: demoWithGroups(), token: TOKEN })
+    expect((await loadCatalogue(transportOf(fetch))).judged).toEqual(['Group'])
+  })
+
+  it('sends each next page of the organisation read its cursor, limit=250 and the same fields; never filter', async () => {
+    const { fetch, sent } = fakeBackstage({ entities: demoWithGroups(600), token: TOKEN }) // 600 Groups: three pages
+    const served = await loadCatalogue(transportOf(fetch))
+    const next = sent.map(({ url }) => new URL(url)).filter((url) => url.searchParams.has('cursor'))
+    expect(next).toHaveLength(2)
+    for (const url of next) {
+      expect(url.searchParams.getAll('filter')).toEqual([])
+      expect(url.searchParams.get('limit')).toBe('250')
+      expect(url.searchParams.get('fields')).toBe(ORGANISATION_FIELDS)
+    }
+    expect(served.organisation).toHaveLength(600)
+    expect(served.refs).toEqual([])
+  })
+
   it('sends each next page its cursor, limit=250 and, for the refs read, the same fields; never filter', async () => {
     // Backstage's cursor carries the filter, the order and totalItems, not limit or fields
     // (parseQueryEntitiesParams.ts, createRouter.ts); CatalogClient.queryEntities re-sends both.
-    const { fetch, sent } = fakeBackstage({ entities: demoWithGroups(600), token: TOKEN }) // 600 Groups: three pages of refs
+    const { fetch, sent } = fakeBackstage({ entities: demoWithLocations(600), token: TOKEN }) // 600 Locations: three pages of refs
     const served = await loadCatalogue(transportOf(fetch))
     const refsPages = sent
       .map(({ url }) => new URL(url))
-      .filter((url) => url.searchParams.getAll('filter').includes('kind=group') || url.searchParams.has('cursor'))
+      .filter((url) => url.searchParams.getAll('filter').includes('kind=location') || url.searchParams.has('cursor'))
     const next = refsPages.filter((url) => url.searchParams.has('cursor'))
     expect(next).toHaveLength(2)
     for (const url of next) {
@@ -140,7 +210,7 @@ describe('loadCatalogue', () => {
 
   it('sends the modelled read even when the facets name no Component, Resource or API', async () => {
     const { fetch, sent } = fakeBackstage({
-      entities: demoWithGroups(),
+      entities: demoWithLocations(),
       token: TOKEN,
       faults: { facetsOmit: ['Component', 'Resource'] },
     })
@@ -160,7 +230,7 @@ describe('loadCatalogue', () => {
   })
 
   it('refuses the same page twice: "the catalogue returned the same page twice"', async () => {
-    const { loading } = loaded(demoWithGroups(600), { sameCursorTwice: true })
+    const { loading } = loaded(demoWithLocations(600), { sameCursorTwice: true })
     const failure = await failureOf(loading)
     expect(failure).toEqual({ kind: 'same-page' })
     expect(new CatalogueReadError(failure, ORIGIN).message).toBe(
@@ -169,7 +239,7 @@ describe('loadCatalogue', () => {
   })
 
   it('keeps a uid seen on two pages once, and counts it in census.repeated, when the read is still whole', async () => {
-    const { loading } = loaded(demoWithGroups(600), { repeatUid: { leaveOut: false } })
+    const { loading } = loaded(demoWithLocations(600), { repeatUid: { leaveOut: false } })
     const served = await loading
     expect(served.refs).toHaveLength(600)
     expect(served.census).toMatchObject({ served: 633, repeated: 1 })
@@ -185,27 +255,32 @@ describe('loadCatalogue', () => {
   })
 
   it('refuses one uid served twice and another left out: fewer distinct than announced, repeats or not', async () => {
-    const { loading } = loaded(demoWithGroups(600), { repeatUid: { leaveOut: true } })
+    const { loading } = loaded(demoWithLocations(600), { repeatUid: { leaveOut: true } })
     expect(await failureOf(loading)).toEqual({ kind: 'changed', expected: 600, read: 599 })
   })
 
-  it('refuses an item of a kind its read did not ask for: a Component in the refs read, a Group in the modelled one', async () => {
+  it('refuses an item of a kind its read did not ask for: a Component in the refs read, a Location in the modelled one', async () => {
     // A server that ignores filter does not page as Backstage does: a whole
     // entity smuggled into the refs read would pass the modelled ceiling.
     const smuggled = structuredClone(demo.find((item) => item['kind'] === 'Component')!)
     ;(smuggled['metadata'] as Item)['name'] = 'smuggled'
     ;(smuggled['metadata'] as Item)['uid'] = 'f0000000-0000-4000-8000-0000000000bb'
-    const inRefs = loaded(demoWithGroups(), { extraItem: { at: 2, item: smuggled } })
+    const inRefs = loaded(demoWithLocations(), { extraItem: { at: 2, item: smuggled } })
     const failure = await failureOf(inRefs.loading)
     expect(failure).toEqual({ kind: 'unasked-kind', scope: 'refs' })
     expect(new CatalogueReadError(failure, ORIGIN).message).toBe(
       'the catalogue at https://backstage.canary.example served an entity of a kind the read did not ask for, ' +
         'so it does not filter as Backstage does',
     )
-    const group: Item = { kind: 'Group', metadata: { namespace: 'default', name: 'tiger', uid: 'f0000000-0000-4000-8000-0000000000cc' } }
-    expect(await failureOf(loaded(demoWithGroups(), { extraItem: { at: 1, item: group } }).loading)).toEqual({
+    const location: Item = { kind: 'Location', metadata: { namespace: 'default', name: 'tiger', uid: 'f0000000-0000-4000-8000-0000000000cc' } }
+    expect(await failureOf(loaded(demoWithLocations(), { extraItem: { at: 1, item: location } }).loading)).toEqual({
       kind: 'unasked-kind',
       scope: 'modelled',
+    })
+    // And a Location in the organisation read, which asked for Groups.
+    expect(await failureOf(loaded(demoWithGroups(), { extraItem: { at: 2, item: location } }).loading)).toEqual({
+      kind: 'unasked-kind',
+      scope: 'organisation',
     })
     const noKind: Item = { metadata: { namespace: 'default', name: 'nothing', uid: 'f0000000-0000-4000-8000-0000000000dd' } }
     expect(await failureOf(loaded(demo, { extraItem: { at: 1, item: noKind } }).loading)).toEqual({
@@ -217,8 +292,8 @@ describe('loadCatalogue', () => {
   it('keeps a uid served in both reads once, counts it in census.repeated, and counts it once in census.served', async () => {
     const billing = demo.find((item) => (item['metadata'] as Item)['name'] === 'billing-api')!
     const uid = (billing['metadata'] as Item)['uid']
-    const twin: Item = { kind: 'Group', metadata: { namespace: 'default', name: 'billing-team', uid } }
-    const served = await loaded(demoWithGroups(), { extraItem: { at: 2, item: twin } }).loading
+    const twin: Item = { kind: 'Location', metadata: { namespace: 'default', name: 'billing-team', uid } }
+    const served = await loaded(demoWithLocations(), { extraItem: { at: 2, item: twin } }).loading
     expect(served.whole).toHaveLength(33)
     expect(served.refs).toHaveLength(3)
     expect(served.census).toMatchObject({ served: 36, repeated: 1 })
@@ -243,13 +318,20 @@ describe('loadCatalogue', () => {
     )
   })
 
-  it('refuses 20,001 modelled entities, and 200,001 refs of other kinds', async () => {
+  it('refuses 20,001 modelled entities, 200,001 organisation entities, and 200,001 refs of other kinds', async () => {
     // The limits lowered, the words checked with the real ones.
-    const modelled = loaded(demoWithGroups(), {}, { modelledEntities: 32 })
+    const modelled = loaded(demoWithLocations(), {}, { modelledEntities: 32 })
     expect(await failureOf(modelled.loading)).toEqual({ kind: 'too-many', scope: 'modelled', limit: 32 })
     expect(modelled.sent).toHaveLength(2) // refused on the first page, the refs never asked for
-    const refs = loaded(demoWithGroups(), {}, { otherRefs: 2 })
+    const refs = loaded(demoWithLocations(), {}, { otherRefs: 2 })
     expect(await failureOf(refs.loading)).toEqual({ kind: 'too-many', scope: 'refs', limit: 2 })
+    const organisation = loaded([...demoWithGroups(), ...locations(3)], {}, { organisationEntities: 2 })
+    expect(await failureOf(organisation.loading)).toEqual({ kind: 'too-many', scope: 'organisation', limit: 2 })
+    expect(organisation.sent).toHaveLength(3) // the refs read never asked for
+    expect(new CatalogueReadError({ kind: 'too-many', scope: 'organisation', limit: 200_000 }, ORIGIN).message).toBe(
+      'the catalogue at https://backstage.canary.example, as this token reads it, holds more than 200,000 ' +
+        'Groups, Users, Systems and Domains; this version reads at most 200,000 and does not answer from part of a catalogue',
+    )
 
     expect(new CatalogueReadError({ kind: 'too-many', scope: 'modelled', limit: 20_000 }, ORIGIN).message).toBe(
       'the catalogue at https://backstage.canary.example, as this token reads it, holds more than 20,000 ' +

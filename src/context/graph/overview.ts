@@ -61,6 +61,12 @@ export interface Overview {
    */
   apis: { total: number; provided: number }
   /**
+   * The organisation read beside the entities, by kind: each node once. Zero
+   * where the source holds none, and then the renderer says nothing of it.
+   * Never among `entities`, `kinds` or `owners`, which count the entities.
+   */
+  organisation: { groups: number; users: number; systems: number; domains: number }
+  /**
    * Objects by what reaches them through any chain: the services, as
    * `consumersOf` walks them for `show`, then the rights on the way. Both,
    * because a declarations repository names services another repository
@@ -157,6 +163,32 @@ export function overviewOf(graph: EntityGraph, unread: Unread): Overview {
     else rights[entity.spec.access ?? 'undeclared'] += 1
   }
 
+  const organisation = { groups: 0, users: 0, systems: 0, domains: 0 }
+  for (const node of graph.nodes()) {
+    switch (node.kind) {
+      case 'Component':
+      case 'Resource':
+      case 'API':
+        break
+      case 'Group':
+        organisation.groups += 1
+        break
+      case 'User':
+        organisation.users += 1
+        break
+      case 'System':
+        organisation.systems += 1
+        break
+      case 'Domain':
+        organisation.domains += 1
+        break
+      default: {
+        const exhaustive: never = node
+        return exhaustive
+      }
+    }
+  }
+
   const notModelled = unread.ignored.filter(({ prePass }) => prePass === undefined)
   const kinded = notModelled.flatMap(({ kind }) => (kind === undefined ? [] : [kind]))
   const systems = entities.flatMap((entity) => entity.spec.system ?? [])
@@ -180,6 +212,7 @@ export function overviewOf(graph: EntityGraph, unread: Unread): Overview {
     described,
     rights,
     apis,
+    organisation,
     reached: reached.sort(
       (left, right) =>
         right.services - left.services ||

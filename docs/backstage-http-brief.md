@@ -839,15 +839,24 @@ answers with "not loaded" rather than refusing.
 
 ### Slice 3 — the organisation in the read model
 
-Closed by 3.2: "what does team tiger own?" and "which system is billing-api in?" are answered
-with witnessed Group and System nodes.
+Closed by 3.3: "what does team tiger own?" and "which system is billing-api in?" are answered
+with witnessed Group and System nodes. Three pull requests, not two (the owner's decision,
+2026-09-28; [the plan](plans/backstage-http-slice-3.md)): item 1 is 3.1 and 3.2, item 2 is
+3.3, and the keyed recordings are the owner's step R after them.
 
-1. **Group, User, System and Domain as read-only nodes.** Read whole from here on, with the
-   byte bounds of § 6. Membership (`spec.memberOf`, `spec.children`, `spec.parent`) and system
-   membership, read from `spec`. An owner naming no Group is shown as dangling. They are never
-   proposed: `plan.ts` gets no field for them.
-2. **The Analyst's tools over them.** `query` and `related` on the new kinds, with the same
-   caps. A keyed recording.
+1. **Group, User, System and Domain as read-only nodes** (3.1), **and the relations over
+   them** (3.2). Read for what the read model reads of them — a name, a type, the
+   memberships — with the byte bounds of § 6, and nothing else: a User's profile (email,
+   picture, display name) is never requested and is dropped by the pre-pass, and the
+   annotations are never requested and dropped by the reader when served. Membership (`spec.memberOf`, `spec.members`, `spec.children`, `spec.parent`)
+   and system membership, read from `spec`, from both ends. An owner naming no Group is shown
+   as declared nowhere where a catalogue read Groups whole, never over a declarations
+   repository's Group files. One Backstage would refuse is set aside with a `not-modelled`
+   warning, never an error, so it can never refuse a plan. They are never proposed:
+   `plan.ts` gets no field for them.
+2. **The Analyst's tools over them** (3.3). `query` and `related` on the new kinds, with the
+   same caps. Users' names and group memberships may then reach the model provider, which
+   `SECURITY.md` says. A keyed recording.
 
 ### Slice 4 — both sources
 

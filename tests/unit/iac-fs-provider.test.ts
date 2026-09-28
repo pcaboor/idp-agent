@@ -65,10 +65,27 @@ describe('IacFsProvider', () => {
         source: 'org/tiger.yml',
         kind: 'Group',
         ref: 'group:default/tiger',
-        reason: 'kind Group is not modelled by this tool; group tiger left as is',
+        // A Group is read now (backstage-http slice 3); one without the spec
+        // Backstage requires is still set aside, saying why.
+        reason: 'Group tiger is not read: spec: required, which Backstage requires',
       },
     ])
     expect(entities).toHaveLength(33)
+  })
+
+  it('reads a Group beside the entities, never among them, and judges nothing', async () => {
+    const repo = await mkdtemp(path.join(tmpdir(), 'iac-provider-org-'))
+    await cp(FIXTURES, repo, { recursive: true })
+    await mkdir(path.join(repo, 'org'), { recursive: true })
+    await writeFile(
+      path.join(repo, 'org/tiger.yml'),
+      'apiVersion: backstage.io/v1alpha1\nkind: Group\nmetadata:\n  name: tiger\nspec:\n  type: team\n  children: []\n',
+    )
+    const loaded = await new IacFsProvider(repo).load()
+    expect(loaded.ignored).toEqual([])
+    expect(loaded.entities).toHaveLength(33)
+    expect(loaded.organisation?.map(({ kind, metadata }) => `${kind} ${metadata.name}`)).toEqual(['Group tiger'])
+    expect(loaded.judged).toBeUndefined()
   })
 
   it('reads an empty directory as no entity and no rejection', async () => {

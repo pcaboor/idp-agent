@@ -38,17 +38,32 @@ const PER_FILE = 'parseDocuments, every YAML file of every folder above'
 /**
  * Recorded on 60974de, before `readValue` existed. A later change of the YAML
  * road updates one in the commit that explains why.
+ *
+ * backstage-http slice 3 moved two: `tests/golden/backstage-apis` holds a Group
+ * (`org/teams.yml`), read now as an organisation node where it was set aside,
+ * and every `parseDocuments` result gained its `organisation` list, empty but
+ * in that file. Nothing else moved, which `ELSE_ON_F8BCB43` pins.
  */
 const BEFORE: Record<string, string> = {
   'fixtures/si-demo': 'ea6c835a2e313c2f2dff94ebd5ec5fbfe372ad6652fed4a45f4033bf5fa0905c',
-  'tests/golden/backstage-apis': '7113741db9d43d7727f5f2d9eb410feb9212187dd2138f402c40d48e2f51a687',
+  'tests/golden/backstage-apis': '30bb2e086bd4b15bbebca2b9cd6e43b460821bffa51507bc3a23ef8f445270ff',
   'tests/golden/backstage-namespaces': '9e221886cd5ff96e1632730068f33b446c1978eecef204d988e58af859cbf382',
   'tests/golden/broken-si': '8bb4de03c34aa3321806bb9f051d3a3b274933cd7d4f2e93984e9e92b6c9b8cb',
   'tests/golden/dangling-shown': 'f027b9b117fd5e96c4be2a89dcdf297f6c58e829a17bbadc272145356828c9f4',
   'tests/golden/multi-doc': 'e3b544e49967eee353459ef3ca0435606e295470bf9499f49220a5f4c2335c88',
   'tests/golden/relations-owner': '9e4bc25f8b48f8dbc10b3f25879901afc76d085ded91c8f44628e54339399001',
-  [PER_FILE]: 'df5d7b3ee081e7c705c21d262f5140a7027f891bb2fce41927ca088a5935489f',
+  [PER_FILE]: '73fb051c200f75e3ef019defed043718028fb5128fce351299bea4950e7574a8',
 }
+
+/** The one file whose reading slice 3 changed: a Group, read. */
+const TEAMS = 'tests/golden/backstage-apis/org/teams.yml'
+
+/**
+ * `parseDocuments` of every file but `TEAMS`, an empty `organisation` list
+ * left out, as f8bcb43 read them — measured there, before backstage-http slice
+ * 3, and equal to 60974de's reading of the same files.
+ */
+const ELSE_ON_F8BCB43 = '9d039c9bf82d056bb7e4371e8202767c20bca09e368d250709dcc0700328e4ef'
 
 /**
  * JSON with every object's keys sorted and `undefined` kept as a marker, so a
@@ -106,6 +121,19 @@ describe('the YAML road, pinned across the extraction of readValue', () => {
   it('reads every file exactly as it did before readValue', async () => {
     expect(digestOf(await perFileReadings())).toBe(BEFORE[PER_FILE])
   })
+
+  it('reads every file but the one holding a Group as it did before the organisation was read', async () => {
+    const readings = (await perFileReadings()) as Record<string, ReturnType<typeof parseDocuments>>
+    const rest: Record<string, unknown> = {}
+    for (const [file, reading] of Object.entries(readings)) {
+      if (file === TEAMS) continue
+      const { organisation, ...before } = reading
+      rest[file] = organisation.length === 0 ? before : reading
+    }
+    expect(digestOf(rest)).toBe(ELSE_ON_F8BCB43)
+    expect(readings[TEAMS]?.organisation.map(({ kind, metadata }) => `${kind} ${metadata.name}`)).toEqual(['Group tiger'])
+    expect(readings[TEAMS]?.ignored).toEqual([])
+  })
 })
 
 const HEAD = { apiVersion: 'backstage.io/v1alpha1' } as const
@@ -145,6 +173,7 @@ function fold(text: string): ReturnType<typeof parseDocuments> {
   const folded: ReturnType<typeof parseDocuments> = {
     entities: [],
     apis: [],
+    organisation: [],
     rejections: [],
     ignored: [],
     unread: [],
@@ -160,8 +189,11 @@ function fold(text: string): ReturnType<typeof parseDocuments> {
     if (read.as === 'rejected') folded.rejections.push(read.reason)
     if (read.as === 'ignored') folded.ignored.push(read.document)
     if (read.as === 'api') folded.apis.push(read.api)
+    if (read.as === 'organisation') folded.organisation.push(read.entity)
     if (read.as === 'entity') folded.entities.push(read.entity)
-    if (read.as === 'api' || read.as === 'entity') folded.unread.push(...read.unread)
+    if (read.as === 'api' || read.as === 'organisation' || read.as === 'entity') {
+      folded.unread.push(...read.unread)
+    }
   }
   return folded
 }
@@ -180,8 +212,12 @@ describe('readValue, one value as a file reads it', () => {
     })
   })
 
-  it('sets a Group aside with its reference, so a dependsOn naming it is not dangling', () => {
+  it('reads a Group, and sets one Backstage would refuse aside with its reference, so a dependsOn naming it is not dangling', () => {
     expect(readValue(GROUP)).toMatchObject({
+      as: 'organisation',
+      entity: { kind: 'Group', metadata: { name: 'tiger' } },
+    })
+    expect(readValue({ ...GROUP, spec: { type: 'team' } })).toMatchObject({
       as: 'ignored',
       document: { kind: 'Group', ref: 'group:default/tiger' },
     })

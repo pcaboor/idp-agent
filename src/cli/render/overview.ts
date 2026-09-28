@@ -105,7 +105,7 @@ export function renderOverview(overview: Overview, source: OverviewSource): stri
   ]
 
   if (overview.entities === 0) {
-    blocks.push(['It declares no entity.'])
+    blocks.push(['It declares no entity.'], ...organisation(overview.organisation))
   } else {
     const { declared, undeclared } = overview.environments
     blocks.push(
@@ -124,6 +124,7 @@ export function renderOverview(overview: Overview, source: OverviewSource): stri
       described(overview.described, overview.entities),
       rights(overview.rights),
       ...apis(overview.apis),
+      ...organisation(overview.organisation),
       reached(overview.reached),
       dangling(overview.dangling),
     )
@@ -234,6 +235,22 @@ function apis(counts: Overview['apis']): string[][] {
       ...rows(lines.filter(([, count]) => count > 0).map(([name, count]) => [name, String(count)])),
     ],
   ]
+}
+
+/**
+ * The organisation read beside the entities, on one line — only where there is
+ * some, and only the kinds there are: a source with none has nothing to say of
+ * it, so no overview of the demo SI moves.
+ */
+function organisation(counts: Overview['organisation']): string[][] {
+  const parts = [
+    [counts.groups, 'group', 'groups'],
+    [counts.users, 'user', 'users'],
+    [counts.systems, 'system', 'systems'],
+    [counts.domains, 'domain', 'domains'],
+  ] as const
+  const said = parts.filter(([count]) => count > 0).map(([count, one, many]) => plural(count, one, many))
+  return said.length === 0 ? [] : [[`organisation  ${said.join(', ')}`]]
 }
 
 /**

@@ -44,6 +44,9 @@ here, one pull request each, each naming the check run together at the end.
 
 1. **`backstage-http` slice 3: the organisation in the read model.** Groups, Users, Systems
    and Domains read, so the agents see real owners and the systems services belong to.
+   [Three pull requests](plans/backstage-http-slice-3.md): 3.1 the nodes, done
+   ([#99](https://github.com/pcaboor/idp-agent/pull/99)); 3.2 the relations; 3.3 the
+   Analyst; then the owner's keyed recordings (step R).
 2. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
    the current `main`, read only: what it covers and what it misses. It starts with an
    **analysis of the owner's uncommitted stage-5 work** on `feat/s5-cleared`, written on
@@ -213,6 +216,15 @@ The owner's decisions, dated, each with where it is recorded.
   README gives the reasons); the `question-backstage-owner` tape, which needs the owner's key
   and the owner present, is what is left of `backstage-http` slice 1
   ([#98](https://github.com/pcaboor/idp-agent/pull/98)).
+- `backstage-http` slice 3's three questions
+  ([the plan](plans/backstage-http-slice-3.md#questions-for-the-owner)), settled. A Group,
+  User, System or Domain document Backstage would refuse is set aside with a `not-modelled`
+  warning, never an error, so it can never refuse a plan. Users' names and group memberships
+  may reach the model provider from 3.3 on, with a `SECURITY.md` row; a User's profile
+  (email, picture, display name) is never requested and is dropped by the pre-pass. Three pull
+  requests — 3.1 the nodes, 3.2 the relations, 3.3 the Analyst — then the owner's keyed step
+  R; the note's "Closed by 3.2" becomes "Closed by 3.3"
+  ([#99](https://github.com/pcaboor/idp-agent/pull/99)).
 
 ## Known debts and open items
 

@@ -507,6 +507,7 @@ describe('what the transport refuses', () => {
     expect(BACKSTAGE_LIMITS).toEqual({
       pageSize: 250,
       modelledEntities: 20_000,
+      organisationEntities: 200_000,
       otherRefs: 200_000,
       bytesPerResponse: 32 * 1024 * 1024,
       bytesPerRun: 256 * 1024 * 1024,

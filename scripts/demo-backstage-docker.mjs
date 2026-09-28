@@ -6,15 +6,19 @@
  * built binary against it as a person would, and stops it. No model, no key.
  *
  * Every step states what it expects, and the demo fails on anything else:
- *   1. the catalogue serves every entity of the demo SI, the four teams and
- *      three Locations — the registration and the one Backstage generates
- *      for each catalog.locations entry — which is Backstage's file reader
- *      resolving the registration's globs, and its rules admitting Resources;
+ *   1. the catalogue serves every entity of the demo SI, the demo's
+ *      organisation (five Groups, two Users) and three Locations — the
+ *      registration and the one Backstage generates for each
+ *      catalog.locations entry — which is Backstage's file reader resolving
+ *      the registration's globs, and its rules admitting Resources;
  *   2. `relations mysql-prod-01 --impacts` prints the README's table: stdout
  *      is `--demo`'s, byte for byte, and the golden file's;
  *   3. `show billing-api` prints what `--demo` prints;
- *   4. without the token, the catalogue answers 401 and idpa says so, exit 1;
- *   5. the token reads and does nothing else: a refresh is refused (403).
+ *   4. `show tiger` prints the team read from the catalogue, as it prints it
+ *      read from the same files (the demo SI and org.yaml), which is what the
+ *      fake serves;
+ *   5. without the token, the catalogue answers 401 and idpa says so, exit 1;
+ *   6. the token reads and does nothing else: a refresh is refused (403).
  *
  *     pnpm build && pnpm demo:backstage:docker            # build, run, stop
  *     pnpm demo:backstage:docker --keep                   # leave it running: http://127.0.0.1:7007
@@ -23,10 +27,13 @@
  * `--record`, once every step above went as expected, writes the page the
  * provider's modelled read is answered with to tests/contract/backstage/, the contract fixture of
  * docs/backstage-http-brief.md § 9: the demo SI only, from this loopback
- * Backstage, no token. Needs Docker and the network for the first build.
+ * Backstage, no token — and the first page of the organisation read beside
+ * it (`org-by-query-<version>.json`), which proves the real Backstage honours
+ * `fields`: no profile, no annotation — a page holding either is not written.
+ * Needs Docker and the network for the first build.
  */
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -46,6 +53,18 @@ const BACKSTAGE_VERSION = JSON.parse(readFileSync(path.join(ROOT, 'tools/backsta
 const FIXTURE = path.join(ROOT, `tests/contract/backstage/by-query-${BACKSTAGE_VERSION}.json`)
 /** The provider's modelled read, as `loadCatalogue` sends it: the request the fixture answers. */
 const MODELLED_QUERY = 'filter=kind%3Dcomponent&filter=kind%3Dresource&filter=kind%3Dapi&limit=250'
+const ORGANISATION_FIXTURE = path.join(ROOT, `tests/contract/backstage/org-by-query-${BACKSTAGE_VERSION}.json`)
+/** The organisation read, as `loadCatalogue` sends it over this catalogue's Groups and Users. */
+const ORGANISATION_QUERY = new URLSearchParams([
+  ['filter', 'kind=group'],
+  ['filter', 'kind=user'],
+  [
+    'fields',
+    'apiVersion,kind,metadata.name,metadata.namespace,metadata.uid,' +
+      'spec.type,spec.parent,spec.children,spec.members,spec.memberOf,spec.owner,spec.domain,spec.subdomainOf',
+  ],
+  ['limit', '250'],
+]).toString()
 
 const keep = process.argv.includes('--keep')
 const record = process.argv.includes('--record')
@@ -120,17 +139,24 @@ console.log(`ready in ${Math.round((performance.now() - started) / 1000)} s`)
 // The backend is ready before the catalogue has read every file: the
 // processing loop ingests the Location, then its targets, then stitches.
 console.log(`\n${bold('1. Waiting for the catalogue to hold the demo SI')}`)
-const expected = { Group: 4, Location: 3 }
+const expected = { Group: 5, User: 2, Location: 3 }
 let served
 const until = Date.now() + 180_000
 for (;;) {
   served = await kinds().catch(() => undefined)
   const modelled = (served?.['Component'] ?? 0) + (served?.['Resource'] ?? 0) + (served?.['API'] ?? 0)
-  if (modelled === DEMO_ENTITIES && served?.['Group'] === expected.Group && served?.['Location'] === expected.Location) break
+  if (
+    modelled === DEMO_ENTITIES &&
+    served?.['Group'] === expected.Group &&
+    served?.['User'] === expected.User &&
+    served?.['Location'] === expected.Location
+  ) {
+    break
+  }
   if (Date.now() > until) fail(`the catalogue did not hold the demo SI within 3 minutes: ${JSON.stringify(served)}`)
   await new Promise((resolve) => setTimeout(resolve, 2_000))
 }
-console.log(`the catalogue serves ${JSON.stringify(served)}: the ${DEMO_ENTITIES} entities of fixtures/si-demo, its registration and the teams`)
+console.log(`the catalogue serves ${JSON.stringify(served)}: the ${DEMO_ENTITIES} entities of fixtures/si-demo, its registration and the organisation`)
 
 let failed = false
 const scratch = mkdtempSync(path.join(tmpdir(), 'idpa-docker-demo-'))
@@ -187,7 +213,28 @@ step(
 )
 step('3. What billing-api is, from the same catalogue', ['show', 'billing-api'], 'tests/golden/demo-read/show-billing-api.txt')
 
-console.log(`\n${bold('4. Without the token, the catalogue refuses and idpa says so')}`)
+console.log(`\n${bold('4. A team, read from the same catalogue')}`)
+{
+  // The same documents as files: the demo SI and org.yaml, in a folder of its own.
+  const files = path.join(scratch, 'si-demo-with-org')
+  cpSync(path.join(ROOT, 'fixtures/si-demo'), files, { recursive: true })
+  mkdirSync(path.join(files, 'org'), { recursive: true })
+  cpSync(path.join(ROOT, 'tools/backstage/org.yaml'), path.join(files, 'org/org.yaml'))
+  console.log(`$ env -u IDP_REPO IDP_BACKSTAGE_URL=${BASE} IDP_BACKSTAGE_TOKEN=${TOKEN} idpa show tiger`)
+  const run = idpa(['show', 'tiger'], { IDP_BACKSTAGE_URL: BASE, IDP_BACKSTAGE_TOKEN: TOKEN })
+  process.stdout.write(run.stderr)
+  process.stdout.write(run.stdout)
+  const asFiles = idpa(['show', 'tiger', '--repo', files], {})
+  console.log(`(exit ${run.status}; this step expects 0)`)
+  if (run.status !== 0) failed = true
+  if (run.stdout === asFiles.stdout) console.log('stdout is what the same files print, byte for byte')
+  else {
+    console.log('stdout is not what the same files print')
+    failed = true
+  }
+}
+
+console.log(`\n${bold('5. Without the token, the catalogue refuses and idpa says so')}`)
 const bare = await get('entities/by-query', 'limit=1', false)
 console.log(`GET ${BASE}/entities/by-query with no token: ${bare.status}`)
 if (bare.status !== 401) failed = true
@@ -197,7 +244,7 @@ process.stdout.write(refused.stderr)
 console.log(`(exit ${refused.status}; stdout ${refused.stdout === '' ? 'empty' : 'NOT empty'})`)
 if (refused.status !== 1 || refused.stdout !== '' || !refused.stderr.includes('(401)')) failed = true
 
-console.log(`\n${bold('5. The token reads, and nothing else')}`)
+console.log(`\n${bold('6. The token reads, and nothing else')}`)
 const refresh = await fetch(`${BASE}/refresh`, {
   method: 'POST',
   headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
@@ -217,6 +264,22 @@ if (record) {
   if (page.status !== 200) fail(`the modelled read answered ${page.status}; the contract fixture was not rewritten`)
   writeFileSync(FIXTURE, `${JSON.stringify(JSON.parse(page.body), null, 2)}\n`)
   console.log(`\nrecorded ${path.relative(ROOT, FIXTURE)}: GET ${BASE}/entities/by-query?${MODELLED_QUERY}`)
+  const organisation = await get('entities/by-query', ORGANISATION_QUERY)
+  if (organisation.status !== 200) fail(`the organisation read answered ${organisation.status}; its fixture was not rewritten`)
+  const served = JSON.parse(organisation.body)
+  // The fixture is the proof that Backstage honours `fields`: a page that
+  // carries what was not asked for proves the opposite, and is not written.
+  const overserved = (served.items ?? []).filter(
+    (item) => item?.spec?.profile !== undefined || item?.metadata?.annotations !== undefined,
+  )
+  if (overserved.length > 0) {
+    fail(
+      `the organisation read served ${overserved.length} items with a profile or annotations it did not ask for: ` +
+        'the catalogue did not honour `fields`; its fixture was not rewritten',
+    )
+  }
+  writeFileSync(ORGANISATION_FIXTURE, `${JSON.stringify(served, null, 2)}\n`)
+  console.log(`recorded ${path.relative(ROOT, ORGANISATION_FIXTURE)}: GET ${BASE}/entities/by-query?${ORGANISATION_QUERY}`)
 }
 console.log(`\n${bold('Done.')} No model was called and no key was read.`)
 if (keep) {

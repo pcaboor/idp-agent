@@ -219,8 +219,10 @@ describe('graph and show with --repo', () => {
 
       expect(code).toBe(0)
       expect(out).toContain('billing-db-prod')
+      // The Groups and the User are read (backstage-http slice 3): what is
+      // still not loaded is the mkdocs.yml.
       expect(err.split('\n').filter((line) => line.startsWith('not loaded:'))).toEqual([
-        'not loaded: 4 documents this tool does not model (Group ×2, User ×1, not an entity ×1)',
+        'not loaded: 1 document this tool does not model (not an entity ×1)',
       ])
       // Set aside, not refused: nothing about them reads as a failure.
       expect(err).not.toMatch(/skipped/)
@@ -258,8 +260,9 @@ describe('graph and show with --repo', () => {
 
       const { code, err } = await run(['graph', '--repo', 'iac'], { cwd })
 
+      // The Group is read now, and a repository of Groups is still a catalogue.
       expect(code).toBe(1)
-      expect(err).toContain('not loaded: 1 document this tool does not model (Group ×1)')
+      expect(err).not.toMatch(/not loaded/)
       expect(err).not.toMatch(/declares no entity/)
     })
 

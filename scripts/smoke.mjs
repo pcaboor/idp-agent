@@ -515,9 +515,10 @@ check({
 })
 
 // A declarations repository that is also the company's Backstage catalogue: a
-// Group beside the entities is set aside with a warning, never refused — the
-// generated CI runs exactly this, and a red build here would push people to
-// move their Groups out.
+// Group beside the entities is read and counted, and one Backstage would
+// refuse is set aside with a warning, never refused — the generated CI runs
+// exactly this, and a red build here would push people to move their Groups
+// out.
 const CATALOGUE = path.join(ELSEWHERE, 'catalogue')
 cpSync(path.join(ROOT, 'fixtures/si-demo'), CATALOGUE, { recursive: true })
 mkdirSync(path.join(CATALOGUE, 'org'), { recursive: true })
@@ -528,7 +529,17 @@ writeFileSync(
 check({
   args: ['validate', 'catalogue'],
   code: 0,
-  stdout: /^warning org\/tiger\.yml: kind Group is not modelled[\s\S]*33 entities in 34 files, 0 violations/m,
+  stdout: /^34 entities in 34 files, 0 violations$/m,
+})
+writeFileSync(
+  path.join(CATALOGUE, 'org/lonely.yml'),
+  '---\napiVersion: backstage.io/v1alpha1\nkind: Group\nmetadata:\n  name: lonely\nspec:\n  type: team\n',
+)
+check({
+  args: ['validate', 'catalogue'],
+  code: 0,
+  stdout:
+    /^warning org\/lonely\.yml: Group lonely is not read: spec\.children: required, which Backstage requires\n\n34 entities in 35 files, 0 violations$/m,
 })
 
 // `pnpm demo`, the tour the README points a newcomer at: run to the end with
@@ -598,7 +609,7 @@ check({
     }
     for (const shown of [
       /^\$ env -u IDP_BACKSTAGE_TOKEN IDP_BACKSTAGE_URL=http:\/\/127\.0\.0\.1:\d+\/api\/catalog node dist\/cli\/bin\.js relations mysql-prod-01 --impacts$/m,
-      /^reading the Backstage catalogue at 127\.0\.0\.1:\d+ \(IDP_BACKSTAGE_URL\): 36 entities: 33 read, 3 not modelled;/m,
+      /^reading the Backstage catalogue at 127\.0\.0\.1:\d+ \(IDP_BACKSTAGE_URL\): 40 entities: 40 read, 0 not modelled;/m,
       /^impacts \(9\)$/m,
       /^component:default\/billing-api$/m,
       /^\+\+\+ b\/dependencies\/network\/orders-api-to-payments\.yml$/m,

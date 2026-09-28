@@ -13,7 +13,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 3554, no API key" src="https://img.shields.io/badge/tests-3554%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 3621, no API key" src="https://img.shields.io/badge/tests-3621%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -452,7 +452,7 @@ backstage: https://backstage.acme.example/api/catalog
 ```console
 $ export IDP_BACKSTAGE_TOKEN=…     # from the environment only: no file and no flag holds it
 $ idpa relations mysql-prod-01 --impacts
-reading the Backstage catalogue at backstage.acme.example (~/.config/idp-agent/config.yml): 36 entities: 33 read, 3 not modelled; it may lag the declarations repository by minutes; --repo <directory> reads a repository
+reading the Backstage catalogue at backstage.acme.example (~/.config/idp-agent/config.yml): 40 entities: 40 read, 0 not modelled; it may lag the declarations repository by minutes; --repo <directory> reads a repository
 ```
 
 For a read, `IDP_BACKSTAGE_URL` beats `IDP_REPO` and the file's `backstage` beats its `repo`,
@@ -474,11 +474,18 @@ catalogue on every run; there is no other notice. The Supervisor and the Analyst
 at most 30 values of each vocabulary list, the most frequent, so a catalogue of 300 teams
 does not put 300 owners in every prompt.
 
+Its Groups, Users, Systems and Domains are read too, as the organisation beside the entities,
+for their names, types and memberships and nothing else — never a profile, never an
+annotation: `idpa show tiger` prints a team, what it owns and who is in it, and an owner
+naming no Group the catalogue serves is marked `declared nowhere in the catalogue this token
+reads`. None of them is ever proposed, and a change is decided as before.
+
 What the catalogue cannot report: an entity Backstage refused never reaches its API, and a
 duplicate is resolved "first location wins" in silence. A catalogue read reports only what
 this tool's reader refuses; `validate` in the declarations repository reports the rest.
 
-No Backstage to hand? A fake one serves the demo SI, with three Groups, on loopback — Node
+No Backstage to hand? A fake one serves the demo SI, with the demo's organisation
+([`tools/backstage/org.yaml`](tools/backstage/org.yaml)), on loopback — Node
 22.18 or later, which runs its TypeScript as it is:
 
 ```console
@@ -490,8 +497,7 @@ and in another:
 
 ```console
 $ env -u IDP_BACKSTAGE_TOKEN IDP_BACKSTAGE_URL=http://127.0.0.1:7007/api/catalog node dist/cli/bin.js relations mysql-prod-01 --impacts
-reading the Backstage catalogue at 127.0.0.1:7007 (IDP_BACKSTAGE_URL): 36 entities: 33 read, 3 not modelled; it may lag the declarations repository by minutes; --repo <directory> reads a repository
-not loaded: 3 documents this tool does not model (Group ×3)
+reading the Backstage catalogue at 127.0.0.1:7007 (IDP_BACKSTAGE_URL): 40 entities: 40 read, 0 not modelled; it may lag the declarations repository by minutes; --repo <directory> reads a repository
 resource:default/mysql-prod-01
 
 impacts (9)
@@ -521,8 +527,8 @@ repository:
 
 ```console
 $ env -u IDP_REPO IDP_BACKSTAGE_URL=http://127.0.0.1:7007/api/catalog IDP_BACKSTAGE_TOKEN=idpa-demo-read-only-token idpa relations mysql-prod-01 --impacts
-reading the Backstage catalogue at 127.0.0.1:7007 (IDP_BACKSTAGE_URL): 40 entities: 33 read, 7 not modelled; it may lag the declarations repository by minutes; --repo <directory> reads a repository
-not loaded: 7 documents this tool does not model (Group ×4, Location ×3)
+reading the Backstage catalogue at 127.0.0.1:7007 (IDP_BACKSTAGE_URL): 43 entities: 40 read, 3 not modelled; it may lag the declarations repository by minutes; --repo <directory> reads a repository
+not loaded: 3 documents this tool does not model (Location ×3)
 resource:default/mysql-prod-01
 
 impacts (9)

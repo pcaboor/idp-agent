@@ -75,6 +75,14 @@ Each pull request adds its line here.
   now verified on a running Backstage, and `tests/contract/backstage/by-query-1.55.2.json`,
   a page recorded from it, is read offline as the fake's page is
   ([#98](https://github.com/pcaboor/idp-agent/pull/98)).
+- Groups, Users, Systems and Domains are read, from a declarations repository's files and
+  from a Backstage catalogue alike, as read-only nodes beside the entities: `show` prints a
+  team, a person, a system and a domain, the overview counts them, and against a catalogue
+  an owner or a system naming nothing it serves is shown as declared nowhere. A catalogue
+  is asked for the fields the read model reads of them, never for a profile or an
+  annotation; none of them is ever proposed, one Backstage would refuse is set aside with a
+  warning rather than refused, and a plan is decided as before
+  ([#99](https://github.com/pcaboor/idp-agent/pull/99)).
 
 ### Changed
 

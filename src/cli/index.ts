@@ -1303,6 +1303,9 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     return failed(error, err)
   }
   const { entities, rejected, ignored, unread } = loaded
+  // Read beside the entities, and counted as read: a Group is no longer a
+  // document this tool does not model.
+  const organisation = loaded.organisation ?? []
   // The set-asides of a catalogue read's pre-pass are counted under their own
   // term, never among the kinds not modelled, so nothing is counted twice.
   const notModelled = ignored.filter(({ prePass }) => prePass === undefined)
@@ -1314,7 +1317,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   const notice = sourceNotice(name, source, context, {
     counts: {
       ...(loaded.census === undefined ? {} : { census: loaded.census }),
-      entities: entities.length,
+      entities: entities.length + organisation.length,
       notModelled: notModelled.length,
       setAside,
       skipped: rejected.length,
@@ -1351,9 +1354,10 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   // that did not parse, the `skipped` lines above say which, and blaming the
   // flag would send the user to look for another repository. Nor when a
   // document with a kind was set aside: a repository of Groups and Users is a
-  // catalogue, only not of anything this tool models. A mkdocs.yml alone is
-  // what an application repository looks like, so that still gets the line.
-  const catalogue = ignored.some((document) => document.kind !== undefined)
+  // catalogue, only not of anything this tool models — and so is one whose
+  // Groups and Users are read. A mkdocs.yml alone is what an application
+  // repository looks like, so that still gets the line.
+  const catalogue = organisation.length > 0 || ignored.some((document) => document.kind !== undefined)
   // Only for a repository something named — `--repo`, IDP_REPO, the personal
   // file — and naming that something, which is what the user goes and fixes.
   // A working directory is read because its witnesses say it is a declarations
@@ -1369,9 +1373,13 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     )
   }
 
+  // The organisation beside the entities, and never among them: every table,
+  // summary and tool row built from `all()` is what it was. Its references
+  // are judged only where a catalogue read their kind whole.
   const graph = EntityGraph.from(
     entities,
     ignored.flatMap(({ ref }) => (ref === undefined ? [] : [ref])),
+    { nodes: organisation, judged: new Set(loaded.judged ?? []) },
   )
   // A catalogue serves only what its token may read, so a reference it does
   // not serve may be declared all the same; a repository's is declared
@@ -1585,12 +1593,14 @@ const tokenOf = (context: SourceContext): string | undefined => {
  */
 function sourceAttributes(source: BackstageSource, loaded: LoadResult): Attributes {
   const url = new URL(source.url)
-  const served = loaded.census?.served ?? loaded.entities.length + loaded.ignored.length + loaded.rejected.length
+  // An organisation node is read, not set aside.
+  const read = loaded.entities.length + (loaded.organisation?.length ?? 0)
+  const served = loaded.census?.served ?? read + loaded.ignored.length + loaded.rejected.length
   return {
     'idp.source.kind': 'backstage',
     'idp.source.origin': `${url.protocol}//${url.host}${url.pathname}`,
     'idp.source.entities': served,
-    'idp.source.set_aside': served - loaded.entities.length,
+    'idp.source.set_aside': served - read,
     'idp.source.pages': loaded.census?.pages ?? 0,
     'idp.source.bytes': loaded.census?.bytes ?? 0,
     'idp.source.ms': loaded.census?.ms ?? 0,

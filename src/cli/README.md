@@ -50,7 +50,13 @@ proposed (design §4.1) — and an API's row has `API` in its KIND column. `show
 API as it resolves any entity, through `resolveEntity`: a full reference, then the one entity
 carrying exactly that name. A name two entities carry — an API and the Resource the demo
 convention models one as may share one — resolves to neither: it is refused on exit 1, with
-those entities alone listed by reference, for the reader to choose.
+those entities alone listed by reference, for the reader to choose. `show` resolves through
+`resolveNode`, which puts the organisation after the entities: a reference to an entity, then
+to an organisation node, then the entities of that name, and only when no entity carries it,
+the organisation's; a Group named after its service never makes an entity ambiguous.
+A Group, a User, a System or a Domain prints `render/organisation.ts`'s card, laid out as an
+entity's, each list cut at 25 rows and the rest counted; an entity's `owner` and `system`
+lines carry `nowhere`'s mark only where a catalogue read that kind whole.
 
 `runRelations(graph, options)` (`commands/relations.ts`) is `idpa relations`: keyless, and
 a read command like `show`, whose resolution it shares — `show.ts`'s `resolveEntity`, so a
@@ -131,7 +137,8 @@ at five with the remainder counted (`tests/unit/render-overview.test.ts`). Among
 systems, tags, and up to five entities with their description on one line each — what the
 catalogue contains in the words its repository wrote. An `apis` section — how many, and
 how many a service provides — appears only where the repository declares one, and an API a
-right reaches is counted among the most reached objects. `runAsk` gets the
+right reaches is counted among the most reached objects; one `organisation` line, the Groups,
+Users, Systems and Domains read, only where there are any. `runAsk` gets the
 source and what the reader set aside and rejected from `main`, which already has them.
 `setAsideLine(ignored)` and `skippedLines(rejected)` (`render/catalogue-read.ts`) are what a
 catalogue read says on stderr beside `not loaded:`, after the notice: what the pre-pass
@@ -259,7 +266,7 @@ a control character, by its length alone, since it may be the token — never wh
 header cannot carry (`headerCarries`, the transport's own rule), quoting none of it; its
 value is otherwise read in `providerOf` alone and handed to `BackstageProvider` with
 `MainDeps.catalogueFetch` (the global `fetch` in a real run). The notice follows the load and counts what was
-served — `N entities: M read, K not modelled`, then set aside and skipped when there are
+served — `N entities: M read, K not modelled`, the organisation among what was read, then set aside and skipped when there are
 any — then `not loaded:` for the kinds not modelled, `setAsideLine` and `skippedLines`. A
 read that fails is `catalogueFailureLine`, one line naming the host and what named it, exit
 1, never a fall back. A reference the catalogue does not serve reads "declared nowhere in

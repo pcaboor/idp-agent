@@ -14,6 +14,7 @@ const EMPTY: Overview = {
   described: [],
   rights: { total: 0, read: 0, readwrite: 0, undeclared: 0, unlevelled: 0 },
   apis: { total: 0, provided: 0 },
+  organisation: { groups: 0, users: 0, systems: 0, domains: 0 },
   reached: [],
   dangling: [],
   setAside: { total: 0, kinds: [], unkinded: 0, catalogueRead: 0 },

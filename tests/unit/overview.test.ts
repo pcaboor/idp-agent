@@ -206,6 +206,7 @@ describe('overviewOf at the edges', () => {
       described: [],
       rights: { total: 0, read: 0, readwrite: 0, undeclared: 0, unlevelled: 0 },
       apis: { total: 0, provided: 0 },
+      organisation: { groups: 0, users: 0, systems: 0, domains: 0 },
       reached: [],
       dangling: [],
       setAside: { total: 0, kinds: [], unkinded: 0, catalogueRead: 0 },
@@ -265,6 +266,31 @@ describe('overviewOf at the edges', () => {
       undeclared: 1,
       unlevelled: 0,
     })
+  })
+
+  it('counts the organisation read by kind, apart from the entities and from what was set aside', () => {
+    const group = (name: string) => ({
+      apiVersion: 'backstage.io/v1alpha1' as const,
+      kind: 'Group' as const,
+      metadata: { name },
+      spec: { type: 'team', children: [] },
+    })
+    const graph = EntityGraph.from([], [], {
+      nodes: [
+        group('a'),
+        group('b'),
+        group('a'),
+        { apiVersion: 'backstage.io/v1alpha1', kind: 'User', metadata: { name: 'c' }, spec: { memberOf: [] } },
+        { apiVersion: 'backstage.io/v1alpha1', kind: 'Domain', metadata: { name: 'd' }, spec: { owner: 'group:default/a' } },
+      ],
+      judged: new Set(),
+    })
+    const overview = overviewOf(graph, { ignored: [], rejected: 0 })
+    // Each node once: the second `a` is the catalogue's to settle, as a duplicate entity is.
+    expect(overview.organisation).toEqual({ groups: 2, users: 1, systems: 0, domains: 1 })
+    expect(overview.entities).toBe(0)
+    expect(overview.kinds).toEqual([])
+    expect(overview.setAside.total).toBe(0)
   })
 
   it('says what was set aside, by kind, and how much was rejected', () => {

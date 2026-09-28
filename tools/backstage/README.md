@@ -20,7 +20,7 @@ Open `http://127.0.0.1:7007`, choose **Enter** as a guest, and the catalogue is 
 page: five Components, and under the Resource kind every database, cache, API and right of
 the demo SI. An entity's page draws its relations — `billing-db-prod` depends on
 `mysql-prod-01` and the two rights over it depend on it — and a team's page lists what it
-owns.
+owns, which `idpa show tiger` prints too, read from the same catalogue.
 
 ## What is here
 
@@ -31,7 +31,7 @@ owns.
 | `app/` | the Backstage app: a frontend and a backend package, their manifests and the lockfile |
 | `app-config.yaml` | the whole configuration; its registration and token are the adopting page's |
 | `registration/catalog-info.yaml` | the Location `init platform` writes, for a directory named `si-demo` |
-| `org.yaml` | the four teams the demo SI names as owners |
+| `org.yaml` | the demo's organisation: the four teams the demo SI names as owners, their department and two people |
 
 ## The choices, and why
 
@@ -86,9 +86,14 @@ the rules of its **origin** location (`DefaultCatalogProcessingOrchestrator`,
 `CatalogRules.ts` in `plugin-catalog-backend` 4.0.0), which for everything the Location's
 targets bring in is this entry: the 28 Resources are admitted, and the page is right.
 
-**The teams as organisation data of their own.** A company's Groups come from its
+**The organisation as data of its own.** A company's Groups and Users come from its
 organisation, never from the declarations repository, so `org.yaml` is a second location,
-allowed `Group` and nothing else. `idpa` counts them as not modelled.
+allowed `Group` and `User` and nothing else: the department `engineering`, the four teams the
+demo SI names as owners (its children), and two people, `ada` in tiger and `linus` in common.
+`idpa` reads them as the organisation (backstage-http slice 3) for their names, types and
+memberships, and asks the catalogue for nothing else: ada's email annotation and profile are
+ingested by Backstage and never requested. The fake (`tools/fake-backstage.ts`) serves the same
+file, so the two hold one organisation, and every owner of the demo SI names a team it holds.
 
 **The read token, the adopting page's.** `backend.auth.externalAccess` is the page's block, a
 static token restricted to `catalog.entity.read`. Its value is `IDPA_CATALOG_TOKEN`, whose
@@ -130,8 +135,9 @@ none of it reached an answer:
   fake sets both to the file's `url:`. The provider orders by the first, and the paths sort as
   the fixture's files do; it does not read the second.
 - **Three Locations.** The registration, and one `generated-…` Location per
-  `catalog.locations` entry. They and the four Groups are read as references and counted:
-  `40 entities: 33 read, 7 not modelled`.
+  `catalog.locations` entry. They are read as references and counted, and the five Groups and
+  two Users are read: `43 entities: 40 read, 3 not modelled`, and `not loaded: 3 documents this
+  tool does not model (Location ×3)`, where the fake serves no Location.
 - **What a refused read says.** A missing token is `AuthenticationError`, "Missing
   credentials"; the provider quotes no body, so its line is the fake's.
 

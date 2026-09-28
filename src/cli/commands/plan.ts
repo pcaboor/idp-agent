@@ -209,14 +209,19 @@ interface Contexts {
 const graphOf = (snapshot: RepositorySnapshot): EntityGraph =>
   EntityGraph.from(
     snapshot.files.flatMap((file) => file.entities.map(unprovided)),
-    // A document set aside — a Group, a System — still exists, so a reference
-    // to it resolves. Left out, the summary the agents read counted it
-    // dangling where `validate` does not. A Backstage API is put there too,
-    // and not among the nodes: a change is decided against the write model,
-    // which proposes neither an API nor what provides one (design 4.1).
+    // A document set aside — a Location, a Group Backstage would refuse —
+    // still exists, so a reference to it resolves. Left out, the summary the
+    // agents read counted it dangling where `validate` does not. A Backstage
+    // API is put there too, and not among the nodes: a change is decided
+    // against the write model, which proposes neither an API nor what
+    // provides one (design 4.1). So is the organisation read — a Group, a
+    // User, a System, a Domain — exactly as it was when it was set aside: a
+    // reference that resolves, never a node, so nothing read from one reaches
+    // the summary, the vocabulary, the owners or a gate.
     snapshot.files.flatMap((file) => [
       ...file.ignored.flatMap(({ ref }) => (ref === undefined ? [] : [ref])),
       ...file.apis.map(refOf),
+      ...(file.organisation ?? []).map(refOf),
     ]),
   )
 

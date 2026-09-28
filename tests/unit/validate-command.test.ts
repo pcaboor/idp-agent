@@ -77,13 +77,10 @@ describe('validate', () => {
 
     expect(code).toBe(0)
     const warnings = out.split('\n').filter((line) => line.startsWith('warning'))
-    expect(warnings).toEqual([
-      'warning mkdocs.yml: not a catalogue entity: no apiVersion or kind',
-      'warning org/tiger.yml: kind Group is not modelled by this tool; group tiger left as is',
-    ])
+    // The Group is read now (backstage-http slice 3): no warning, and counted.
+    expect(warnings).toEqual(['warning mkdocs.yml: not a catalogue entity: no apiVersion or kind'])
     expect(out).not.toMatch(/^error/m)
-    // Still 33: a Group is not an entity this tool counts. The files are.
-    expect(out).toMatch(/33 entities in 35 files, 0 violations/)
+    expect(out).toMatch(/34 entities in 35 files, 0 violations/)
   })
 
   it('refuses a duplicate and names both files', async () => {

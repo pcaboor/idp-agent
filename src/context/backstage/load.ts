@@ -1,7 +1,13 @@
 import { z } from 'zod'
+import { ORGANISATION_KINDS, type OrganisationKind } from '../../core/schemas/entity.js'
 import type { Census } from '../provider.js'
 import { BACKSTAGE_LIMITS, type BackstageLimits } from './limits.js'
-import { CatalogueReadError, type CatalogueFailure, type CatalogueTransport } from './transport.js'
+import {
+  CatalogueReadError,
+  type CatalogueFailure,
+  type CatalogueTransport,
+  type ReadScope,
+} from './transport.js'
 
 /**
  * The load (docs/backstage-http-brief.md § 6): a whole catalogue, or a
@@ -13,9 +19,11 @@ import { CatalogueReadError, type CatalogueFailure, type CatalogueTransport } fr
  *      the filter grammar, and a filter is never built from other text.
  *   2. Components, Resources and APIs are read whole, **always** — a facets
  *      answer that omitted one would otherwise leave an empty graph that is
- *      answered from. Every other kind the facets name is read as refs
- *      (`fields`): Users are most of a company catalogue, and reading them
- *      whole would spend the byte bounds on what this tool never reads.
+ *      answered from. Groups, Users, Systems and Domains, those the facets
+ *      name, are read for the fields the read model reads of them and
+ *      nothing else (`ORGANISATION_FIELDS`), and only when the facets name
+ *      one: a catalogue with none is sent the requests it always was. Every
+ *      other kind the facets name is read as refs (`fields`).
  *   3. Pages follow `pageInfo.nextCursor`. Backstage's cursor carries the
  *      filter, the order and `totalItems`, and reads `limit` and `fields`
  *      from each request (`parseQueryEntitiesParams.ts`, `createRouter.ts`),
@@ -26,23 +34,31 @@ import { CatalogueReadError, type CatalogueFailure, type CatalogueTransport } fr
  *      counted and is refused, and a kind its read's filters named, or the
  *      server ignored `filter` and is refused: a whole entity served in the
  *      refs read would pass the modelled ceiling. A uid seen before, in
- *      either read, is kept once and counted, so `census.served` is the
- *      distinct uids of both reads. At the end of a read, fewer distinct
+ *      any read, is kept once and counted, so `census.served` is the
+ *      distinct uids of every read. At the end of a read, fewer distinct
  *      uids than the first page's `totalItems` is refused, repeats or not:
  *      Backstage pages by keyset on
  *      `entity_id`, which an update does not change, so a legitimate read
  *      never repeats one, and a read that repeats one and misses another
  *      would otherwise pass (the plan's Choices; it amends the note's table).
- *      The two ceilings are checked as items arrive, and against
+ *      Each read's ceiling is checked as items arrive, and against
  *      `totalItems` on a read's first page.
  *   5. The load's own time is the transport's: `BackstageProvider` hands it
  *      one `AbortSignal.timeout(loadMs)`.
  */
 
-/** What a catalogue served: the modelled kinds whole, the others as refs, and what it cost. */
+/** What a catalogue served: the modelled kinds whole, the organisation, the others as refs, and what it cost. */
 export interface Served {
   readonly whole: unknown[]
+  /** Groups, Users, Systems and Domains, for the fields the read model reads. */
+  readonly organisation: unknown[]
   readonly refs: unknown[]
+  /**
+   * The organisation kinds the facets named, as `ORGANISATION_KINDS` spells
+   * them: each was read to the end, or the load failed. What a reference to
+   * one of them is judged against (`EntityGraph`), and nothing else is.
+   */
+  readonly judged: OrganisationKind[]
   readonly census: Census
 }
 
@@ -51,6 +67,23 @@ const KIND = /^[A-Za-z][A-Za-z0-9]*$/
 
 /** The kinds read whole: the two this tool models, and the API it reads. */
 const MODELLED = ['component', 'resource', 'api'] as const
+
+/** The organisation, by the lower-case kind a filter names. */
+const ORGANISATION: ReadonlyMap<string, OrganisationKind> = new Map(
+  ORGANISATION_KINDS.map((kind) => [kind.toLowerCase(), kind]),
+)
+
+/**
+ * What the organisation read asks for: the fields the read model reads of the
+ * four kinds, and nothing else — no annotation (an organisation provider puts
+ * a person's email and directory id there), no title, no `spec.profile` (a
+ * picture can be a data URI of any size). A server that ignores `fields` sends
+ * the rest, which the reader drops and names as not read, as a file's — but
+ * for a User's or a Group's profile, which the pre-pass drops first.
+ */
+const ORGANISATION_FIELDS =
+  'apiVersion,kind,metadata.name,metadata.namespace,metadata.uid,' +
+  'spec.type,spec.parent,spec.children,spec.members,spec.memberOf,spec.owner,spec.domain,spec.subdomainOf'
 
 /** What a refs read asks for: enough for `readValue` to name the document it sets aside, and the uid it is counted by. */
 const REFS_FIELDS = 'kind,metadata.namespace,metadata.name,metadata.uid'
@@ -86,7 +119,7 @@ export async function loadCatalogue(transport: CatalogueTransport, limits: Parti
   const started = performance.now()
   let pages = 0
   let repeated = 0
-  // Every uid kept, across both reads: an item is kept once, whichever read served it again.
+  // Every uid kept, across every read: an item is kept once, whichever read served it again.
   const kept = new Set<string>()
 
   const facets = facetsSchema.safeParse(
@@ -98,9 +131,12 @@ export async function loadCatalogue(transport: CatalogueTransport, limits: Parti
   const others = [...new Set(kinds.map((kind) => kind.toLowerCase()))]
     .filter((kind) => !(MODELLED as readonly string[]).includes(kind))
     .sort()
+  // In ORGANISATION_KINDS' order, so a filter's order never moves with the facets'.
+  const organisation = [...ORGANISATION.keys()].filter((kind) => others.includes(kind))
+  const rest = others.filter((kind) => !ORGANISATION.has(kind))
 
   /** Every item of one read, each uid once, or the failure that ends the load. */
-  async function read(filters: readonly string[], fields: string | undefined, ceiling: number, scope: 'modelled' | 'refs'): Promise<unknown[]> {
+  async function read(filters: readonly string[], fields: string | undefined, ceiling: number, scope: ReadScope): Promise<unknown[]> {
     const pageQuery = (first: URLSearchParams): URLSearchParams => {
       if (fields !== undefined) first.append('fields', fields)
       first.append('limit', String(bounds.pageSize))
@@ -148,11 +184,17 @@ export async function loadCatalogue(transport: CatalogueTransport, limits: Parti
   }
 
   const whole = await read(MODELLED, undefined, bounds.modelledEntities, 'modelled')
-  const refs = others.length === 0 ? [] : await read(others, REFS_FIELDS, bounds.otherRefs, 'refs')
+  const organised =
+    organisation.length === 0
+      ? []
+      : await read(organisation, ORGANISATION_FIELDS, bounds.organisationEntities, 'organisation')
+  const refs = rest.length === 0 ? [] : await read(rest, REFS_FIELDS, bounds.otherRefs, 'refs')
   const { bytes } = transport.spent
   return {
     whole,
+    organisation: organised,
     refs,
+    judged: organisation.flatMap((kind) => ORGANISATION.get(kind) ?? []),
     census: { served: kept.size, pages, bytes, ms: Math.round(performance.now() - started), repeated },
   }
 }

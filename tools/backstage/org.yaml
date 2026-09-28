@@ -1,7 +1,23 @@
-# The four teams the demo SI names as owners. A company's Groups come from its
-# own organisation data, never from the declarations repository, so they are a
-# location of their own in app-config.yaml, allowed Group and nothing else.
-# Not read by idpa: Groups are counted as not modelled (backstage-http slice 3).
+# The demo's organisation: the department and the four teams the demo SI names
+# as owners, and two people. A company's Groups and Users come from its own
+# organisation data, never from the declarations repository, so they are a
+# location of their own in app-config.yaml, allowed Group and User and nothing
+# else. The fake (tools/fake-backstage.ts) serves these same documents, so the
+# fake and the Docker Backstage hold one organisation.
+#
+# idpa reads each for what the read model reads — a name, a type, the
+# memberships — and asks the catalogue for nothing else: ada's email
+# annotation and profile are ingested by Backstage and never requested
+# (backstage-http slice 3). No System and no Domain: billing-api declares no
+# spec.system in the demo SI, so a System here would contain nothing.
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: engineering
+spec:
+  type: department
+  children: [common, dodowarriors, elephant, tiger]
+---
 apiVersion: backstage.io/v1alpha1
 kind: Group
 metadata:
@@ -33,3 +49,23 @@ metadata:
 spec:
   type: team
   children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: ada
+  annotations:
+    microsoft.com/email: ada@acme.example
+spec:
+  profile:
+    displayName: Ada
+    email: ada@acme.example
+    picture: 'data:image/png;base64,iVBORw0KGgo='
+  memberOf: [tiger]
+---
+apiVersion: backstage.io/v1alpha1
+kind: User
+metadata:
+  name: linus
+spec:
+  memberOf: [common]

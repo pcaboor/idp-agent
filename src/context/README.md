@@ -24,9 +24,13 @@ this tool writes and the Backstage APIs it only reads, each file's APIs after it
 or anything that looks like a failed entity — or the parser faulted (a duplicate key or an
 unclosed bracket, with its line and column; an alias bomb, which the parser stops on without a
 position) — and with `ignored`, the same `source` and `reason` plus the `kind` and the reference,
-for every document this tool does not model: a Group, a System, a `mkdocs.yml` beside the
-entities. Those are part of a real catalogue, so they are set aside rather than refused, `main`
-counts them in one line, and a reference to one is not called dangling.
+for every document this tool does not model: a Location, a Group Backstage would refuse, a
+`mkdocs.yml` beside the entities. Those are part of a real catalogue, so they are set aside
+rather than refused, `main` counts them in one line, and a reference to one is not called
+dangling. `organisation`, absent when there is none, is the Groups, Users, Systems and Domains
+read — beside the entities, never among them — and `judged`, which only `BackstageProvider`
+sets, the organisation kinds a catalogue read whole: a reference to one of them is judged
+against what was read, and a folder's Group files are never the whole organisation.
 Both readers go through `core/`'s `parseDocuments`, the one reader of entity documents
 (`readDocuments` for the YAML, then `readValue` for each value, the half a catalogue's items
 will meet too), and `iac-fs` also rejects a file it cannot open — no permission, a link to
@@ -70,9 +74,15 @@ and the Analyst's summary is handed the counts, and past 30 values a list shows 
 frequent and how many more (`shownVocabulary` in `agents/summary.ts`), since a company
 catalogue's owners are unbounded; the Architect's is handed none, and shows every value.
 
-`EntityGraph.from(entities)` indexes them by `refOf(entity)` (`kind:default/name`) and answers
-read-only questions: `get`, `search` over `SearchCriteria` (env read from `ENV_ANNOTATION`), and
-three dependency queries. An edge counts whichever side declared it — `spec.dependsOn` on the
+`EntityGraph.from(entities, aside, organisation)` indexes them by `refOf(entity)`
+(`kind:default/name`) and answers read-only questions: `get`, `search` over `SearchCriteria`
+(env read from `ENV_ANNOTATION`), and three dependency queries. The organisation is an index
+of its own beside them — never in `all()`, `get()` or `search()`, so nothing built from those
+sees a Group — which `node()` and `nodes()` read with the entities, and `ownedBy`,
+`membersOf`, `groupsOf`, `childrenOf`, `parentsOf`, `partsOf` and `wholeOf` answer, each
+membership read from both ends. Its references naming nothing are a list of their own,
+`unresolvedOrganisationOf(ref, field)`, and only for the kinds `OrganisationRead.judged` names:
+`danglingReferences()` and `unresolvedOf` are the write model's three fields, unchanged. An edge counts whichever side declared it — `spec.dependsOn` on the
 consumer, or `spec.dependencyOf` on a Resource — so `dependenciesOf(a)` contains `b` exactly when
 `dependantsOf(b)` contains `a`: exact transposes, held by a test. Both are one declared hop over
 present entities only, and `dependenciesOf` returns own declarations in file order, then derived
@@ -172,16 +182,19 @@ origin alone: no body, header, cause or token.
 throws a `CatalogueReadError`: nothing partial. `backstage/load.ts`'s `loadCatalogue` asks
 `entity-facets?facet=kind` once — a kind the kind grammar refuses ends the load, since a
 filter is never built from other text — then reads Components, Resources and APIs whole,
-always, and every other kind the facets name as refs (`fields`). Each next page sends the
+always; then Groups, Users, Systems and Domains, those the facets name and only when they name
+one, for the fields the read model reads of them and nothing else (`ORGANISATION_FIELDS`: no
+annotation, no title, no profile), under a ceiling of their own (`organisationEntities`); and
+every other kind the facets name as refs (`fields`). Each next page sends the
 cursor, the same `limit` and `fields`, and never `filter`, as Backstage's own client does;
 a cursor seen twice, an item with no string `metadata.uid`, an item of a kind its read's
 filters did not name (a server that ignores `filter` would pass whole entities off as refs),
 a page that is not the envelope,
 fewer distinct uids than the first page's `totalItems` (repeats or not: Backstage pages by a
 key an update does not change) and either ceiling of `limits.ts` each end the load, with
-their `CatalogueFailure`. A uid served twice, in one read or across both, is kept once and
-counted in `LoadResult.census`, whose `served` is the distinct uids of both reads, beside
-the pages, bytes and time. `backstage/translate.ts`'s `prePass`
+their `CatalogueFailure`. A uid served twice, in one read or across two, is kept once and
+counted in `LoadResult.census`, whose `served` is the distinct uids of every read, beside
+the pages, bytes and time. The organisation kinds the facets named are `judged`. `backstage/translate.ts`'s `prePass`
 then takes off what the catalogue added (`relations`, `status`, `metadata.uid`,
 `metadata.etag`) and sets aside what it accepted and this tool does not model — a
 Component or Resource whose namespace is anything but `default` exactly (`DEFAULT`, or a

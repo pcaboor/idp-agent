@@ -76,6 +76,30 @@ describe('catalogueOf', () => {
   })
 })
 
+describe('the demo organisation', () => {
+  it('serves tools/backstage/org.yaml beside the folder, located at org/org.yaml, with stable uids', () => {
+    const org = path.resolve(import.meta.dirname, '../../tools/backstage/org.yaml')
+    const items = catalogueOf(DEMO, { org })
+    expect(items).toHaveLength(40)
+    const organisation = items.filter((item) => ['Group', 'User'].includes(String(item['kind'])))
+    expect(organisation.map((item) => (item['metadata'] as { name: string }).name)).toEqual([
+      'engineering',
+      'common',
+      'dodowarriors',
+      'elephant',
+      'tiger',
+      'ada',
+      'linus',
+    ])
+    for (const item of organisation) {
+      const annotations = (item['metadata'] as { annotations: Record<string, string> }).annotations
+      expect(annotations['backstage.io/managed-by-location']).toBe('url:https://github.com/acme/si-demo/blob/main/org/org.yaml')
+    }
+    expect(catalogueOf(DEMO, { org }).map(uidOf)).toEqual(items.map(uidOf))
+    expect(new Set(items.map(uidOf)).size).toBe(40)
+  })
+})
+
 describe('handler', () => {
   const serve = handler({ entities: catalogueOf(DEMO), base: '/api/catalog' })
 

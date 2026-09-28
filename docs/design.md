@@ -115,7 +115,21 @@ follows from the documentation of the tools involved.
   what it reaches and lists the consumer in `dependencyOf` — because the right is what
   gets provisioned; a second declaration of the same fact would be a second truth to
   keep aligned with the first. So the rights over an API are how its consumers are
-  found, walked as for any object. Every other kind — Group, System, Domain, User — is
+  found, walked as for any object. Backstage's **organisation — Group, User, System,
+  Domain — is read** as well (backstage-http slice 3): each held to what Backstage requires
+  of its kind, its references in full by the processor's default kinds, and kept as an index
+  of the graph **beside** the entities, never among them, so no table, summary, vocabulary,
+  gate or tool row built from the entities sees one. Of each, only the name and the fields
+  that make ownership, membership and system membership are read — never an annotation, a
+  title, or a User's profile, which can hold an email and a picture — and each membership is
+  read from both ends, a Group's `children` and a child's `parent`, a Group's `members` and a
+  User's `memberOf`, as a dependency is. One Backstage would refuse is set aside and said to
+  be, a warning and never an error: a Group is usually another team's, and an error in a file
+  a plan edits would refuse the plan. None is ever proposed, and a change is decided against
+  the write model, where each is a reference that resolves. A reference to one names nothing
+  only where a catalogue read its kind whole — "declared nowhere in the catalogue this token
+  reads" — never over a declarations repository, whose Group files are what it happens to
+  hold and not the organisation. Every other kind — Location, Template, another tool's — is
   still set aside, and said to be. So are three APIs, as they were before any was read,
   because reading them would get them wrong rather than refuse them: a `kind: API` under
   another tool's apiVersion, which is no Backstage entity; one outside the `default`
@@ -309,8 +323,10 @@ asymmetry is the point. `entitySchema` READS the Components and Resources of a r
 Backstage catalogue, whose files legitimately carry fields this tool does not model, so
 making it strict would break the reader on any real repository. Those two kinds are the
 only ones it proposes. Backstage's API is read beside them, through a schema of its own,
-`apiSchema`, that no proposal can reach (§4.1). The rest of a real catalogue — Groups,
-Users, Systems, Locations, Templates — and a YAML file that is no catalogue entry at all, a
+`apiSchema`, that no proposal can reach (§4.1), and so is the organisation — Groups, Users,
+Systems, Domains — through four read schemas no proposal can reach either, one Backstage would
+refuse set aside with its reason rather than refused. The rest of a real catalogue —
+Locations, Templates — and a YAML file that is no catalogue entry at all, a
 `mkdocs.yml` beside the entities, are set aside by `parseDocuments` before the schema runs
 (all but one: the `kind: Location` of the root `catalog-info.yaml`, the repository's
 Backstage registration, which `validate` reads and holds to Backstage's Location shape, §7.2):

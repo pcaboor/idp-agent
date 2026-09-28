@@ -7,7 +7,12 @@
  * socket. Run as a program, it listens with node:http on 127.0.0.1, which is
  * how the demo reads a catalogue with no Backstage installed:
  *
- *     node tools/fake-backstage.ts [--port <n>] [--token <t>] [--root <folder>] [--no-groups]
+ *     node tools/fake-backstage.ts [--port <n>] [--token <t>] [--root <folder>] [--no-org]
+ *
+ * It serves the folder (the demo SI by default) and the demo's organisation,
+ * `tools/backstage/org.yaml` — the documents the Docker Backstage ingests, so
+ * the two hold one organisation; `--no-org` (or `--no-groups`, its older
+ * name) serves the folder alone, as for a folder that holds its own.
  *
  * It runs under Node's type stripping (22.18 or later), so it holds no syntax
  * stripping cannot erase — no enum, no parameter property, no namespace — and
@@ -112,25 +117,39 @@ function served(document: Item, location: string, seed: string): Item {
   return { ...document, metadata, relations: relationsOf(document['spec'], namespace) }
 }
 
+/** Every document of a YAML file that parses to a mapping, each as `served` makes it, located at `location`. */
+function servedFile(file: string, location: string, seed: string): Item[] {
+  const items: Item[] = []
+  parseAllDocuments(readFileSync(file, 'utf8')).forEach((document, position) => {
+    if (document.errors.length > 0) return
+    const value: unknown = document.toJS()
+    if (!isMapping(value)) return
+    items.push(served(value, location, `${seed}#${String(position)}`))
+  })
+  return items
+}
+
 /**
  * What a catalogue serves for the folder at `root`: every document of every
  * YAML file in path order, null documents (a witness) and documents that do
  * not parse skipped, each as `served` makes it, located at `location` (the
- * demo SI's repository by default) plus its path from the root. With
- * `groups`, one `kind: Group` per name.
+ * demo SI's repository by default) plus its path from the root. With `org`,
+ * the documents of that YAML file too, located at `org/org.yaml` — the
+ * demo's organisation, as the Docker Backstage reads it from a location of
+ * its own. With `groups`, one `kind: Group` per name: the tests that need
+ * hundreds of teams.
  */
-export function catalogueOf(root: string, options: { groups?: readonly string[]; location?: string } = {}): Item[] {
+export function catalogueOf(
+  root: string,
+  options: { org?: string; groups?: readonly string[]; location?: string } = {},
+): Item[] {
   const prefix = options.location ?? DEMO_LOCATION
   const items: Item[] = []
   for (const file of yamlFiles(root)) {
     const relative = path.relative(root, file).split(path.sep).join('/')
-    parseAllDocuments(readFileSync(file, 'utf8')).forEach((document, position) => {
-      if (document.errors.length > 0) return
-      const value: unknown = document.toJS()
-      if (!isMapping(value)) return
-      items.push(served(value, `${prefix}${relative}`, `${relative}#${String(position)}`))
-    })
+    items.push(...servedFile(file, `${prefix}${relative}`, relative))
   }
+  if (options.org !== undefined) items.push(...servedFile(options.org, `${prefix}org/org.yaml`, 'org/org.yaml'))
   for (const name of options.groups ?? []) {
     const group = { apiVersion: 'backstage.io/v1alpha1', kind: 'Group', metadata: { name }, spec: { type: 'team', children: [] } }
     items.push(served(group, `${prefix}org/groups.yaml`, `group:${name}`))
@@ -325,8 +344,9 @@ function main(argv: readonly string[]): void {
   const token = value('--token')
   const here = path.dirname(fileURLToPath(import.meta.url))
   const root = path.resolve(value('--root') ?? path.join(here, '..', 'fixtures', 'si-demo'))
-  const groups = argv.includes('--no-groups') ? [] : ['tiger', 'elephant', 'dodowarriors']
-  const serve = handler({ entities: catalogueOf(root, { groups }), ...(token === undefined ? {} : { token }) })
+  const alone = argv.includes('--no-org') || argv.includes('--no-groups')
+  const org = alone ? {} : { org: path.join(here, 'backstage', 'org.yaml') }
+  const serve = handler({ entities: catalogueOf(root, org), ...(token === undefined ? {} : { token }) })
 
   const server = createServer((incoming, outgoing) => {
     answerOf(serve, incoming)

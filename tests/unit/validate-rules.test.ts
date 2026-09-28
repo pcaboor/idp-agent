@@ -186,8 +186,13 @@ describe('checkRepository', () => {
     })
     const group = (name: string): string =>
       `apiVersion: backstage.io/v1alpha1\nkind: Group\nmetadata:\n  name: ${name}\nspec:\n  type: team\n  children: []`
-    // A System, and no longer an API: an API is read, and held to what
-    // Backstage requires of one (api-graph.test.ts).
+    // A kind this tool does not read: a Group is read now (backstage-http slice 3).
+    const location = (name: string): string =>
+      `apiVersion: backstage.io/v1alpha1\nkind: Location\nmetadata:\n  name: ${name}\nspec:\n  targets: []`
+    // A System Backstage would refuse — it names no owner — and so set aside:
+    // an API is read and held to what Backstage requires of one
+    // (api-graph.test.ts), and a System with its owner is read
+    // (organisation-reader.test.ts).
     const system = 'apiVersion: backstage.io/v1alpha1\nkind: System\nmetadata:\n  name: billing-events'
     const billing =
       'apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: billing-api\n' +
@@ -195,22 +200,29 @@ describe('checkRepository', () => {
 
     it('warns once per document it does not model, anchored on the file', () => {
       const violations = checkRepository(
-        snapshot({ folders: ['org'], witnesses: [], files: [read('org/teams.yml', group('a'), group('b'))] }),
+        snapshot({ folders: ['org'], witnesses: [], files: [read('org/where.yml', location('a'), location('b'))] }),
       )
       expect(violations).toEqual([
         {
           rule: 'not-modelled',
-          file: 'org/teams.yml',
+          file: 'org/where.yml',
           severity: 'warning',
-          message: 'kind Group is not modelled by this tool; group a left as is',
+          message: 'kind Location is not modelled by this tool; location a left as is',
         },
         {
           rule: 'not-modelled',
-          file: 'org/teams.yml',
+          file: 'org/where.yml',
           severity: 'warning',
-          message: 'kind Group is not modelled by this tool; group b left as is',
+          message: 'kind Location is not modelled by this tool; location b left as is',
         },
       ])
+    })
+
+    it('reads the Groups it holds, and warns about none of them', () => {
+      const violations = checkRepository(
+        snapshot({ folders: ['org'], witnesses: [], files: [read('org/teams.yml', group('a'), group('b'))] }),
+      )
+      expect(violations).toEqual([])
     })
 
     it('does not count a set-aside document as a second entity in its file', () => {
@@ -227,9 +239,13 @@ describe('checkRepository', () => {
       expect(violations.map((violation) => violation.rule)).toEqual(['not-modelled'])
     })
 
-    it('demands no witness from a folder holding only documents it does not model', () => {
+    it('demands no witness from a folder holding only the organisation or documents it does not model', () => {
       const violations = checkRepository(
-        snapshot({ folders: ['org'], witnesses: [], files: [read('org/tiger.yml', group('tiger'))] }),
+        snapshot({
+          folders: ['org'],
+          witnesses: [],
+          files: [read('org/tiger.yml', group('tiger')), read('org/where.yml', location('root'))],
+        }),
       )
       expect(violations.map((violation) => violation.rule)).toEqual(['not-modelled'])
     })
@@ -247,7 +263,7 @@ describe('checkRepository', () => {
         }),
       )
       expect(violations.map((violation) => [violation.rule, violation.message])).toEqual([
-        ['not-modelled', 'kind System is not modelled by this tool; system billing-events left as is'],
+        ['not-modelled', 'System billing-events is not read: spec: required, which Backstage requires'],
         [
           'dangling-reference',
           'component:default/billing-api names system:default/ghost, which nothing declares',

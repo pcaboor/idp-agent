@@ -55,6 +55,29 @@ const graphOf = (result: LoadResult): EntityGraph =>
   )
 
 describe('the catalogue pre-pass', () => {
+  it('drops a User’s and a Group’s profile, which the organisation read never asks for, and changes nothing it was handed', () => {
+    const user: Item = {
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'User',
+      metadata: { name: 'ada', namespace: 'default', uid: 'u-1' },
+      spec: { profile: { displayName: 'Ada', email: 'ada@acme.example', picture: 'data:image/png;base64,AA==' }, memberOf: ['tiger'] },
+    }
+    const before = structuredClone(user)
+    const passed = prePass(user)
+    expect(passed).toEqual({ value: { apiVersion: 'backstage.io/v1alpha1', kind: 'User', metadata: { name: 'ada', namespace: 'default' }, spec: { memberOf: ['tiger'] } }, uid: 'u-1' })
+    expect(user).toEqual(before)
+    // A Group carries one too — an email, a picture of any size — and loses it the same way.
+    const group: Item = {
+      kind: 'Group',
+      metadata: { name: 'tiger', uid: 'g-1' },
+      spec: { type: 'team', children: [], profile: { email: 'team@acme.example', picture: 'data:image/png;base64,AA==' } },
+    }
+    expect(prePass(group)).toEqual({ value: { kind: 'Group', metadata: { name: 'tiger' }, spec: { type: 'team', children: [] } }, uid: 'g-1' })
+    // Only those two kinds have one: a Component's spec is the reader's to judge, whole.
+    const component: Item = { kind: 'Component', metadata: { name: 'billing-api' }, spec: { profile: 'x' } }
+    expect(prePass(component)).toMatchObject({ value: { spec: { profile: 'x' } } })
+  })
+
   it('drops relations and status, so a relation naming what no spec names creates no edge', async () => {
     const served = demoWith((items) =>
       addRelation(items, 'component:default/billing-api', 'dependsOn', 'resource:default/ghost').map((item) => ({

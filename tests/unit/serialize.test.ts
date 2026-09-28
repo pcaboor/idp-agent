@@ -297,7 +297,9 @@ describe('parseDocuments, the one reader of entity documents', () => {
       ].join('\n'),
     )
     expect(read.entities).toHaveLength(1)
-    // A Group is set aside whole, so none of its fields is counted.
+    // The Group is read beside it (backstage-http slice 3), and holds nothing
+    // the read model does not read.
+    expect(read.organisation).toHaveLength(1)
     expect(read.unread).toEqual(['metadata.etag', 'spec.providesApis', 'status'])
   })
 
@@ -305,6 +307,7 @@ describe('parseDocuments, the one reader of entity documents', () => {
     expect(parseDocuments('---\n')).toEqual({
       entities: [],
       apis: [],
+      organisation: [],
       rejections: [],
       ignored: [],
       unread: [],
@@ -331,10 +334,12 @@ describe('parseDocuments over a real Backstage catalogue', () => {
     expect(ignored).toEqual([{ reason: 'not a catalogue entity: no apiVersion or kind' }])
   })
 
+  // A Group, a System and a User are read now (backstage-http slice 3): with
+  // `spec: {}`, each is one Backstage would refuse, and is set aside saying why.
   it.each([
-    ['Group', 'team-a', 'kind Group is not modelled by this tool; group team-a left as is'],
-    ['System', 'payments', 'kind System is not modelled by this tool; system payments left as is'],
-    ['User', 'jdoe', 'kind User is not modelled by this tool; user jdoe left as is'],
+    ['Group', 'team-a', 'Group team-a is not read: spec.type: required, which Backstage requires'],
+    ['System', 'payments', 'System payments is not read: spec.owner: required, which Backstage requires'],
+    ['User', 'jdoe', 'User jdoe is not read: spec.memberOf: required, which Backstage requires'],
     ['Location', 'root', 'kind Location is not modelled by this tool; location root left as is'],
     ['Template', 'new-service', 'kind Template is not modelled by this tool; template new-service left as is'],
   ])('sets aside a %s, naming its kind and name', (kind, name, reason) => {
@@ -412,8 +417,11 @@ describe('parseDocuments over a real Backstage catalogue', () => {
   })
 
   it('names no entity when the set-aside document states no name', () => {
+    expect(read('apiVersion: backstage.io/v1alpha1', 'kind: Location').ignored).toEqual([
+      { kind: 'Location', reason: 'kind Location is not modelled by this tool; left as is' },
+    ])
     expect(read('apiVersion: backstage.io/v1alpha1', 'kind: System').ignored).toEqual([
-      { kind: 'System', reason: 'kind System is not modelled by this tool; left as is' },
+      { kind: 'System', reason: 'System is not read: metadata: required, which Backstage requires' },
     ])
   })
 
