@@ -38,7 +38,7 @@ export interface Ignored {
 export type PrePassRule = 'namespace' | 'lifecycle' | 'resource-type' | 'name-case' | 'api-version' | 'shape'
 
 /**
- * What a catalogue read cost and saw, for the notice (1.5): the distinct uids
+ * What a catalogue read cost and saw, for the notice (`sourceNotice`): the distinct uids
  * served across both reads, the pages, the bytes, the time, and how many uids
  * were served twice in a read that was still whole. It holds no token and no
  * URL.

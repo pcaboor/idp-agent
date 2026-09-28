@@ -15,6 +15,13 @@ names the test that fails if it stops being true.
   repository — named by `--repo`, found where you stand, or configured with `IDP_REPO` or
   the personal `config.yml`; with none of those, the read commands read the fictional demo
   SI shipped in `fixtures/si-demo/`.
+- **Reads a Backstage catalogue, when you configure one** — `IDP_BACKSTAGE_URL`, or
+  `backstage:` in the personal `config.yml`, with its token in `IDP_BACKSTAGE_TOKEN` — for
+  `graph`, `show`, `relations`, `ask` and a question: once per run, before any model, whole
+  or not at all. A change is still decided against the declarations repository, and nothing
+  read from the catalogue reaches a plan's signature, policies, re-check or Reviewer. The
+  URL comes from you alone: never from `.idp-agent.yml`, which travels with every clone, and
+  never from the command line (`--backstage` takes no value).
 - **For a change, may read an application repository**: the Inspector reads the one
   `--project` names, or the directory you stand in when it is one (a `catalog-info.yaml`
   or a package manifest at its root). Anywhere else it reads nothing and says so.
@@ -32,8 +39,9 @@ names the test that fails if it stops being true.
 
 | to | when | what |
 |---|---|---|
-| the model provider | a model-backed command | your request; the agents' instructions; a summary of the declarations repository (kinds, types, environments, owners in use); the entities the agents' tools read from it; for a change or `init`, the files the Inspector reads from the application repository — only the files git tracks when it is a git repository, at most 200 files, 64 KiB each, 1 MiB in all, minus what `project-fs` withholds (below); and your key, in the header that provider reads it from |
-| an MLflow server | `IDP_MLFLOW_TRACKING_URI` is set | one trace per model-backed run, holding the full prompts and answers above — never the key |
+| the configured Backstage catalogue | a run that reads one (`IDP_BACKSTAGE_URL` or `backstage:`, and no `--repo`) | `IDP_BACKSTAGE_TOKEN`, in one `authorization` header when it is set; `GET` on `entities/by-query` and `entity-facets` under the configured base, with kind filters and paging parameters (`limit`, `cursor`, `fields`), and nothing else — no redirect is followed |
+| the model provider | a model-backed command | your request; the agents' instructions; a summary of the source read — the declarations repository, or the catalogue (kinds, types, environments, owners in use); the entities the agents' tools read from it — catalogue content included, for the Supervisor and the Analyst, never the Architect; for a change or `init`, the files the Inspector reads from the application repository — only the files git tracks when it is a git repository, at most 200 files, 64 KiB each, 1 MiB in all, minus what `project-fs` withholds (below); and your key, in the header that provider reads it from |
+| an MLflow server | `IDP_MLFLOW_TRACKING_URI` is set | one trace per model-backed run, holding the full prompts and answers above, catalogue content included, and where a catalogue was read (`idp.source.*`) — never the key or the catalogue token |
 
 The endpoint is the SDK's default for that provider, unless `ANTHROPIC_BASE_URL` or
 `OPENAI_BASE_URL` is set in your environment: the SDK reads those itself, and the key then
@@ -47,7 +55,11 @@ their defaults apply.
 
 **Prompt injection from a repository file.** Any file the Inspector reads, and any entity
 the catalogue holds — a description, a name — reaches the model, and can tell it to do
-something else. What an injection can reach is fixed at build time: the model fills a typed
+something else. A Backstage catalogue widens that to every team's unreviewed
+`catalog-info`, not the one reviewed declarations repository: its content is untrusted as a
+file's is, and is printed through the same cleaning. It cannot cause a request — the load is
+over before a model is called, and no model output becomes one — and it never reaches the
+Architect, the gates or the Reviewer. What an injection can reach is fixed at build time: the model fills a typed
 `Plan`, never YAML and never a path; `Operation` is a closed union with no delete; every
 value the model *chooses* must be traced to your words, to your answers or to the
 repository, or it becomes a question; and five gates run before a diff is shown. An
@@ -92,6 +104,17 @@ change skips them unless `--project` names them.
 configuration file, and neither `.idp-agent.yml` nor the personal `config.yml` has a
 field that could hold one. It reaches the provider in its header and nothing else.
 
+**The catalogue token.** It is read from `IDP_BACKSTAGE_TOKEN` alone, is required for any
+host but this machine, and is sent from one function (`context/backstage/transport.ts`) to
+the configured origin on the two GET routes, with `redirect: 'error'`. A refusal of the
+configured URL quotes it with userinfo, query and fragment starred, and a value that does
+not parse, or holds a space or a control character a URL parser would drop, by its length
+alone — a token put where the URL goes is never printed. A failure
+names the host, the status and a class, never what the server wrote. A test cannot prove
+the token is read-only; it proves what this tool does with it. Once a company token is
+exported, it is also sent, over plain http, to a catalogue on this machine
+(`http://127.0.0.1:…`): unset it (`env -u IDP_BACKSTAGE_TOKEN`) for the demo's fake.
+
 **Traces.** A trace carries the full prompts: the summary, what the tools read from the
 catalogue, and what the Inspector read from the application repository, with what
 `project-fs` withholds still withheld and nothing further redacted. A tracking server is
@@ -131,7 +154,12 @@ Inspector.
 | A missing key is refused with exit 2, naming the variable, before any agent runs | `tests/unit/model-failures.test.ts` — *is refused for … with exit 2, naming …, before any agent runs*, one per provider |
 | Nothing is traced unless this tool's variable asks; MLflow's own is ignored; a trace file is its owner's alone | `tests/unit/trace-wiring.test.ts` — *traces nothing, and says nothing about a trace, when none is configured*, *traces nothing when only MLflow’s own MLFLOW_TRACKING_URI is set*; `tests/unit/trace-sink.test.ts` — *writes a file only its owner can read* |
 | A `Plan` is bounded — 50 operations, 32 levels, 10 000 nodes, 8 KB values, a 2 000-character intent — and a `__proto__` key is refused | `tests/unit/plan.test.ts` — *plan limits*, *refuses a __proto__ key outright, rather than dropping it quietly* |
-| No test reaches the network, or reads a key or a model setting from the contributor's shell: `fetch`, `node:http`, `node:https`, `node:net`, `node:tls` and `WebSocket` throw, and every `IDP_` variable but `IDP_TRACE_DIR` and every `*_API_KEY` are removed, but in a scenario being recorded; recordings replay offline | `tests/setup/offline.ts` and `tests/setup/shell.ts`, asserted by `tests/unit/offline.test.ts` — *refuses a network call from inside the suite*, *refuses every other way out: http, https, net, tls and WebSocket*, *is set aside: every IDP_ variable but IDP_TRACE_DIR, and every key*, *records only in a scenario: a unit test never writes a tape* |
+| The catalogue token reaches the configured catalogue, on its two GET routes, in one header, with `redirect: 'error'`, and nothing else: no model provider, no tracking server, no child process, no output, no trace — on each of the three providers, for a question and for a change, and when the catalogue answers 401, 403, 500 or echoes the request; no model key reaches the catalogue; catalogue content reaches the Supervisor and the Analyst and never the Architect | `tests/contract/key-reach.test.ts` — *the {anthropic, mistral, openai} key and the catalogue token on a real run*: *reaches the catalogue only, in one header, on a question and on a change*, *puts the token nowhere when the catalogue answers …* |
+| The transport sends only `GET` on its two routes, to the configured origin and path, checked once the URL is built; follows no redirect and refuses a 3xx, a response marked redirected or from another address; bounds every body and request; and never quotes a response, a header or the token | `tests/unit/backstage-transport.test.ts` — *sends GET to the base and route, the token in one header, and redirect: error*, *checks the URL it built, origin and pathname, whatever base it is given*, *throws before any request for a method or a route outside the list*, *refuses a response whose url is on another origin, or another path, …*, *refuses a response marked redirected, even from the same address*, *refuses a body over the bound while it streams, and stops reading it* |
+| A catalogue URL that could aim the token elsewhere — not https: (http: only to this machine), userinfo, a query, a fragment, a space or a control character, a `\`, no path, an empty, `.` or `..` segment, encoded or not — is refused with exit 2 before any request, quoting no secret; a host not on this machine is never read without a token, and a token a header cannot carry is refused the same way, quoting none of it; `.idp-agent.yml`'s `backstage:` is never requested, on the change road that reads the file | `tests/unit/backstage-source.test.ts` — *refuses … with 2, naming IDP_BACKSTAGE_URL, before any request, quoting no secret*, one per case, *quotes no secret from config.yml behind …*, *refuses a token unset/empty for a host that is not this machine …*, *refuses a token holding … with 2, before any request, quoting none of it*, *never reads backstage: in .idp-agent.yml …* |
+| A catalogue read whole or not at all: every failure is one line and exit 1, never a partial answer and never a fall back; a change is decided against the declarations repository, and an owner only the catalogue holds is asked | `tests/unit/backstage-read.test.ts` — *… one classified line, exit 1, nothing on stdout*, *is decided against the configured repo, never the catalogue it was classified from*, *lets nothing in the catalogue vouch …* |
+| What a catalogue serves reaches the terminal with nothing a terminal obeys, and no grouped line past its bound | `tests/unit/read-commands-hostile.test.ts` — *what a catalogue served, as the read commands print it*, *holds each grouped line to the bounds catalogue-read.ts states …* |
+| No test reaches the network, or reads a key or a model setting from the contributor's shell: `fetch`, `node:http`, `node:https`, `node:net`, `node:tls` and `WebSocket` throw, and every `IDP_` variable but `IDP_TRACE_DIR` and every `*_API_KEY` are removed, but in a scenario being recorded — where a catalogue's two variables are removed still, so no tape holds what a catalogue serves; recordings replay offline | `tests/setup/offline.ts` and `tests/setup/shell.ts`, asserted by `tests/unit/offline.test.ts` — *refuses a network call from inside the suite*, *refuses every other way out: http, https, net, tls and WebSocket*, *is set aside: every IDP_ variable but IDP_TRACE_DIR, and every key*, *records only in a scenario: a unit test never writes a tape*, *keeps a catalogue from every run, a recording included …* |
 
 ## What the architecture rules are, and are not
 

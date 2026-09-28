@@ -1268,7 +1268,7 @@ export function catalogueFailureLine(error: CatalogueReadError, source: Backstag
 catalogueFetch?: CatalogueFetch
 ```
 
-- [ ] **Step 1: The configuration tests (fail)**
+- [x] **Step 1: The configuration tests (fail)**
 
 `tests/unit/backstage-source.test.ts`:
 
@@ -1318,7 +1318,7 @@ repository, and what is not reached is not read (a malformed `backstage:` does n
 run `IDP_BACKSTAGE_URL` answered). `personal-config.test.ts` gains `backstage:` read,
 `backstage: ~` refused as `repo: ~` is.
 
-- [ ] **Step 2: The read tests (fail)**
+- [x] **Step 2: The read tests (fail)**
 
 `tests/unit/backstage-read.test.ts`, every run through `main` with the fake as
 `catalogueFetch`:
@@ -1398,7 +1398,7 @@ The line of the note's § 10, rendered by `catalogueFailureLine`:
 the Backstage catalogue at backstage.acme.example (config.yml) refused the token (401): IDP_BACKSTAGE_TOKEN is set and not accepted; --repo <directory> reads a repository instead, and `idpa plan` decides a change without the catalogue
 ```
 
-- [ ] **Step 3: The key-reach leg (fail)**
+- [x] **Step 3: The key-reach leg (fail)**
 
 In `tests/contract/key-reach.test.ts`, a second `describe.each(PROVIDER_NAMES)` on the
 existing pattern (`live`, only the transports replaced). A temporary `config.yml` names both
@@ -1457,7 +1457,7 @@ Run: `pnpm vitest run tests/contract/key-reach.test.ts`. Expected: FAIL, exit 2 
 first road: the personal file's schema is strict (`personal.ts:116-119`), so `backstage:` in
 `config.yml` is refused by name before anything is read.
 
-- [ ] **Step 4: Implement the source**
+- [x] **Step 4: Implement the source**
 
 `source.ts`:
 - `catalogueBase(raw, where)`: any `\` is refused first; then the path segments of `raw`
@@ -1521,7 +1521,8 @@ home-expanded).
   `idp.source.kind`, `idp.source.origin` (scheme, host, port, path), `idp.source.entities`,
   `idp.source.set_aside`, `idp.source.pages`, `idp.source.bytes`, `idp.source.ms`.
 
-`render/overview.ts`: the overview's source is `{ repo } | { catalogue } | {}`, and the
+`render/overview.ts`: the overview's source is `{ from: 'repo', repo } | { from: 'catalogue',
+catalogue } | { from: 'demo' }`, switched on `from` in `fromOf`, and the
 first line reads `Overview of the Backstage catalogue at <host>: …`. `context/graph/overview.ts`'s
 `setAside.kinds` tallies only the rows without `prePass`, and a new `setAside.catalogueRead`
 counts the others, rendered as one line, `N set aside by the catalogue read`, only when
@@ -1562,7 +1563,7 @@ the key-reach leg, the transport tests and the spawned-environment test, each by
 A `default: never` in each. **Architecture rules:** unchanged at 19; `cli/source.ts` still
 only stats (the rule "only the named modules of cli/ touch the disk" is unchanged).
 
-- [ ] **Step 5: Checks**
+- [x] **Step 5: Checks**
 
 ```bash
 pnpm vitest run tests/unit/backstage-source.test.ts tests/unit/backstage-read.test.ts tests/contract/key-reach.test.ts \
@@ -1577,17 +1578,22 @@ Expected: green; every scenario tape replays with no digest warning.
 - [ ] **Step 6: The pull request** (after the owner's go-ahead)
 
 ```bash
-git add src/cli/source.ts src/cli/personal.ts src/cli/index.ts src/cli/usage.ts src/cli/render/overview.ts \
-  src/context/graph/overview.ts src/cli/render/entity.ts src/cli/render/relations.ts src/cli/commands/show.ts \
-  src/cli/commands/relations.ts src/cli/commands/ask.ts tests/contract/key-reach.test.ts tests/setup/shell.ts \
-  tests/unit/offline.test.ts tests/unit/backstage-source.test.ts tests/unit/backstage-read.test.ts \
-  tests/unit/configured-source.test.ts tests/unit/personal-config.test.ts tests/unit/env-example.test.ts \
-  tests/unit/read-commands-hostile.test.ts .env.example SECURITY.md docs/adopting-backstage.md src/cli/README.md \
-  AGENTS.md CHANGELOG.md README.md
+git add src/cli/source.ts src/cli/personal.ts src/cli/index.ts src/cli/render/overview.ts \
+  src/cli/render/catalogue-read.ts src/cli/render/entity.ts src/cli/render/relations.ts \
+  src/cli/commands/show.ts src/cli/commands/relations.ts src/cli/commands/ask.ts src/cli/commands/entry.ts \
+  src/context/graph/overview.ts src/context/provider.ts src/context/backstage/provider.ts \
+  src/context/backstage/transport.ts src/context/README.md src/cli/README.md \
+  tests/contract/key-reach.test.ts tests/setup/shell.ts tests/unit/offline.test.ts \
+  tests/unit/backstage-source.test.ts tests/unit/backstage-read.test.ts tests/unit/configured-source.test.ts \
+  tests/unit/personal-config.test.ts tests/unit/env-example.test.ts tests/unit/read-commands-hostile.test.ts \
+  tests/unit/overview.test.ts tests/unit/render-overview.test.ts tests/unit/ask-overview.test.ts \
+  tests/unit/ask.test.ts tests/unit/ask-commentary.test.ts tests/unit/api-analyst-tools.test.ts \
+  tests/unit/api-read-commands.test.ts tests/unit/dangling-shown.test.ts tests/unit/graph-tools.test.ts \
+  .env.example SECURITY.md docs/adopting-backstage.md docs/plans/backstage-http-slice-1.md AGENTS.md CHANGELOG.md
 git commit -m "feat(cli): answer questions and relations from a Backstage catalogue"
 ```
 
-Base `feat/bhttp-1-4`. CHANGELOG, `### Added`:
+The README badge and AGENTS.md's test counts are the shipping script's. Base `main`. CHANGELOG, `### Added`:
 
 > - `graph`, `show`, `relations`, `ask` and `idpa "<phrase>"` read a Backstage catalogue when
 >   one is configured — `IDP_BACKSTAGE_URL`, or `backstage:` in the personal `config.yml`, or
@@ -1634,7 +1640,8 @@ impacts (9)
   component:default/reporting-worker            service          -     3      mysql-prod-01 ← billing-db-prod ← reporting-billing-db-prod (read) ← reporting-worker
 ```
 
-Then, each keyless:
+`graph --kind Component` and `show billing-api` print, under the same two stderr lines, what
+`--demo` prints, byte for byte. Then, each keyless:
 
 ```bash
 # the fake stopped (Ctrl-C in terminal 1):
@@ -1643,7 +1650,7 @@ env -u IDP_BACKSTAGE_TOKEN IDP_BACKSTAGE_URL=http://127.0.0.1:7007/api/catalog n
 env -u IDP_BACKSTAGE_TOKEN IDP_BACKSTAGE_URL=https://backstage.acme.example/api/catalog node dist/cli/bin.js graph
 # IDP_BACKSTAGE_TOKEN is not set; the Backstage catalogue at backstage.acme.example needs a read token (docs/adopting-backstage.md)      (exit 2, no request)
 IDP_BACKSTAGE_URL='https://me:not-a-secret@backstage.acme.example/api/catalog' node dist/cli/bin.js graph
-# IDP_BACKSTAGE_URL=https://***@backstage.acme.example/api/catalog holds userinfo; …   (exit 2; `not-a-secret` appears nowhere)
+# IDP_BACKSTAGE_URL=https://***@backstage.acme.example/api/catalog holds userinfo, where a credential would be; the token is read from IDP_BACKSTAGE_TOKEN alone; the catalogue API's base is stated exactly: https://<backend host>/api/catalog   (exit 2; `not-a-secret` appears nowhere)
 env -u IDP_BACKSTAGE_TOKEN IDP_BACKSTAGE_URL=http://127.0.0.1:7007/api/catalog node dist/cli/bin.js graph --repo fixtures/si-demo
 # the demo SI's graph; --repo wins and the catalogue is not read                      (exit 0)
 env -u IDP_BACKSTAGE_TOKEN IDP_BACKSTAGE_URL=http://127.0.0.1:7007/api/catalog node dist/cli/bin.js plan --from examples/open-network.json --repo fixtures/si-demo

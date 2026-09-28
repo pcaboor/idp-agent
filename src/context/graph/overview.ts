@@ -72,8 +72,12 @@ export interface Overview {
   reached: Array<{ ref: string; services: number; rights: number }>
   /** Every dangling reference, sorted. Reported, never pruned (design 4.4). */
   dangling: Array<{ from: string; to: string }>
-  /** The documents set aside as kinds this tool does not model. */
-  setAside: { total: number; kinds: Tally[]; unkinded: number }
+  /**
+   * The documents set aside as kinds this tool does not model, and apart from
+   * them — never counted twice — what a catalogue read's pre-pass set aside
+   * (`Ignored.prePass`): what the catalogue accepted and this tool does not model.
+   */
+  setAside: { total: number; kinds: Tally[]; unkinded: number; catalogueRead: number }
   /** Documents refused; `main` names each one on a `skipped` line. */
   rejected: number
 }
@@ -153,7 +157,8 @@ export function overviewOf(graph: EntityGraph, unread: Unread): Overview {
     else rights[entity.spec.access ?? 'undeclared'] += 1
   }
 
-  const kinded = unread.ignored.flatMap(({ kind }) => (kind === undefined ? [] : [kind]))
+  const notModelled = unread.ignored.filter(({ prePass }) => prePass === undefined)
+  const kinded = notModelled.flatMap(({ kind }) => (kind === undefined ? [] : [kind]))
   const systems = entities.flatMap((entity) => entity.spec.system ?? [])
   const described = entities
     .flatMap((entity) => {
@@ -185,9 +190,10 @@ export function overviewOf(graph: EntityGraph, unread: Unread): Overview {
       .danglingReferences()
       .sort((left, right) => compare(left.from, right.from) || compare(left.to, right.to)),
     setAside: {
-      total: unread.ignored.length,
+      total: notModelled.length,
       kinds: tally(kinded),
-      unkinded: unread.ignored.length - kinded.length,
+      unkinded: notModelled.length - kinded.length,
+      catalogueRead: unread.ignored.length - notModelled.length,
     },
     rejected: unread.rejected,
   }

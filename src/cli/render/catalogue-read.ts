@@ -15,14 +15,15 @@ import { inertLine } from './plain.js'
  * and the bidi controls spelled out, as the file road's `skipped` line is. A
  * catalogue is a remote source, and no less hostile than a file. A reason
  * lists at most `VALUES` distinct values, then how many more, and a line at
- * most `REFS` refs. Pure: cli/ prints them from 1.5.
+ * most `REFS` refs. Pure: `main` prints them after the notice.
  */
 
-const VALUE_LENGTH = 80
-const REASON_LENGTH = 200
-const VALUES = 5
-const REFS = 3
-const REASONS = 5
+/** The bounds stated above, exported for the test that holds the lines to them. */
+export const VALUE_LENGTH = 80
+export const REASON_LENGTH = 200
+export const VALUES = 5
+export const REFS = 3
+export const REASONS = 5
 
 const value = (text: string): string => inertLine(text, VALUE_LENGTH)
 

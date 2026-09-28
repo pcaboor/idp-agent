@@ -33,7 +33,7 @@ const ask = async (turns: GenerateResult[], intent = 'which databases are in pro
     graph: await load(),
     client: scripted(turns),
     intent,
-    source: { ignored: [], rejected: 0 },
+    source: { from: 'demo', ignored: [], rejected: 0 },
     emit: (event) => void events.push(event),
     err: (chunk) => void errors.push(chunk),
   })
@@ -303,7 +303,7 @@ describe('runAsk, on what it hands a terminal', () => {
         }),
       ]),
       intent: 'which websites are there?',
-      source: { ignored: [], rejected: 0 },
+      source: { from: 'demo', ignored: [], rejected: 0 },
       emit: () => {},
       err: () => {},
     })
@@ -337,7 +337,7 @@ describe('runAsk, on what it hands a terminal', () => {
         }),
       ]),
       intent: 'which databases are in prod?',
-      source: { ignored: [], rejected: 0 },
+      source: { from: 'demo', ignored: [], rejected: 0 },
       emit: () => {},
       err: (chunk) => void errors.push(chunk),
     })

@@ -8,6 +8,7 @@ import {
   renderRelationsOverview,
   type Road,
 } from '../render/relations.js'
+import { NOWHERE } from '../render/entity.js'
 import type { CommandResult } from './result.js'
 import { resolveEntity } from './show.js'
 
@@ -25,6 +26,8 @@ export interface RelationsOptions {
    * option: a bound then names the whole command that goes further.
    */
   readonly asked?: boolean
+  /** What a reference naming nothing is called, which `main` chooses by the source (`NOWHERE`). */
+  readonly nowhere?: string
 }
 
 /**
@@ -42,6 +45,7 @@ export function runRelations(graph: EntityGraph, options: RelationsOptions): Com
   const ref = refOf(found.entity)
   const depth = options.depth === undefined ? {} : { depth: options.depth }
   const road: Road = options.asked === true ? 'answer' : 'command'
+  const said = options.nowhere ?? NOWHERE
 
   if (options.to !== undefined) {
     const other = resolveEntity(graph, options.to)
@@ -53,18 +57,18 @@ export function runRelations(graph: EntityGraph, options: RelationsOptions): Com
         found: false,
       }
     }
-    return answered(relationsOf(graph, ref, 'between', { ...depth, to }), road)
+    return answered(relationsOf(graph, ref, 'between', { ...depth, to }), road, said)
   }
 
   if (options.relation !== undefined) {
-    return answered(relationsOf(graph, ref, options.relation, depth), road)
+    return answered(relationsOf(graph, ref, options.relation, depth), road, said)
   }
 
   const results = OVERVIEW_ORDER.flatMap(
     (relation) => relationsOf(graph, ref, relation, depth) ?? [],
   )
   return {
-    text: renderRelationsOverview(stepOf(found.entity), results, road),
+    text: renderRelationsOverview(stepOf(found.entity), results, road, said),
     found: results.some(holds),
   }
 }
@@ -73,7 +77,7 @@ export function runRelations(graph: EntityGraph, options: RelationsOptions): Com
  * A relation of an entity the graph holds is always computed; `undefined`
  * here would be a resolved name the graph no longer answers to.
  */
-function answered(result: RelationResult | undefined, road: Road): CommandResult {
+function answered(result: RelationResult | undefined, road: Road, said: string): CommandResult {
   if (result === undefined) return { text: 'No entity matches that question.', found: false }
-  return { text: renderRelation(result, road), found: holds(result) }
+  return { text: renderRelation(result, road, said), found: holds(result) }
 }

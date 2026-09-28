@@ -7,7 +7,27 @@ import { VERDICT_TOOL } from '../../src/agents/reviewer.js'
 import { REPORT_TOOL } from '../../src/agents/tools/project-tools.js'
 import { PROPOSE_TOOL } from '../../src/agents/tools/propose-tool.js'
 import { PROVIDER_NAMES, type ProviderName } from '../../src/llm/providers.js'
+import { catalogueOf } from '../../tools/fake-backstage.js'
+import { fakeBackstage, type Faults, type Sent as ToCatalogue } from '../support/fake-backstage.js'
 import { memorySink, onlyTrace } from '../support/trace.js'
+
+/**
+ * Every process a run starts, with the environment it was handed — or the
+ * process's own, which is what a child is given when none is. Called through:
+ * the Inspector's `git` runs as it always does.
+ */
+const spawned = vi.hoisted(() => ({ environments: [] as unknown[] }))
+vi.mock('node:child_process', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:child_process')>()
+  const execFile = (...args: unknown[]): unknown => {
+    const options = args
+      .slice(1)
+      .find((arg): arg is { env?: unknown } => typeof arg === 'object' && arg !== null && !Array.isArray(arg))
+    spawned.environments.push(options?.env ?? { ...process.env })
+    return (original.execFile as (...all: unknown[]) => unknown)(...args)
+  }
+  return { ...original, execFile }
+})
 
 /**
  * Where the key goes on a real run: to its provider, in the header that
@@ -364,5 +384,171 @@ describe.each(PROVIDER_NAMES)('the %s key on a real run', (provider) => {
       [example.intent, '--repo', repo, '--project', project],
       example.operations,
     )
+  })
+})
+
+/**
+ * The Backstage leg (docs/backstage-http-brief.md § 4): a run whose personal
+ * file names both a declarations repository and a catalogue, the catalogue's
+ * token in `IDP_BACKSTAGE_TOKEN`, as a person configures them. The token goes
+ * to the configured catalogue, on its two GET routes, in one header — never
+ * to a model provider, to MLflow, to a child process, onto stdout or stderr,
+ * or into a trace; and a model key never goes to the catalogue. Catalogue
+ * content reaches the Supervisor and the Analyst, and never the Architect,
+ * which is shown the repository alone (§ 3): only the catalogue declares the
+ * marker, so the searches for it are not vacuous.
+ */
+const TOKEN = 'canary-backstage-token-that-is-not-real-0123456789'
+const CATALOGUE = 'https://backstage.canary.example/api/catalog'
+const MARKER = 'group:default/only-in-catalogue'
+
+/** The demo SI with three Groups, and one Component only the catalogue holds. */
+const catalogueEntities = (): Record<string, unknown>[] => [
+  ...catalogueOf(FIXTURES, { groups: ['tiger', 'elephant', 'dodowarriors'] }),
+  {
+    apiVersion: 'backstage.io/v1alpha1',
+    kind: 'Component',
+    metadata: {
+      name: 'catalogue-only-canary',
+      namespace: 'default',
+      uid: 'uid-catalogue-only-canary',
+      annotations: { 'backstage.io/managed-by-location': 'url:https://github.com/acme/elsewhere/blob/main/catalog-info.yaml' },
+    },
+    spec: { type: 'service', lifecycle: 'production', owner: MARKER },
+  },
+]
+
+describe.each(PROVIDER_NAMES)('the %s key and the catalogue token on a real run', (provider) => {
+  const wire = WIRES[provider]
+
+  interface Ran {
+    code: number
+    toCatalogue: ToCatalogue[]
+    toProvider: Sent[]
+    toMlflow: Sent[]
+    out: string
+    err: string
+    trace: string
+  }
+
+  const runRoad = async (argv: string[], word: Road['word'], operations: unknown[] = [], faults?: Faults): Promise<Ran> => {
+    const { repo } = await repositories()
+    const xdg = path.join(path.dirname(repo), 'xdg')
+    await mkdir(path.join(xdg, 'idp-agent'), { recursive: true })
+    await writeFile(path.join(xdg, 'idp-agent', 'config.yml'), `repo: ${repo}\nbackstage: ${CATALOGUE}\n`, 'utf8')
+
+    const toProvider: Sent[] = []
+    const reply = answering(wire, word, operations)
+    vi.stubGlobal('fetch', keeping(toProvider, (body) => json(reply(JSON.parse(body) as Body))))
+    // As a real shell holds them: a child process that inherited the
+    // environment would carry both.
+    vi.stubEnv(wire.key, KEY)
+    vi.stubEnv('IDP_BACKSTAGE_TOKEN', TOKEN)
+    for (const variable of wire.moves) vi.stubEnv(variable, undefined)
+    spawned.environments.length = 0
+
+    const catalogue = fakeBackstage({ entities: catalogueEntities(), token: TOKEN, ...(faults === undefined ? {} : { faults }) })
+    const toMlflow: Sent[] = []
+    const sink = memorySink()
+    const out: string[] = []
+    const err: string[] = []
+    const code = await main(argv, {
+      root: FIXTURES,
+      env: {
+        IDP_PROVIDER: provider,
+        IDP_MODEL: wire.model,
+        [wire.key]: KEY,
+        IDP_MLFLOW_TRACKING_URI: MLFLOW,
+        XDG_CONFIG_HOME: xdg,
+        IDP_BACKSTAGE_TOKEN: TOKEN,
+      },
+      catalogueFetch: catalogue.fetch,
+      fetch: keeping(toMlflow, () => new Response('{}', { status: 200 })),
+      traceSinks: [sink],
+      out: (chunk) => void out.push(chunk),
+      err: (chunk) => void err.push(chunk),
+      events: () => {},
+    })
+    const trace = JSON.stringify(sink.traces, (_, value: unknown) => (typeof value === 'bigint' ? value.toString() : value))
+    return { code, toCatalogue: catalogue.sent, toProvider, toMlflow, out: out.join(''), err: err.join(''), trace }
+  }
+
+  /** Nothing the token or the key could be found in but where each belongs. */
+  const heldNowhere = (ran: Ran): void => {
+    for (const sent of [...ran.toProvider, ...ran.toMlflow]) expect(JSON.stringify(sent)).not.toContain(TOKEN)
+    for (const environment of spawned.environments) {
+      expect(JSON.stringify(environment)).not.toContain(TOKEN)
+      expect(JSON.stringify(environment)).not.toContain(KEY)
+    }
+    for (const text of [ran.out, ran.err, ran.trace]) {
+      expect(text).not.toContain(TOKEN)
+      expect(text).not.toContain(KEY)
+    }
+  }
+
+  it('reaches the catalogue only, in one header, on a question and on a change', async () => {
+    const example = JSON.parse(await readFile(EXAMPLE, 'utf8')) as { intent: string; operations: unknown[] }
+    const question = 'which databases are in prod?'
+    for (const road of ['question', 'change'] as const) {
+      const { project } = await repositories()
+      const ran =
+        road === 'question'
+          ? await runRoad([question], 'QUESTION')
+          : await runRoad([example.intent, '--project', project], 'MUTATION', example.operations)
+      expect(ran.code, ran.err).toBe(0)
+      expect(ran.out).toContain(road === 'question' ? 'Overview of the Backstage catalogue at backstage.canary.example' : '+++ b/')
+
+      expect(ran.toCatalogue.length).toBeGreaterThan(0)
+      for (const sent of ran.toCatalogue) {
+        const url = new URL(sent.url)
+        expect(`${url.origin}${url.pathname}`).toMatch(
+          /^https:\/\/backstage\.canary\.example\/api\/catalog\/(entities\/by-query|entity-facets)$/,
+        )
+        expect(sent.method).toBe('GET')
+        expect(sent.redirect).toBe('error')
+        expect(Object.entries(sent.headers).filter(([, value]) => value.includes(TOKEN))).toEqual([
+          ['authorization', `Bearer ${TOKEN}`],
+        ])
+        expect(JSON.stringify(sent)).not.toContain(KEY)
+      }
+      // The transport never falls back to the global fetch.
+      expect(ran.toProvider.filter(({ url }) => url.startsWith('https://backstage.canary.example'))).toEqual([])
+
+      // Catalogue content reaches the provider and MLflow on both roads — the
+      // Supervisor's summary, and on a question the Analyst's — so the token
+      // searches are not vacuous.
+      const offering = (tool: string): Sent[] =>
+        ran.toProvider.filter(({ body }) => wire.offered(JSON.parse(body) as Body).includes(tool))
+      expect(ran.toProvider.some(({ body }) => body.includes(MARKER))).toBe(true)
+      expect(ran.toMlflow.some(({ body }) => body.includes(MARKER))).toBe(true)
+      if (road === 'question') expect(offering('answer').some(({ body }) => body.includes(MARKER))).toBe(true)
+      // The Architect is shown the repository, never the catalogue (§ 3).
+      if (road === 'change') {
+        expect(offering(PROPOSE_TOOL).length).toBeGreaterThan(0)
+        expect(offering(PROPOSE_TOOL).some(({ body }) => body.includes(MARKER))).toBe(false)
+        expect(offering(VERDICT_TOOL).some(({ body }) => body.includes(MARKER))).toBe(false)
+        // The Inspector's `git rev-parse` ran, so the search below is not vacuous.
+        expect(spawned.environments.length).toBeGreaterThan(0)
+      } else {
+        expect(spawned.environments).toEqual([])
+      }
+      heldNowhere(ran)
+    }
+  })
+
+  it.each<[string, Faults]>([
+    ['401', { status: { at: 0, status: 401 } }],
+    ['403', { status: { at: 0, status: 403 } }],
+    ['500', { status: { at: 1, status: 500 } }],
+    ['a body echoing the request', { echoHeaders: { at: 0 } }],
+  ])('puts the token nowhere when the catalogue answers %s', async (_, faults) => {
+    const ran = await runRoad(['which databases are in prod?'], 'QUESTION', [], faults)
+    expect(ran.code).toBe(1)
+    expect(ran.out).toBe('')
+    expect(ran.err.trimEnd().split('\n')).toHaveLength(1)
+    expect(ran.err).toMatch(/^the Backstage catalogue at backstage\.canary\.example \(/)
+    // Refused before any model: nothing reached the provider or MLflow.
+    expect(ran.toProvider).toEqual([])
+    heldNowhere(ran)
   })
 })

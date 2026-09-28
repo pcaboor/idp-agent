@@ -105,6 +105,12 @@ describe("the contributor's shell", () => {
     expect(shellVariables(SHELL, true)).toEqual([])
   })
 
+  it('keeps a catalogue from every run, a recording included: no tape may hold what it serves', () => {
+    const catalogue = { ...SHELL, IDP_BACKSTAGE_URL: 'https://backstage.acme.example/api/catalog', IDP_BACKSTAGE_TOKEN: 'not-a-token' }
+    expect(shellVariables(catalogue, true).sort()).toEqual(['IDP_BACKSTAGE_TOKEN', 'IDP_BACKSTAGE_URL'])
+    expect(shellVariables(catalogue, false)).toEqual(expect.arrayContaining(['IDP_BACKSTAGE_TOKEN', 'IDP_BACKSTAGE_URL']))
+  })
+
   it('records only in a scenario: a unit test never writes a tape', () => {
     const record = { IDP_RECORDING: 'record' }
     expect(mayRecord(record, '/repo/tests/scenarios/plan-mode.test.ts', '/repo')).toBe(true)

@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3403 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3518 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -58,14 +58,19 @@ the repository already declares everything each operation states, the file and f
 included), a relation holds nothing, two entities are linked by no declared path and reach
 nothing in common (a near miss alone does not count), an entity was asked about its paths
 to itself, **the repository does not conform**, a gate refused a
-plan, the repair loop stopped at three attempts, or something failed unexpectedly · `2`
+plan, the repair loop stopped at three attempts, a Backstage catalogue could not be read
+whole (unreachable, refused, a 3xx, past a bound — never a fall back), or something failed
+unexpectedly · `2`
 the arguments were refused — a bad flag, a plan file that is not a plan, a `--repo`, a
 `--project`, a configured repository or the directory `validate` or `init` is handed that is
 not a directory, a `--project` that is a declarations repository or the one the change is
 decided against, a change with no declarations repository to decide against, a single word
 one slip away from a command name (`idpa grpah`, `idpa relation`), a command typed after its
 options, two relation flags or one beside `--to`, a `--depth` that is not a whole number
-from 1 to 100, a `.idp-agent.yml` or a personal `config.yml` that does not parse — or no
+from 1 to 100, a `.idp-agent.yml` or a personal `config.yml` that does not parse, a
+catalogue URL refused before any request, `IDP_BACKSTAGE_TOKEN` unset for a catalogue that
+is not on this machine or holding a character a header cannot carry, `--backstage` with none
+configured — or no
 model, no key or no usable `IDP_TIMEOUT` or `IDP_SUPERVISOR_MODEL` is configured · `3` the
 request was understood and this build will not act on it: a change request put to `ask`
 (which names `idpa "<phrase>"` as the gesture that previews it), a question the model
@@ -153,7 +158,10 @@ against; `init --repo` is the **application** repository being declared. `idpa
 sense, through the same guard, and find it the same way without it: the working directory
 when its root carries the markers `init platform` writes — a witnessed folder under
 `catalog/` or `dependencies/`, looked for there and never by walking — then `IDP_REPO`,
-then `repo` in the personal `config.yml`. With none of them the read commands and a
+then `repo` in the personal `config.yml`. A Backstage catalogue answers the read commands
+and a question ahead of each of the last two — `IDP_BACKSTAGE_URL` before `IDP_REPO`,
+`backstage` before `repo` in the file — and `--backstage` chooses it over the working
+directory; a change never reads one. With none of them the read commands and a
 question read the fictional `fixtures/si-demo/`, as `--demo` makes them (`--demo` with
 `--repo` is refused), and a change is refused, naming all four ways, because a write
 preview is never decided against a demo. So `cd IaC && idpa "<intent>"` decides against
@@ -162,8 +170,20 @@ named it — because an answer about an invented company that does not say so is
 about the user's own; a repository is named by its folder, never as the `.` it was typed
 as. Two functions decide it, over one chain in `cli/source.ts`: `sourceOf`, what a run
 reads, and `declarationsFor`, what a phrase's change is decided against — `plan`'s chain,
-never the demo SI or a catalogue. They are one repository until a Backstage can be read,
-which is one more `kind` of `sourceOf`'s and never of `declarationsFor`'s.
+never the demo SI or a catalogue. A Backstage is one more `kind` of `sourceOf`'s and never
+of `declarationsFor`'s, and `declarationsFor` runs before the catalogue is requested, so a
+broken `IDP_REPO` is exit 2 with nothing sent, on a question too.
+
+**A Backstage catalogue** (`docs/backstage-http-brief.md`) is read over HTTP once per run,
+before any model, into the graph a folder of YAML fills, through the same reader: both GET
+routes, paged and bounded, whole or not at all — a partial read is exit 1, one line naming
+the host and what named it, and never answered from. The URL is checked before any request
+and quoted with its userinfo, query and fragment starred; the token comes from
+`IDP_BACKSTAGE_TOKEN` alone and goes to that catalogue alone, in one header
+(`tests/contract/key-reach.test.ts`, every provider, both roads). What it serves reaches the
+Supervisor and the Analyst; nothing read over HTTP reaches a plan's signature, policies,
+re-check or Reviewer, which are decided against the declarations repository. A reference it
+does not serve reads "declared nowhere in the catalogue this token reads".
 
 A change — `plan "<intent>"`, or a phrase the Supervisor calls a `MUTATION` — may read the
 application repository too, and the **Inspector is optional**: it reads the directory
@@ -185,7 +205,8 @@ application repository sends the agents exactly what it sent before the Inspecto
 optional; `architect.test.ts` pins the opening message's bytes, and the plan-mode tapes
 replay clean.
 
-Configuration is two files, and neither holds a secret. `.idp-agent.yml` is committed to
+Configuration is two files, and neither holds a secret — a catalogue's token is
+`IDP_BACKSTAGE_TOKEN`, and the personal file's `backstage:` is a URL. `.idp-agent.yml` is committed to
 an application repository and shared by its team; the personal one —
 `$XDG_CONFIG_HOME/idp-agent/config.yml`, else `~/.config/idp-agent/config.yml`
 (`%APPDATA%\idp-agent\config.yml` on Windows) — is one person's and never committed.
@@ -211,7 +232,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 | Folder | Responsibility |
 |---|---|
 | `core/` | schemas (Zod), the nine validation rules and the Backstage registration, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — and the engine's check on an answer's commentary (`core/answer/`) |
-| `context/` | `ContextProvider` (`fixtures`, and `iac-fs` behind `--repo`; `backstage/provider.ts`, a whole catalogue through the file reader or nothing, which `cli/` does not construct yet), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries, `backstage/transport.ts` — the only code that will send a catalogue token, over a `fetch` it is handed — and `spawnedEnvironment`, the one builder of a child process's environment |
+| `context/` | `ContextProvider` (`fixtures`, and `iac-fs` behind `--repo`; `backstage/provider.ts`, a whole catalogue through the file reader or nothing, which `cli/` constructs for a configured catalogue), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries, `backstage/transport.ts` — the only code that sends a catalogue token, over a `fetch` it is handed — and `spawnedEnvironment`, the one builder of a child process's environment |
 | `cli/` | argument parsing, commands, rendering, `.idp-agent.yml` and the personal `config.yml`, which source a command reads — the only layer that writes to stdout |
 | `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |
 | `agents/` | the five agents, the bounded turn, the repair loop, the tool registries — reaches no disk, transitively |
@@ -495,7 +516,9 @@ in `repair.test.ts`). Three attempts, then a clean stop.
 - **No test calls a model.** `tests/setup/offline.ts` makes `fetch`, `node:http`,
   `node:https`, `node:net`, `node:tls` and `WebSocket` throw, and `tests/setup/shell.ts`
   removes every `IDP_` variable but `IDP_TRACE_DIR` and every `*_API_KEY`, unless a scenario
-  is being recorded (`IDP_RECORDING=record`, in `tests/scenarios/` only). A forgotten
+  is being recorded (`IDP_RECORDING=record`, in `tests/scenarios/` only) — and
+  `IDP_BACKSTAGE_URL` and `IDP_BACKSTAGE_TOKEN` even then, so no tape holds what a catalogue
+  serves. A forgotten
   recording fails loudly instead of quietly spending whoever's key is in the shell, and the
   suite passes the same with the README's variables exported. What stales a tape, and how
   to record one: [`tests/README.md`](tests/README.md). An agent-backed command is driven

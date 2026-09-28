@@ -60,21 +60,31 @@ function address(url: string): string {
 }
 
 /**
+ * What a reference nothing declares is called: in a repository, declared
+ * nowhere. A catalogue serves only what its token may read, so there `main`
+ * says so instead (`NOWHERE_IN_CATALOGUE`): a reference the token cannot see
+ * may well be declared.
+ */
+export const NOWHERE = 'declared nowhere'
+export const NOWHERE_IN_CATALOGUE = 'declared nowhere in the catalogue this token reads'
+
+/**
  * What a reference naming nothing is said to be, beside it: declared nowhere,
  * and the entities that share its name when there are any. Beside, never in
  * place of: which of them the file meant, if any, is the reader's to decide.
  */
-export function nowhere(unresolved: Unresolved): string {
+export function nowhere(unresolved: Unresolved, said: string = NOWHERE): string {
   const names = unresolved.sameName.map((ref) => shown(ref))
-  if (names.length === 0) return 'declared nowhere'
+  if (names.length === 0) return said
   const listed =
     names.length === 1
       ? (names[0] ?? '')
       : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`
-  return `declared nowhere; ${listed} ${names.length === 1 ? 'has' : 'have'} this name`
+  return `${said}; ${listed} ${names.length === 1 ? 'has' : 'have'} this name`
 }
 
-export function renderEntityDetail(graph: EntityGraph, entity: CatalogueEntity): string {
+/** An entity's card. `said` is what a reference naming nothing is called (`NOWHERE`). */
+export function renderEntityDetail(graph: EntityGraph, entity: CatalogueEntity, said: string = NOWHERE): string {
   const { title, description, labels = {}, tags = [], links = [] } = entity.metadata
   // Each judged empty once cleaned, not before: a tag that is only a
   // clear-screen is no tag, and would print as a bare separator.
@@ -175,7 +185,7 @@ export function renderEntityDetail(graph: EntityGraph, entity: CatalogueEntity):
         ? shown(found.metadata.annotations[ENV_ANNOTATION] ?? UNDECLARED)
         : '',
     ])
-    const missing = unresolved.map((ref): [string, string] => [shown(ref.to), nowhere(ref)])
+    const missing = unresolved.map((ref): [string, string] => [shown(ref.to), nowhere(ref, said)])
     // A reference nothing answers to is as long as its file made it — a
     // `providesApis` the grammar could not split is kept as written — so it
     // sets the column only while it is as short as an entity's can be. A

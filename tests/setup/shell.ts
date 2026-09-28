@@ -14,7 +14,10 @@
  * IDP_RECORDING=record in the shell of a whole `pnpm test` used to record
  * every unit test that reached `main` into a tape of its own. In any other
  * file the switch is removed with the rest, and `offline.ts` blocks the
- * network there as in replay.
+ * network there as in replay. A catalogue's variables are removed even while
+ * a scenario records: the scenarios call `main` with `process.env`, so a
+ * recording shell that exported them would read a catalogue, and what it
+ * served would go into a committed tape (backstage-http brief § 9).
  *
  * A setup file, run first in every worker, and each test file has its own.
  * `tests/unit/offline.test.ts` fails if any of that stops being true.
@@ -40,12 +43,18 @@ export function mayRecord(
   return first === 'tests' && second === 'scenarios'
 }
 
-/** The variables of `env` a test file must not see; none while a scenario records. */
+/** Every variable of a Backstage catalogue: its URL and its token. */
+const CATALOGUE = 'IDP_BACKSTAGE_'
+
+/**
+ * The variables of `env` a test file must not see; while a scenario records,
+ * only a catalogue's.
+ */
 export function shellVariables(
   env: Readonly<Record<string, string | undefined>>,
   recording: boolean,
 ): string[] {
-  if (recording) return []
+  if (recording) return Object.keys(env).filter((name) => name.startsWith(CATALOGUE))
   return Object.keys(env).filter(
     (name) => (name.startsWith('IDP_') && name !== 'IDP_TRACE_DIR') || name.endsWith('_API_KEY'),
   )

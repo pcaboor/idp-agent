@@ -171,7 +171,7 @@ describe('overviewOf over the demo SI', () => {
   it('reports no dangling reference, nothing set aside and nothing rejected', async () => {
     const overview = await demo()
     expect(overview.dangling).toEqual([])
-    expect(overview.setAside).toEqual({ total: 0, kinds: [], unkinded: 0 })
+    expect(overview.setAside).toEqual({ total: 0, kinds: [], unkinded: 0, catalogueRead: 0 })
     expect(overview.rejected).toBe(0)
   })
 })
@@ -208,7 +208,7 @@ describe('overviewOf at the edges', () => {
       apis: { total: 0, provided: 0 },
       reached: [],
       dangling: [],
-      setAside: { total: 0, kinds: [], unkinded: 0 },
+      setAside: { total: 0, kinds: [], unkinded: 0, catalogueRead: 0 },
       rejected: 0,
     })
   })
@@ -284,8 +284,26 @@ describe('overviewOf at the edges', () => {
         { name: 'Group', count: 1 },
       ],
       unkinded: 1,
+      catalogueRead: 0,
     })
     expect(overview.rejected).toBe(2)
+  })
+
+  it('counts what a catalogue read set aside once, apart from the kinds not modelled', () => {
+    const overview = overviewOf(EntityGraph.from([]), {
+      ignored: [
+        { source: 'org/b.yml', reason: 'not modelled', kind: 'Group', ref: 'group:default/b' },
+        {
+          source: 'component:payments/pay (url:x)',
+          reason: 'outside namespace default',
+          kind: 'Component',
+          ref: 'component:payments/pay',
+          prePass: { rule: 'namespace', value: 'payments' },
+        },
+      ],
+      rejected: 0,
+    })
+    expect(overview.setAside).toEqual({ total: 1, kinds: [{ name: 'Group', count: 1 }], unkinded: 0, catalogueRead: 1 })
   })
 
   it('counts entities by system, and the ones in none apart', () => {

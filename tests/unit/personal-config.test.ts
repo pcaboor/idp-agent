@@ -152,6 +152,32 @@ describe('reading the personal configuration', () => {
     },
   )
 
+  it('reads a backstage URL as it is written, never home-expanded nor resolved against the file', async () => {
+    const { env } = await configured('backstage: https://backstage.acme.example/api/catalog\n')
+    const config = await readPersonalConfig(env, 'linux')
+    expect(config?.backstage).toBe('https://backstage.acme.example/api/catalog')
+    expect(config?.repo).toBeUndefined()
+    const both = await configured('repo: /srv/IaC\nbackstage: ~/not-a-path\n')
+    expect(await readPersonalConfig(both.env, 'linux')).toMatchObject({ repo: '/srv/IaC', backstage: '~/not-a-path' })
+  })
+
+  it.each([['backstage: ~\n'], ['backstage:\n']])(
+    'refuses %j as empty, as a bare repo: ~ is',
+    async (text) => {
+      const { env, file } = await configured(text)
+      await expect(readPersonalConfig(env, 'linux')).rejects.toThrow(ConfigError)
+      await expect(readPersonalConfig(env, 'linux')).rejects.toThrow(`${file}: backstage is empty`)
+    },
+  )
+
+  it('refuses a backstage that is not a string, naming the key', async () => {
+    const { env } = await configured('backstage: 3\n')
+    // The key is known and its value is wrong: not the strict schema's unknown key.
+    await expect(readPersonalConfig(env, 'linux')).rejects.toThrow(
+      /config\.yml is not a configuration — backstage: Invalid input: expected string, received number$/,
+    )
+  })
+
   it('refuses a file that is not YAML, naming it', async () => {
     const { env, file } = await configured('repo: [unclosed\n')
     await expect(readPersonalConfig(env, 'linux')).rejects.toThrow(ConfigError)

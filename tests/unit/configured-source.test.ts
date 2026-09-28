@@ -5,8 +5,11 @@ import { describe, expect, it } from 'vitest'
 import { runInitPlatform } from '../../src/cli/commands/init.js'
 import { main, type MainDeps } from '../../src/cli/index.js'
 import { sourceOf } from '../../src/cli/source.js'
+import type { CatalogueFetch } from '../../src/context/backstage/transport.js'
 import type { LlmClient } from '../../src/llm/client.js'
+import { catalogueOf } from '../../tools/fake-backstage.js'
 import { confirmingEnvironment } from '../support/ask.js'
+import { fakeBackstage } from '../support/fake-backstage.js'
 
 /**
  * A declarations repository configured once — `IDP_REPO`, or `repo:` in the
@@ -531,5 +534,164 @@ describe('plan with a configured declarations repository', () => {
     const viaFile = await run(['plan', '--from', FROM], { cwd: w.elsewhere, env: { HOME: w.home } })
     expect(viaFile.code).toBe(2)
     expect(viaFile.err).toContain(HOME_FILE)
+  })
+})
+
+describe('a Backstage catalogue among the sources of a read (backstage-http brief § 10)', () => {
+  // First match wins: --repo, --demo or --backstage; the working directory on
+  // its markers; IDP_BACKSTAGE_URL; IDP_REPO; the file's backstage; the file's
+  // repo; the demo SI. At each level a catalogue beats a repository, and what
+  // is not reached is not read.
+  const LOOPBACK = 'http://127.0.0.1:7007/api/catalog'
+  const CATALOGUE = /^reading the Backstage catalogue at 127\.0\.0\.1:7007 \((.+?)\): /
+
+  /** The demo SI as a catalogue serves it: it holds no ledger, as the demo copy does not. */
+  const catalogue = () => fakeBackstage({ entities: catalogueOf(FIXTURES) })
+
+  /** A `fetch` no request may reach. */
+  const untouchableCatalogue = (): { fetch: CatalogueFetch; calls: number } => {
+    const kept = {
+      calls: 0,
+      fetch: (async () => {
+        kept.calls += 1
+        throw new Error('the catalogue was requested')
+      }) as CatalogueFetch,
+    }
+    return kept
+  }
+
+  it('IDP_BACKSTAGE_URL beats IDP_REPO, and the file', async () => {
+    const w = await world()
+    await configure(w, `repo: ${w.iac}\nbackstage: https://backstage.acme.example/api/catalog\n`)
+    const served = catalogue()
+    const { code, out, lines } = await run(['show', 'billing-db-prod'], {
+      cwd: w.elsewhere,
+      env: { HOME: w.home, IDP_REPO: w.iac, IDP_BACKSTAGE_URL: LOOPBACK },
+      catalogueFetch: served.fetch,
+    })
+    expect(code).toBe(0)
+    expect(out).toContain('billing-db-prod')
+    expect(lines[0]).toMatch(CATALOGUE)
+    expect(lines[0]?.match(CATALOGUE)?.[1]).toBe('IDP_BACKSTAGE_URL')
+    expect(served.sent.length).toBeGreaterThan(0)
+  })
+
+  it('IDP_REPO beats the file’s backstage', async () => {
+    const w = await world()
+    await configure(w, `backstage: ${LOOPBACK}\n`)
+    const unread = untouchableCatalogue()
+    const { code, lines } = await run(['show', 'ledger-db-prod'], {
+      cwd: w.elsewhere,
+      env: { HOME: w.home, IDP_REPO: w.iac },
+      catalogueFetch: unread.fetch,
+    })
+    expect(code).toBe(0)
+    expect(lines[0]).toMatch(/^reading the declarations repository IaC \(IDP_REPO\)/)
+    expect(unread.calls).toBe(0)
+  })
+
+  it('the file’s backstage beats the file’s repo, and names the file', async () => {
+    const w = await world()
+    await configure(w, `repo: ${w.iac}\nbackstage: ${LOOPBACK}\n`)
+    const served = catalogue()
+    const { code, lines } = await run(['show', 'billing-db-prod'], {
+      cwd: w.elsewhere,
+      env: { HOME: w.home },
+      catalogueFetch: served.fetch,
+    })
+    expect(code).toBe(0)
+    expect(lines[0]?.match(CATALOGUE)?.[1]).toBe(HOME_FILE)
+  })
+
+  it('the working directory beats a configured catalogue, and its line names --backstage', async () => {
+    const w = await world()
+    for (const [env, text] of [
+      [{ HOME: w.home, IDP_BACKSTAGE_URL: LOOPBACK }, ''],
+      [{ HOME: w.home }, `backstage: ${LOOPBACK}\n`],
+    ] as const) {
+      await configure(w, text)
+      const unread = untouchableCatalogue()
+      const { code, lines } = await run(['show', 'ledger-db-prod'], { cwd: w.iac, env, catalogueFetch: unread.fetch })
+      expect(code).toBe(0)
+      expect(lines).toEqual([
+        'reading the declarations repository IaC (the current directory); --repo <directory> reads another, --demo the fictional SI, --backstage the catalogue',
+      ])
+      expect(unread.calls).toBe(0)
+    }
+  })
+
+  it('--backstage beats the working directory', async () => {
+    const w = await world()
+    const served = catalogue()
+    const { code, out, lines } = await run(['show', 'ledger-db-prod', '--backstage'], {
+      cwd: w.iac,
+      env: { IDP_BACKSTAGE_URL: LOOPBACK },
+      catalogueFetch: served.fetch,
+    })
+    expect(code).toBe(1)
+    expect(out).toContain('No entity named "ledger-db-prod"')
+    expect(lines[0]).toMatch(CATALOGUE)
+  })
+
+  it.each([
+    ['--repo', (w: World) => ['--repo', w.iac]],
+    ['--demo', () => ['--demo']],
+  ])('%s beats a configured catalogue, which is then not read', async (_, flag) => {
+    const w = await world()
+    const unread = untouchableCatalogue()
+    const { code } = await run(['graph', ...flag(w)], {
+      cwd: w.elsewhere,
+      env: { IDP_BACKSTAGE_URL: LOOPBACK },
+      catalogueFetch: unread.fetch,
+    })
+    expect(code).toBe(0)
+    expect(unread.calls).toBe(0)
+  })
+
+  it('does not read what it did not reach: a malformed file does not refuse a run IDP_BACKSTAGE_URL answered', async () => {
+    const w = await world()
+    await configure(w, 'backstage: [not, a, url]\nrepos: typo\n')
+    const served = catalogue()
+    const { code } = await run(['graph'], {
+      cwd: w.elsewhere,
+      env: { HOME: w.home, IDP_BACKSTAGE_URL: LOOPBACK },
+      catalogueFetch: served.fetch,
+    })
+    expect(code).toBe(0)
+  })
+
+  it('a refused catalogue URL in the file is not reached when IDP_REPO answers', async () => {
+    const w = await world()
+    await configure(w, 'backstage: http://backstage.acme.example/api/catalog\n')
+    const { code } = await run(['show', 'ledger-db-prod'], { cwd: w.elsewhere, env: { HOME: w.home, IDP_REPO: w.iac } })
+    expect(code).toBe(0)
+  })
+
+  it('plan never reads a catalogue: its chain holds none', async () => {
+    const w = await world()
+    await configure(w, `repo: ${w.iac}\nbackstage: ${LOOPBACK}\n`)
+    const unread = untouchableCatalogue()
+    const { code, out, err } = await run(['plan', '--from', path.join(EXAMPLES, 'declare-database.json')], {
+      cwd: w.elsewhere,
+      env: { HOME: w.home, IDP_BACKSTAGE_URL: LOOPBACK },
+      catalogueFetch: unread.fetch,
+    })
+    expect(code).toBe(0)
+    expect(out).toContain('+++ b/catalog/databases/orders-db-prod.yml')
+    expect(err).toMatch(/^reading the declarations repository IaC \(~\/\.config\/idp-agent\/config\.yml\)/)
+    expect(unread.calls).toBe(0)
+  })
+
+  it('sourceOf answers a read with the catalogue, and plan with the repository', async () => {
+    const w = await world()
+    await configure(w, `repo: ${w.iac}\nbackstage: ${LOOPBACK}\n`)
+    const context = { cwd: () => w.elsewhere, env: { HOME: w.home } }
+    expect(await sourceOf({ command: 'graph' }, context)).toEqual({
+      kind: 'backstage',
+      url: LOOPBACK,
+      label: '127.0.0.1:7007',
+      origin: { by: 'file', file: HOME_FILE },
+    })
+    expect(await sourceOf({ command: 'plan' }, context)).toMatchObject({ kind: 'repo', root: w.iac })
   })
 })

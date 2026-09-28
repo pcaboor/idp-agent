@@ -249,7 +249,7 @@ describe('the overview', () => {
     )
     return renderOverview(
       overviewOf(graph, { ignored: loaded.ignored, rejected: loaded.rejected.length }),
-      { repo: 'backstage-apis' },
+      { from: 'repo', repo: 'backstage-apis' },
     )
   }
 
@@ -269,7 +269,7 @@ describe('the overview', () => {
     const loaded = await new FixtureProvider(DEMO).load()
     const text = renderOverview(
       overviewOf(EntityGraph.from(loaded.entities), { ignored: [], rejected: 0 }),
-      {},
+      { from: 'demo' },
     )
     expect(text).toBe(await before('overview.txt'))
     expect(text).not.toMatch(/^apis/m)

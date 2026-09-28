@@ -467,7 +467,7 @@ const ask = async (analyst: GenerateResult[], intent: string = QUESTION) => {
     graph: await load(),
     client: byAgent({ supervisor: [saying('QUESTION')], analyst }),
     intent,
-    source: { ignored: [], rejected: 0 },
+    source: { from: 'demo', ignored: [], rejected: 0 },
     emit: () => {},
     err: (chunk) => void errors.push(chunk),
   })
@@ -523,7 +523,7 @@ describe('an answer about the reference that names nothing', () => {
         seen,
       ),
       intent: QUESTION,
-      source: { ignored: [], rejected: 0 },
+      source: { from: 'demo', ignored: [], rejected: 0 },
       emit: () => {},
       err: () => {},
     })
@@ -738,7 +738,7 @@ describe('a sentence naming an entity no tool returned', () => {
       graph,
       client: byAgent({ supervisor: [saying('QUESTION')], analyst }),
       intent: 'what is there?',
-      source: { ignored: [], rejected: 0 },
+      source: { from: 'demo', ignored: [], rejected: 0 },
       emit: () => {},
       err: (chunk) => void errors.push(chunk),
     })

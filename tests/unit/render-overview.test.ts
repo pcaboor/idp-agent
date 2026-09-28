@@ -16,7 +16,7 @@ const EMPTY: Overview = {
   apis: { total: 0, provided: 0 },
   reached: [],
   dangling: [],
-  setAside: { total: 0, kinds: [], unkinded: 0 },
+  setAside: { total: 0, kinds: [], unkinded: 0, catalogueRead: 0 },
   rejected: 0,
 }
 
@@ -63,20 +63,25 @@ const section = (text: string, title: string): string[] => {
 
 describe('renderOverview', () => {
   it('names the demo SI in its first line, as the fictional company it is', () => {
-    const [headline] = renderOverview(BUSY, {}).split('\n')
+    const [headline] = renderOverview(BUSY, { from: 'demo' }).split('\n')
     expect(headline).toMatch(/demo SI/)
     expect(headline).toMatch(/fictional/)
     expect(headline).toMatch(/40 entities/)
   })
 
   it('names the repository by the name it is handed, which main takes from its folder', () => {
-    const [headline] = renderOverview(BUSY, { repo: 'IaC' }).split('\n')
+    const [headline] = renderOverview(BUSY, { from: 'repo', repo: 'IaC' }).split('\n')
     expect(headline).toBe('Overview of the repository IaC: 40 entities')
     expect(headline).not.toMatch(/demo SI/)
   })
 
+  it('names a Backstage catalogue by its host', () => {
+    const [headline] = renderOverview(BUSY, { from: 'catalogue', catalogue: 'backstage.acme.example' }).split('\n')
+    expect(headline).toBe('Overview of the Backstage catalogue at backstage.acme.example: 40 entities')
+  })
+
   it('bounds every list at five, and says how many more there are', () => {
-    const text = renderOverview(BUSY, {})
+    const text = renderOverview(BUSY, { from: 'demo' })
     const types = section(text, 'types')
     expect(types).toHaveLength(6)
     expect(types.slice(0, 5).map((line) => line.trim().split(/\s+/)[0])).toEqual(
@@ -92,7 +97,7 @@ describe('renderOverview', () => {
   })
 
   it('prints the counts it was given, not an approximation of them', () => {
-    const text = renderOverview(BUSY, {})
+    const text = renderOverview(BUSY, { from: 'demo' })
     expect(section(text, 'kinds')[0]).toMatch(/^\s+Resource\s+32$/)
     expect(section(text, 'most reached')[0]).toMatch(
       /resource:default\/db-0\s+7 services, 9 rights$/,
@@ -103,7 +108,7 @@ describe('renderOverview', () => {
   })
 
   it('states an undeclared environment and an undeclared level, never hiding them', () => {
-    const text = renderOverview(BUSY, {})
+    const text = renderOverview(BUSY, { from: 'demo' })
     expect(section(text, 'environments').at(-1)).toMatch(/^\s+\(undeclared\)\s+8$/)
     const rights = section(text, 'rights')
     expect(rights.join('\n')).toMatch(/read\s+5/)
@@ -115,13 +120,13 @@ describe('renderOverview', () => {
   it('says what reaches an object when no declared service does, and what none means', () => {
     const grantsOnly = renderOverview(
       { ...BUSY, reached: [{ ref: 'resource:default/orders-db', services: 0, rights: 1 }] },
-      {},
+      { from: 'demo' },
     )
     expect(section(grantsOnly, 'most reached')).toEqual([
       '  resource:default/orders-db  0 services, 1 right',
     ])
     // "none" alone reads as a fact about the catalogue; say what was counted.
-    expect(renderOverview({ ...BUSY, reached: [] }, {})).toMatch(
+    expect(renderOverview({ ...BUSY, reached: [] }, { from: 'demo' })).toMatch(
       /^most reached {2}no service or right reaches an object$/m,
     )
   })
@@ -137,10 +142,11 @@ describe('renderOverview', () => {
             { name: 'Group', count: 1 },
           ],
           unkinded: 1,
+          catalogueRead: 0,
         },
         rejected: 2,
       },
-      {},
+      { from: 'demo' },
     )
     expect(text).toMatch(/not loaded\s+5 documents this tool does not model/)
     expect(section(text, 'not loaded')).toEqual([
@@ -152,13 +158,14 @@ describe('renderOverview', () => {
   })
 
   it('says nothing about set-aside or rejected documents when there were none', () => {
-    const text = renderOverview(BUSY, {})
+    const text = renderOverview(BUSY, { from: 'demo' })
     expect(text).not.toMatch(/not loaded/)
     expect(text).not.toMatch(/rejected/)
   })
 
   it('describes an empty catalogue in words rather than as empty sections', () => {
-    const text = renderOverview({ ...EMPTY, setAside: { total: 1, kinds: [], unkinded: 1 } }, {
+    const text = renderOverview({ ...EMPTY, setAside: { total: 1, kinds: [], unkinded: 1, catalogueRead: 0 } }, {
+      from: 'repo',
       repo: 'iac',
     })
     expect(text.split('\n')[0]).toMatch(/0 entities/)
@@ -168,7 +175,7 @@ describe('renderOverview', () => {
   })
 
   it('counts entities by system, the ones in none pinned last, and says when none declares one', () => {
-    const systems = section(renderOverview(BUSY, {}), 'systems')
+    const systems = section(renderOverview(BUSY, { from: 'demo' }), 'systems')
     expect(systems).toHaveLength(OVERVIEW_LIMITS.rows + 2)
     expect(systems[0]).toMatch(/^\s+system:default\/sys-0\s+7$/)
     expect(systems.at(-2)?.trim()).toBe('+2 more')
@@ -176,27 +183,27 @@ describe('renderOverview', () => {
 
     const none = renderOverview(
       { ...BUSY, systems: { declared: [], none: BUSY.entities } },
-      {},
+      { from: 'demo' },
     )
     expect(none).toMatch(/^systems {2}none declared$/m)
   })
 
   it('lists the most used tags, and says when there are none', () => {
-    const tags = section(renderOverview(BUSY, {}), 'tags')
+    const tags = section(renderOverview(BUSY, { from: 'demo' }), 'tags')
     expect(tags[0]).toMatch(/^\s+tag-0\s+9$/)
     expect(tags.at(-1)?.trim()).toBe('+4 more')
-    expect(renderOverview({ ...BUSY, tags: [] }, {})).toMatch(/^tags {2}none$/m)
+    expect(renderOverview({ ...BUSY, tags: [] }, { from: 'demo' })).toMatch(/^tags {2}none$/m)
   })
 
   it('says what a few entities are, in the words their files wrote', () => {
-    const text = renderOverview(BUSY, {})
+    const text = renderOverview(BUSY, { from: 'demo' })
     expect(text).toMatch(/^entities {2}8 of 40 carry a description$/m)
     const entities = section(text, 'entities')
     expect(entities).toHaveLength(OVERVIEW_LIMITS.rows + 1)
     expect(entities[0]).toBe('  component:default/svc-0  Service number 0')
     expect(entities.at(-1)?.trim()).toBe('+3 more')
 
-    expect(renderOverview({ ...BUSY, described: [] }, {})).toMatch(
+    expect(renderOverview({ ...BUSY, described: [] }, { from: 'demo' })).toMatch(
       /^entities {2}none carries a description$/m,
     )
   })
@@ -212,7 +219,7 @@ describe('renderOverview', () => {
           },
         ],
       },
-      {},
+      { from: 'demo' },
     )
     const [line] = section(text, 'entities')
     expect(line).toMatch(/^ {2}component:default\/artist-web {2}The place to be, for great artists and more/)
@@ -231,7 +238,7 @@ describe('renderOverview', () => {
           { name: 'java', count: 1 },
         ],
       },
-      {},
+      { from: 'demo' },
     )
     const tags = section(text, 'tags')
     expect(tags[0]).toBe(`  ${'x'.repeat(TAG_LENGTH)}…  2`)
@@ -240,7 +247,7 @@ describe('renderOverview', () => {
 
   it('bounds every label, so no free-text name widens a section', () => {
     const types = section(
-      renderOverview({ ...BUSY, types: [{ name: 'y'.repeat(3000), count: 1 }] }, {}),
+      renderOverview({ ...BUSY, types: [{ name: 'y'.repeat(3000), count: 1 }] }, { from: 'demo' }),
       'types',
     )
     expect(types[0]).toBe(`  ${'y'.repeat(OVERVIEW_LIMITS.label)}…  1`)
@@ -264,17 +271,17 @@ describe('renderOverview', () => {
           { name: '\u001B[2J', count: 1 },
         ],
       },
-      {},
+      { from: 'demo' },
     )
     expect(section(text, 'systems')).toEqual(['  system:default/web  3', '  (none)              3'])
     expect(section(text, 'tags')).toEqual(['  java  2'])
     expect(
-      renderOverview({ ...BUSY, tags: [{ name: '\u0007', count: 1 }] }, {}),
+      renderOverview({ ...BUSY, tags: [{ name: '\u0007', count: 1 }] }, { from: 'demo' }),
     ).toMatch(/^tags {2}none$/m)
     expect(
       renderOverview(
         { ...BUSY, systems: { declared: [{ name: '\u0007', count: 1 }], none: 39 } },
-        {},
+        { from: 'demo' },
       ),
     ).toMatch(/^systems {2}none declared$/m)
   })
@@ -288,14 +295,14 @@ describe('renderOverview', () => {
           { ref: 'component:default/b', description: 'Billing' },
         ],
       },
-      {},
+      { from: 'demo' },
     )
     expect(text).toMatch(/^entities {2}1 of 40 carries a description\n {2}component:default\/b {2}Billing$/m)
     expect(text).not.toContain('component:default/a')
     expect(
       renderOverview(
         { ...BUSY, described: [{ ref: 'component:default/a', description: '\u009B' }] },
-        {},
+        { from: 'demo' },
       ),
     ).toMatch(/^entities {2}none carries a description$/m)
   })
@@ -311,9 +318,9 @@ describe('renderOverview', () => {
           description: 'great\u001B[2J\u001B[H+++ b/fake.yml\r\u0085 artists',
         },
       ],
-      setAside: { total: 1, kinds: [{ name: 'Gro\u001B]8;;x\u0007up', count: 1 }], unkinded: 0 },
+      setAside: { total: 1, kinds: [{ name: 'Gro\u001B]8;;x\u0007up', count: 1 }], unkinded: 0, catalogueRead: 0 },
     }
-    const text = renderOverview(hostile, { repo: 'i\u001B[2Jac' })
+    const text = renderOverview(hostile, { from: 'repo', repo: 'i\u001B[2Jac' })
     expect(text).toContain('  component:default/artist-web  great+++ b/fake.yml artists')
     expect(text).toMatch(/^ {2}java\s+1$/m)
     // eslint-disable-next-line no-control-regex -- asserting their absence
@@ -322,7 +329,8 @@ describe('renderOverview', () => {
   })
 
   it('renders the same overview to the same bytes', () => {
-    expect(renderOverview(BUSY, { repo: 'iac' })).toBe(renderOverview(structuredClone(BUSY), {
+    expect(renderOverview(BUSY, { from: 'repo', repo: 'iac' })).toBe(renderOverview(structuredClone(BUSY), {
+      from: 'repo',
       repo: 'iac',
     }))
   })

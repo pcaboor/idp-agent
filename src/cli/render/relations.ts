@@ -8,7 +8,7 @@ import {
   type Step,
 } from '../../context/graph/relations.js'
 import { OWN_RELATIONS, type OwnRelation, type Relation } from '../../core/schemas/query.js'
-import { ENTITY_LIMITS, nowhere } from './entity.js'
+import { ENTITY_LIMITS, NOWHERE, nowhere } from './entity.js'
 import { oneLine } from './plain.js'
 import { renderTable } from './table.js'
 
@@ -89,10 +89,11 @@ const grantOf = (step: Step): string => {
 const stepText = (step: Step): string =>
   step.right?.level === undefined ? nameOf(step) : `${nameOf(step)} (${step.right.level})`
 
-function pathText(row: RelationRow, separator: string): string {
+/** A path, and what its last step is called when it names nothing (`said`, `NOWHERE` by default). */
+function pathText(row: RelationRow, separator: string, said: string): string {
   const last = reachedBy(row)
   const path = row.steps.map(stepText).join(separator)
-  return last.nowhere === undefined ? path : `${path} — ${nowhere(last.nowhere)}`
+  return last.nowhere === undefined ? path : `${path} — ${nowhere(last.nowhere, said)}`
 }
 
 const indent = (text: string, by: string): string =>
@@ -119,7 +120,7 @@ function accessCells(row: RelationRow): [string, string] {
   ]
 }
 
-function table(result: RelationResult): string {
+function table(result: RelationResult, said: string): string {
   const relation = result.relation as OwnRelation
   const separator = SEPARATORS[relation]
   // Of a consumer and of what it reaches, the access is the answer: the level
@@ -131,7 +132,7 @@ function table(result: RelationResult): string {
   const rows = result.rows.map((row) => {
     const reached = reachedBy(row)
     const head = [shown(reached.ref), shown(reached.type ?? '-'), shown(reached.env ?? '-')]
-    const tail = [String(row.steps.length - 1), pathText(row, separator)]
+    const tail = [String(row.steps.length - 1), pathText(row, separator, said)]
     return access ? [...head, ...accessCells(row), ...tail] : [...head, ...tail]
   })
   return renderTable(headers, rows)
@@ -152,21 +153,21 @@ function stepTable(steps: readonly Step[]): string {
 }
 
 /** One path of `between`, and every step on it with its type, environment and level. */
-function pathBlock(row: RelationRow): string {
+function pathBlock(row: RelationRow, said: string): string {
   const arrow = row.backward === true ? ' ← ' : ' → '
-  return [pathText(row, arrow), indent(stepTable(row.steps), '  ')].join('\n')
+  return [pathText(row, arrow, said), indent(stepTable(row.steps), '  ')].join('\n')
 }
 
 /**
  * An entity both ends of `between` reach: its reference, the path to it from
  * each end, and every step of the two with its type, environment and level.
  */
-function meetingBlock(meeting: Meeting): string {
+function meetingBlock(meeting: Meeting, said: string): string {
   const [mine, theirs] = meeting.paths
   const arrow = meeting.relation === 'depends-on' ? ' → ' : ' ← '
   return [
     shown(reachedBy(mine).ref),
-    indent([pathText(mine, arrow), pathText(theirs, arrow)].join('\n'), '  '),
+    indent([pathText(mine, arrow, said), pathText(theirs, arrow, said)].join('\n'), '  '),
     indent(stepTable([...mine.steps, ...theirs.steps]), '  '),
   ].join('\n')
 }
@@ -238,12 +239,12 @@ const cutOf = (list: { rows: readonly unknown[]; total: number }): string[] =>
  * miss is counted apart and relates nothing: which entity its file meant is
  * the reader's to decide (design 4.1).
  */
-function betweenSections(result: RelationResult, road: Road): string[] {
+function betweenSections(result: RelationResult, road: Road, said: string): string[] {
   const title = `${TITLES.between} ${shown(result.to?.ref ?? '')}`
   const body =
     result.rows.length === 0
       ? 'no path where one depends on the other'
-      : result.rows.map(pathBlock).join('\n\n')
+      : result.rows.map((row) => pathBlock(row, said)).join('\n\n')
   const shared = result.shared?.rows ?? []
   const groups = (
     [
@@ -264,7 +265,7 @@ function betweenSections(result: RelationResult, road: Road): string[] {
       section(
         named,
         rows.length,
-        rows.map(meetingBlock).join('\n\n'),
+        rows.map((meeting) => meetingBlock(meeting, said)).join('\n\n'),
         index === groups.length - 1 ? cut : [],
       ),
     ),
@@ -272,9 +273,9 @@ function betweenSections(result: RelationResult, road: Road): string[] {
       ? []
       : [
           section(
-            'near misses, declared nowhere',
+            `near misses, ${said}`,
             near.total,
-            near.rows.map(pathBlock).join('\n\n'),
+            near.rows.map((row) => pathBlock(row, said)).join('\n\n'),
             cutOf(near),
           ),
         ]),
@@ -282,9 +283,9 @@ function betweenSections(result: RelationResult, road: Road): string[] {
 }
 
 /** A relation's sections: one for a relation read from one end, several for `between`. */
-function sections(result: RelationResult, road: Road): string[] {
-  if (result.relation === 'between') return betweenSections(result, road)
-  const body = result.rows.length === 0 ? 'none' : table(result)
+function sections(result: RelationResult, road: Road, said: string): string[] {
+  if (result.relation === 'between') return betweenSections(result, road, said)
+  const body = result.rows.length === 0 ? 'none' : table(result, said)
   return [section(TITLES[result.relation], result.total, body, notes(result, road))]
 }
 
@@ -295,9 +296,12 @@ function sections(result: RelationResult, road: Road): string[] {
 export const holds = (result: RelationResult): boolean =>
   result.total > 0 || (result.shared?.total ?? 0) > 0
 
-/** One relation of one entity: its reference, then that relation's sections. */
-export function renderRelation(result: RelationResult, road: Road = 'command'): string {
-  return [shown(result.subject.ref), ...sections(result, road)].join('\n\n')
+/**
+ * One relation of one entity: its reference, then that relation's sections.
+ * `said` is what a reference naming nothing is called (`NOWHERE`).
+ */
+export function renderRelation(result: RelationResult, road: Road = 'command', said: string = NOWHERE): string {
+  return [shown(result.subject.ref), ...sections(result, road, said)].join('\n\n')
 }
 
 /**
@@ -308,8 +312,9 @@ export function renderRelationsOverview(
   subject: Step,
   results: readonly RelationResult[],
   road: Road = 'command',
+  said: string = NOWHERE,
 ): string {
   const held = results.filter(holds)
   if (held.length === 0) return `${shown(subject.ref)}\n\nno relation declared`
-  return [shown(subject.ref), ...held.flatMap((result) => sections(result, road))].join('\n\n')
+  return [shown(subject.ref), ...held.flatMap((result) => sections(result, road, said))].join('\n\n')
 }
