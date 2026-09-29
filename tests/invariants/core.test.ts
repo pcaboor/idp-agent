@@ -2,14 +2,21 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import {
   arbitraryEntity,
+  arbitraryGrantPlan,
   arbitraryHandWrittenFile,
   entityName,
   arbitraryPlan,
 } from './arbitraries.js'
 import { parseEntity, serializeEntity } from '../../src/core/yaml/serialize.js'
 import { entitySchema } from '../../src/core/schemas/entity.js'
-import { planSchema } from '../../src/core/schemas/plan.js'
+import { planSchema, type Plan } from '../../src/core/schemas/plan.js'
 import { signPlan } from '../../src/core/plan/sign.js'
+import { applyEdits, planEdits } from '../../src/core/plan/edits.js'
+import type { Provenance } from '../../src/core/plan/provenance.js'
+import { recheckPlan } from '../../src/core/plan/recheck.js'
+import { repositoryFileOf, type RepositorySnapshot } from '../../src/core/validate/rules.js'
+import { parseDocuments } from '../../src/core/yaml/serialize.js'
+import { environmentsAnswered, userSaid } from '../support/provenance.js'
 import {
   appendSequenceItem,
   insertDocument,
@@ -19,7 +26,6 @@ import {
 import { assertInsideRepo, resolveEntityPath } from '../../src/core/paths/entity-path.js'
 
 const signatureContext = {
-  wordsOf: 'user' as const,
   witnessed: new Set<string>(),
   vocabulary: {
     kinds: ['Component', 'Resource'],
@@ -29,7 +35,6 @@ const signatureContext = {
   },
   repoRoot: '/repo',
   declared: new Map<string, string>(),
-  answered: new Set<string>(),
 }
 
 /** Counts terminal values the way the signer walks them. */
@@ -39,6 +44,48 @@ function countLeaves(value: unknown): number {
   if (Array.isArray(value)) return value.reduce((n: number, v) => n + countLeaves(v), 0)
   return Object.values(value).reduce((n: number, v) => n + countLeaves(v), 0)
 }
+
+/** The person confirms, at its own field, every level and environment the draft wrote. */
+const asDrafted = (plan: Plan): Provenance =>
+  userSaid(plan.intent, {
+    ...environmentsAnswered(plan),
+    ...Object.fromEntries(
+      plan.operations.flatMap((operation, index) =>
+        operation.op === 'create-entity' &&
+        operation.entity.kind === 'Resource' &&
+        typeof operation.entity.spec.access === 'string'
+          ? [[`operations.${index}.entity.spec.access`, operation.entity.spec.access]]
+          : [],
+      ),
+    ),
+  })
+
+/**
+ * The request names every value, so the signature echoes them and nothing is
+ * asked. The words reach the gates through the provenance `asDrafted` builds
+ * from this intent — no gate reads `plan.intent`.
+ */
+const echoing = (raw: { intent: string; operations: { entity: { metadata: { name: string; env: string }; spec: Record<string, unknown> } }[] }) => ({
+  ...raw,
+  intent: raw.operations
+    .flatMap(({ entity }) => [
+      entity.metadata.name,
+      entity.metadata.env,
+      String(entity.spec['type']),
+      String(entity.spec['owner']),
+    ])
+    .join(' '),
+})
+
+/** The repository `files` make, as the re-check reads one: parsed by the one reader. */
+const snapshotOf = (files: ReadonlyMap<string, string>): RepositorySnapshot => ({
+  folders: [],
+  witnesses: [],
+  files: [...files].map(([file, text]) => repositoryFileOf(file, text)),
+})
+
+const refsIn = (text: string): string[] =>
+  parseDocuments(text).entities.map((entity) => `${entity.kind.toLowerCase()}:default/${entity.metadata.name}`)
 
 describe('invariants', () => {
   it('serialise then reload yields the same entity', () => {
@@ -150,6 +197,61 @@ describe('invariants', () => {
         expect(resolved.startsWith('/repo/')).toBe(true)
       }),
     )
+  })
+
+  it('applying a plan twice leaves the bytes applying it once left (§9.2)', () => {
+    let exercised = 0
+    let effected = 0
+    fc.assert(
+      fc.property(
+        fc.oneof(arbitraryPlan.map(echoing), arbitraryGrantPlan),
+        arbitraryHandWrittenFile,
+        (raw, noise) => {
+          const parsed = planSchema.safeParse(raw)
+          fc.pre(parsed.success)
+          if (!parsed.success) return
+          const signed = signPlan(parsed.data, signatureContext, asDrafted(parsed.data))
+          fc.pre(!('outcome' in signed))
+          if ('outcome' in signed) return
+
+          const base = new Map([['catalog/noise.yml', noise]])
+          const first = planEdits(signed, base)
+          const once = applyEdits(base, first.edits)
+          const second = planEdits(signed, once)
+
+          if (first.edits.some((edit) => edit.before !== edit.after)) exercised += 1
+          for (const edit of second.edits) expect(edit.after).toBe(edit.before)
+          expect([...applyEdits(once, second.edits)]).toEqual([...once])
+
+          // And the second pass is a no-op because the work is DONE, not
+          // because nothing happened: the re-check reads every operation as
+          // already declared in the bytes the first pass left
+          // (gap-stage5-readiness-11). Over a plan every operation of which
+          // produced bytes, and whose references the noise does not already
+          // declare — a duplicate is the re-check's refusal, not this property.
+          const noiseRefs = new Set(refsIn(noise))
+          if (
+            first.dropped.length === 0 &&
+            ![...signed.refs.values()].some((ref) => noiseRefs.has(ref))
+          ) {
+            effected += 1
+            const recheck = recheckPlan(signed, snapshotOf(once), second.edits)
+            for (const index of signed.plan.operations.keys()) {
+              expect(recheck.outcomes.get(index)).toBe('already-declared')
+            }
+          }
+        },
+      ),
+      { numRuns: 400 },
+    )
+    // A property that never saw a change has proven nothing about one. Measured
+    // on d0fdee9: 400/400 exercised (0/400 before the property was given a
+    // Provenance — the guard caught it). Re-measured on 919100c over five
+    // runs: 400/400 exercised and 400/400 re-checked, 384 to 394 of them grant
+    // plans — the echoing branch is mostly discarded by the schema or the
+    // signature, and is kept for the plans it does produce, not for its share.
+    expect(exercised).toBeGreaterThan(100)
+    expect(effected).toBeGreaterThan(100)
   })
 })
 

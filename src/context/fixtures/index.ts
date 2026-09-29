@@ -2,10 +2,9 @@ import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { CatalogueEntity, OrganisationEntity } from '../../core/schemas/entity.js'
 import { parseDocuments } from '../../core/yaml/serialize.js'
+import { isCatalogueFolder, isCataloguePath } from '../../core/paths/catalogue.js'
 import type { ContextProvider, Ignored, LoadResult, Rejection } from '../provider.js'
 
-
-const YAML_EXTENSIONS = new Set(['.yml', '.yaml'])
 
 async function yamlFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
@@ -14,11 +13,14 @@ async function yamlFiles(dir: string): Promise<string[]> {
       const full = path.join(dir, entry.name)
       // A hidden directory is tooling, not catalogue: .github holds workflows
       // that are YAML and are not entities. Reading them would make a freshly
-      // scaffolded repository report rejections for its own CI config.
-      if (entry.isDirectory()) {
-        return entry.name.startsWith('.') || entry.name === 'node_modules' ? [] : yamlFiles(full)
-      }
-      return YAML_EXTENSIONS.has(path.extname(entry.name)) ? [full] : []
+      // scaffolded repository report rejections for its own CI config. The
+      // rule is iac-fs's (`core/paths/catalogue.ts`), so the demo SI and a
+      // declarations repository are read alike. This walker used to read a
+      // hidden file too, and no longer does: the demo's are `.witness.yml`s,
+      // which declare nothing, so no entity is lost.
+      if (entry.isDirectory()) return isCatalogueFolder(entry.name) ? yamlFiles(full) : []
+      // The name alone: every folder above it was held to the same rule.
+      return isCataloguePath(entry.name) ? [full] : []
     }),
   )
   return nested.flat().sort()

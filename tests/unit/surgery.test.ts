@@ -113,7 +113,7 @@ describe('the same documents, whichever function is looking', () => {
 
   it('lists behind a byte-order mark, a header comment, and four-space indentation', () => {
     const file =
-      '﻿# hand written\n' +
+      '\uFEFF# hand written\n' +
       'kind: Resource\n' +
       'metadata: # identity\n' +
       '    name: alpha # kept\n'
@@ -139,7 +139,7 @@ describe('the same documents, whichever function is looking', () => {
   })
 
   it('keeps a byte-order mark when the first document goes', () => {
-    expect(removeDocument(`﻿---\n${docA}\n---\n${docB}`, 'alpha')).toBe(`﻿---\n${docB}`)
+    expect(removeDocument(`\uFEFF---\n${docA}\n---\n${docB}`, 'alpha')).toBe(`\uFEFF---\n${docB}`)
   })
 })
 

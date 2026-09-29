@@ -435,16 +435,16 @@ describe('the shapes a catalogue file is found in', () => {
   })
 
   it('keeps a byte-order mark where it was', () => {
-    const file = `﻿${lines('---', ...GRANT)}`
+    const file = `\uFEFF${lines('---', ...GRANT)}`
     expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(
-      `﻿${lines('---', ...GRANT, ADDED)}`,
+      `\uFEFF${lines('---', ...GRANT, ADDED)}`,
     )
   })
 
   it('keeps a byte-order mark in front of an implicit first document', () => {
-    const file = `﻿${lines(...GRANT)}`
+    const file = `\uFEFF${lines(...GRANT)}`
     expect(appendSequenceItem(file, ACCESS, 'dependencyOf', CONSUMER)).toBe(
-      `﻿${lines(...GRANT, ADDED)}`,
+      `\uFEFF${lines(...GRANT, ADDED)}`,
     )
   })
 

@@ -156,7 +156,7 @@ scratch worktree, targeted suites only:
 | `main`'s baseline | 3683 tests, 139 test files, **19** architecture rules (`AGENTS.md:22`, `:537`) | every count above is `eee67d6`'s; each PR re-measures the one it changes |
 | `catalogue.ts` as written, the iac-fs walker rewired to it | catalogue-path, iac-fs, iac-fs-provider, validate-command, architecture: **64/64** | task 1 carries it as written |
 | `seal.ts` as written, `sign.ts` importing it | `tsc` clean; sign, architecture and the adapted clear test **93/93** | task 1 finishes the extraction |
-| `Map.prototype.set.call(sealedMap, 'evil', 2)` in plain Node | **still inserts** | the seal stops an accident, not a caller; the forge's guard is the runtime brand (D3) |
+| `Map.prototype.set.call(sealedMap, 'evil', 2)` in plain Node | **still inserts** | the seal stops an accident, not a caller; the forge's guard is the runtime brand (D3). *Closed in task 1's review:* the brand checks identity, never contents, so `sealed` now keeps its entries in a private field, and the call throws |
 | `clear.test.ts` as written, on `main` | **7 compile errors**, all shape drift (`wordsOf`/`answered` left `SignatureContext`; `PolicyContext` gained `over`, `namesakes`; `RepositoryFile` gained `apis`, `ignored`) | rebuilt on `main`'s shapes: **9/9** |
 | the §9.2 property as written, on `main` | **0/400 exercised** — its vacuity guard trips: since `5107365` a level or an environment is vouched for only by an answer at its path, and no gate reads `plan.intent` | rebuilt on a `Provenance`: **400/400**, `tests/invariants` 15/15 |
 | `questionsOf(plan)` for an update of a right with no environment answered | **0 questions**; with `{ natures }`, **1**, at `operations.0.environment` | `clearPlan` passes the context `runPlan` passes, or it clears what the preview asks (core-plan-3) |
@@ -512,7 +512,7 @@ other than a `create-catalog-info` is `already-declared` (`changedNothing`,
 plan carrying one beside grants would be refused as "produced no change", which is true and
 misleading. It is refused by name instead, pointing at `init --submit` (D6).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/unit/catalogue-path.test.ts` — the owner's, with the root `catalog-info.yaml`, the
 Backstage registration `init platform` now scaffolds (`src/scaffold/layout.ts:60`;
@@ -991,12 +991,12 @@ Add the effect the review asked for (gap-stage5-readiness-11): the second pass's
 (`tests/invariants/core.test.ts:21`, `:31`); drop them here, or leave them to B1 and say so
 in the pull request.
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `pnpm vitest run tests/unit/clear.test.ts tests/unit/clear-parity.test.ts tests/unit/catalogue-path.test.ts tests/invariants/core.test.ts`
 Expected: FAIL — `clear.js`, `catalogue.js` and `applyEdits` do not exist.
 
-- [ ] **Step 3: Extract `sealed`, and write the catalogue predicate** *(the owner's code, as written)*
+- [x] **Step 3: Extract `sealed`, and write the catalogue predicate** *(the owner's code, as written)*
 
 `src/core/plan/seal.ts`. The body moves out of `sign.ts` unchanged, except that the
 message is now a parameter. The §5.2 rationale the deleted doc block in `sign.ts` gave —
@@ -1039,6 +1039,14 @@ export const sealed = <K, V>(entries: ReadonlyMap<K, V>, message: string): Reado
   return Object.freeze(map)
 }
 ```
+
+*Revised in review.* `isCleared` checks a clearance's identity, never its contents, and
+`expected.files` is what task 4's `diverges()` proves the base against: a borrowed
+`Map.prototype.delete.call` emptied it with the brand still true. `sealed` now returns a
+frozen object that is not a Map — its entries in a private field, which Map's own methods
+refuse as a receiver — implementing `ReadonlyMap`, its `set`/`delete`/`clear` throwing the
+message. The interface is unchanged; `clear.test.ts` and `sign.test.ts` assert the borrowed
+call throws.
 
 In `sign.ts` (`:593-602` on `d0fdee9`), delete the local `sealed`,
 `import { sealed } from './seal.js'`, and call `sealed(paths, SEALED)` /
@@ -1102,7 +1110,7 @@ A third walker restates the folder rule: `src/context/fixtures/index.ts:10-24`, 
 which does not skip hidden files. Point it at `isCatalogueFolder` too, or say in a comment why
 it differs.
 
-- [ ] **Step 4: Bind the provenance to the signature (D1)**
+- [x] **Step 4: Bind the provenance to the signature (D1)**
 
 In `src/core/plan/sign.ts`, `SignedPlan` gains the provenance it was signed with, sealed:
 
@@ -1131,7 +1139,7 @@ No caller changes: the provenance was already `signPlan`'s third argument, and
 `checkPolicies` keeps taking one — a round's, which the ask loop changes between passes.
 `pnpm typecheck` finds any test that builds a `SignedPlan` by hand.
 
-- [ ] **Step 5: Write `applyEdits` and `clear.ts`**
+- [x] **Step 5: Write `applyEdits` and `clear.ts`**
 
 Append to `src/core/plan/edits.ts` *(measured on `d0fdee9`)*:
 
@@ -1486,7 +1494,7 @@ Add two rows to the table in `src/core/plan/README.md`, after `edits.ts`:
 | `seal.ts` | a Map that refuses to change, for the signature's paths and a clearance's bytes |
 ```
 
-- [ ] **Step 6: Run the tests, then everything**
+- [x] **Step 6: Run the tests, then everything**
 
 Run: `pnpm vitest run tests/unit/clear.test.ts tests/unit/clear-parity.test.ts tests/unit/catalogue-path.test.ts tests/unit/sign.test.ts tests/invariants tests/architecture tests/unit/iac-fs.test.ts tests/unit/validate-command.test.ts`
 Expected: PASS. If the §9.2 property fails, that is a finding about `planEdits`, not about
@@ -1496,7 +1504,7 @@ Run, if `df -h /` shows at least 2 GiB free: `pnpm test && pnpm typecheck`
 Expected: PASS, with the suite's count up by the tests added. Record the new count in
 `AGENTS.md` (`pnpm test  # N tests`).
 
-- [ ] **Step 7: Traceability**
+- [x] **Step 7: Traceability**
 
 - `CHANGELOG.md`, under Unreleased → Added: one line, ending with the pull request's link.
 - `docs/roadmap.md`: stage 5's row and queue item say task 1 is on `main`.
@@ -1507,8 +1515,15 @@ Expected: PASS, with the suite's count up by the tests added. Record the new cou
 
 - [ ] **Step 8: Commit** *(after the owner's go-ahead)*
 
+By explicit path only — never `git add -A` or `git add .`: in a worktree whose
+`node_modules` is a symbolic link, `.gitignore`'s `node_modules/` does not match it, and it
+would be committed as a link into another checkout. `src/cli/commands/plan.ts` carries the
+`PlanOptions.clearance` seam `clear-parity.test.ts` needs; the escaped tests and
+`hidden-controls.test.ts` are the guard and what it found; `AGENTS.md` is the shipping
+script's test count.
+
 ```bash
-git add src/core src/context/iac-fs/snapshot.ts src/context/fixtures/index.ts tests/unit/clear.test.ts tests/unit/clear-parity.test.ts tests/unit/catalogue-path.test.ts tests/invariants CHANGELOG.md docs/roadmap.md docs/reviews/2026-09-23-deep-review.md AGENTS.md
+git add src/core src/context/iac-fs/snapshot.ts src/context/fixtures/index.ts src/cli/commands/plan.ts tests/unit/clear.test.ts tests/unit/clear-parity.test.ts tests/unit/catalogue-path.test.ts tests/unit/sign.test.ts tests/unit/hidden-controls.test.ts tests/unit/commentary.test.ts tests/unit/echoes.test.ts tests/unit/update-environment.test.ts tests/unit/negation.test.ts tests/unit/surgery.test.ts tests/unit/surgery-append.test.ts tests/invariants CHANGELOG.md docs/roadmap.md docs/reviews/2026-09-23-deep-review.md docs/plans/stage-5-write.md AGENTS.md
 git commit -m "feat(core): mint the only value a forge accepts, and prove applying twice is applying once"
 ```
 
@@ -2673,6 +2688,19 @@ refuses any object `clear.ts` did not mint (D3); a branch carrying our files on 
 parent is refused, never `already-submitted` (D7); the committer identity is probed when the
 forge opens, before any model, and git may not guess one (D13, `user.useConfigOnly`); the branch name is recomputed, not trusted; and git runs
 through task 3's launcher.
+
+*Added in task 1's review — two things this task inherits.* **An empty clearance.** A
+`Cleared` whose every operation is `already-declared` carries no edit, and its `branch` is
+the same name for every such plan (`branchFor([])`, the digest of nothing): `submit()` must
+answer `unchanged` before any ref, which the `unchanged` case below already asserts with
+`observable`. **The hidden files the gates judged.** A `catalogue`-scope `Expectation` holds
+catalogue paths only; the `.witness.yml` files `unwitnessed-folder` read and
+`.idp-agent.yml`'s `environments` are not in `expected.files` (`clear.ts`, `Expectation`).
+`diverges()` therefore cannot see a witness removed, or the configuration changed, between
+clearance and submission. Stated, not closed, beside gap-stage5-readiness-6's
+`PolicyContext` limit; `validate` over the branch still reports a missing witness as an
+error. Closing it means the clearance holding those files' bytes, which is a change to
+`ClearInput`, not to the forge.
 
 **Files:**
 - Create: `src/forge/local/objects.ts`, `src/forge/local/forge.ts`
@@ -5161,8 +5189,8 @@ tracing), 0010 was reserved for the stage-5 check, and 0011 is `backstage-http`'
 
 **In task 1's pull request**
 
-- [ ] `sign.ts`'s stage-5 comment (contradiction 4); `seal.ts` carries the §5.2 rationale.
-- [ ] `src/core/plan/README.md`: the `clear.ts` and `seal.ts` rows.
+- [x] `sign.ts`'s stage-5 comment (contradiction 4); `seal.ts` carries the §5.2 rationale.
+- [x] `src/core/plan/README.md`: the `clear.ts` and `seal.ts` rows.
 
 **In task 3's pull request**
 

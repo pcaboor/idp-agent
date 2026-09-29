@@ -247,7 +247,7 @@ const STARTS_WITH_WORD = /^[\p{L}\p{N}\p{M}]/u
 /**
  * The soft hyphen, removed from what is PRINTED, not only from what is matched.
  * It says where a word may break across lines, which means nothing on one, and
- * terminals disagree on it — some draw `-`, some nothing — so `billing­db­dev`
+ * terminals disagree on it — some draw `-`, some nothing — so `billing\u00ADdb\u00ADdev`
  * would be checked as one reading and seen as the other. Gone, it has one.
  */
 const SOFT_HYPHEN = /\u00AD/gu

@@ -8,6 +8,7 @@ import {
   type UnreadableFolder,
 } from '../../core/validate/rules.js'
 import { REGISTRATION_FILE } from '../../core/validate/registration.js'
+import { isCatalogueFolder, isCataloguePath } from '../../core/paths/catalogue.js'
 
 /**
  * Reads a repository laid out the way `init platform` produces one, keeping
@@ -19,7 +20,6 @@ import { REGISTRATION_FILE } from '../../core/validate/registration.js'
  */
 
 
-const YAML_EXTENSIONS = new Set(['.yml', '.yaml'])
 const WITNESS = '.witness.yml'
 
 /** POSIX separators whatever the platform: a violation names a path a human types. */
@@ -62,7 +62,7 @@ async function walk(root: string, directory: string, found: Walked): Promise<voi
       // that are YAML and are not entities, .git holds objects. Parsing them
       // as entities would make the repository this tool just scaffolded fail
       // its own validator — which is how this rule was found.
-      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
+      if (!isCatalogueFolder(entry.name)) continue
       await walk(root, full, found)
       continue
     }
@@ -74,8 +74,7 @@ async function walk(root: string, directory: string, found: Walked): Promise<voi
     // not land in a CONFIGURED repository at all, while every fixture that had
     // no config passed. `.witness.yml` needed no rule of its
     // own once this one existed, and its named skip went with it.
-    if (entry.name.startsWith('.')) continue
-    if (YAML_EXTENSIONS.has(path.extname(entry.name))) found.files.push(full)
+    if (isCataloguePath(relative(root, full))) found.files.push(full)
   }
 }
 

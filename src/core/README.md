@@ -40,6 +40,9 @@ and nothing here can be steered by what it validates. Hence the property tests r
 - **Entity paths** — `computeEntityPath`, `resolveEntityPath`, `assertInsideRepo`,
   `PathEscapeError`. The engine, not the model, decides where a file lands, and containment is
   re-checked here rather than trusted to whichever caller eventually writes.
+  `isCataloguePath` and `isCatalogueFolder` (`paths/catalogue.ts`) say which files of a
+  declarations repository are catalogue: the one rule `context/iac-fs` walks by and the demo
+  SI is read by, and the one the forge will prove a commit against.
 - **The serialiser** — `serializeEntity`, `parseEntity`. The one place a structure becomes YAML,
   so `no` or `123` survive as strings for the YAML 1.1 readers that also read the repository.
   It writes links, a system and `providesApis` when an entity read from a file carries them,

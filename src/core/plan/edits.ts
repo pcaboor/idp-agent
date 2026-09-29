@@ -328,3 +328,17 @@ export function planEdits(signed: SignedPlan, before: ReadonlyMap<string, string
 
   return { edits, dropped }
 }
+
+/**
+ * The bytes a repository holds once `edits` are applied. Pure, and used by the
+ * one property that needs it: §9.2's "applying twice == applying once". The
+ * forge does not call it — it writes git objects, not a map.
+ */
+export function applyEdits(
+  before: ReadonlyMap<string, string>,
+  edits: readonly FileEdit[],
+): Map<string, string> {
+  const after = new Map(before)
+  for (const edit of edits) after.set(edit.path, edit.after)
+  return after
+}
