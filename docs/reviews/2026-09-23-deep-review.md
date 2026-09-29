@@ -160,6 +160,7 @@ Review ids that a later pull request names as fixed, outside the ids the priorit
 - agents-llm-5 → [#75](https://github.com/pcaboor/idp-agent/pull/75)
 - agents-llm-10 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5, for the abort signal; no command passes one yet, and calls are still not streamed
 - agents-llm-11 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
+- architecture-9 → [#109](https://github.com/pcaboor/idp-agent/pull/109), stage 5 task 5, in part: the confirmation is frozen as a seam taking a structured `SubmissionSummary` — root, repository, branch, base, files — beside the rendered preview (D5); the structured Preview/PlanReport apart from rendering and the session ADR are still open
 - architecture-11 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2; the `forge/` rules — `core/` never imports it, only `cli/` reaches it at run time, it imports no package — landed with the folder in [#107](https://github.com/pcaboor/idp-agent/pull/107), with `core/`'s disk rule made transitive
 - architecture-12 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
 - build-ci-2 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
@@ -173,6 +174,7 @@ Review ids that a later pull request names as fixed, outside the ids the priorit
 - cli-ux-7 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
 - cli-ux-8 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - cli-ux-11 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
+- cli-ux-12 → [#109](https://github.com/pcaboor/idp-agent/pull/109), stage 5 task 5, in part, as architecture-9: a `Confirm` seam a TUI can drive without parsing text; `plan.ts` is not split
 - cli-ux-14 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
 - core-plan-9 → [#105](https://github.com/pcaboor/idp-agent/pull/105), stage 5 task 1: a `Cleared` minted after the free gates, re-run against the sealed provenance, with a runtime brand (`isCleared`, D3); the signature's and the clearance's maps now hold their entries in a private field, so a borrowed `Map.prototype.set.call` throws rather than moving a path or an expectation under a brand that checks identity only; nothing accepts one yet, which is task 4's forge
 - core-plan-10 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4, at `planEdits`, the signature, the policies and the re-check
@@ -202,8 +204,10 @@ Review ids that a later pull request names as fixed, outside the ids the priorit
 - gap-stage5-readiness-7 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4, for the list a failure loses; the writer still neither modifies, renames, deletes nor syncs, which is stage 5's
 - gap-stage5-readiness-8 → [#106](https://github.com/pcaboor/idp-agent/pull/106), stage 5 task 2, in part: a clearance names the repository it is for (`Cleared.repository`, `service` for `init`'s), and the service's is filed where `init` previews it, from the same kept declarations — the root's `.yml` or a nested catalog-info, never a twin at the root; the half that a forge opened for one repository refuses the other's clearance is task 4's, closed by [#108](https://github.com/pcaboor/idp-agent/pull/108) (`local-forge.test.ts`, *refuses a clearance for the other repository, before anything else — both ways*)
 - gap-stage5-readiness-9 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2
+- gap-stage5-readiness-10 → [#109](https://github.com/pcaboor/idp-agent/pull/109), stage 5 task 5, by route (D4): `plan --from … --submit` crosses four gates and no Reviewer, and `SECURITY.md`, the help, the README and ADR 0010 say so; one `evaluatePlan()` stays architecture-1's
 - gap-stage5-readiness-11 → [#105](https://github.com/pcaboor/idp-agent/pull/105), stage 5 task 1, in part: §9.2's idempotence property asserts the effect too, over `arbitraryGrantPlan`; the hand-written generators are B1's
 - gap-stage5-readiness-12 → [#108](https://github.com/pcaboor/idp-agent/pull/108), stage 5 task 4: design §4.3 says two amendments of one grant conflict at the merge, and the branch name — a digest of the bytes, `branchFor` ([#105](https://github.com/pcaboor/idp-agent/pull/105)) — is the plan's identity, recognised by the forge rather than duplicated (`local-forge.test.ts`, *submitting the same bytes twice is submitting them once*)
+- gap-stage5-readiness-13 → [#109](https://github.com/pcaboor/idp-agent/pull/109), stage 5 task 5: `Confirm` beside `Ask`, handed a structured summary (D5), and a `--json` `submission` key pinned by a test (D11); `CommandResult` is still text
 - gap-stage5-readiness-14 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
 - product-gap-10 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5, for the count; no budget or `--max-calls`, which is agents-llm-2's
 - product-gap-14 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
@@ -300,7 +304,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | architecture-6 | partly fixed | medium | medium | A4 (part), in [#90](https://github.com/pcaboor/idp-agent/pull/90): `planEdits`, the signature, the policies and the re-check |  | `never` defaults or a `HANDLERS` table at the 44 remaining `op ===` branches; a switch on `patch.patch`. |
 | architecture-7 | still true | medium | large |  | owner | `Policy` and `Rule` objects enabled per repository, factory tables for providers, a `./plugin` export — after the foundation. |
 | architecture-8 | partly fixed | medium | medium |  | owner | Same fix as agents-llm-4. |
-| architecture-9 | partly fixed | medium | large |  | owner | A structured Preview/PlanReport apart from rendering, a signal through the commands, a session ADR before stage 5 freezes confirmation. |
+| architecture-9 | partly fixed | medium | large | stage 5 task 5, in part in [#109](https://github.com/pcaboor/idp-agent/pull/109) | owner | A structured Preview/PlanReport apart from rendering, a signal through the commands, a session ADR before stage 5 freezes confirmation. |
 | architecture-10 | partly fixed | medium | medium |  |  | One `runBoundedLoop` for the four agents, and `reasonOf` everywhere. |
 | architecture-11 | still true | medium | small | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | Fail on an empty tree or an unresolved import, scan `.mts`/`.cts`, and a rule naming the `cli/` modules that touch the disk. |
 | build-ci-2 | still true | medium | small | A3, fixed in [#89](https://github.com/pcaboor/idp-agent/pull/89) |  | Smoke from an extracted `npm pack` tarball, or at least assert `fixtures/si-demo` is packed. |
@@ -310,7 +314,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | cli-ux-6 | partly fixed | medium | small | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) |  | Ctrl-C at a prompt rejects with an interruption, and `main` exits 130; Ctrl-D stays a decline. |
 | cli-ux-10 | still true | medium | medium |  | owner | One versioned `PlanReport` union by `outcome`, with edits and diffs, emitted by both routes and every refusal. |
 | cli-ux-11 | partly fixed | medium | small | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) (a refused phrase still prints the whole help, which lists the commands a slip may have meant) |  | `-h`, `--version`, `version` and `<cmd> --help` before `parsePhrase`; strict single positionals; a usage line, not the whole HELP. |
-| cli-ux-12 | partly fixed | medium | large |  | owner | Same as architecture-9, and split `plan.ts` into pipeline, ask loop and render. |
+| cli-ux-12 | partly fixed | medium | large | stage 5 task 5, in part in [#109](https://github.com/pcaboor/idp-agent/pull/109) | owner | Same as architecture-9, and split `plan.ts` into pipeline, ask loop and render. |
 | core-plan-8 | still true | medium | medium |  | owner | `environmentAnnotation` in `.idp-agent.yml`, threaded in place of `ENV_ANNOTATION`, with a neutral default. |
 | core-plan-9 | still true | medium | medium | stage 5 task 1, fixed in [#105](https://github.com/pcaboor/idp-agent/pull/105) | owner | One function mints an `ApprovedChange` after the five gates, held in a module-private `WeakSet` the writer checks. |
 | core-plan-11 | still true | medium | small |  | owner | Same channel as cli-ux-5: an `--answer` value enters `provenance.answers` and signs `echoed`. |
@@ -335,9 +339,9 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | gap-stage5-readiness-4 | still true | medium | medium | B3 |  | The iac-fs walk turns a symbolic link into a named rejection; same primitive as core-yaml-5. |
 | gap-stage5-readiness-6 | partly fixed | medium | medium | stage 5, in part in [#105](https://github.com/pcaboor/idp-agent/pull/105) (the edits and the re-check judge one reading of the bytes; the `PolicyContext` is still built from the first read, and the witnesses and `.idp-agent.yml` it judged are outside the expectation) |  | Stage 5's writer re-reads each target and compares it with `before`, refusing on a mismatch. |
 | gap-stage5-readiness-9 | still true | medium | small | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | A rule that only the named writers import a writing function or `child_process`, over the closure; a minimum file count. |
-| gap-stage5-readiness-10 | still true | medium | medium |  | owner | Same `evaluatePlan()` as architecture-1; then word SECURITY and README by route, or give `--from` a Reviewer. |
+| gap-stage5-readiness-10 | still true | medium | medium | stage 5 task 5, fixed by route in [#109](https://github.com/pcaboor/idp-agent/pull/109) | owner | Same `evaluatePlan()` as architecture-1; then word SECURITY and README by route, or give `--from` a Reviewer. |
 | gap-stage5-readiness-11 | partly fixed | medium | small | B1, in part in [#105](https://github.com/pcaboor/idp-agent/pull/105) (the idempotence property asserts the effect; the generators are B1's) |  | Same generators as core-yaml-6; stage 5's idempotence invariant asserts the effect too. |
-| gap-stage5-readiness-13 | still true | medium | large |  | owner | Split compute from render (a structured Preview) and add a Confirm seam beside Ask. |
+| gap-stage5-readiness-13 | still true | medium | large | stage 5 task 5, fixed in [#109](https://github.com/pcaboor/idp-agent/pull/109) | owner | Split compute from render (a structured Preview) and add a Confirm seam beside Ask. |
 | product-gap-4 | still true | medium | medium |  |  | Keep `metadata.namespace`, one `refOf`/`parseRef` in core, a rule forbidding the `:default/` literal. |
 | product-gap-5 | still true | medium | small |  | re-record, owner | Same fix as core-plan-8. |
 | product-gap-6 | partly fixed | medium | medium |  | re-record | `offset`, and system, lifecycle and tag criteria for searches; a count or table outcome. |

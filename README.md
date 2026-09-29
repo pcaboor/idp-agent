@@ -13,7 +13,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 3811, no API key" src="https://img.shields.io/badge/tests-3811%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 3844, no API key" src="https://img.shields.io/badge/tests-3844%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -355,8 +355,9 @@ idp-agent show <name-or-reference> [--repo <dir> | --demo]
 idp-agent relations <name-or-reference> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-reference>] [--depth <n>] [--repo <dir> | --demo]
 idp-agent ask "<question>" [--repo <dir> | --demo] [--quiet]  # needs IDP_PROVIDER, IDP_MODEL and its key
 idp-agent validate <directory>                     # what the generated CI runs
-idp-agent init platform <dir> --owner @org/team    # the only command that writes
+idp-agent init platform <dir> --owner @org/team    # writes the directory it is handed
 idp-agent plan --from <plan.json> [--repo <dir>]   # no model, and none is possible
+    [--json] [--submit]                            # --submit: a local branch, for review
 idp-agent plan "<intent>" [--repo <dir>] [--json]  # needs IDP_PROVIDER, IDP_MODEL and its key
     [--project <dir>]                              # the service's repository, if not where you stand
 idp-agent init [--repo <dir>]                      # the catalog-info.yaml it would write
@@ -379,7 +380,16 @@ repository — `idpa init > catalog-info.diff`, then `git apply catalog-info.dif
 | `ask` | Answers a question about your platform. The model picks the queries; the engine answers them, and prints the model's short introduction and conclusion around the answer, checked and marked `›`. Asked about the catalogue as a whole — *talk about this project* — it prints an overview the engine writes: counts by kind, type, environment, owner, system and tag, a few entities in their own descriptions, rights and their levels, the most-reached resources, dangling references, and what it could not read. |
 | `init platform` | Scaffolds the declarations repository, its CI, its Backstage registration and a branch-protection checklist. |
 | `validate` | Checks a repository against the schemas. This is what the scaffolded CI runs. |
-| `plan` | Turns an intent, or a `Plan` file, into a checked and previewed diff. |
+| `plan` | Turns an intent, or a `Plan` file, into a checked and previewed diff. With `--submit`, `plan --from` makes it a local branch `idp-agent/…`, for review. |
+
+`plan --from … --submit` writes one new branch, `idp-agent/<name>-<8 hex>`, cut from `HEAD`
+in the declarations repository — which must be the root of a git clone, with a committer
+identity configured — and nothing else: not the branch you are on, not the index, not the
+working tree. At a terminal it shows the diff and asks `[y/N]`; a script or `--json` has
+`--submit` as its answer. Submitting the same plan again names the branch it already cut.
+Nothing is pushed and no merge request is opened (stage 6): the plan crossed four gates and
+no Reviewer, and the merge is what authorises it. A catalogue file that differs from `HEAD`
+— uncommitted, untracked or ignored — refuses the submission, naming the files.
 
 `plan --repo` names the **declarations** repository. `init --repo` names the
 **application** repository being declared. `graph`, `show`, `relations` and `ask` take the first kind;
@@ -583,8 +593,9 @@ firewall automation and ticketing) and adds the multi-agent layer that system ne
 
 The order follows the doctrine: read first, validate before the first write, preview
 before the pull request. Today **no preview writes anything** — the test suite and
-`pnpm smoke` hash every byte around a full run to prove it — and `init platform` writes
-only into the directory it is handed.
+`pnpm smoke` hash every byte around a full run to prove it — `init platform` writes
+only into the directory it is handed, and `plan --from … --submit` writes one local branch
+and nothing else, which both of them check too.
 
 No Backstage is needed, and adopting one later is one registration: [`docs/adopting-backstage.md`](docs/adopting-backstage.md).
 

@@ -193,9 +193,12 @@ function assert(label, held, failure) {
  * (`tests/support/tree.ts`); this is that assertion made about the SHIPPED
  * binary, which is the one thing `pnpm test` never runs.
  *
- * @param {string} dir @returns {string}
+ * `skipGit` leaves out the root's `.git/`: a submission legitimately writes
+ * objects and one ref there, and the working tree is the claim.
+ *
+ * @param {string} dir @param {{skipGit?: boolean}} [options] @returns {string}
  */
-function hashTree(dir) {
+function hashTree(dir, { skipGit = false } = {}) {
   const digest = createHash('sha256')
   /** @param {string} current @param {string} prefix */
   const walk = (current, prefix) => {
@@ -203,6 +206,7 @@ function hashTree(dir) {
     // Sorted, so the digest is about the tree and not about the order the
     // filesystem happened to hand it over in.
     for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (skipGit && prefix === '' && entry.name === '.git') continue
       const full = path.join(current, entry.name)
       const relative = prefix === '' ? entry.name : `${prefix}/${entry.name}`
       if (entry.isDirectory()) {
@@ -391,6 +395,50 @@ assert(
   hashTree(DEMO_SI) === demoUntouched,
   'plan --from changed fixtures/si-demo; stage 4 writes nothing',
 )
+
+// Stage 5: --submit, against a CLONE — a copy of the demo SI committed on
+// main, where open-network.json ends on a diff with nobody at the keyboard.
+// The binary is the one that must cut the branch; git here only builds the
+// fixture, isolated from the contributor's configuration. No TTY: --submit is
+// the whole confirmation, as in CI.
+const SUBMITTED = path.join(ELSEWHERE, 'submitted')
+cpSync(DEMO_SI, SUBMITTED, { recursive: true })
+const fixtureGit = (...args) =>
+  execFileSync('git', ['-C', SUBMITTED, ...args], {
+    env: { ...CLEAN_ENV, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
+    encoding: 'utf8',
+  }).trim()
+fixtureGit('init', '-q', '-b', 'main')
+fixtureGit('config', 'user.name', 'smoke')
+fixtureGit('config', 'user.email', 'smoke@idp-agent.invalid')
+fixtureGit('add', '-A')
+fixtureGit('commit', '-q', '-m', 'base')
+const mainBefore = fixtureGit('rev-parse', 'main')
+const worktreeBefore = hashTree(SUBMITTED, { skipGit: true })
+const OPEN_NETWORK = path.join(ROOT, 'examples/open-network.json')
+
+check({
+  args: ['plan', '--from', OPEN_NETWORK, '--repo', 'submitted', '--submit'],
+  code: 0,
+  stdout: /^1 file · submitted as idp-agent\/[a-z0-9-]+-[0-9a-f]{8} on top of main@[0-9a-f]{7} · main untouched$/m,
+})
+check({
+  args: ['plan', '--from', OPEN_NETWORK, '--repo', 'submitted', '--submit'],
+  code: 0,
+  stdout: /^1 file · already submitted as idp-agent\/[a-z0-9-]+-[0-9a-f]{8} · nothing written$/m,
+})
+assert('--submit left main where it was', fixtureGit('rev-parse', 'main') === mainBefore, '--submit moved main')
+assert(
+  '--submit left the working tree byte for byte',
+  hashTree(SUBMITTED, { skipGit: true }) === worktreeBefore,
+  '--submit wrote into the working tree',
+)
+assert(
+  '--submit cut exactly one branch, and a second run none',
+  fixtureGit('for-each-ref', '--format=%(refname)', 'refs/heads/idp-agent/').split('\n').filter(Boolean).length === 1,
+  '--submit cut no branch, or more than one',
+)
+check({ args: ['plan', '--from', OPEN_NETWORK, '--repo', 'repo', '--submit'], code: 2, stderr: /not a git working tree/ })
 
 // The read commands over a declarations repository of the user's own, and the
 // line that says when they are NOT reading one. A copy of the demo SI, so the

@@ -150,6 +150,25 @@ Each pull request adds its line here.
   every git call of a submission, before it runs and after, and by a stranger creating the
   branch before each. ADR 0010 is accepted. No command reaches the forge yet: `--submit` is
   next ([#108](https://github.com/pcaboor/idp-agent/pull/108)).
+- `plan --from <plan.json> --submit`, the first command that writes into a declarations
+  repository: the preview becomes one local branch `idp-agent/<name>-<8 hex>`, cut from `HEAD`
+  in the repository `declarationsFor`'s chain resolved — `--repo`, the working directory,
+  `IDP_REPO` or the personal file, stderr naming which — and nothing else moves: not the
+  branch checked out, not the index, not the working tree; nothing is pushed and no merge
+  request is opened. The forge is opened before anything is read (not a clone's root, no
+  `git`, no committer identity, a detached `HEAD`: exit 2), and a catalogue file that differs
+  from `HEAD` is refused before any preview, naming it (exit 1). At a terminal the diff is
+  shown and `[y/N]` asked on stderr — only `y` or `yes` submits, a decline writes nothing on
+  exit 0, Ctrl-C exits 130 — and a script or `--json` has the flag as its answer; `--json`
+  reports the outcome under a `submission` key whose every shape a test pins, a divergent
+  catalogue's refusal included. The base branch's name, the forge's refusals and git's own
+  words are printed with nothing a terminal obeys, bidi controls spelled out. The same plan
+  submitted again names the branch it already cut; a question, a gate's refusal, a plan
+  writing into both repositories and #83's unaccounted empty change cut none. The `--from`
+  road crosses four gates and no Reviewer, and says so; the merge is what authorises.
+  `plan "<intent>" --submit` and `idpa "<phrase>" --submit` are refused, exit 2, for now.
+  Without `--submit`, `plan` prints what it printed, byte for byte
+  ([#109](https://github.com/pcaboor/idp-agent/pull/109)).
 
 ### Changed
 

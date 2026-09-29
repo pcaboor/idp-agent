@@ -1,8 +1,8 @@
 # `forge/` — where a submission becomes a branch
 
-The layer that will write into a user's repository: one new ref under `refs/heads/idp-agent/`,
+The layer that writes into a user's repository: one new ref under `refs/heads/idp-agent/`,
 cut through git's plumbing, and nothing else (ADR-0010). It holds its shapes, its refusals and
-the local forge; no command reaches it yet — `--submit` is stage 5's next task.
+the local forge; `plan --from … --submit` reaches it, through `cli/commands/submit.ts`.
 
 ## What lives here
 

@@ -1,13 +1,18 @@
-import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { main } from '../../src/cli/index.js'
+import { PassThrough } from 'node:stream'
+import { afterAll, describe, expect, it } from 'vitest'
+import { confirmOnTerminal, InterruptedError, main } from '../../src/cli/index.js'
 import { runInitPlatform } from '../../src/cli/commands/init.js'
 import { runPlan } from '../../src/cli/commands/plan.js'
+import type { Confirm, SubmissionSummary } from '../../src/cli/commands/submit.js'
+import { renderUnifiedDiff } from '../../src/core/diff/unified.js'
+import { GitError } from '../../src/process/git.js'
 import { hashTree } from '../support/tree.js'
 import type { Ask } from '../../src/cli/commands/plan.js'
 import { confirmingEnvironment } from '../support/ask.js'
+import { committed, git, observable, show } from '../support/git.js'
 
 const capture = (): { out: string[]; err: string[] } => ({ out: [], err: [] })
 
@@ -990,5 +995,642 @@ describe('plan --from, what the repository already says', () => {
     expect(out).toContain('operations.0')
     expect(out).toContain('operations.1')
     expect(out).not.toContain('@@')
+  })
+})
+
+/**
+ * Every temporary directory the submission suites below made, removed in
+ * `afterAll`: each is a real git repository, and a test run's leftovers fill a
+ * small disk.
+ */
+const clones: string[] = []
+
+afterAll(async () => {
+  await Promise.all(clones.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
+})
+
+/** A scratch directory that is no repository at all, removed with the clones. */
+const nowhere = async (): Promise<string> => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'idp-nowhere-'))
+  clones.push(dir)
+  return dir
+}
+
+const runWith = async (
+  args: string[],
+  deps: { ask?: Ask; confirm?: Confirm; cwd?: string; env?: NodeJS.ProcessEnv } = {},
+) => {
+  const io = capture()
+  const code = await main(args, {
+    out: (chunk) => void io.out.push(chunk),
+    err: (chunk) => void io.err.push(chunk),
+    ...deps,
+  })
+  return { code, out: io.out.join(''), err: io.err.join('') }
+}
+
+/** The declarations repository as a clone: scaffolded, committed on main. */
+const clonedRepository = async (): Promise<string> => {
+  const repo = await scaffoldedRepository()
+  clones.push(path.dirname(repo))
+  await committed(repo)
+  return repo
+}
+
+const branches = async (repo: string): Promise<string[]> =>
+  (await git(repo, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/idp-agent/'))
+    .split('\n')
+    .filter((line) => line !== '')
+
+/**
+ * No personal file and no IDP_REPO from the developer's shell: the chain is
+ * read from what the test names, and nothing else.
+ */
+const isolated = async (extra: NodeJS.ProcessEnv = {}): Promise<NodeJS.ProcessEnv> => {
+  const home = await nowhere()
+  return { HOME: home, XDG_CONFIG_HOME: home, ...extra }
+}
+
+describe('plan --from --submit', () => {
+  it('cuts one branch holding exactly the diff it printed, and leaves main alone', async () => {
+    const repo = await clonedRepository()
+    const from = await planFile(repo, CREATE_PLAN)
+    const main0 = await git(repo, 'rev-parse', 'main')
+    const before = await observable(repo)
+
+    const { code, out } = await runWith(['plan', '--from', from, '--repo', repo, '--submit'], {
+      ask: answering('read'),
+    })
+
+    expect(code).toBe(0)
+    expect(out).toMatch(
+      /2 files · submitted as idp-agent\/orders-db-prod-[0-9a-f]{8} on top of main@[0-9a-f]{7} · main untouched/,
+    )
+    expect(out).toContain('Nothing is pushed. No merge request is opened: this build has no forge (stage 6).')
+    expect(out.trimEnd().endsWith(CLOSING)).toBe(true)
+    expect(await git(repo, 'rev-parse', 'main')).toBe(main0)
+    const [branch] = await branches(repo)
+    expect(branch).toBeDefined()
+    // The branch's diff, rendered by the same renderer, is IN what was printed:
+    // what the person read is what was submitted.
+    const fromGit = await Promise.all(
+      [DATABASE_PATH, ACCESS_PATH].map(async (file) => ({
+        path: file,
+        before: undefined,
+        after: await show(repo, branch ?? '', file),
+      })),
+    )
+    expect(out).toContain(renderUnifiedDiff(fromGit).trimEnd())
+    // And the only change a person can see is that one branch.
+    const added = (await observable(repo))
+      .split('\n')
+      .filter((line) => !before.split('\n').includes(line))
+    expect(added).toHaveLength(1)
+  })
+
+  it('still writes nothing — .git included — without --submit', async () => {
+    // Stage 4's guarantee, over a clone this time: the hash covers .git/.
+    const repo = await clonedRepository()
+    const from = await planFile(repo, CREATE_PLAN)
+    const before = await hashTree(repo)
+    const { code } = await runWith(['plan', '--from', from, '--repo', repo], { ask: answering('read') })
+    expect(code).toBe(0)
+    expect(await hashTree(repo)).toBe(before)
+  })
+
+  it('prints the same preview over a clone as over a plain directory, byte for byte', async () => {
+    // Without --submit nothing about git is read: the stage-4 output, CLOSING
+    // included, whether or not the directory happens to be a clone.
+    const plain = await scaffoldedRepository()
+    clones.push(path.dirname(plain))
+    const repo = await clonedRepository()
+    const plainRun = await runWith(['plan', '--from', await planFile(plain, CREATE_PLAN), '--repo', plain], {
+      ask: answering('read'),
+    })
+    const cloneRun = await runWith(['plan', '--from', await planFile(repo, CREATE_PLAN), '--repo', repo], {
+      ask: answering('read'),
+    })
+    expect(cloneRun.code).toBe(0)
+    expect(cloneRun.out).toBe(plainRun.out)
+    expect(cloneRun.out).toContain('2 files · nothing written')
+    expect(cloneRun.out.trimEnd().endsWith(CLOSING)).toBe(true)
+  })
+
+  it('submitting twice names the branch it already cut, and writes nothing', async () => {
+    const repo = await clonedRepository()
+    const from = await planFile(repo, CREATE_PLAN)
+    const args = ['plan', '--from', from, '--repo', repo, '--submit']
+    await runWith(args, { ask: answering('read') })
+    const between = await observable(repo)
+
+    const { code, out } = await runWith(args, { ask: answering('read') })
+
+    expect(code).toBe(0)
+    expect(out).toMatch(/already submitted as idp-agent\/orders-db-prod-[0-9a-f]{8} · nothing written/)
+    expect(await observable(repo)).toBe(between)
+  })
+
+  it('shows the diff before asking, and prints it once', async () => {
+    const repo = await clonedRepository()
+    const from = await planFile(repo, CREATE_PLAN)
+    const shown: SubmissionSummary[] = []
+    const confirm: Confirm = async (summary) => {
+      shown.push(summary)
+      return true
+    }
+
+    const { code, out } = await runWith(['plan', '--from', from, '--repo', repo, '--submit'], {
+      ask: answering('read'),
+      confirm,
+    })
+
+    expect(code).toBe(0)
+    // Structured (D5): what a TUI needs, without parsing the text.
+    expect(shown).toHaveLength(1)
+    expect(shown[0]?.files).toEqual([
+      { path: DATABASE_PATH, change: 'create' },
+      { path: ACCESS_PATH, change: 'create' },
+    ])
+    expect(shown[0]?.branch).toMatch(/^idp-agent\/orders-db-prod-[0-9a-f]{8}$/)
+    expect(shown[0]?.repository).toBe('declarations')
+    expect(shown[0]?.root).toBe(repo)
+    expect(shown[0]?.base.branch).toBe('main')
+    expect(shown[0]?.base.commit).toBe(await git(repo, 'rev-parse', 'main'))
+    expect(shown[0]?.preview).toContain(`+++ b/${DATABASE_PATH}`)
+    expect(shown[0]?.preview).toContain('not yet submitted')
+    // The prompt printed the diff; the result must not print it a second time.
+    expect(out).not.toContain('+++ b/')
+    expect(out).toContain('submitted as idp-agent/')
+  })
+
+  it('declined at the prompt: exit 0, not submitted, nothing written', async () => {
+    const repo = await clonedRepository()
+    const from = await planFile(repo, CREATE_PLAN)
+    const before = await observable(repo)
+
+    const { code, out } = await runWith(['plan', '--from', from, '--repo', repo, '--submit'], {
+      ask: answering('read'),
+      confirm: async () => false,
+    })
+
+    expect(code).toBe(0)
+    expect(out).toContain('not submitted · nothing written')
+    expect(await observable(repo)).toBe(before)
+  })
+
+  it('interrupted at the prompt: exit 130, nothing written', async () => {
+    const repo = await clonedRepository()
+    const from = await planFile(repo, CREATE_PLAN)
+    const before = await observable(repo)
+
+    const { code, err } = await runWith(['plan', '--from', from, '--repo', repo, '--submit'], {
+      ask: answering('read'),
+      confirm: async () => {
+        throw new InterruptedError()
+      },
+    })
+
+    expect(code).toBe(130)
+    expect(err).toContain('interrupted; nothing was written')
+    expect(await observable(repo)).toBe(before)
+  })
+
+  it('refuses a --repo that is not a clone, with the argument-error code', async () => {
+    const repo = await scaffoldedRepository()
+    clones.push(path.dirname(repo))
+    const from = await planFile(repo, CREATE_PLAN)
+    const before = await hashTree(repo)
+    const { code, err } = await runWith(['plan', '--from', from, '--repo', repo, '--submit'])
+    expect(code).toBe(2)
+    expect(err).toContain('not a git working tree')
+    expect(await hashTree(repo)).toBe(before)
+  })
+
+  it('refuses a folder of a clone, where the branch would be cut in the parent', async () => {
+    const outer = await nowhere()
+    const repo = path.join(outer, 'iac')
+    await runInitPlatform({ root: repo, owner: '@acme/platform', version: '0.0.0-test' })
+    await committed(outer)
+    const from = path.join(await nowhere(), 'plan.json')
+    await writeFile(from, `${JSON.stringify(CREATE_PLAN)}\n`, 'utf8')
+
+    const { code, err } = await runWith(['plan', '--from', from, '--repo', repo, '--submit'], {
+      ask: answering('read'),
+    })
+
+    expect(code).toBe(2)
+    expect(err).toContain('not at its root')
+    expect(await branches(outer)).toEqual([])
+  })
+
+  it('refuses a repository whose working tree is not HEAD, before previewing', async () => {
+    const repo = await clonedRepository()
+    await declare(repo, 'catalog/databases/stray.yml', '# stray\n')
+    const from = await planFile(repo, CREATE_PLAN)
+    const before = await observable(repo)
+
+    const { code, out } = await runWith(['plan', '--from', from, '--repo', repo, '--submit'], {
+      ask: answering('read'),
+    })
+
+    expect(code).toBe(1)
+    expect(out).toContain('stray.yml')
+    expect(out).not.toContain('+++ b/')
+    expect(await observable(repo)).toBe(before)
+  })
+
+  it('submits nothing while a question is open and nobody can answer it', async () => {
+    const repo = await clonedRepository()
+    const from = await planFile(repo, CREATE_PLAN)
+    const { code } = await runWith(['plan', '--from', from, '--repo', repo, '--submit'])
+    expect(code).toBe(3)
+    expect(await branches(repo)).toEqual([])
+  })
+
+  it('reports the submission in --json, and never prompts there', async () => {
+    const repo = await clonedRepository()
+    const from = await planFile(repo, CREATE_PLAN)
+    const { code, out } = await runWith(
+      ['plan', '--from', from, '--repo', repo, '--submit', '--json'],
+      {
+        ask: answering('read'),
+        confirm: async () => {
+          throw new Error('a --json run asked a person')
+        },
+      },
+    )
+    expect(code).toBe(0)
+    const report = JSON.parse(out) as { submission: Record<string, unknown> }
+    // The key's shape is pinned (D11): cli-ux-10 versions the report later,
+    // and a consumer written today must not be broken silently before then.
+    expect(Object.keys(report.submission).sort()).toEqual(['base', 'branch', 'commit', 'outcome'])
+    expect(report.submission['outcome']).toBe('created')
+    expect(report.submission['branch']).toMatch(/^idp-agent\//)
+    expect(report.submission['commit']).toBe(await git(repo, 'rev-parse', String(report.submission['branch'])))
+    expect(report.submission['base']).toEqual({ branch: 'main', commit: await git(repo, 'rev-parse', 'main') })
+  })
+
+  it('takes the root from the working directory, and says what chose it (D19)', async () => {
+    const repo = await clonedRepository()
+    const from = await planFile(repo, CREATE_PLAN)
+    const roots: string[] = []
+
+    const { code, out, err } = await runWith(['plan', '--from', from, '--submit'], {
+      ask: answering('read'),
+      confirm: async (summary) => {
+        roots.push(summary.root)
+        return true
+      },
+      cwd: repo,
+      env: await isolated(),
+    })
+
+    expect(code).toBe(0)
+    expect(err).toContain('the current directory')
+    expect(roots).toEqual([repo])
+    expect(out).toContain('submitted as idp-agent/')
+    expect(await branches(repo)).toHaveLength(1)
+  })
+
+  it('takes the root from IDP_REPO, and says so (D19)', async () => {
+    const repo = await clonedRepository()
+    const from = await planFile(repo, CREATE_PLAN)
+    const roots: string[] = []
+
+    const { code, err } = await runWith(['plan', '--from', from, '--submit'], {
+      ask: answering('read'),
+      confirm: async (summary) => {
+        roots.push(summary.root)
+        return true
+      },
+      cwd: await nowhere(),
+      env: await isolated({ IDP_REPO: repo }),
+    })
+
+    expect(code).toBe(0)
+    expect(err).toContain('IDP_REPO')
+    expect(roots).toEqual([repo])
+    expect(await branches(repo)).toHaveLength(1)
+  })
+
+  it('refuses --submit with no repository resolved, naming the four ways', async () => {
+    const { code, err } = await runWith(['plan', '--from', '/tmp/plan.json', '--submit'], {
+      cwd: await nowhere(),
+      env: await isolated(),
+    })
+    expect(code).toBe(2)
+    expect(err).toContain('--repo')
+    expect(err).toContain('IDP_REPO')
+    expect(err).toContain('idp-agent/config.yml')
+  })
+
+  it('refuses --submit with --demo, an option plan does not know, and writes nothing', async () => {
+    // plan never reads the demo SI, so no write can be decided against it: the
+    // parser refuses the option before a forge is opened.
+    const repo = await clonedRepository()
+    const from = await planFile(repo, CREATE_PLAN)
+    const before = await observable(repo)
+    const { code, err } = await runWith(['plan', '--from', from, '--repo', repo, '--submit', '--demo'], {
+      ask: answering('read'),
+    })
+    expect(code).toBe(2)
+    expect(err).toContain("Unknown option '--demo'")
+    expect(await observable(repo)).toBe(before)
+  })
+
+  it('answers a plan that changes nothing with #83’s exit 3, and asks no forge', async () => {
+    const repo = await clonedRepository()
+    const from = await planFile(repo, {
+      intent: 'declare the component billing-api, a service in production owned by group:default/tiger',
+      operations: [
+        {
+          op: 'create-entity',
+          entity: {
+            kind: 'Component',
+            metadata: { name: 'billing-api' },
+            spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
+          },
+        },
+      ],
+    })
+    const before = await observable(repo)
+
+    const { code, out } = await runWith(['plan', '--from', from, '--repo', repo, '--submit'], {
+      confirm: async () => {
+        throw new Error('a plan that changes nothing asked for a confirmation')
+      },
+    })
+
+    expect(code).toBe(3)
+    expect(out).toContain('this plan changes nothing, and the repository does not already say it')
+    expect(await branches(repo)).toEqual([])
+    expect(await observable(repo)).toBe(before)
+  })
+
+  it('refuses a plan writing into both repositories, pointing at init --submit (D6)', async () => {
+    const repo = await clonedRepository()
+    const from = await planFile(repo, {
+      intent: `${CREATE_INTENT}, and billing-api as a production service in catalog-info.yaml`,
+      operations: [
+        createDatabase,
+        createAccess,
+        {
+          op: 'create-catalog-info',
+          repoPath: 'catalog-info.yaml',
+          entity: {
+            kind: 'Component',
+            metadata: { name: 'billing-api' },
+            spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
+          },
+        },
+      ],
+    })
+    const before = await observable(repo)
+
+    const { code, out } = await runWith(['plan', '--from', from, '--repo', repo, '--submit'], {
+      ask: answering('read'),
+    })
+
+    expect(code).toBe(1)
+    expect(out).toContain('init --submit')
+    expect(out).toContain('Nothing was written.')
+    expect(await branches(repo)).toEqual([])
+    expect(await observable(repo)).toBe(before)
+  })
+
+  it('spells out a bidi control in the base branch’s name, submitted or refused', async () => {
+    // The base is the repository's own branch — after a clone, whatever the
+    // remote named its default — and git accepts U+202E in a ref name. It is
+    // the line that says which base a request sits on: it must not be spoofed.
+    const repo = await clonedRepository()
+    await git(repo, 'checkout', '-q', '-b', 'safe\u202egnp.exe')
+    const from = await planFile(repo, CREATE_PLAN)
+    const args = ['plan', '--from', from, '--repo', repo, '--submit']
+
+    const submitted = await runWith(args, { ask: answering('read') })
+    expect(submitted.code).toBe(0)
+    expect(submitted.out).toContain('on top of safe\\u202egnp.exe@')
+    expect(submitted.out + submitted.err).not.toContain('\u202e')
+
+    await declare(repo, 'catalog/databases/stray.yml', '# stray\n')
+    const divergent = await runWith(args, { ask: answering('read') })
+    expect(divergent.code).toBe(1)
+    expect(divergent.out).toContain('is not what safe\\u202egnp.exe@')
+    expect(divergent.out + divergent.err).not.toContain('\u202e')
+  })
+
+  it('prints a divergent path with nothing a terminal obeys', async () => {
+    const repo = await clonedRepository()
+    await declare(repo, 'catalog/databases/x\u001b[31mred\u202e.yml', '# stray\n')
+    const from = await planFile(repo, CREATE_PLAN)
+
+    const { code, out, err } = await runWith(['plan', '--from', from, '--repo', repo, '--submit'], {
+      ask: answering('read'),
+    })
+
+    expect(code).toBe(1)
+    // An escape sequence is dropped whole; a bidi control is spelled out.
+    expect(out).toContain('catalog/databases/xred\\u202e.yml was read')
+    expect(out + err).not.toContain('\u001b')
+    expect(out + err).not.toContain('\u202e')
+  })
+
+  it('refuses at the moment of writing when the base moved after the preview', async () => {
+    // Checked again where it is acted on (AGENTS.md, Invariants): a commit on
+    // main while the person read the diff is a refusal, not a branch on a base
+    // nobody reviewed against.
+    const repo = await clonedRepository()
+    const from = await planFile(repo, CREATE_PLAN)
+
+    const { code, out } = await runWith(['plan', '--from', from, '--repo', repo, '--submit'], {
+      ask: answering('read'),
+      confirm: async () => {
+        await git(repo, 'commit', '-q', '--allow-empty', '-m', 'meanwhile')
+        return true
+      },
+    })
+
+    expect(code).toBe(1)
+    expect(out).toMatch(/main moved from [0-9a-f]{7} to main@[0-9a-f]{7} since the plan was read/)
+    expect(out).toContain('Nothing was written.')
+    expect(await branches(repo)).toEqual([])
+  })
+
+  it('answers a git that fails mid-write with exit 1, and leaves what a person sees', async () => {
+    const repo = await clonedRepository()
+    const from = await planFile(repo, CREATE_PLAN)
+    const before = await observable(repo)
+    const objects = path.join(repo, '.git', 'objects')
+    const directories = async (dir: string): Promise<string[]> => [
+      dir,
+      ...(
+        await Promise.all(
+          (await readdir(dir, { withFileTypes: true }))
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => directories(path.join(dir, entry.name))),
+        )
+      ).flat(),
+    ]
+    const locked = await directories(objects)
+
+    try {
+      const { code, err } = await runWith(['plan', '--from', from, '--repo', repo, '--submit'], {
+        ask: answering('read'),
+        // After the forge was opened and the base read: git fails writing.
+        confirm: async () => {
+          await Promise.all(locked.map((dir) => chmod(dir, 0o555)))
+          return true
+        },
+      })
+
+      expect(code).toBe(1)
+      expect(err).toMatch(/^git [a-z-]+ failed; nothing was submitted\n {2}\S/)
+    } finally {
+      await Promise.all(locked.map((dir) => chmod(dir, 0o755)))
+    }
+    expect(await observable(repo)).toBe(before)
+    expect(await branches(repo)).toEqual([])
+  })
+
+  it('prints git’s own words one line each, with nothing a terminal obeys', async () => {
+    // Recognised by name, because cli/ may not load the launcher: this is the
+    // test that fails if the launcher's error is renamed out from under it.
+    const repo = await clonedRepository()
+    const from = await planFile(repo, CREATE_PLAN)
+
+    const { code, err } = await runWith(['plan', '--from', from, '--repo', repo, '--submit'], {
+      ask: answering('read'),
+      confirm: async () => {
+        throw new GitError(['update-ref'], 128, 'fatal: \u001b[31mboom\u202e\nsecond line\n', false)
+      },
+    })
+
+    expect(code).toBe(1)
+    expect(err).toBe(
+      'git update-ref failed; nothing was submitted\n' +
+        '  fatal: boom\\u202e\n' +
+        '  second line\n',
+    )
+  })
+
+  it('pins every shape --json gives the submission key (D11)', async () => {
+    // A consumer written against the key today must not be broken silently
+    // before cli-ux-10 versions the report: each outcome a script can meet.
+    const repo = await clonedRepository()
+    const from = await planFile(repo, CREATE_PLAN)
+    const args = ['plan', '--from', from, '--repo', repo, '--submit', '--json']
+    const submission = async (extra: string[] = []) => {
+      const { code, out } = await runWith([...args, ...extra], { ask: answering('read') })
+      return { code, submission: (JSON.parse(out) as { submission: Record<string, unknown> }).submission }
+    }
+
+    const created = await submission()
+    expect(created.code).toBe(0)
+    expect(Object.keys(created.submission).sort()).toEqual(['base', 'branch', 'commit', 'outcome'])
+    expect(Object.keys(created.submission['base'] as object).sort()).toEqual(['branch', 'commit'])
+
+    const again = await submission()
+    expect(again.code).toBe(0)
+    expect(again.submission).toEqual({ ...created.submission, outcome: 'already-submitted' })
+
+    // Merged: the repository now says it, and there is nothing to submit.
+    await git(repo, 'merge', '-q', '--ff-only', String(created.submission['branch']))
+    const unchanged = await submission()
+    expect(unchanged.code).toBe(0)
+    expect(unchanged.submission).toEqual({ outcome: 'unchanged' })
+
+    // A divergent working tree: refused before anything is judged, still JSON.
+    await declare(repo, 'catalog/databases/stray.yml', '# stray\n')
+    const divergent = await runWith(args, { ask: answering('read') })
+    expect(divergent.code).toBe(1)
+    const report = JSON.parse(divergent.out) as Record<string, unknown>
+    expect(Object.keys(report)).toEqual(['submission'])
+    const refused = report['submission'] as Record<string, unknown>
+    expect(Object.keys(refused).sort()).toEqual(['outcome', 'reasons'])
+    expect(refused['outcome']).toBe('refused')
+    expect(refused['reasons']).toEqual([expect.stringContaining('catalog/databases/stray.yml')])
+  })
+
+  it('reports a refusal of the clearance under the same key in --json (D6, D11)', async () => {
+    const repo = await clonedRepository()
+    const from = await planFile(repo, {
+      intent: `${CREATE_INTENT}, and billing-api as a production service in catalog-info.yaml`,
+      operations: [
+        createDatabase,
+        createAccess,
+        {
+          op: 'create-catalog-info',
+          repoPath: 'catalog-info.yaml',
+          entity: {
+            kind: 'Component',
+            metadata: { name: 'billing-api' },
+            spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
+          },
+        },
+      ],
+    })
+
+    const { code, out } = await runWith(['plan', '--from', from, '--repo', repo, '--submit', '--json'], {
+      ask: answering('read'),
+    })
+
+    expect(code).toBe(1)
+    const refused = (JSON.parse(out) as { submission: Record<string, unknown> }).submission
+    expect(Object.keys(refused).sort()).toEqual(['outcome', 'reasons'])
+    expect(refused['outcome']).toBe('refused')
+    expect(refused['reasons']).toEqual([expect.stringContaining('init --submit')])
+    expect(await branches(repo)).toEqual([])
+  })
+})
+
+describe('the confirmation at a terminal', () => {
+  /** A terminal: readline reads keys, and Ctrl-C, only when its output is one. */
+  const terminal = (): { input: PassThrough; output: PassThrough; diff: PassThrough; said: () => string } => {
+    const output = new PassThrough() as PassThrough & { isTTY?: boolean }
+    output.isTTY = true
+    const diff = new PassThrough()
+    const chunks: Buffer[] = []
+    diff.on('data', (chunk: Buffer) => chunks.push(chunk))
+    output.resume()
+    return { input: new PassThrough(), output, diff, said: () => Buffer.concat(chunks).toString('utf8') }
+  }
+
+  const SUMMARY: SubmissionSummary = {
+    root: '/work/iac',
+    repository: 'declarations',
+    branch: 'idp-agent/orders-db-prod-3f9c2a1b',
+    base: { branch: 'main', commit: 'abc1234def' },
+    files: [{ path: DATABASE_PATH, change: 'create' }],
+    preview: `+++ b/${DATABASE_PATH}\n1 file · not yet submitted — it would become idp-agent/orders-db-prod-3f9c2a1b`,
+  }
+
+  it('prints the preview, then submits on y or yes and nothing else', async () => {
+    for (const [typed, expected] of [
+      ['y', true],
+      ['YES', true],
+      ['', false],
+      ['n', false],
+      ['oui', false],
+    ] as const) {
+      const { input, output, diff, said } = terminal()
+      const answered = confirmOnTerminal(input, output, diff)(SUMMARY)
+      input.write(`${typed}\n`)
+      expect(await answered).toBe(expected)
+      expect(said()).toContain(`+++ b/${DATABASE_PATH}`)
+    }
+  })
+
+  it('leaves Ctrl-D a decline', async () => {
+    const { input, output, diff } = terminal()
+    const answered = confirmOnTerminal(input, output, diff)(SUMMARY)
+    input.end()
+    expect(await answered).toBe(false)
+  })
+
+  it('is interrupted by Ctrl-C, which is not a decline', async () => {
+    const { input, output, diff } = terminal()
+    const answered = confirmOnTerminal(input, output, diff)(SUMMARY)
+    input.write('\u0003')
+    await expect(answered).rejects.toBeInstanceOf(InterruptedError)
   })
 })

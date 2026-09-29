@@ -47,6 +47,9 @@ import {
 } from '../core/schemas/query.js'
 import { runValidate } from './commands/validate.js'
 import { PlanInputError, questionLines, runIntent, runPlan, type Ask } from './commands/plan.js'
+import type { Confirm } from './commands/submit.js'
+import { ForgeInputError } from '../forge/errors.js'
+import type { GitError } from '../process/git.js'
 import { wantsColour } from './render/diff.js'
 import { initAnswersOf, runInitPlatform, runInitRepo, type InitAnswers } from './commands/init.js'
 import { ConfigError } from './config.js'
@@ -143,7 +146,18 @@ export type Command =
    * Absent `repo` means the working directory when it is a declarations
    * repository, else the one configured, and a refusal when none is (`source.ts`).
    */
-  | { name: 'plan'; source: PlanSource; repo?: string; json: boolean }
+  | {
+      name: 'plan'
+      source: PlanSource
+      repo?: string
+      json: boolean
+      /**
+       * `--submit`: the preview becomes a branch for review. Omitted rather
+       * than false when absent, like every flag here that changes what a run
+       * does: absent is stage 4's preview, byte for byte.
+       */
+      submit?: true
+    }
   | { name: 'init-platform'; directory: string; owner: string }
   /**
    * Absent `repo` means the repository the user is standing in (§7.3).
@@ -187,7 +201,7 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   idp-agent ask "<question>" [--repo <directory> | --demo | --backstage] [--quiet]
   idp-agent validate <directory>
   idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json]
-  idp-agent plan --from <plan.json> [--repo <directory>] [--json]
+  idp-agent plan --from <plan.json> [--repo <directory>] [--json] [--submit]
   idp-agent init [--repo <directory>] [--name <name>] [--lifecycle experimental|production|deprecated] [--owner group:<namespace>/<name>]
   idp-agent init platform <directory> --owner @org/team
   idp-agent version
@@ -223,12 +237,16 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   never of --repo or the current directory; --backstage chooses it over both.
   It is read once per run, with the token in IDP_BACKSTAGE_TOKEN, and a
   change is still decided against a declarations repository, never it.
-  A phrase, ask, plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL, and
-  none of them writes. Every model-backed command also needs that provider's
-  key (ANTHROPIC_API_KEY, MISTRAL_API_KEY or OPENAI_API_KEY); IDP_TIMEOUT
-  bounds each model call, in seconds, 120 by default. IDP_SUPERVISOR_MODEL
-  gives the Supervisor, which only classifies a phrase, another model of the
-  same provider; unset, it uses IDP_MODEL.
+  A phrase, ask, plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL. None
+  of them writes, and neither does plan without --submit. With it, plan --from
+  cuts a branch idp-agent/… from HEAD in the declarations repository, which
+  must be a git clone's root, for review; nothing else moves, nothing is
+  pushed, and no merge request is opened. It crosses four gates and no
+  Reviewer, and the merge authorises. Every model-backed command also needs
+  that provider's key (ANTHROPIC_API_KEY, MISTRAL_API_KEY or OPENAI_API_KEY);
+  IDP_TIMEOUT bounds each model call, in seconds, 120 by default.
+  IDP_SUPERVISOR_MODEL gives the Supervisor, which only classifies a phrase,
+  another model of the same provider; unset, it uses IDP_MODEL.
 `
 
 export function parseArguments(argv: string[]): Command {
@@ -342,6 +360,7 @@ export function parseArguments(argv: string[]): Command {
           repo: { type: 'string' },
           project: { type: 'string' },
           json: { type: 'boolean' },
+          submit: { type: 'boolean' },
         },
         // The intent is a positional: §7.4's daily gesture is a sentence in
         // quotes, not a flag.
@@ -379,6 +398,16 @@ export function parseArguments(argv: string[]): Command {
           message: `an intent is limited to ${PLAN_LIMITS.maxIntentLength} characters`,
         }
       }
+      if (values.submit === true && from === undefined) {
+        // Removed by the next change, which teaches the intent road to submit.
+        // Refused out loud until then: `IntentOptions` has no `submit`, and a
+        // flag passed to it would be dropped in silence — a run that printed
+        // "nothing written" and exited 0 for a request to submit.
+        return {
+          name: 'error',
+          message: 'plan "<intent>" --submit is not wired yet; use --from <plan.json> --submit',
+        }
+      }
       // No --repo is not refused here: IDP_REPO or the personal configuration
       // may name one, and parsing reads neither (`sourceOf`, in main).
       const repo = values.repo
@@ -391,6 +420,7 @@ export function parseArguments(argv: string[]): Command {
               { intent, ...(project !== undefined ? { project } : {}) },
         ...(repo !== undefined ? { repo } : {}),
         json: values.json === true,
+        ...(values.submit === true ? { submit: true as const } : {}),
       }
     } catch (error) {
       return { name: 'error', message: (error as Error).message }
@@ -606,6 +636,9 @@ function parsePhrase(argv: string[]): Command {
         project: { type: 'string' },
         json: { type: 'boolean' },
         quiet: { type: 'boolean' },
+        // Read only to be refused in words (D8), rather than as an option
+        // this does not know.
+        submit: { type: 'boolean' },
       },
       allowPositionals: true,
       strict: true,
@@ -616,6 +649,18 @@ function parsePhrase(argv: string[]): Command {
     if (first !== undefined && isCommand(first)) {
       const option = argv.find((argument) => argument.startsWith('-')) ?? ''
       return { name: 'error', message: `options go after the command: idpa ${first} … ${option}` }
+    }
+    // D8: a phrase reaches the Supervisor before it is known to be a change,
+    // and a submission refuses a divergent repository before any model is
+    // paid. Until the entry does that too, a change is submitted by plan.
+    if (values.submit === true) {
+      return {
+        name: 'error',
+        message:
+          // Only the road that submits today: plan "<intent>" --submit is
+          // refused too until the next change, which names it here again.
+          'idpa "<phrase>" does not submit; a change is submitted with plan --from <plan.json> --submit',
+      }
     }
     const phrase = positionals.join(' ').trim()
     if (phrase === '') {
@@ -862,6 +907,11 @@ export interface MainDeps {
    * `askOf` decides from the process whether there is anybody there.
    */
   ask?: Ask
+  /**
+   * How a submission is confirmed (§7.4 step 7). Injected for the reason `ask`
+   * is; left out, `confirmOf` decides from the process whether anyone is there.
+   */
+  confirm?: Confirm
   /**
    * Where a finished run's trace goes, beside the sinks the environment
    * configures (`IDP_MLFLOW_TRACKING_URI`, `IDP_TRACE_DIR`). Injected so a test
@@ -1186,7 +1236,13 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     const ask = askOf(deps)
 
     if ('from' in source) {
-      // A Plan in a file: no model is involved and none can be.
+      // A Plan in a file: no model is involved and none can be. With --submit
+      // it crosses four gates — the schema, the signature, the policies, the
+      // re-check — and no Reviewer, and its branch still cannot reach the
+      // default one: the merge authorises (ADR-0006, D4).
+      const confirm = confirmOf(deps, command.json)
+      const submit =
+        command.submit === true ? { ...(confirm !== undefined ? { confirm } : {}) } : undefined
       let result: CommandResult
       try {
         result = await runPlan({
@@ -1198,6 +1254,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
           // draws the distinction, and "there is nobody to ask" is an absence.
           ...(ask !== undefined ? { ask } : {}),
           emit: deps.events ?? progress(err),
+          ...(submit !== undefined ? { submit } : {}),
         })
       } catch (error) {
         return failed(error, err)
@@ -1764,6 +1821,66 @@ export const promptOnTerminal = (
 }
 
 /**
+ * The one question `--submit` asks, at a terminal (§7.4 step 7).
+ *
+ * The diff goes where the preview always goes, stdout; the question goes to
+ * stderr, where every prompt goes (§6.2). Only `y` or `yes` submits: an empty
+ * line, Ctrl-D or anything else declines, which is the reading that writes
+ * nothing. Ctrl-C is not a decline, as at a question: it stops the run, exit
+ * 130. The wording says what is being done — submitting for review — and what
+ * is not: nothing is provisioned until someone else merges it (§4.2).
+ *
+ * The streams are parameters for `promptOnTerminal`'s reason: this is what a
+ * person at a terminal sees. Exported for that test; `confirmOf` is its only
+ * caller.
+ */
+export const confirmOnTerminal = (
+  input: NodeJS.ReadableStream = process.stdin,
+  output: NodeJS.WritableStream = process.stderr,
+  diff: NodeJS.WritableStream = process.stdout,
+): Confirm => async (summary) => {
+  diff.write(`${summary.preview}\n`)
+  const reader = createInterface({ input, output })
+  try {
+    const closed = new Promise<undefined>((resolve) => {
+      reader.once('close', () => resolve(undefined))
+    })
+    const interrupted = new Promise<never>((_resolve, reject) => {
+      reader.once('SIGINT', () => reject(new InterruptedError()))
+    })
+    const said = await Promise.race([
+      reader.question(
+        // The root and the branch come from the repository and its files:
+        // one line each, whatever they hold.
+        `Submit this for review as ${inertLine(summary.branch, Number.POSITIVE_INFINITY)} in ` +
+          `${inertLine(summary.root, Number.POSITIVE_INFINITY)}? ` +
+          'Nothing is provisioned until someone else merges it. [y/N] ',
+      ),
+      closed,
+      interrupted,
+    ])
+    return said !== undefined && /^(y|yes)$/i.test(said.trim())
+  } finally {
+    reader.close()
+  }
+}
+
+/**
+ * Who confirms a submission. A person at a terminal gets the prompt; a
+ * script, a pipe or `--json` has `--submit` as its answer — safe, because the
+ * confirmation was never the guard: the merge is (ADR-0006, §4.2).
+ *
+ * `--json` first, before an injected one: a `--json` run is read by a
+ * program, and a program is never asked.
+ */
+const confirmOf = (deps: MainDeps, json: boolean): Confirm | undefined => {
+  if (json) return undefined
+  if (deps.confirm !== undefined) return deps.confirm
+  if (deps.out !== undefined || deps.err !== undefined) return undefined
+  return process.stdin.isTTY === true ? confirmOnTerminal() : undefined
+}
+
+/**
  * Ctrl-C at a question: the person stopped the run, and `main` exits 130, the
  * code a shell gives a command an interrupt ended. Thrown rather than
  * returned, because nothing between the prompt and `main` has anything to do
@@ -1833,9 +1950,25 @@ function failed(error: unknown, err: (chunk: string) => void): number {
   // These two are one sentence each by construction, so they are kept to one
   // line, and never cut: the parser quotes a file's bytes, line breaks
   // included, and one would print a line of the file as a line of ours.
-  if (error instanceof PlanInputError || error instanceof RepositoryArgumentError) {
+  if (
+    error instanceof PlanInputError ||
+    error instanceof RepositoryArgumentError ||
+    // A repository that cannot take a branch: not a clone's root, no git, no
+    // committer identity, a detached or unborn HEAD. It quotes the path.
+    error instanceof ForgeInputError
+  ) {
     err(`${inertLine(error.message, Number.POSITIVE_INFINITY)}\n`)
     return EXIT.badUsage
+  }
+  // git failed where it should not have: exit 1, with git's own words — a
+  // repository's content can reach them, so one line each, cleaned.
+  if (isGitError(error)) {
+    const said = error.stderr
+      .split('\n')
+      .filter((line) => line.trim() !== '')
+      .map((line) => `  ${inertLine(line, Number.POSITIVE_INFINITY)}`)
+    err([`${inertLine(error.message, Number.POSITIVE_INFINITY)}; nothing was submitted`, ...said, ''].join('\n'))
+    return EXIT.notFound
   }
   if (
     error instanceof ConfigError ||
@@ -1865,6 +1998,13 @@ function failed(error: unknown, err: (chunk: string) => void): number {
   err(`${inert(error instanceof Error ? error.message : String(error))}\n`)
   return EXIT.notFound
 }
+
+/**
+ * By name, not by class: `process/git.ts` is the launcher, and only the modules
+ * that run git may load it (`tests/architecture`). The type is erased.
+ */
+const isGitError = (error: unknown): error is GitError =>
+  error instanceof Error && error.name === 'GitError' && typeof (error as { stderr?: unknown }).stderr === 'string'
 
 /**
  * Runs one command that needs a model, closes the tape afterwards, and traces

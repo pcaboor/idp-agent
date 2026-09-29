@@ -37,13 +37,23 @@ import type { RepositorySnapshot, Violation } from '../../core/validate/rules.js
 import type { LlmClient } from '../../llm/client.js'
 import { readConfig, seededVocabulary, type RepositoryConfig } from '../config.js'
 import { paintDiff } from '../render/diff.js'
+import { CLOSING, closingLines, type PreviewStatus } from '../render/footer.js'
+import {
+  openForSubmission,
+  refuseDivergence,
+  submit,
+  type Confirm,
+  type Opened,
+  type SubmitOptions,
+} from './submit.js'
 import type { CommandResult } from './result.js'
 import { inertLine, visible } from '../render/plain.js'
 import { budgetNotice, declarationsRoot, selectionNotice } from '../repository.js'
 
 /**
- * Steps 3 to 7 of §7.4, wired end to end and stopping one step short of the
- * branch and the merge request.
+ * Steps 3 to 7 of §7.4, wired end to end: the branch with `--submit` on the
+ * `--from` road (`commands/submit.ts`), and never the merge request, which is
+ * stage 6.
  *
  * **Two ways in, one way out.** `runPlan` reads a Plan from a file — no model is
  * involved and none can be — and `runIntent` drafts one: Inspector, Architect,
@@ -56,10 +66,12 @@ import { budgetNotice, declarationsRoot, selectionNotice } from '../repository.j
  * policies, the re-check, the edits, the diff, the loop. What lives here is the
  * order they run in, what each outcome costs, and which exit code it earns.
  *
- * Both read and neither writes. Nothing below opens a file for writing, and
- * `plan-command.test.ts` and `plan-intent.test.ts` hash every path, every byte
- * and every directory of both repositories either side of a full run rather
- * than taking that on trust.
+ * Without `--submit` both read and neither writes. Nothing below opens a file
+ * for writing, and `plan-command.test.ts` and `plan-intent.test.ts` hash every
+ * path, every byte and every directory of both repositories either side of a
+ * full run rather than taking that on trust — `.git/` of a clone included. With
+ * it, the one write is the forge's: objects and one new ref, never the working
+ * tree, the index or `HEAD`.
  *
  * No injected reader, unlike `runValidate`: the guarantee this command owes is
  * about a real directory on a real disk, and a fake file system is precisely
@@ -67,9 +79,6 @@ import { budgetNotice, declarationsRoot, selectionNotice } from '../repository.j
  * model is not a disk — a scripted client is the whole of how the intent form
  * is tested without a key and without a recording.
  */
-
-/** The one line every run that produced a diff ends on (design §7.4). */
-const CLOSING = 'Nothing is provisioned yet. The merge is what authorises it.'
 
 /**
  * The arguments were refused, which is exit 2 — a different answer from "the
@@ -109,11 +118,17 @@ export interface PlanOptions {
   /**
    * Handed what `clearPlan` makes of the plan this run previews — from the
    * very signature, contexts and bytes the preview is decided on — and told
-   * nothing else. Absent, nothing is cleared. Nothing writes yet: this is how
+   * nothing else. Absent, nothing is cleared for it. This is how
    * `tests/unit/clear-parity.test.ts` holds the preview and the clearance to
-   * one verdict (D2), and the seam `--submit` takes over.
+   * one verdict (D2); `--submit` takes the same clearance to a forge.
    */
   readonly clearance?: (result: Cleared | ClearRefusal) => void
+  /**
+   * `--submit`: the preview becomes one new branch in `repo`, cut from `HEAD`,
+   * for review (`commands/submit.ts`). Absent, this run writes nothing, and
+   * prints what stage 4 printed, byte for byte.
+   */
+  readonly submit?: SubmitOptions
 }
 
 /**
@@ -613,6 +628,10 @@ const droppedLines = (dropped: readonly DroppedOperation[]): string[] =>
  * declarations repository authorises — `init`'s, which lands in the service's
  * own. With it, a run that changes nothing ends on its count: there is nothing
  * to apply, and the sentence about the merge was never true of it.
+ *
+ * `status` is what became of the diff — stage 4's `nothing written` when
+ * absent, or what `--submit` did with it (`render/footer.ts`). Only the lines
+ * after the diff depend on it: the diff a person confirms is this one.
  */
 export function renderPreview(preview: {
   readonly signed: SignedPlan
@@ -622,6 +641,7 @@ export function renderPreview(preview: {
   readonly repo?: string
   readonly colour?: boolean
   readonly apply?: string
+  readonly status?: PreviewStatus
 }): CommandResult {
   const { signed, edits, dropped, recheck } = preview
   const standing = standingLines(recheck, preview.repo)
@@ -686,8 +706,13 @@ export function renderPreview(preview: {
       // file can hold what a terminal obeys. See `visible`.
       paintDiff(visible(diff), preview.colour === true).trimEnd(),
       '',
-      `${plural(changed.length, 'file', 'files')} · nothing written`,
-      preview.apply ?? CLOSING,
+      ...closingLines(
+        preview.status ??
+          (preview.apply === undefined
+            ? { kind: 'preview' }
+            : { kind: 'applied-by-hand', apply: preview.apply }),
+        changed.length,
+      ),
     ].join('\n'),
     found: true,
   }
@@ -1045,11 +1070,33 @@ const keptLines = (kept: readonly KeptValue[]): string[] => {
 
 export async function runPlan(options: PlanOptions): Promise<CommandResult> {
   const root = await declarationsRoot('plan', options.repo)
+  // Before anything is read: a repository that cannot take a branch — not a
+  // clone's root, no committer identity, a detached HEAD — is an argument
+  // error, and says so before a single question is asked.
+  const opened =
+    options.submit === undefined
+      ? undefined
+      : await openForSubmission(root, 'declarations', options.submit)
   const snapshot = await readRepository(root)
   const loaded = await loadPlan(options.from)
 
   const contents = await readContents(root, snapshot)
   const contexts = contextsOf(root, snapshot, contents, graphOf(snapshot))
+  if (opened !== undefined) {
+    // The gates judge the working tree and the branch is cut from HEAD: where
+    // the two differ, nothing is previewed that could not be submitted.
+    const refused = await refuseDivergence(
+      opened,
+      { files: contents, scope: 'catalogue' },
+      { json: options.json === true },
+    )
+    if (refused !== undefined) return refused
+  }
+  const previewing = {
+    ...options,
+    ...(opened !== undefined ? { opened } : {}),
+    ...(options.submit?.confirm !== undefined ? { confirm: options.submit.confirm } : {}),
+  }
 
   /** What the user said when asked, and what about. See `provenanceOf`. */
   const answers: RecordedAnswer[] = []
@@ -1112,7 +1159,7 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
       provenance,
     })
     if (questions.length === 0 || options.ask === undefined || round >= ASK_LIMITS.maxRounds) {
-      return previewPlan(signed, questions, contexts, provenance, snapshot, contents, options)
+      return await previewPlan(signed, questions, contexts, provenance, snapshot, contents, previewing)
     }
 
     const filled = await fillAnswers(signed.plan, questions, options.ask)
@@ -1120,7 +1167,15 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
     // The same renderer the run would have ended on with nobody there to ask,
     // so a decline and an unattended run say the same sentence.
     if (filled.outcome === 'declined') {
-      return previewPlan(signed, filled.unanswered, contexts, provenance, snapshot, contents, options)
+      return await previewPlan(
+        signed,
+        filled.unanswered,
+        contexts,
+        provenance,
+        snapshot,
+        contents,
+        previewing,
+      )
     }
 
     // Gate [1], over the plan the user just changed. An answer is a value
@@ -1146,7 +1201,7 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
  * still unanswered and the signed plan holds every question of the round —
  * including the ones the user already answered and this run did not keep.
  */
-function previewPlan(
+async function previewPlan(
   signed: SignedPlan,
   questions: readonly Question[],
   contexts: Contexts,
@@ -1158,9 +1213,17 @@ function previewPlan(
     readonly json?: boolean
     readonly colour?: boolean
     readonly clearance?: (result: Cleared | ClearRefusal) => void
+    /** The forge `--submit` opened before anything was read; absent, nothing is submitted. */
+    readonly opened?: Opened
+    readonly confirm?: Confirm
   },
-): CommandResult {
-  options.clearance?.(clearPlan(signed, { policy: contexts.policy, snapshot, contents }))
+): Promise<CommandResult> {
+  // Minted once, from the very signature, contexts and bytes the preview is
+  // decided on — never a caller's provenance (D1) — and only when asked for.
+  let minted: Cleared | ClearRefusal | undefined
+  const cleared = (): Cleared | ClearRefusal =>
+    (minted ??= clearPlan(signed, { policy: contexts.policy, snapshot, contents }))
+  if (options.clearance !== undefined) options.clearance(cleared())
   const policies = checkPolicies(signed, contexts.policy, provenance)
   // The edits come first, and the re-check reads them: what CI would say is
   // asked about the very bytes the reviewer is shown, not about a second model
@@ -1173,10 +1236,27 @@ function previewPlan(
   const refused = policies.length > 0 || errors.length > 0
 
   if (options.json === true) {
+    const report = reportOf(signed, questions, policies, recheck, changed, dropped)
+    // A program reads this, and a program is never asked: `--submit` is the
+    // whole confirmation here. Only a plan the preview would end on a diff for
+    // is submitted; a question, a refusal and #83's unaccounted empty change
+    // answer as they do without --submit, and ask no forge anything.
+    const settledAll = !refused && questions.length === 0
+    if (options.opened !== undefined && settledAll && changed.length > 0) {
+      const { report: submission } = await submit({
+        opened: options.opened,
+        cleared: cleared(),
+        render: (status) => renderPreview({ signed, edits, dropped, recheck, status }),
+      })
+      return { text: asJson({ ...report, submission }), found: submission.outcome !== 'refused' }
+    }
+    if (options.opened !== undefined && settledAll && !didNothing(signed, changed, recheck)) {
+      return { text: asJson({ ...report, submission: { outcome: 'unchanged' } }), found: true }
+    }
     // The same codes as the human path, so a script reads the verdict from the
     // exit status and the detail from stdout, and never has to parse prose.
     return {
-      text: asJson(reportOf(signed, questions, policies, recheck, changed, dropped)),
+      text: asJson(report),
       found: !refused,
       ...(questions.length > 0 || (!refused && didNothing(signed, changed, recheck))
         ? { unsupported: true }
@@ -1219,14 +1299,26 @@ function previewPlan(
     }
   }
 
-  return renderPreview({
-    signed,
-    edits,
-    dropped,
-    recheck,
-    repo: options.repo,
-    ...(options.colour !== undefined ? { colour: options.colour } : {}),
+  const render = (status: PreviewStatus): CommandResult =>
+    renderPreview({
+      signed,
+      edits,
+      dropped,
+      recheck,
+      repo: options.repo,
+      status,
+      ...(options.colour !== undefined ? { colour: options.colour } : {}),
+    })
+  // Nothing to submit is the same answer with or without --submit: no branch,
+  // and #83's exit 3 from the empty-diff branch when nothing accounts for it.
+  if (options.opened === undefined || changed.length === 0) return render({ kind: 'preview' })
+  const { result } = await submit({
+    opened: options.opened,
+    cleared: cleared(),
+    render,
+    ...(options.confirm !== undefined ? { confirm: options.confirm } : {}),
   })
+  return result
 }
 
 export interface IntentOptions {

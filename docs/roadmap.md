@@ -63,7 +63,11 @@ here, one pull request each, each naming the check run together at the end.
    ([#107](https://github.com/pcaboor/idp-agent/pull/107)). The owner validated the
    architecture on 2026-09-29, and task 4 — the local forge, create-only, idempotent and
    atomic, proved by failing every git call of a submission — is on `main` too
-   ([#108](https://github.com/pcaboor/idp-agent/pull/108)), with ADR 0010 accepted. Task 5, `plan --from … --submit`, is next. The check itself, this queue's first item until
+   ([#108](https://github.com/pcaboor/idp-agent/pull/108)), with ADR 0010 accepted. Task 5,
+   `plan --from … --submit` — the first write, a local branch, confirmed at a terminal — is on
+   `main` too ([#109](https://github.com/pcaboor/idp-agent/pull/109)); task 6,
+   `plan "<intent>" --submit`, is next. `idpa "<phrase>" --submit` stays refused at stage 5
+   (D8) and is a follow-up: when it comes, divergence is refused before the Supervisor. The check itself, this queue's first item until
    2026-09-29, is done: the check, the brief as a dated record, the revised plan, and ADR
    0010 and ADR 0012 *proposed* ([#104](https://github.com/pcaboor/idp-agent/pull/104)).
 2. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
@@ -527,10 +531,18 @@ vocabulary), product-gap-6 (no offset and no system, lifecycle or tag criteria i
   branch name as the plan's identity; design §4.3 reworded; closed, [#108](https://github.com/pcaboor/idp-agent/pull/108)), gap-stage5-readiness-8's
   identity half (a clearance names its repository, [#106](https://github.com/pcaboor/idp-agent/pull/106); a forge opened for one refuses the
   other's, closed by [#108](https://github.com/pcaboor/idp-agent/pull/108), `local-forge.test.ts`, *refuses a clearance for the other
-  repository, before anything else — both ways*), gap-stage5-readiness-13 and
-  cli-ux-12 (a `Confirm` seam taking a structured summary, D5). Still open here: cli-ux-10, a
-  versioned `--json`, which will name stage 5's `submission` key (D11); architecture-9 and
-  product-gap-13, a session ADR, which the check found no blocker for the confirmation (D5).
+  repository, before anything else — both ways*), gap-stage5-readiness-13 (a `Confirm`
+  seam taking a structured summary, D5; closed,
+  [#109](https://github.com/pcaboor/idp-agent/pull/109), `SubmissionSummary`), cli-ux-12
+  (the same seam, in part: `plan.ts` is not split), and
+  gap-stage5-readiness-10 (`plan --from … --submit` worded by route, D4; closed,
+  [#109](https://github.com/pcaboor/idp-agent/pull/109)). Still open here: cli-ux-10, a
+  versioned `--json`, which will version stage 5's `submission` key — `outcome`, `branch`,
+  `commit` and `base` (`branch`, `commit`) on a branch cut or found, `outcome` alone when
+  nothing changes, `outcome` and `reasons` on a refusal, and for a repository that is not
+  `HEAD` a report holding that key alone — every shape pinned by `plan-command.test.ts` (D11);
+  architecture-9 and product-gap-13, a session ADR, which the check found no blocker for the
+  confirmation (D5).
 - **The environment annotation and namespaces.** core-plan-8, domain-backstage-6,
   product-gap-5 (stage 8's question 6), architecture-5 and gap-ask-grounding-9 (one
   `refOf`/`parseRef` keeping the namespace; product-gap-4 needs no decision but goes with
