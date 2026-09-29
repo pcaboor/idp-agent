@@ -160,7 +160,7 @@ Review ids that a later pull request names as fixed, outside the ids the priorit
 - agents-llm-5 → [#75](https://github.com/pcaboor/idp-agent/pull/75)
 - agents-llm-10 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5, for the abort signal; no command passes one yet, and calls are still not streamed
 - agents-llm-11 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
-- architecture-11 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2; no rule names `forge/` yet, which does not exist, and a rule over a missing folder now fails
+- architecture-11 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2; the `forge/` rules — `core/` never imports it, only `cli/` reaches it at run time, it imports no package — landed with the folder in [#107](https://github.com/pcaboor/idp-agent/pull/107), with `core/`'s disk rule made transitive
 - architecture-12 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
 - build-ci-2 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
 - build-ci-3 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3

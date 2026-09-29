@@ -183,11 +183,13 @@ files; `selection` says whether the files were git's, a walk's outside git, or n
 `declarations` holds every `catalog-info*.yaml`/`.yml`, read whole and outside the caps — the
 root's from the disk, tracked or not — each with the workspace it sits in, a folder with a
 package manifest of its own, for `init` to compare with and diff against. Only the CLI reads
-these, and none of them reaches a model. Its one child process, `git`, runs in the environment
-`spawned-environment.ts` builds: the process's, without `IDP_BACKSTAGE_TOKEN` or any other
-`IDP_BACKSTAGE_*` variable and without any `*_API_KEY`, which `git` in an inspected repository — its hooks and its configuration are its
-author's — has no use for. `spawnedEnvironment` is the one builder of a child process's
-environment, and the architecture rules hold every call that starts a process to it.
+these, and none of them reaches a model. Its one child process, `git`, is started by the
+shared launcher, `process/git.ts`, in the environment `process/environment.ts` builds: the
+process's, without `IDP_BACKSTAGE_TOKEN` or any other `IDP_BACKSTAGE_*` variable, without any
+`*_API_KEY` and without any `GIT_*` variable, which `git` in an inspected repository — its
+hooks and its configuration are its author's — has no use for; with hooks and fsmonitor off,
+from outside the repository, and bounded. `spawnedEnvironment` is the one builder of a child
+process's environment, and the architecture rules hold every call that starts a process to it.
 
 `backstage/` is where `context/` reaches the network (`backstage-http`, slice 1 of
 `docs/backstage-http-brief.md`), and `backstage/transport.ts` is its one way out: the only code

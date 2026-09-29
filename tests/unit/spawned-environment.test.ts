@@ -4,7 +4,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BACKSTAGE_TOKEN_VARIABLE } from '../../src/context/backstage/transport.js'
 import { readProject } from '../../src/context/project-fs/snapshot.js'
-import { spawnedEnvironment } from '../../src/context/spawned-environment.js'
+import { spawnedEnvironment } from '../../src/process/environment.js'
 import { KEY_VARIABLES, PROVIDER_NAMES } from '../../src/llm/providers.js'
 
 /**
@@ -50,7 +50,7 @@ describe('spawnedEnvironment', () => {
   })
 
   it('drops the token by the name the transport reads, and every provider key by its suffix', () => {
-    // context/ does not import llm/, so the suffix is the rule and this test
+    // process/ imports nothing of ours, so the suffix is the rule and this test
     // is the link: every key variable ends in it.
     expect(BACKSTAGE_TOKEN_VARIABLE).toBe('IDP_BACKSTAGE_TOKEN')
     for (const provider of PROVIDER_NAMES) expect(KEY_VARIABLES[provider]).toMatch(/_API_KEY$/)

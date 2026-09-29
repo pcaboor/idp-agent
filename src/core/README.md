@@ -3,7 +3,9 @@
 The deterministic half of the tool: every export is a constant, a schema, or a pure function of its arguments — no
 file system, no network, no model, no clock. `tests/architecture/dependencies.test.ts`
 enforces it: `core/` imports neither `agents/` nor `llm/`, nor `http`, `net`, `tls` or any
-fetch client. `node:path` is arithmetic on strings, not an I/O door.
+fetch client; nothing from `context/`, `cli/`, `scaffold/`, `forge/` or `process/`; and
+nothing reachable from it, however many hops away, reads or writes. `node:path` is
+arithmetic on strings, not an I/O door.
 
 The boundary exists because the agent drafts and the engine signs: a model picks a name, an
 owner, a `dependsOn`, but nothing it proposes reaches a repository without crossing here,

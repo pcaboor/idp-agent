@@ -45,7 +45,6 @@ const code = [
 
 /** Named in backticks and deliberately not in the code, each with why. */
 const NOT_OURS = new Map([
-  ['ForgeProvider', 'designed for stage 5, not built'],
   ['ANTHROPIC_BASE_URL', "the Anthropic SDK's own variable"],
   ['OPENAI_BASE_URL', "the OpenAI SDK's own variable"],
   ['ExportTraceServiceRequest', "OTLP's message, which the MLflow sink sends"],

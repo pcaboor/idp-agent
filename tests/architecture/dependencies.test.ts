@@ -320,8 +320,8 @@ async function agentsReachOffences(root: string): Promise<string[]> {
  * child_process, so a module added there is stated here too.
  */
 const SPAWNS: Readonly<Record<string, { readonly calls: number; readonly env: string }>> = {
-  // `git()`, which every git command of the Inspector goes through.
-  'context/project-fs/snapshot.ts': { calls: 1, env: 'gitEnvironment' },
+  // `gitIn`, which every git command of the Inspector and of the forge goes through.
+  'process/git.ts': { calls: 1, env: 'gitEnvironment' },
 }
 
 /**
@@ -350,8 +350,38 @@ const enclosed = (code: string, open: number, pair: '()' | '{}'): string => {
 const bodyOf = (code: string, name: string): string | undefined => {
   const declared = new RegExp(`\\bfunction\\s+${name}\\s*\\(`).exec(code)
   if (declared === null) return undefined
-  const open = code.indexOf('{', declared.index)
+  // After the parameters: a destructured one opens a brace of its own.
+  const parameters = declared.index + declared[0].length - 1
+  const open = code.indexOf('{', parameters + enclosed(code, parameters, '()').length)
   return open === -1 ? undefined : enclosed(code, open, '{}')
+}
+
+/**
+ * The names `function name(…)` in `code` declares for its parameters, and
+ * whether one of them is destructured — whose names a rule cannot follow, so
+ * a check over them can only refuse.
+ */
+const parametersOf = (code: string, name: string): { names: string[]; destructured: boolean } => {
+  const declared = new RegExp(`\\bfunction\\s+${name}\\s*\\(`).exec(code)
+  if (declared === null) return { names: [], destructured: false }
+  const list = enclosed(code, declared.index + declared[0].length - 1, '()').slice(1, -1)
+  return {
+    names: [...list.matchAll(/(?:^|,)\s*(?:\.\.\.)?([A-Za-z_$][\w$]*)\s*(?=[?:=,]|$)/g)].map((match) => match[1] ?? ''),
+    destructured: /(?:^|,)\s*(?:\.\.\.)?[{[]/.test(list),
+  }
+}
+
+/** `code` with the arguments of every call of `callee` taken out: `callee()`, whatever it was given. */
+const argumentsDropped = (code: string, callee: string): string => {
+  let kept = ''
+  let rest = code
+  for (let call = new RegExp(`\\b${callee}\\s*\\(`).exec(rest); call !== null; ) {
+    const open = call.index + call[0].length - 1
+    kept += `${rest.slice(0, open)}()`
+    rest = rest.slice(open + enclosed(rest, open, '()').length)
+    call = new RegExp(`\\b${callee}\\s*\\(`).exec(rest)
+  }
+  return kept + rest
 }
 
 /**
@@ -361,9 +391,10 @@ const bodyOf = (code: string, name: string): string | undefined => {
  * what refuses it, and it counts every mention of a child_process function
  * outside its import. So the module takes those functions by their own
  * names — never the whole module, never under another name — and each
- * mention is a call that passes `env: <its function>()`; that function starts
+ * mention is a call that passes `env: <its function>(…)`; that function starts
  * from `spawnedEnvironment(`, and the module names `process.env` nowhere, so
- * it has no other environment to build one from.
+ * it has no other environment to build one from. The function may be handed
+ * one — a test's — and it still goes through `spawnedEnvironment`.
  */
 async function spawnOffences(
   root: string,
@@ -402,12 +433,193 @@ async function spawnOffences(
         continue
       }
       const given = enclosed(used, after + call[0].length - 1, '()')
-      if (!new RegExp(`\\benv\\s*:\\s*${env}\\(\\)`).test(given)) {
+      if (!new RegExp(`\\benv\\s*:\\s*${env}\\(`).test(given)) {
         offending.push(`${name}: ${mention[0]}(…) is not given env: ${env}()`)
       }
     }
     if (env !== 'spawnedEnvironment' && !/\bspawnedEnvironment\s*\(/.test(bodyOf(code, env) ?? '')) {
       offending.push(`${name}: ${env} does not start from spawnedEnvironment`)
+    }
+    if (env !== 'spawnedEnvironment') {
+      // Handed an environment, the function has a raw one of its own: it may
+      // name it only inside `spawnedEnvironment(…)`, or `return { ...env }`
+      // after a call whose result is dropped would pass every line above. A
+      // property of the same name (`options.env`) is not the parameter; a
+      // spread of it is.
+      const outside = argumentsDropped(bodyOf(code, env) ?? '', 'spawnedEnvironment')
+      const { names, destructured } = parametersOf(code, env)
+      if (destructured) offending.push(`${name}: ${env} destructures a parameter, which no rule can follow`)
+      for (const parameter of [...names, 'arguments']) {
+        if (new RegExp(`(?<![\\w$])(?<![^.]\\.)${parameter.replace(/\$/g, '\\$')}\\b`).test(outside)) {
+          offending.push(`${name}: ${env} names ${parameter} outside spawnedEnvironment(…)`)
+        }
+      }
+    }
+  }
+  return offending
+}
+
+/**
+ * An import statement, with whether it is `import type`. The clause holds no
+ * `=` and no quote, so it never runs on into the statement after it: an
+ * `export type X = {…}` read as the clause of the import below it made that
+ * import look erased.
+ */
+const STATEMENT =
+  /^\s*(?:import|export)(\s+type)?\b[\w\s{},*$]*?\bfrom\s*['"]([^'"]+)['"]|^\s*import\s*['"]([^'"]+)['"]/gm
+
+/** A module loaded at run time: `import(…)` or `require(…)`, whatever the argument. */
+const LOADED = /\b(?:import|require)\s*\(([^)]*)\)/g
+
+/** What a module loads, one statement or call at a time. */
+interface Load {
+  /** The specifier, or undefined for a run-time load whose argument is not a literal. */
+  readonly specifier: string | undefined
+  /** How a message names it: the specifier, or the load as written. */
+  readonly written: string
+  /** `import type` or `export type`: erased, so nothing is loaded. */
+  readonly typeOnly: boolean
+  /** An `export … from`: what is loaded is handed on to every importer. */
+  readonly handedOn: boolean
+}
+
+const loads = new Map<string, Promise<Load[]>>()
+
+/**
+ * Everything `file` loads, read with its comments taken out: static imports
+ * and re-exports, told apart from `import type`, side-effect imports, and
+ * `import(…)`/`require(…)` whatever their argument. Every load at run time
+ * counts as one of values, a type written as `import('…')` included: a rule
+ * cannot tell that position from a value's, and `import type` says the same.
+ */
+function loadsOf(file: string): Promise<Load[]> {
+  const cached = loads.get(file)
+  if (cached !== undefined) return cached
+  const read = (async (): Promise<Load[]> => {
+    const code = stripped(await readFile(file, 'utf8'))
+    const found: Load[] = []
+    for (const match of code.matchAll(STATEMENT)) {
+      const specifier = match[2] ?? match[3] ?? ''
+      const handedOn = /^\s*export\b/.test(match[0])
+      found.push({ specifier, written: specifier, typeOnly: match[1] !== undefined, handedOn })
+    }
+    for (const match of code.matchAll(LOADED)) {
+      const argument = (match[1] ?? '').trim()
+      const literal = /^(['"])([^'"]*)\1$/.exec(argument)?.[2]
+      const written = literal === undefined ? argument : `${argument} at run time`
+      found.push({ specifier: literal, written, typeOnly: false, handedOn: false })
+    }
+    return found
+  })()
+  loads.set(file, read)
+  return read
+}
+
+/** The message for a load no rule can follow, whichever rule refuses it. */
+const unfollowable = (name: string, load: Load): string =>
+  `${name} loads ${load.written} at run time: no rule can tell what it names`
+
+/** The name under `root` of the module a relative specifier in `file` names, `.ts` for `.js`. */
+const targetOf = (root: string, file: string, specifier: string): string =>
+  nameUnder(root, path.resolve(path.dirname(file), specifier.replace(/\.([mc]?)js$/, '.$1ts')))
+
+/**
+ * What the fourth forge rule refuses under `root`: a module outside cli/ and
+ * forge/ that loads anything of forge/ — an import of values, a side-effect
+ * import, a module loaded at run time — however many hops away, and a
+ * run-time load no source can spell. The walk follows what a module loads
+ * into cli/ too: a context/ module importing a cli/ module that imports the
+ * forge passed this rule while it read direct imports only. `import type` is
+ * erased, so naming a forge's shapes is allowed, as agents/ names
+ * `llm/client.ts`'s, and a type imported from cli/ loads nothing either. A
+ * specifier is resolved, not matched: a folder called `forge` elsewhere is not
+ * the layer.
+ */
+async function forgeReachOffences(root: string): Promise<string[]> {
+  const offending: string[] = []
+  for (const file of await sourceFiles(root)) {
+    const name = nameUnder(root, file)
+    if (name.startsWith('cli/') || name.startsWith('forge/')) continue
+    const seen = new Set<string>([file])
+    const walk = async (from: string, trail: string): Promise<void> => {
+      for (const load of await loadsOf(from)) {
+        if (load.specifier === undefined) {
+          if (from === file) offending.push(unfollowable(name, load))
+          continue
+        }
+        if (load.typeOnly || !load.specifier.startsWith('.')) continue
+        const step = `${trail} → ${load.written}`
+        if (targetOf(root, from, load.specifier).startsWith('forge/')) {
+          offending.push(step)
+          continue
+        }
+        const next = await resolved(from, load.specifier)
+        if (seen.has(next)) continue
+        seen.add(next)
+        await walk(next, step)
+      }
+    }
+    await walk(file, name)
+  }
+  return offending
+}
+
+/** Built-ins forge/ may import: neither reads, writes, nor opens a socket. */
+const FORGE_BUILT_INS = new Set(['node:crypto', 'node:path'])
+
+/**
+ * What the forge's own imports rule refuses under `root`: anything a module of
+ * forge/ loads that is not core/, process/, forge/ itself or one of
+ * `FORGE_BUILT_INS` — a type included, since the list is short enough to keep
+ * whole. A list of what may be imported, not of what may not: `node:http`
+ * and `node:fs/promises` passed every rule while this one refused packages
+ * only, and a forge that opened its own socket or read a file would be a
+ * second way out no other rule sees.
+ */
+async function forgeImportOffences(root: string): Promise<string[]> {
+  const offending: string[] = []
+  for (const file of await sourceFiles(path.join(root, 'forge'))) {
+    const name = nameUnder(root, file)
+    for (const load of await loadsOf(file)) {
+      if (load.specifier === undefined) {
+        offending.push(unfollowable(name, load))
+      } else if (!load.specifier.startsWith('.')) {
+        if (!FORGE_BUILT_INS.has(load.specifier)) offending.push(`${name} imports ${load.specifier}`)
+      } else if (!/^(core|process|forge)\//.test(targetOf(root, file, load.specifier))) {
+        offending.push(`${name} imports ${load.specifier}`)
+      }
+    }
+  }
+  return offending
+}
+
+/** The one launcher, and the modules that may load it. */
+const LAUNCHER = 'process/git.ts'
+const RUNS_GIT = (name: string): boolean => name === 'context/project-fs/snapshot.ts' || name.startsWith('forge/')
+
+/**
+ * What the launcher's rule refuses under `root`: a module that loads
+ * `process/git.ts` other than project-fs's snapshot and forge/, a run-time
+ * load no source can spell, and one of those two handing the launcher on with
+ * an `export … from`. `gitIn(repo)(['show', 'HEAD:.env'])` reads any tracked
+ * file, so a module of context/ or llm/ loading it would go around every
+ * confinement project-fs holds — the secret exclusions first. A type is
+ * erased and may be named anywhere; `process/environment.ts` starts nothing.
+ */
+async function launcherOffences(root: string): Promise<string[]> {
+  const offending: string[] = []
+  for (const file of await sourceFiles(root)) {
+    const name = nameUnder(root, file)
+    if (name === LAUNCHER) continue
+    for (const load of await loadsOf(file)) {
+      if (load.specifier === undefined) {
+        if (!RUNS_GIT(name)) offending.push(unfollowable(name, load))
+        continue
+      }
+      if (load.typeOnly || !load.specifier.startsWith('.')) continue
+      if (targetOf(root, file, load.specifier) !== LAUNCHER) continue
+      if (!RUNS_GIT(name)) offending.push(`${name} → ${load.written}`)
+      else if (load.handedOn) offending.push(`${name} hands on ${load.written}`)
     }
   }
   return offending
@@ -542,7 +754,9 @@ describe('architecture', () => {
     // Every module in src/, and so every closure: what stage 5 adds as a
     // writer has to be named here, with the functions it writes with. A
     // module taking the whole of fs, by a namespace, a default import or at
-    // run time, can write with anything, so it counts as writing.
+    // run time, can write with anything, so it counts as writing. The forge
+    // is in neither list: it writes into a repository through git — objects
+    // and one ref — never through a writing function of its own.
     const writes: Record<string, readonly string[]> = {
       'scaffold/write.ts': ['mkdir', 'writeFile'], // `init platform`'s scaffold
       'cli/recording-fs.ts': ['mkdir', 'writeFile'], // a tape, when recording
@@ -551,7 +765,8 @@ describe('architecture', () => {
       // O_RDONLY | O_NOFOLLOW, to read it.
       'context/project-fs/snapshot.ts': ['open'],
     }
-    // `git ls-files`, and nothing else starts a process.
+    // `process/git.ts`, for the Inspector's `git ls-files` and the forge, and
+    // nothing else starts a process.
     const spawns = new Set(Object.keys(SPAWNS))
     const offending: string[] = []
     for (const file of await sourceFiles(SOURCE_ROOT)) {
@@ -570,22 +785,28 @@ describe('architecture', () => {
     expect(offending).toEqual([])
   })
 
-  it('core/ imports nothing from context/, cli/ or scaffold/', async () => {
+  it('core/ imports nothing from context/, cli/, scaffold/, forge/ or process/', async () => {
     // core/ is the deterministic half: schemas, paths, serialisation, rules.
     // A dependency on a layer that reads a disk would make it one by proxy,
     // and its own README says it is not. Nothing enforced this until the
-    // signer needed a symbol that had been parked in context/.
+    // signer needed a symbol that had been parked in context/. forge/
+    // depends on core/ — `Cleared` is core's — so core naming forge, even by
+    // type, is a cycle; and at run time it is core reaching a process.
     const offending = (await importsUnder(path.join(SOURCE_ROOT, 'core'))).filter(
-      ({ specifier }) => /(^|\/)(context|cli|scaffold)\//.test(specifier),
+      ({ specifier }) => /(^|\/)(context|cli|scaffold|forge|process)\//.test(specifier),
     )
     expect(offending).toEqual([])
   })
 
-  it('core/ neither reads nor writes', async () => {
-    // core/README.md has said so since stage 2 and nothing checked it.
-    const offending = (await importsUnder(path.join(SOURCE_ROOT, 'core'))).filter(({ specifier }) =>
-      DISK.test(specifier),
-    )
+  it('core/ neither reads nor writes, however many hops away', async () => {
+    // core/README.md has said so since stage 2 and nothing checked it; then
+    // only direct imports were checked, until stage 5 measured it: core/
+    // importing a module that imports child_process passed every rule.
+    const entries = await sourceFiles(path.join(SOURCE_ROOT, 'core'))
+    const reached = new Set<string>()
+    const closure: Import[] = []
+    for (const entry of entries) closure.push(...(await closureOf(entry, reached)))
+    const offending = closure.filter(({ specifier }) => DISK.test(specifier))
     expect(offending).toEqual([])
   })
 
@@ -663,8 +884,46 @@ describe('architecture', () => {
   it('every process src/ starts is given spawnedEnvironment', async () => {
     // A child is handed the environment it starts with, and `git` runs in
     // every inspected repository: without the Backstage token and without any
-    // provider key (`context/spawned-environment.ts`).
+    // provider key (`process/environment.ts`).
     expect(await spawnOffences(SOURCE_ROOT, SPAWNS)).toEqual([])
+  })
+
+  it('process/ imports nothing of ours, and only node: built-ins', async () => {
+    // A leaf both context/project-fs and forge/ import: the one place a
+    // process is started, with the one environment a child is given. Anything
+    // it imported would be reachable from both.
+    const offending = (await importsUnder(path.join(SOURCE_ROOT, 'process'))).filter(
+      ({ specifier }) => !specifier.startsWith('node:') && !/^\.\/[\w-]+\.js$/.test(specifier),
+    )
+    expect(offending).toEqual([])
+  })
+
+  it('forge/ imports core/, process/, node:crypto and node:path, and nothing else', async () => {
+    // A forge is the one layer that writes into a user's repository. What it
+    // may reach is kept as small as scaffold/'s — and smaller: no package at
+    // all, because a git client the DISK list does not name (`execa`, `zx`,
+    // `dugite`) passed every rule when it was measured, and two built-ins,
+    // because `node:http` and `node:fs/promises` passed too while only
+    // packages were refused. A relative import is resolved, so a layer added
+    // later is refused without being listed.
+    expect(await forgeImportOffences(SOURCE_ROOT)).toEqual([])
+  })
+
+  it('only context/project-fs and forge/ load the git launcher', async () => {
+    // `gitIn` runs any git command in any repository it is handed, and
+    // `show HEAD:.env` reads a secret project-fs would never return. The two
+    // modules that may load it are the ones that hold its confinements: the
+    // Inspector's listing, and the forge's create-only plumbing (ADR-0010).
+    // Measured: context/backstage/ and llm/ loading it passed every rule.
+    expect(await launcherOffences(SOURCE_ROOT)).toEqual([])
+  })
+
+  it('only cli/ reaches forge/ at runtime', async () => {
+    // `import type` names the interface without being able to call it — the
+    // shape `llm/client.ts` has for agents/. Anything else, from anywhere but
+    // cli/, is a writer reachable from a layer that was never meant to write:
+    // core/ and context/ importing a forge passed every rule at eee67d6.
+    expect(await forgeReachOffences(SOURCE_ROOT)).toEqual([])
   })
 })
 
@@ -689,7 +948,7 @@ describe('the architecture rules themselves', () => {
   })
 
   it('reads every layer it has a rule about, and the tree as a whole', async () => {
-    for (const layer of ['agents', 'cli', 'context', 'core', 'llm', 'scaffold', 'trace']) {
+    for (const layer of ['agents', 'cli', 'context', 'core', 'forge', 'llm', 'process', 'scaffold', 'trace']) {
       expect((await sourceFiles(path.join(SOURCE_ROOT, layer))).length, layer).toBeGreaterThan(0)
     }
     expect((await sourceFiles(SOURCE_ROOT)).length).toBeGreaterThan(40)
@@ -882,5 +1141,132 @@ describe('the architecture rules themselves', () => {
     expect(await spawnOffences(await tree({ 'spawns.ts': loaded }), spawns)).toEqual([
       'spawns.ts takes the whole of node:child_process',
     ])
+
+    // Handed an environment — a test's — the function still starts from
+    // spawnedEnvironment, so the call is as safe as one with none: what it is
+    // handed is named nowhere but inside `spawnedEnvironment(…)`.
+    const handed = good
+      .replace('function gitEnvironment()', 'function gitEnvironment(env?: NodeJS.ProcessEnv)')
+      .replace('...spawnedEnvironment()', '...spawnedEnvironment(env)')
+      .replace('{ env: gitEnvironment() }', '{ env: gitEnvironment(given) }')
+    expect(await spawnOffences(await tree({ 'spawns.ts': handed }), spawns)).toEqual([])
+    // A body that calls spawnedEnvironment and hands the raw one on anyway.
+    const leaked = handed.replace(
+      'return { ...spawnedEnvironment(env), LC_ALL: "C" }',
+      'void spawnedEnvironment(env)\n  return { ...env }',
+    )
+    expect(await spawnOffences(await tree({ 'spawns.ts': leaked }), spawns)).toEqual([
+      'spawns.ts: gitEnvironment names env outside spawnedEnvironment(…)',
+    ])
+    const counted = handed.replace('...spawnedEnvironment(env)', '...spawnedEnvironment(env), ...arguments[0]')
+    expect(await spawnOffences(await tree({ 'spawns.ts': counted }), spawns)).toEqual([
+      'spawns.ts: gitEnvironment names arguments outside spawnedEnvironment(…)',
+    ])
+    const unpacked = handed.replace('gitEnvironment(env?: NodeJS.ProcessEnv)', 'gitEnvironment({ ...env }: NodeJS.ProcessEnv)')
+    expect(await spawnOffences(await tree({ 'spawns.ts': unpacked }), spawns)).toEqual([
+      'spawns.ts: gitEnvironment destructures a parameter, which no rule can follow',
+    ])
+  })
+
+  it('refuses every module but project-fs and forge/ that loads the git launcher', async () => {
+    const root = await tree({
+      // What a reviewer planted, measured: each read any tracked file past
+      // project-fs's secret filter, and passed every rule.
+      'context/backstage/probe-git.ts': "import { gitIn } from '../../process/git.js'\n",
+      'llm/probe-git.ts': "import { gitIn } from '../process/git.js'\n",
+      'cli/late.ts': "const { gitIn } = await import('../process/git.js')\n",
+      'cli/named.ts': 'const m = await import(name)\n',
+      // A second door inside process/, or one of the named modules handing it on.
+      'process/index.ts': "export { gitIn } from './git.js'\n",
+      'forge/local/passed.ts': "export { gitIn } from '../../process/git.js'\n",
+      // A type is erased, the environment is no process, and these two may.
+      'cli/typed.ts': "import type { Git } from '../process/git.js'\n",
+      'context/backstage/transport.ts': "import { BACKSTAGE_TOKEN_VARIABLE } from '../../process/environment.js'\n",
+      'context/project-fs/snapshot.ts': "import { GitError, gitIn } from '../../process/git.js'\n",
+      'forge/local/forge.ts': "import { gitIn, type Git } from '../../process/git.js'\nexport type { Git } from '../../process/git.js'\n",
+      'process/git.ts': "import { spawnedEnvironment } from './environment.js'\n",
+    })
+    expect((await launcherOffences(root)).sort()).toEqual(
+      [
+        'context/backstage/probe-git.ts → ../../process/git.js',
+        'llm/probe-git.ts → ../process/git.js',
+        "cli/late.ts → '../process/git.js' at run time",
+        'cli/named.ts loads name at run time: no rule can tell what it names',
+        'process/index.ts → ./git.js',
+        'forge/local/passed.ts hands on ../../process/git.js',
+      ].sort(),
+    )
+  })
+
+  it('refuses a package, a layer and a built-in forge/ was not given', async () => {
+    const root = await tree({
+      // A reviewer's probe: a socket and a read, and every rule passed.
+      'forge/local/probe-net.ts': "import { request } from 'node:http'\nimport { readFile } from 'node:fs/promises'\n",
+      // A git client the DISK list does not name.
+      'forge/local/client.ts': "import { execa } from 'execa'\n",
+      'forge/local/reader.ts': "import { readRepository } from '../../context/iac-fs/snapshot.js'\n",
+      'forge/local/late.ts': "const cp = await import('node:child_process')\nconst m = await import(name)\n",
+      'forge/local/forge.ts': [
+        "import { createHash } from 'node:crypto'",
+        "import path from 'node:path'",
+        "import type { Cleared } from '../../core/plan/clear.js'",
+        "import { GitError, gitIn, type Git } from '../../process/git.js'",
+        "import { ForgeInputError } from '../errors.js'",
+        '',
+      ].join('\n'),
+    })
+    expect((await forgeImportOffences(root)).sort()).toEqual(
+      [
+        'forge/local/probe-net.ts imports node:http',
+        'forge/local/probe-net.ts imports node:fs/promises',
+        'forge/local/client.ts imports execa',
+        'forge/local/reader.ts imports ../../context/iac-fs/snapshot.js',
+        'forge/local/late.ts imports node:child_process',
+        'forge/local/late.ts loads name at run time: no rule can tell what it names',
+      ].sort(),
+    )
+  })
+
+  it('refuses every way a layer but cli/ can load forge/, and lets a type through', async () => {
+    const root = await tree({
+      'context/value.ts': "import { ForgeInputError } from '../forge/errors.js'\n",
+      'context/side.ts': "import '../forge/local/forge.js'\n",
+      'context/passed.ts': "export { openLocalForge } from '../forge/local/forge.js'\n",
+      'context/late.ts': "const forge = await import('../forge/local/forge.js')\n",
+      'context/named.ts': 'const forge = await import(name)\n',
+      // A statement with no quote before an import is not the import's clause.
+      'core/after.ts': "export type Shape = { a: number }\nimport { x } from '../forge/errors.js'\n",
+      'agents/typed.ts': "import type { ForgeProvider } from '../forge/provider.js'\n",
+      'agents/said.ts': "// import { x } from '../forge/errors.js'\nexport const y = 1\n",
+      'context/forge/own.ts': "import { z } from './z.js'\n",
+      'context/forge/z.ts': 'export const z = 1\n',
+      'cli/submit.ts': "import { openLocalForge } from '../forge/local/forge.js'\n",
+      'forge/local/forge.ts': "import type { ForgeProvider } from '../provider.js'\n",
+      // A reviewer's relay, measured: nothing refused a layer importing a
+      // cli/ module that imports the forge. Two hops, or three, reach it all
+      // the same; a type imported from the relay loads nothing.
+      'cli/relay.ts': "import { ForgeInputError } from '../forge/errors.js'\nexport const relay = 1\n",
+      'context/via-cli.ts': "import { relay } from '../cli/relay.js'\n",
+      'llm/via-context.ts': "import './helper.js'\n",
+      'llm/helper.ts': "export { relay } from '../context/via-cli.js'\n",
+      'agents/typed-relay.ts': "import type { Relay } from '../cli/relay.js'\n",
+      // A type written as `import('…')` is loaded as far as a rule can tell:
+      // `import type` says the same and is read as erased.
+      'agents/inline.ts': "type B = import('../forge/provider.js').Base\n",
+    })
+    expect((await forgeReachOffences(root)).sort()).toEqual(
+      [
+        'context/value.ts → ../forge/errors.js',
+        'context/side.ts → ../forge/local/forge.js',
+        'context/passed.ts → ../forge/local/forge.js',
+        "context/late.ts → '../forge/local/forge.js' at run time",
+        'context/named.ts loads name at run time: no rule can tell what it names',
+        'core/after.ts → ../forge/errors.js',
+        'context/via-cli.ts → ../cli/relay.js → ../forge/errors.js',
+        'llm/via-context.ts → ./helper.js → ../context/via-cli.js → ../cli/relay.js → ../forge/errors.js',
+        'llm/helper.ts → ../context/via-cli.js → ../cli/relay.js → ../forge/errors.js',
+        "agents/inline.ts → '../forge/provider.js' at run time",
+      ].sort(),
+    )
   })
 })

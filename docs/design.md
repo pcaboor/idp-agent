@@ -481,7 +481,7 @@ the model's to write (§ 5.3).
 
 ### 5.5 Dependency rules, enforced in CI
 
-Two rules were written here first; **nineteen** are enforced today, in
+Two rules were written here first; **twenty-three** are enforced today, in
 `tests/architecture/dependencies.test.ts`. The two founding ones:
 
 1. `core/` never imports `agents/` or `llm/`.
@@ -497,13 +497,20 @@ agent imports it, so a runtime import there would put `ai` inside the agent clos
 the filesystem implementation of the recording store lives in `cli/`, not in `llm/`, for
 the same reason.
 
-The other seventeen extend the same idea to the layers added since: `core/` reaches neither
-the network, nor the disk, nor the model SDK, nor `context/`, `cli/` or `scaffold/`; nothing
+The other twenty-one extend the same idea to the layers added since: `core/` reaches neither
+the network, nor the model SDK, nor `context/`, `cli/`, `scaffold/`, `forge/` or `process/`,
+and nothing reachable from it touches the disk — that rule walks the closure too, since a
+`core/` module importing one that started a process passed it while it read direct imports
+only; nothing
 reachable from `agents/` touches the disk or the network; only `llm/` imports the model SDK,
 and `agents/` imports `llm/client.js` and nothing else from it; `scaffold/` imports `core/`
 and nothing else of ours, and exactly one module in it writes; only `context/iac-fs` and
 `context/project-fs` read a user's repository, and only named modules of `cli/` touch the
-disk; across `src/`, only named modules write, and one starts a process; `trace/` reaches
+disk; across `src/`, only named modules write, and one starts a process — `process/git.ts`,
+the launcher the Inspector and the forge share, and only `context/project-fs` and `forge/`
+load it; `process/` imports nothing of ours; `forge/` imports `core/`, `process/` and two
+`node:` built-ins that neither read, write nor open a socket, and only `cli/` reaches it at
+run time, however many hops away; `trace/` reaches
 nothing but types and never names `fetch`, and only `cli/` reaches it. Three hold the
 catalogue token to one way out: nothing in `context/` names `fetch` or a global way out or
 imports a network module, and only `context/backstage/transport.ts` calls the

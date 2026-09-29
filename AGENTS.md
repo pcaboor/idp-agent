@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3752 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3772 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -253,11 +253,16 @@ check — reads the developer's own. `IDP_REPO` must be absolute or start with `
 
 ```
 cli/  ──→  context/   ──→  core/
+  │           └──→  process/   (context/project-fs: git ls-files)
   ├──→  agents/   ──→  llm/client.ts   (types only — this is the whole rule)
   ├──→  llm/      ──→  the model SDK   (cli/ builds the client; agents/ may not)
   ├──→  trace/    ──→  agents/events, llm/client   (types only; cli/ ships the trace)
+  ├──→  forge/    ──→  core/, process/   (only cli/ reaches it at run time)
   └──→  scaffold/ ──→  core/
 ```
+
+`process/` is a leaf: it imports nothing of ours, and it holds the one launcher every process
+`src/` starts goes through — the Inspector's `git ls-files`, and the forge's git.
 
 `cli/` is the only layer that may reach both `llm/` and the disk, which is why the client
 is built in `index.ts` and handed to a command rather than chosen inside one — and why
@@ -266,12 +271,14 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 | Folder | Responsibility |
 |---|---|
 | `core/` | schemas (Zod), the nine validation rules and the Backstage registration, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — and the engine's check on an answer's commentary (`core/answer/`) |
-| `context/` | `ContextProvider` (`fixtures`, and `iac-fs` behind `--repo`; `backstage/provider.ts`, a whole catalogue through the file reader or nothing, which `cli/` constructs for a configured catalogue), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries, `backstage/transport.ts` — the only code that sends a catalogue token, over a `fetch` it is handed — and `spawnedEnvironment`, the one builder of a child process's environment |
+| `context/` | `ContextProvider` (`fixtures`, and `iac-fs` behind `--repo`; `backstage/provider.ts`, a whole catalogue through the file reader or nothing, which `cli/` constructs for a configured catalogue), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries, `backstage/transport.ts` — the only code that sends a catalogue token, over a `fetch` it is handed |
 | `cli/` | argument parsing, commands, rendering, `.idp-agent.yml` and the personal `config.yml`, which source a command reads — the only layer that writes to stdout |
 | `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |
 | `agents/` | the five agents, the bounded turn, the repair loop, the tool registries — reaches no disk, transitively |
 | `trace/` | the trace of one run: `createTraceBuilder` over the event stream and the model calls, the `traced` client decorator, and `toOtlpJson` — pure; `cli/trace-sink.ts` is how a trace leaves |
 | `scaffold/` | the `init platform` layout, the packaged templates, and the only writer we own |
+| `forge/` | where a submission becomes a branch: `provider.ts` — `ForgeProvider`, `Base`, `Submitted`, types only, with no merge, no delete and no caller-chosen name — and `ForgeInputError`, a refusal that is the user's arguments. The local forge is stage 5's next task |
+| `process/` | the one place a process is started: `git.ts`'s `gitIn` — hooks and fsmonitor off, `user.useConfigOnly`, every `GIT_*` scrubbed, started outside the repository, bounded — and `environment.ts`'s `spawnedEnvironment`, the one builder of a child process's environment |
 
 Each folder carries its own README stating what lives there, what may not, and which
 architecture test holds the line. Read the one for the folder you are about to change.
@@ -534,9 +541,10 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   checklist; tick its boxes as you go — Stage 1 shipped with all 36 unticked, which is
   how a plan stops being a status signal.
 - No `switch` on a closed union without `const _exhaustive: never = value` in `default`.
-- **Nineteen** architecture rules are enforced by `tests/architecture/`. `core/` imports
-  neither `agents/`, `llm/`, `context/`, `cli/`, `scaffold/`, the disk, the network nor the
-  model SDK. `agents/` imports neither `fs`, `child_process` nor a git client — **and
+- **Twenty-three** architecture rules are enforced by `tests/architecture/`. `core/` imports
+  neither `agents/`, `llm/`, `context/`, `cli/`, `scaffold/`, `forge/`, `process/`, the
+  network nor the model SDK, and nothing reachable from it reads or writes — its disk rule
+  walks the transitive closure too. `agents/` imports neither `fs`, `child_process` nor a git client — **and
   nothing reachable from it does either**, the test walks the transitive closure. Only
   `llm/` imports the model SDK, and `agents/` imports `llm/client.js` and nothing else from
   it. `scaffold/` imports `core/` and nothing else of ours; only `write.ts` and
@@ -545,9 +553,14 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   modules touch the disk, among them `commands/plan.ts` and `config.ts`, which read the
   repositories too. Across `src/`, only `scaffold/write.ts`, `cli/recording-fs.ts` and
   `cli/trace-sink.ts` import a writing function — `project-fs/snapshot.ts` opens files, read
-  only — each named with the functions it may use, and only `project-fs/snapshot.ts` starts
-  a process (`git ls-files`), from one call, given the environment `spawnedEnvironment`
-  builds: without any `IDP_BACKSTAGE_*` variable and without any provider key. `trace/` reaches nothing
+  only — each named with the functions it may use, and only `process/git.ts` starts a
+  process, for the Inspector's `git ls-files` and the forge, from one call, given the
+  environment `spawnedEnvironment` builds: without any `IDP_BACKSTAGE_*` variable and without
+  any provider key; only `context/project-fs/snapshot.ts` and `forge/` load that launcher.
+  `process/` imports nothing of ours, only `node:` built-ins; `forge/` imports `core/`,
+  `process/`, `node:crypto` and `node:path` and nothing else — no package, no disk, no
+  network; and only `cli/` reaches `forge/` at run time, however many hops away — another
+  layer may name its types. `trace/` reaches nothing
   but types — no disk, no network, no `fetch`, no SDK, nothing of `cli/` — and only `cli/`
   reaches it. Nothing in `context/` names `fetch`, `globalThis`, `global`, `XMLHttpRequest`
   or `WebSocket`, read in the source with comments stripped because `fetch` needs no import,

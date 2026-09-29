@@ -1,3 +1,4 @@
+import { BACKSTAGE_TOKEN_VARIABLE } from '../../process/environment.js'
 import { BACKSTAGE_LIMITS, type BackstageLimits } from './limits.js'
 
 /**
@@ -36,8 +37,12 @@ export const CATALOGUE_REQUESTS = [
 
 export type CatalogueRoute = (typeof CATALOGUE_REQUESTS)[number][1]
 
-/** The only variable the token is read from. cli/ reads it; no child process is handed it. */
-export const BACKSTAGE_TOKEN_VARIABLE = 'IDP_BACKSTAGE_TOKEN'
+/**
+ * The only variable the token is read from. cli/ reads it; no child process is
+ * handed it. Declared in `process/environment.ts`, beside the function that
+ * keeps it out of every child, and re-exported here for everything that reads it.
+ */
+export { BACKSTAGE_TOKEN_VARIABLE }
 
 /** The hosts `http:` may reach, and that need no token: this machine, by the three names the note allows. */
 const LOOPBACK = new Set(['127.0.0.1', '[::1]', 'localhost'])
