@@ -131,7 +131,9 @@ follows from the documentation of the tools involved.
   Domain — is read** as well (backstage-http slice 3): each held to what Backstage requires
   of its kind, its references in full by the processor's default kinds, and kept as an index
   of the graph **beside** the entities, never among them, so no table, summary, vocabulary,
-  gate or tool row built from the entities sees one. Of each, only the name and the fields
+  gate or tool row built from the entities sees one; the Analyst reads it with tools of its
+  own, and the Supervisor's and the Analyst's summary counts it in one line, both only where
+  the source holds one (3.3). Of each, only the name and the fields
   that make ownership, membership and system membership are read — never an annotation, a
   title, or a User's profile, which can hold an email and a picture — and each membership is
   read from both ends, a Group's `children` and a child's `parent`, a Group's `members` and a

@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3646 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3664 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -153,7 +153,11 @@ read commands and a question over a Backstage catalogue (`backstage-http` slice 
 ADR-0011; `pnpm demo:backstage` runs them against a fake on loopback); the organisation —
 Groups, Users, Systems and Domains, read-only nodes beside the entities, from files and
 from a catalogue alike, which `show` prints and the overview counts (`backstage-http` slice
-3.1); and stage 4's two previews, which write nothing to a repository:
+3.1), and which a question reads too, over a source that holds some — "what does team tiger
+own?", "who is in tiger?", "which system is billing-api in?", answered with the relation
+block `relations` prints (`backstage-http` slice 3.3, on scripted clients: the keyed
+recordings are the owner's step R); and stage 4's two previews, which write nothing to a
+repository:
 
 ```bash
 idpa "<phrase>" [--repo <dir> | --demo | --backstage] [--project <dir>] [--json] [--quiet]  # question or change
@@ -210,6 +214,9 @@ is a third read, sent only when the facets name a Group, a User, a System or a D
 fields the read model reads and nothing else (`ORGANISATION_FIELDS`: no annotation, no
 profile), under a ceiling of its own; the kinds it read whole are the ones an owner, a
 membership or a system is judged against (`LoadResult.judged`), which a folder never sets.
+What the Analyst's tools read of it — a User's name and its groups among them — reaches the
+model provider only over a source that holds an organisation (`SECURITY.md`); over one that
+holds none, what the Supervisor and the Analyst are sent is what every tape recorded.
 
 A change — `plan "<intent>"`, or a phrase the Supervisor calls a `MUTATION` — may read the
 application repository too, and the **Inspector is optional**: it reads the directory
@@ -307,9 +314,10 @@ changing that section first.
   is not read at all: consuming is an access right, and a second declaration of it would be
   a second truth (design §4.1). Backstage's **Group, User, System and Domain** are read the
   same way, from a file and from a catalogue, as the organisation: an index of the graph
-  **beside** the entities, never in `all()`, so no table, summary, vocabulary, gate or tool
-  row sees one, and never proposed. `show` prints a team, a person, a system, a domain; the
-  overview counts them. Of a User only the name and `memberOf` are read — never an
+  **beside** the entities, never in `all()`, so no table, vocabulary, gate or entity row
+  sees one, and never proposed. `show` prints a team, a person, a system, a domain; the
+  overview counts them; the Analyst finds, reads and walks them with tools of its own and
+  the summary counts them in one line, both only where the source holds one. Of a User only the name and `memberOf` are read — never an
   annotation, a title or `spec.profile`. A reference to one is judged — "declared nowhere in
   the catalogue this token reads" — only where a catalogue read its kind whole: a
   declarations repository's Group files are not the organisation. On the plan road the

@@ -858,6 +858,28 @@ with witnessed Group and System nodes. Three pull requests, not two (the owner's
    same caps. Users' names and group memberships may then reach the model provider, which
    `SECURITY.md` says. A keyed recording.
 
+**Built**, its code ([#99](https://github.com/pcaboor/idp-agent/pull/99),
+[#100](https://github.com/pcaboor/idp-agent/pull/100) and
+[#101](https://github.com/pcaboor/idp-agent/pull/101), the plan
+[`docs/plans/backstage-http-slice-3.md`](plans/backstage-http-slice-3.md)): the two questions
+are answered with the Group and the System witnessed, on scripted clients; the slice is
+**closed by 3.3** once the owner's step R records its three tapes
+(`question-backstage-owner` of slice 1, `question-organisation-owns`,
+`question-organisation-system`) with the scenario that replays them. With these departures,
+each for what the code or Backstage's source showed. Three pull requests, not two. The
+organisation is read for the fields the read model reads (`ORGANISATION_FIELDS`), a third
+read sent only when the facets name one of the four kinds, never the kinds whole as refs. An
+organisation reference is judged only where a catalogue read its kind whole, never over a
+declarations repository's Group files, so no output of the demo SI or of any tape's source
+moved. A document Backstage would refuse is set aside with a warning, not refused. The
+demo SI declares no `spec.system`, so "which system is billing-api in?" is answered on
+`tests/golden/organisation`. `query` is `search_entities` and `get_entity`, `related` is
+`get_relations`, each widened on a registry of its own, built only when the graph holds an
+organisation node, so over a source that holds none every spec, the prompt and the summary
+are the ones the tapes were recorded against; an organisation row lists what `show`'s card
+lists. § 14 decision 3, a read-only widening of the Component and Resource read schemas, has
+not been needed so far.
+
 ### Slice 4 — both sources
 
 Closed by 4.3: with `repo` and `backstage` configured, `show billing-api` carries the

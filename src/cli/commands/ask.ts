@@ -3,18 +3,29 @@ import { classify } from '../../agents/supervisor.js'
 import { formatSummary, shownVocabulary } from '../../agents/summary.js'
 import { buildTools } from '../../agents/tools/graph-tools.js'
 import { summariseGraph } from '../../context/graph/summary.js'
-import { ENV_ANNOTATION, refOf, type EntityGraph } from '../../context/graph/entity-graph.js'
+import {
+  ENV_ANNOTATION,
+  refOf,
+  type EntityGraph,
+  type OrganisationField,
+} from '../../context/graph/entity-graph.js'
 import { overviewOf, type Unread } from '../../context/graph/overview.js'
 import {
   checkCommentary,
   type CheckedCommentary,
   type KnownEntity,
 } from '../../core/answer/commentary.js'
-import type { CatalogueEntity } from '../../core/schemas/entity.js'
+import {
+  ORGANISATION_KINDS,
+  type CatalogueEntity,
+  type GraphNode,
+  type OrganisationEntity,
+} from '../../core/schemas/entity.js'
 import { QUERY_LIMITS, type Answer } from '../../core/schemas/query.js'
 import type { EventSink } from '../../agents/events.js'
 import type { LlmClient } from '../../llm/client.js'
 import { NOWHERE, renderEntityDetail } from '../render/entity.js'
+import { renderOrganisationDetail } from '../render/organisation.js'
 import { renderOverview, type OverviewSource } from '../render/overview.js'
 import { inertLine, oneLine } from '../render/plain.js'
 import { renderTable } from '../render/table.js'
@@ -124,7 +135,9 @@ async function answered(
   const { graph, client, intent, emit } = options
   // The Analyst's registry: Backstage's APIs are found and read, and the
   // Architect's, which proposes neither, stays the one it was (`buildTools`).
-  const tools = buildTools(graph, { apis: true })
+  // The organisation is read only where the graph holds some: over a source
+  // that holds none, what the Analyst is sent is what every tape recorded.
+  const tools = buildTools(graph, { apis: true, organisation: graph.holdsOrganisation })
   const { answer, witnessed, truncated } = await answerQuestion(
     client,
     tools,
@@ -134,8 +147,13 @@ async function answered(
   const result = block(options, answer, truncated)
   if (answer.outcome === 'unanswerable' || options.quiet === true) return result
 
+  // Every node the graph holds, the organisation's included, on purpose: a
+  // sentence naming a team, a person or a system no tool returned is dropped
+  // as one naming an unread entity is (ADR-0008) — and so is one using such a
+  // name as a word ("the platform"), which fails closed. Over a source that
+  // holds no organisation, `nodes()` is `all()`.
   const commentary = checkCommentary(answer, {
-    entities: graph.all().map((entity) => known(graph, entity, tools.declaredNowhere)),
+    entities: graph.nodes().map((node) => known(graph, node, tools.declaredNowhere)),
     witnessed,
     // As the opening message listed them: a value a line break was flattened
     // out of was read in its one-line spelling, and a value past a list's 30
@@ -199,27 +217,73 @@ function renderEntities(
 ): CommandResult {
   // Re-read from the graph and sorted: the model's ordering is not one anybody
   // verified, and the entity it named is not the entity we print unless the
-  // graph still holds it.
+  // graph still holds it. A Group, a User, a System or a Domain is read as
+  // `show` reads one: its card alone, a row among several.
   const found = [...refs]
     .sort()
-    .map((ref) => graph.get(ref))
-    .filter((entity): entity is CatalogueEntity => entity !== undefined)
+    .map((ref) => graph.node(ref))
+    .filter((node): node is GraphNode => node !== undefined)
 
   if (found.length === 0) return { text: 'No entity matches that question.', found: false }
   if (found.length === 1) {
-    return { text: withTruncation(renderEntityDetail(graph, found[0]!, said), truncated), found: true }
+    const [only] = found as [GraphNode]
+    const card = isOrganisation(only)
+      ? renderOrganisationDetail(graph, only, said)
+      : renderEntityDetail(graph, only, said)
+    return { text: withTruncation(card, truncated), found: true }
   }
 
-  const rows = found.map((entity) => [
-    entity.metadata.name,
-    entity.kind,
-    entity.spec.type,
-    entity.metadata.annotations[ENV_ANNOTATION] ?? '-',
-    entity.spec.owner,
-  ])
+  // What a node of the organisation does not state is `-`, as an absent
+  // environment is: a Group has no environment, a User no type or owner.
+  const rows = found.map((node) =>
+    isOrganisation(node)
+      ? [node.metadata.name, node.kind, organisationType(node) ?? '-', '-', organisationOwner(node) ?? '-']
+      : [
+          node.metadata.name,
+          node.kind,
+          node.spec.type,
+          node.metadata.annotations[ENV_ANNOTATION] ?? '-',
+          node.spec.owner,
+        ],
+  )
   return {
     text: withTruncation(renderTable(['NAME', 'KIND', 'TYPE', 'ENV', 'OWNER'], rows), truncated),
     found: true,
+  }
+}
+
+const ORGANISATION: ReadonlySet<string> = new Set(ORGANISATION_KINDS)
+const isOrganisation = (node: GraphNode): node is OrganisationEntity => ORGANISATION.has(node.kind)
+
+/** The type a node of the organisation states: a Group's, a System's or a Domain's when it does. */
+function organisationType(node: OrganisationEntity): string | undefined {
+  switch (node.kind) {
+    case 'Group':
+    case 'System':
+    case 'Domain':
+      return node.spec.type
+    case 'User':
+      return undefined
+    default: {
+      const exhaustive: never = node
+      return exhaustive
+    }
+  }
+}
+
+/** The owner a node of the organisation declares: a System's and a Domain's. */
+function organisationOwner(node: OrganisationEntity): string | undefined {
+  switch (node.kind) {
+    case 'System':
+    case 'Domain':
+      return node.spec.owner
+    case 'Group':
+    case 'User':
+      return undefined
+    default: {
+      const exhaustive: never = node
+      return exhaustive
+    }
   }
 }
 
@@ -240,7 +304,57 @@ function renderEntities(
  * names an entity of the graph, and a sentence may name one only once a tool
  * returned it — which a row of the declaring entity does not do.
  */
-function known(
+function known(graph: EntityGraph, node: GraphNode, shown: ReadonlySet<string>): KnownEntity {
+  return isOrganisation(node) ? knownOrganisation(graph, node, shown) : knownEntity(graph, node, shown)
+}
+
+/**
+ * A node of the organisation as the check needs it: its reference and name,
+ * and the values it declares — its type, its owner, its domain or parent
+ * domain, and what it declares that is declared nowhere once a result showed
+ * it. A membership is not a value: it names another node, which a sentence
+ * may name only once a tool returned it.
+ */
+function knownOrganisation(
+  graph: EntityGraph,
+  node: OrganisationEntity,
+  shown: ReadonlySet<string>,
+): KnownEntity {
+  const ref = refOf(node)
+  const declared = (field: OrganisationField): string[] =>
+    graph.unresolvedOrganisationOf(ref, field).flatMap(({ to }) => (shown.has(to) ? [to] : []))
+  const values = ((): string[] => {
+    switch (node.kind) {
+      case 'Group':
+        return [node.spec.type, ...declared('parent'), ...declared('children'), ...declared('members')]
+      case 'User':
+        return declared('memberOf')
+      case 'System':
+        return [
+          ...(node.spec.type === undefined ? [] : [node.spec.type]),
+          node.spec.owner,
+          ...(node.spec.domain === undefined ? [] : [node.spec.domain]),
+          ...declared('owner'),
+          ...declared('domain'),
+        ]
+      case 'Domain':
+        return [
+          ...(node.spec.type === undefined ? [] : [node.spec.type]),
+          node.spec.owner,
+          ...(node.spec.subdomainOf === undefined ? [] : [node.spec.subdomainOf]),
+          ...declared('owner'),
+          ...declared('subdomainOf'),
+        ]
+      default: {
+        const exhaustive: never = node
+        return exhaustive
+      }
+    }
+  })()
+  return { ref, name: node.metadata.name, declares: values }
+}
+
+function knownEntity(
   graph: EntityGraph,
   entity: CatalogueEntity,
   shown: ReadonlySet<string>,

@@ -22,7 +22,8 @@ import type { GenerateResult, LlmClient, ModelToolSpec } from '../../src/llm/cli
  * Deduplicated by what a provider is sent — the name, the description and
  * the parameters — and not by name alone: the Analyst and the Architect are
  * each handed their own `buildTools`, the Analyst's with `apis` as `ask`
- * builds it, so two `search_entities` differ in the kinds they take, and each
+ * builds it — and, over a source that holds an organisation, with
+ * `organisation` too — so `search_entities` differs in the kinds it takes, and each
  * is a spec some request carries. The Architect's is the one the plan-mode
  * recordings were made against; keyed by name, the first seen would hide it.
  * One request never carries two tools of one name — a `ToolSet` is keyed by
@@ -56,6 +57,24 @@ export async function offeredTools(): Promise<ModelToolSpec[]> {
     answerQuestion(
       barren,
       buildTools(graph, { apis: true }),
+      { intent, summary: '', vocabulary: '' },
+      emit,
+    ),
+  )
+  // The Analyst over a source that holds Groups, Users, Systems and Domains.
+  const organisation = await new FixtureProvider(
+    path.resolve(import.meta.dirname, '../golden/organisation'),
+  ).load()
+  await settle(
+    answerQuestion(
+      barren,
+      buildTools(
+        EntityGraph.from(organisation.entities, [], {
+          nodes: organisation.organisation ?? [],
+          judged: new Set(),
+        }),
+        { apis: true, organisation: true },
+      ),
       { intent, summary: '', vocabulary: '' },
       emit,
     ),

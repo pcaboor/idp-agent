@@ -33,7 +33,12 @@ the product: `--repo` and a configured source, the one gesture `idpa "<phrase>"`
 framed in the model's words, Backstage APIs, the relations view, tracing into MLflow, and
 reading a Backstage catalogue for questions and relations (`backstage-http` slice 1, built
 against a fake and demonstrated against a real Backstage 1.55.2 in Docker, `tools/backstage/`;
-[the note](backstage-http-brief.md)).
+[the note](backstage-http-brief.md)), and the organisation — Groups, Users, Systems and
+Domains read, walked with `idpa relations` and asked about in plain words (`backstage-http`
+slice 3, [#99](https://github.com/pcaboor/idp-agent/pull/99),
+[#100](https://github.com/pcaboor/idp-agent/pull/100) and
+[#101](https://github.com/pcaboor/idp-agent/pull/101); its keyed recordings wait for the
+owner, below).
 
 ## The queue
 
@@ -42,13 +47,7 @@ Each line says what the item is for. The sweep of the review is done
 ([its verdicts](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27)); its batches are
 here, one pull request each, each naming the check run together at the end.
 
-1. **`backstage-http` slice 3: the organisation in the read model.** Groups, Users, Systems
-   and Domains read, so the agents see real owners and the systems services belong to.
-   [Three pull requests](plans/backstage-http-slice-3.md): 3.1 the nodes, done
-   ([#99](https://github.com/pcaboor/idp-agent/pull/99)); 3.2 the relations, done
-   ([#100](https://github.com/pcaboor/idp-agent/pull/100)); 3.3 the Analyst; then the
-   owner's keyed recordings (step R).
-2. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
+1. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
    the current `main`, read only: what it covers and what it misses. It starts with an
    **analysis of the owner's uncommitted stage-5 work** on `feat/s5-cleared`, written on
    `eee67d6` before more than forty pull requests: what still applies, what `main` made
@@ -63,30 +62,30 @@ here, one pull request each, each naming the check run together at the end.
    operation to `targetOf`'s choice over `ProjectRead.declarations` (`filedIn`) — the root's
    `.yml`, or the one catalog-info kept elsewhere — so a `readCatalogInfo` that reads only the
    root's `catalog-info.yaml` would bring back the twin and the capped `before` this removed.
-3. **Stage 5, write + local branch.** The first write, atomic and idempotent — taken on from
+2. **Stage 5, write + local branch.** The first write, atomic and idempotent — taken on from
    the owner's plan and branch, discarding nothing already written, once the check above is
    agreed.
-4. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
+3. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
    hand-written files in every shape, and `signPlan` properties over plans valid by
    construction. `tests/invariants/arbitraries.ts` and `core.test.ts` are also edited on
    `feat/s5-cleared`, so it goes on top of stage 5.
-5. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
+4. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
    gap-stage5-readiness-4: one lstat, realpath and `O_NOFOLLOW` primitive shared from
    `project-fs`, used by `scaffold/write.ts` and by the iac-fs walk, which rejects a
    symbolic link by name. Medium, and what stage 5's writer will need.
-6. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
+5. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
    harness half of agents-llm-9: record from an empty tape, fail on a turn never replayed,
    and digest the JSON Schema the provider is sent. It needs no key, but it prunes dead turns
    and rewrites every tape's digest, so it waits for the owner's go-ahead.
-7. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
+6. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
    catalogue is plugged in.
-8. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
+7. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
    authorisation (ADR-0006).
-9. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
+8. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence.
-10. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
-    the project's end goal (2026-09-23).
+9. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
+   the project's end goal (2026-09-23).
 
 Within stage 8, its design note (section 11) states its own order:
 priorities 6 (done, [#79](https://github.com/pcaboor/idp-agent/pull/79)), 7 (done,
@@ -312,7 +311,14 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
   all that is left of `backstage-http` slice 1, whose demo against a real Backstage in Docker
   and contract fixture closed the queue's former first item
   ([#98](https://github.com/pcaboor/idp-agent/pull/98)); it needs the owner's key, and
-  the owner present.
+  the owner present. `backstage-http` slice 3 adds two beside it,
+  `question-organisation-owns` ("what does team tiger own?") and
+  `question-organisation-system` ("which system is billing-api in?"), over the fake serving
+  `tests/golden/organisation`: the three are the plan's owner step R
+  ([the plan](plans/backstage-http-slice-3.md#owner-step-r-the-keyed-recordings-owner-present-after-33-merges)),
+  one pull request with `tests/scenarios/backstage-mode.test.ts`, since a scenario cannot
+  merge before its tape. Until then 3.3 is tested on scripted clients
+  (`tests/unit/organisation-analyst.test.ts`, [#101](https://github.com/pcaboor/idp-agent/pull/101)).
 - **Commentary on plans is not built** (ADR-0008, "Consequences"). It changes what plan mode
   sends, and `tests/scenarios/plan-mode.test.ts` fails on a stale plan-mode recording, so it
   waits for a re-record with a key.
@@ -354,6 +360,18 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
   one is dropped as not read: the safe direction, but short of ADR-0008's "a value the
   model was shown". Either the refusal names the values the summary shows, or the check is
   handed what a refusal named ([#97](https://github.com/pcaboor/idp-agent/pull/97)).
+
+**Left from `backstage-http` slice 3**
+
+- **The note's § 14 decision 3 is not needed so far.** A read-only widening of the Component
+  and Resource read schemas was to follow if the owner's catalogue sets many Components
+  aside; the facts about that catalogue are still to gather (§ 14), and nothing seen since
+  shows it is needed ([#101](https://github.com/pcaboor/idp-agent/pull/101)).
+- **Over a source that holds an organisation, a conclusion using a team's name as a word is
+  dropped.** The commentary check knows every node's name, the organisation's included, so
+  "the shared platform" beside a Group `platform` no tool returned is left out, with its
+  line on stderr: the safe direction ADR-0008 asks for, and the cost of a sentence never
+  naming an unread team ([#101](https://github.com/pcaboor/idp-agent/pull/101)).
 
 **Behaviour**
 

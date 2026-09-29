@@ -89,6 +89,14 @@ Each pull request adds its line here.
   Domain holds — each row with its whole path, read from both ends of a declaration, and,
   against a catalogue, a reference naming nothing it serves marked where the path ends
   ([#100](https://github.com/pcaboor/idp-agent/pull/100)).
+- Over a source that holds Groups, Users, Systems or Domains, the Analyst finds them, reads
+  them and walks ownership, membership and system membership with the tools and caps it
+  has, so "what does team tiger own?" and "which system is billing-api in?" are answered
+  with the relation block `idpa relations` prints; a User's name and groups may then reach
+  the model provider, and nothing else of a person (SECURITY.md); a conclusion naming a
+  team, a person or a system no tool returned — even as a common word — is dropped; over a
+  source that holds none, what the model is sent does not change
+  ([#101](https://github.com/pcaboor/idp-agent/pull/101)).
 
 ### Changed
 

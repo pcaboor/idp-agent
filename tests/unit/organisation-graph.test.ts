@@ -67,6 +67,34 @@ const calling = (...calls: Array<readonly [string, unknown]>): GenerateResult =>
  * summary both agents open on.
  */
 async function sentOver(refs: readonly string[], deps: MainDeps & { argv?: string[] }): Promise<string[]> {
+  return (await requestsOver(refs, deps)).map((request) => `${request.agent}#${digest(JSON.stringify(request))}`)
+}
+
+/**
+ * What the tools returned in the same conversation: every tool result of the
+ * Analyst's last request, hashed — the rows of every entity of the source and
+ * what lies beside them. What "an entity's row is f8bcb43's" means once the
+ * prompt around the rows moves over a source that holds an organisation
+ * (backstage-http slice 3, 3.3).
+ */
+async function resultsOver(refs: readonly string[], deps: MainDeps & { argv?: string[] }): Promise<string> {
+  const last = (await requestsOver(refs, deps)).filter((request) => request.agent === 'analyst').at(-1)
+  const results = (last?.transcript ?? []).flatMap((entry) => (entry.role === 'tool' ? [entry.result] : []))
+  return JSON.stringify(results)
+}
+
+/**
+ * The one change 3.3 makes to those results over tests/golden/organisation:
+ * it holds no API, so `search_entities` refuses kind API, naming the kinds in
+ * use — the organisation's among them since the Analyst reads it.
+ */
+const KINDS_THEN = 'kinds in use: Component, Resource'
+const KINDS_NOW = 'kinds in use: Component, Domain, Group, Resource, System, User'
+
+async function requestsOver(
+  refs: readonly string[],
+  deps: MainDeps & { argv?: string[] },
+): Promise<GenerateRequest[]> {
   const { argv = [], ...rest } = deps
   const turns: Partial<Record<AgentName, GenerateResult[]>> = {
     supervisor: [{ text: 'QUESTION', toolCalls: [], finishReason: 'stop' }],
@@ -80,10 +108,10 @@ async function sentOver(refs: readonly string[], deps: MainDeps & { argv?: strin
     ],
   }
   const spent = new Map<AgentName, number>()
-  const sent: string[] = []
+  const sent: GenerateRequest[] = []
   const client: LlmClient = {
     generate: async (request: GenerateRequest): Promise<GenerateResult> => {
-      sent.push(`${request.agent}#${digest(JSON.stringify(request))}`)
+      sent.push({ ...request, transcript: [...request.transcript] })
       const index = spent.get(request.agent) ?? 0
       spent.set(request.agent, index + 1)
       return turns[request.agent]?.[index] ?? { text: '', toolCalls: [], finishReason: 'stop' }
@@ -123,25 +151,17 @@ const ORGANISATION_REFS = [
   'resource:default/billing-api-billing-db-prod',
 ]
 
-/** Measured on f8bcb43, before backstage-http slice 3, by the functions above. */
+/**
+ * Measured on f8bcb43, before backstage-http slice 3, by the functions above;
+ * the tool results on d6858d8, where the whole requests still equalled
+ * f8bcb43's (those pins left with 3.3, which widens the requests on purpose
+ * over a source that holds an organisation).
+ */
 const ON_F8BCB43 = {
-  apisSent: [
-    'supervisor#sha256:6e078911b036e08df2bd4013ef75f95ae837bbe9e1d3761b6a8aae1b17830e08',
-    'analyst#sha256:85b7bb91ae132ab86d63ae3e420f7a80474ff750f11a0cf51252754b24b3b8ac',
-    'analyst#sha256:23c3c6a87f609328ba514cffbf68ab329d4226cd4e45a85504eddf68d38401a1',
-    'analyst#sha256:85cf47d2e0876788791d9640f74c79daaa42c8c9b3a75224008438772be51e13',
-    'analyst#sha256:4875ad45e6dddaf055653f64a7a3b3f47f06a7e3b0ca0eb10ec643373d837caa',
-  ],
+  apisResults: 'sha256:0278a01018179ae20b902457de859a1ae1de7933a5da9cedb420df716c237be9',
   apisGraph: 'sha256:cef7bda1ddfa2c773e7bd74e8f2f658d738b5c81e56127cb1f19575465d8c86b',
   apisPayments: 'sha256:5622848329daa9fdf1801e60a7f16aa6926fcf963cb7dd363e564db54a2483ca',
-  // The same requests over the files and over the fake: the equivalence of § 9.
-  organisationSent: [
-    'supervisor#sha256:05dc98125b40dbac15b73a604c36355bd317d2e98e3333c89444ad0219daccda',
-    'analyst#sha256:22dad2680d76923ea40ea1956b2cd92971840120537a2517abe31dd8bfaa166a',
-    'analyst#sha256:6f641c7003119a5a9d73f471edf072bcc506a745c07c26aa4da436323830ce03',
-    'analyst#sha256:9d9df8bbdc8fc8f649fee20ac503728824c56278deb3e3768df4f05ba65ba916',
-    'analyst#sha256:af3be4b9a577f9d22afba3477433d57fa0b801b700a1d524e81daa38b05f26e0',
-  ],
+  organisationResults: 'sha256:58b3431693bd0eedea9567f5886a2f15002a773fb4fa3fd95ddf1e8136e132bc',
 }
 
 describe('the organisation beside the entities', () => {
@@ -168,7 +188,11 @@ describe('the organisation beside the entities', () => {
     const graph = await graphOf(ORGANISATION, { judged: EVERY_KIND })
     const before = await asOnF8bcb43(ORGANISATION)
     expect(graph.all().map(({ kind }) => kind)).not.toContain('Group')
-    expect(summariseGraph(graph)).toEqual(summariseGraph(before))
+    // The summary's one organisation line is 3.3's, and only it moves: the
+    // entities' counts, the dangling count and the vocabulary are f8bcb43's.
+    const { summary: { organisation, ...entities }, ...vocabulary } = summariseGraph(graph)
+    expect({ summary: entities, ...vocabulary }).toEqual(summariseGraph(before))
+    expect(organisation).toEqual({ groups: '1-9', users: '1-9', systems: '1-9', domains: '1-9' })
     expect(overviewOf(graph, { ignored: [], rejected: 0 }).kinds.map(({ name }) => name)).toEqual([
       'Component',
       'Resource',
@@ -314,27 +338,40 @@ describe('the organisation beside the entities', () => {
 
   it('leaves graph’s dangling list, the show api:default/payments card and every search_entities and get_entity row over tests/golden/backstage-apis byte for byte', async () => {
     // Its Group file is read, lion is not judged, and no row gains a
-    // danglingReferences entry: the rows and the summary are in the requests.
-    expect(await sentOver(APIS_REFS, { argv: ['--repo', BACKSTAGE_APIS] })).toEqual(ON_F8BCB43.apisSent)
+    // danglingReferences entry. The requests around the rows moved in 3.3,
+    // on purpose: the source holds a Group, so the Analyst is handed the
+    // organisation's specs, paragraph and summary line (organisation-analyst.test.ts).
+    expect(digest(await resultsOver(APIS_REFS, { argv: ['--repo', BACKSTAGE_APIS] }))).toBe(ON_F8BCB43.apisResults)
     expect(await printed(['graph', '--repo', BACKSTAGE_APIS])).toBe(ON_F8BCB43.apisGraph)
     expect(await printed(['show', 'api:default/payments', '--repo', BACKSTAGE_APIS])).toBe(
       ON_F8BCB43.apisPayments,
     )
   })
 
-  it('leaves what a model is sent where it was over a source that holds and judges an organisation', async () => {
+  it('leaves every entity row a model is sent where it was over a source that holds and judges an organisation', async () => {
     // tests/golden/organisation read as files, and served by the fake: on
-    // f8bcb43 its seven organisation documents were set aside, and the
-    // requests are the ones they were. invoicing-worker's row carries no owner
-    // among its danglingReferences, and declaredNowhere does not grow.
-    expect(await sentOver(ORGANISATION_REFS, { argv: ['--repo', ORGANISATION] })).toEqual(
-      ON_F8BCB43.organisationSent,
-    )
+    // f8bcb43 its seven organisation documents were set aside, and the rows
+    // are the ones they were. invoicing-worker's row carries no owner among
+    // its danglingReferences, and declaredNowhere does not grow. The requests
+    // around them moved in 3.3, on purpose (organisation-analyst.test.ts),
+    // and are still the same over the files and over the fake (§ 9).
+    const files = await sentOver(ORGANISATION_REFS, { argv: ['--repo', ORGANISATION] })
     const served = await sentOver(ORGANISATION_REFS, {
       root: DEMO,
       env: { IDP_BACKSTAGE_URL: LOOPBACK },
       catalogueFetch: fakeBackstage({ entities: catalogueOf(ORGANISATION) }).fetch,
     })
-    expect(served).toEqual(ON_F8BCB43.organisationSent)
+    expect(served).toEqual(files)
+    for (const results of [
+      await resultsOver(ORGANISATION_REFS, { argv: ['--repo', ORGANISATION] }),
+      await resultsOver(ORGANISATION_REFS, {
+        root: DEMO,
+        env: { IDP_BACKSTAGE_URL: LOOPBACK },
+        catalogueFetch: fakeBackstage({ entities: catalogueOf(ORGANISATION) }).fetch,
+      }),
+    ]) {
+      expect(results).toContain(KINDS_NOW)
+      expect(digest(results.replace(KINDS_NOW, KINDS_THEN))).toBe(ON_F8BCB43.organisationResults)
+    }
   })
 })

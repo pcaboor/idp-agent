@@ -13,7 +13,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 3646, no API key" src="https://img.shields.io/badge/tests-3646%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 3664, no API key" src="https://img.shields.io/badge/tests-3664%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -482,7 +482,12 @@ Its Groups, Users, Systems and Domains are read too, as the organisation beside 
 for their names, types and memberships and nothing else — never a profile, never an
 annotation: `idpa show tiger` prints a team, what it owns and who is in it, and an owner
 naming no Group the catalogue serves is marked `declared nowhere in the catalogue this token
-reads`. None of them is ever proposed, and a change is decided as before.
+reads`. A question reads them too: `idpa "what does team tiger own?"`, `idpa "who is in
+tiger?"` or `idpa "which system is billing-api in?"` is answered with the block `idpa
+relations` prints, the model choosing only the team or the service and the relation. So a
+person's name and groups reach your model provider — nothing else of them, and nothing of
+the kind from a source that holds no organisation ([`SECURITY.md`](SECURITY.md)). None of
+them is ever proposed, and a change is decided as before.
 
 What the catalogue cannot report: an entity Backstage refused never reaches its API, and a
 duplicate is resolved "first location wins" in silence. A catalogue read reports only what

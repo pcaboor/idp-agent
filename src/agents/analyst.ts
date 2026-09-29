@@ -47,7 +47,8 @@ export interface AnalystOutcome {
   truncated: number
 }
 
-const SYSTEM = `You answer questions about an infrastructure catalogue.
+/** The prompt up to the end of the `relation` line, where the organisation's paragraph goes. */
+const HEAD = `You answer questions about an infrastructure catalogue.
 
 Use the tools to read the catalogue. You may not state anything you have not read:
 every reference you give must have come back from a tool in this conversation.
@@ -65,7 +66,25 @@ Finish by calling "answer":
                 "to": the paths where one depends on the other, else what both
                 reach). The engine computes every path and writes it; "ref"
                 and "to" must be references a tool returned. get_relations
-                shows you those paths; read them before you conclude on them.
+                shows you those paths; read them before you conclude on them.`
+
+/**
+ * The organisation's relations, with the question each answers: in the
+ * prompt only when the registry reads the organisation (`buildTools`'
+ * `organisation`), so over a source that holds none the prompt is the one
+ * every tape was recorded against, byte for byte.
+ */
+const ORGANISATION = `
+                Over the organisation — Groups (teams), Users (people),
+                Systems and Domains, found with search_entities and read
+                with get_entity — "relation" also answers what a team or a
+                person owns ("owns"), who owns something and the teams above
+                ("owned-by"), a person's or a team's groups ("member-of"),
+                who is in a team ("has-member"), which system and domain
+                something is in ("part-of"), and what a system or a domain
+                holds ("has-part").`
+
+const TAIL = `
   nothing       when no entity matches
   overview      when asked to describe, summarise or give an overview of the
                 catalogue, SI, repository or project as a whole. The engine
@@ -87,6 +106,18 @@ returned included. Both are optional: omit them rather than pad.
 If the request is not a question about this catalogue at all — a greeting, small
 talk, something about the weather — call "answer" with "unanswerable" straight
 away. Do not search first.`
+
+const SYSTEM = `${HEAD}${TAIL}`
+const SYSTEM_WITH_ORGANISATION = `${HEAD}${ORGANISATION}${TAIL}`
+
+/**
+ * What the loop reads off the registry: its specs, what it runs and signs
+ * with, and — when the registry says — the answer it advertises and whether
+ * it reads the organisation. Absent, the answer is `answerSchema`, without
+ * the organisation, as a registry built with `apis` alone advertises.
+ */
+type Registry = Pick<ReturnType<typeof buildTools>, 'specs' | 'run' | 'witnessed'> &
+  Partial<Pick<ReturnType<typeof buildTools>, 'answer' | 'organisation'>>
 
 const unanswerable = (reason: string): Answer => ({ outcome: 'unanswerable', reason })
 
@@ -116,7 +147,7 @@ export async function answerQuestion(
   client: LlmClient,
   // What the loop runs and signs with. What a result showed as naming nothing
   // is the commentary check's, read off the registry by whoever runs it.
-  tools: Pick<ReturnType<typeof buildTools>, 'specs' | 'run' | 'witnessed'>,
+  tools: Registry,
   input: { intent: string; summary: string; vocabulary: string },
   emit: EventSink,
 ): Promise<AnalystOutcome> {
@@ -125,10 +156,12 @@ export async function answerQuestion(
 
 async function answerFromCatalogue(
   client: LlmClient,
-  tools: Pick<ReturnType<typeof buildTools>, 'specs' | 'run' | 'witnessed'>,
+  tools: Registry,
   input: { intent: string; summary: string; vocabulary: string },
   emit: EventSink,
 ): Promise<AnalystOutcome> {
+  const system = tools.organisation === true ? SYSTEM_WITH_ORGANISATION : SYSTEM
+  const answers = tools.answer ?? answerSchema
   const transcript: Transcript[] = [
     {
       role: 'user',
@@ -172,7 +205,7 @@ async function answerFromCatalogue(
     const result = await takeTurn({
       client,
       agent: 'analyst',
-      system: SYSTEM,
+      system,
       transcript,
       tools: tools.specs,
       terminal: 'answer',
@@ -242,7 +275,7 @@ async function answerFromCatalogue(
       }
 
       if (call.name === 'answer') {
-        const parsed = answerSchema.safeParse(call.args)
+        const parsed = answers.safeParse(call.args)
         if (parsed.success) {
           answer = parsed.data
           break

@@ -69,7 +69,9 @@ read by a person — and every list sorted count first, then name.
 
 `graph/summary.ts`'s `summariseGraph` is that prompt's data: the counts in buckets, the
 dangling references exactly, the vocabulary — every kind, type, environment and owner in use,
-which the gates read whole — and `counts`, how many entities state each value. The Supervisor's
+which the gates read whole — and `counts`, how many entities state each value; and, only when
+the graph holds an organisation, its Groups, Users, Systems and Domains in buckets
+(`SiSummary.organisation`), so a source that holds none is summarised as it was. The Supervisor's
 and the Analyst's summary is handed the counts, and past 30 values a list shows the 30 most
 frequent and how many more (`shownVocabulary` in `agents/summary.ts`), since a company
 catalogue's owners are unbounded; the Architect's is handed none, and shows every value.
