@@ -23,7 +23,7 @@ each:
 | 2 | Question mode | done |
 | 3 | `init platform` and `validate` | done |
 | 4 | Preview only: nothing is written | done |
-| 5 | Write + local branch | in progress ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)): task 1, `Cleared` for the declarations repository, on `main` ([#105](https://github.com/pcaboor/idp-agent/pull/105)); task 2, `Cleared` for the service repository, on `main` ([#106](https://github.com/pcaboor/idp-agent/pull/106)); task 3, the shared git launcher and the `forge/` types, on `main` ([#107](https://github.com/pcaboor/idp-agent/pull/107)); nothing writes yet |
+| 5 | Write + local branch | in progress ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)): task 1, `Cleared` for the declarations repository, on `main` ([#105](https://github.com/pcaboor/idp-agent/pull/105)); task 2, `Cleared` for the service repository, on `main` ([#106](https://github.com/pcaboor/idp-agent/pull/106)); task 3, the shared git launcher and the `forge/` types, on `main` ([#107](https://github.com/pcaboor/idp-agent/pull/107)); task 4, the local forge — create-only, idempotent, atomic — on `main` ([#108](https://github.com/pcaboor/idp-agent/pull/108)); no command writes yet: `--submit` is task 5 |
 | 6 | GitHub pull request | not started |
 | 7 | Polish: Ink TUI, asciinema, npm publish | not started |
 | 8 | Discovery | designed ([the design note](stage-8-brief.md), [#76](https://github.com/pcaboor/idp-agent/pull/76)); not started |
@@ -60,8 +60,10 @@ here, one pull request each, each naming the check run together at the end.
    ([#106](https://github.com/pcaboor/idp-agent/pull/106)). Task 3 — the one hardened git
    launcher, `src/process/`, the Inspector and the forge share, the `forge/` types and the
    rules that fence both — is on `main` too
-   ([#107](https://github.com/pcaboor/idp-agent/pull/107)); the owner validates the
-   architecture before task 4's local forge, which is next. The check itself, this queue's first item until
+   ([#107](https://github.com/pcaboor/idp-agent/pull/107)). The owner validated the
+   architecture on 2026-09-29, and task 4 — the local forge, create-only, idempotent and
+   atomic, proved by failing every git call of a submission — is on `main` too
+   ([#108](https://github.com/pcaboor/idp-agent/pull/108)), with ADR 0010 accepted. Task 5, `plan --from … --submit`, is next. The check itself, this queue's first item until
    2026-09-29, is done: the check, the brief as a dated record, the revised plan, and ADR
    0010 and ADR 0012 *proposed* ([#104](https://github.com/pcaboor/idp-agent/pull/104)).
 2. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
@@ -71,7 +73,8 @@ here, one pull request each, each naming the check run together at the end.
    gap-stage5-readiness-11 in part; B1 builds on that generator rather than writing a second
    one, and goes on top of stage 5.
 3. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
-   gap-stage5-readiness-4: one lstat, realpath and `O_NOFOLLOW` primitive shared from
+   gap-stage5-readiness-4 (its submission half closed by stage 5's task 4): one lstat,
+   realpath and `O_NOFOLLOW` primitive shared from
    `project-fs`, used by `scaffold/write.ts` and by the iac-fs walk, which rejects a
    symbolic link by name. Medium, and after stage 5: the forge writes only objects and a
    ref, never the working tree, and refuses a symbolic link tracked in `HEAD`, so B3 is for
@@ -244,6 +247,13 @@ The owner's decisions, dated, each with where it is recorded.
   root (D19); no `idpa "<phrase>" --submit` at stage 5 (D8); no `backstage:` written into
   `.idp-agent.yml` (D9); and "declared is not provisioned" as ADR 0012, *proposed* (D16).
   [ADR 0010](adr/0010-a-submission-is-a-create-only-ref.md) is written, *proposed*.
+- The architecture of stage 5's task 4 and ADR 0010, validated after a presentation of both,
+  with three explicit choices: the base is `HEAD`, the branch checked out, and a detached or
+  unborn `HEAD` is refused; a catalogue file that differs from `HEAD` in the working tree —
+  uncommitted, untracked or ignored — makes the submission a refusal for divergence, naming
+  the files; and the repository's git hooks and fsmonitor never run during a submission, the
+  launcher's hardening, which `SECURITY.md` states for teams relying on `pre-commit`. ADR 0010
+  is *accepted* ([#108](https://github.com/pcaboor/idp-agent/pull/108)).
 
 ## Known debts and open items
 
@@ -513,8 +523,11 @@ vocabulary), product-gap-6 (no offset and no system, lifecycle or tag criteria i
 - **Settled by the stage-5 check** (2026-09-29, [its § 7](stage-5-check.md)), each closed
   by the stage-5 pull request that builds it: core-plan-9 and gap-stage5-readiness-5 (a
   `Cleared` minted after the free gates, with a runtime brand, D3; closed, [#105](https://github.com/pcaboor/idp-agent/pull/105)), gap-stage5-readiness-3
-  (the base is `HEAD`, the bytes read proven equal to it), gap-stage5-readiness-12 (the
-  branch name as the plan's identity; design §4.3 reworded), gap-stage5-readiness-13 and
+  (the base is `HEAD`, the bytes read proven equal to it; closed, [#108](https://github.com/pcaboor/idp-agent/pull/108)), gap-stage5-readiness-12 (the
+  branch name as the plan's identity; design §4.3 reworded; closed, [#108](https://github.com/pcaboor/idp-agent/pull/108)), gap-stage5-readiness-8's
+  identity half (a clearance names its repository, [#106](https://github.com/pcaboor/idp-agent/pull/106); a forge opened for one refuses the
+  other's, closed by [#108](https://github.com/pcaboor/idp-agent/pull/108), `local-forge.test.ts`, *refuses a clearance for the other
+  repository, before anything else — both ways*), gap-stage5-readiness-13 and
   cli-ux-12 (a `Confirm` seam taking a structured summary, D5). Still open here: cli-ux-10, a
   versioned `--json`, which will name stage 5's `submission` key (D11); architecture-9 and
   product-gap-13, a session ADR, which the check found no blocker for the confirmation (D5).
@@ -542,9 +555,11 @@ vocabulary), product-gap-6 (no offset and no system, lifecycle or tag criteria i
 - **Toolchain and release.** build-ci-10 (a linter and formatter), build-ci-9 (a dependency
   policy), build-ci-6 (reserving the npm name).
 
-*Belongs elsewhere.* gap-stage5-readiness-6 (compare before writing) is stage 5's writer — in
-part since [#105](https://github.com/pcaboor/idp-agent/pull/105): the edits and the re-check of a clearance judge one reading of the bytes, while
-its `PolicyContext` is still built from the first read; architecture-10
+*Belongs elsewhere.* gap-stage5-readiness-6 (compare before writing) is stage 5's writer —
+closed at the forge by [#108](https://github.com/pcaboor/idp-agent/pull/108), which re-reads the base and compares each file with the bytes
+judged; [#105](https://github.com/pcaboor/idp-agent/pull/105) made the edits and the re-check of a clearance judge one reading of the bytes,
+while its `PolicyContext` is still built from the first read, and the witnesses and
+`.idp-agent.yml` it judged stay outside the expectation, stated in `SECURITY.md`; architecture-10
 (one bounded agent loop) and the rest of architecture-6 (exhaustive dispatch beyond batch A4)
 are refactors left unordered.
 

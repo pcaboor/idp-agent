@@ -170,8 +170,11 @@ follows from the documentation of the tools involved.
 
 ### 4.3 Writing
 
-- **One file per entity**, in one folder per nature. Two concurrent declarations never
-  write to the same file.
+- **One file per entity**, in one folder per nature. Two concurrent declarations of new
+  entities never write to the same file. Two that amend one grant do — each
+  `update-entity` appends to the grant's file — and their branches conflict at the merge,
+  which is where that is seen; a submission's branch name is a digest of its bytes, the
+  plan's identity.
 - **Textual surgery, never a reparse.** A reviewer must see an added line, not a
   reformatted file.
 - **An entity's location is read from the entity**, through its annotation — never
@@ -1150,7 +1153,7 @@ Direct graph query, tabular output. No plan, no writes, no confirmation.
 | Ambiguity (dev or prod?) | interactive picker, never a silent default |
 | Access already declared | plan restating it, no bytes changed, message, exit 0 (idempotent) |
 | Loop does not converge | stop at 3, partial plan + reason, nothing written |
-| Write interrupted | full rollback, initial state restored |
+| Write interrupted | nothing to roll back: nothing a person can observe exists before the branch's ref is created; an unreachable object may remain, for `git gc` |
 | Orphaned access detected | reported only, never deleted |
 | Repository moved meanwhile | caught at step 6, plan recomputed |
 
@@ -1172,6 +1175,14 @@ Schemas, serialiser, path computation, diff. No I/O. Around 60 % of the suite.
 ∀ Plan + file     → the edit, read back, carries out the operation and nothing else —
                     or the operation is dropped, naming the file
 ```
+
+"Initial state" is the observable state — every ref, what `HEAD` is, the index, the
+working tree — and not `.git/objects`. "Applying twice" is held at two levels: over the
+bytes (`planEdits` on applied bytes changes nothing) and at the forge (the same bytes on
+the same base name the same branch, which is recognised, not duplicated). Two model drafts
+that differ are two plans. The atomicity invariant is checked over real repositories
+(`tests/invariants/forge.test.ts`): every git call of a submission is made to fail, before
+it runs and after, and so is a stranger creating the branch at each of them.
 
 The fourth is "textual surgery, never a reparse" made executable: replacing insertion
 with `parse + stringify` breaks it. The fifth encodes "absent means already done". The
@@ -1310,7 +1321,7 @@ ADR-0006  the merge request is the act of authorisation
 ADR-0007  the answer crosses the boundary, under a witness check
 ADR-0008  commentary crosses the boundary, labelled and witness-checked
 ADR-0009  a trace is one more reader of the event stream
-ADR-0010  a submission is a create-only ref (proposed; the stage-5 check, 2026-09-29)
+ADR-0010  a submission is a create-only ref (accepted 2026-09-29; the stage-5 check)
 ADR-0011  Backstage to explore: one snapshot per run; the model's words never become a request
 ADR-0012  declared is not provisioned (proposed; stage 6 builds its first mechanism)
 ```

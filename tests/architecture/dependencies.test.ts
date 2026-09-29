@@ -689,9 +689,10 @@ describe('architecture', () => {
   it('only two modules in scaffold/ touch the disk, and only one of them writes', async () => {
     // Two different interactions, and conflating them made this rule wrong on
     // its first run: templates.ts *reads* files shipped inside the package,
-    // write.ts *writes* into someone else's repository. Only the second is the
-    // seam stage 5's atomic applier replaces — one file is a refactor, five
-    // would be a rewrite — but both have to be named, or the rule is a lie.
+    // write.ts *writes* into someone else's repository. Only the second is a
+    // writer — it stays the writer for a repository being created; a branch in
+    // an existing one is forge/local/'s (ADR-0010) — but both have to be
+    // named, or the rule is a lie.
     const allowed = new Set(['scaffold/write.ts', 'scaffold/templates.ts'])
     const offending = (await importsUnder(path.join(SOURCE_ROOT, 'scaffold'))).filter(
       ({ file, specifier }) => DISK.test(specifier) && !allowed.has(file),

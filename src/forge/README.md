@@ -1,8 +1,8 @@
 # `forge/` — where a submission becomes a branch
 
 The layer that will write into a user's repository: one new ref under `refs/heads/idp-agent/`,
-cut through git's plumbing, and nothing else (ADR-0010). Today it holds its shapes and its
-refusals; the local forge itself is stage 5's next task.
+cut through git's plumbing, and nothing else (ADR-0010). It holds its shapes, its refusals and
+the local forge; no command reaches it yet — `--submit` is stage 5's next task.
 
 ## What lives here
 
@@ -10,6 +10,38 @@ refusals; the local forge itself is stage 5's next task.
 |---|---|
 | `provider.ts` | `ForgeProvider`, `Base`, `Submitted` — **types only**, like `llm/client.ts` |
 | `errors.ts` | `ForgeInputError` — the refusals that are the user's arguments, exit 2 |
+| `local/objects.ts` | `blobId`, `treeOf`, `writeTree` — reading and writing git objects, never a ref |
+| `local/forge.ts` | `openLocalForge(repo, repository)` — `base`, `diverges`, `submit`, over a clone on this machine |
+
+## How a submission is atomic
+
+A submission becomes visible at exactly one point: `update-ref <ref> <commit> ""`, whose
+empty old value means *create, and refuse if it exists*. Everything before it — `hash-object
+--no-filters`, `mktree` level by level, `commit-tree` — writes objects no ref reaches, and an
+object no ref reaches is garbage `git gc` collects. So nothing is rolled back, because nothing
+a person can observe exists before the ref. `tests/invariants/forge.test.ts` holds that by
+failing every git call of a submission, before it runs and after, over real repositories, and
+by a stranger creating the branch before each of them.
+
+Before that one write, `submit` checks, in this order: the value is one `clear.ts` minted
+(`isCleared`, D3); it is for this forge's repository; `HEAD` is still the branch and commit
+`base()` read; the base still holds, byte for byte, every file the gates judged
+(`diverges`); the change changes something; the branch is under `idp-agent/` and its digest
+is recomputed from the bytes; and a branch of that name is either absent, or exactly this
+change — a branch and not a symbolic ref, one commit, on the base, these paths, these bytes,
+these modes, the message the engine wrote (D7, D18). The one write is `--no-deref`, so a
+symbolic ref never aims it at another name. A failure after the ref was created is told from
+a stranger's ref by the commit it points at.
+
+Opening the forge judges the arguments, once and before any model: a git working tree, at its
+root; a `git` on `PATH`; an author and a committer identity git does not guess (D13). `base()` refuses a
+detached or unborn `HEAD` as an argument error; the same, found at `submit`, is a refusal —
+the repository moved during the run.
+
+A refusal's `reason` and a `diverges` sentence name paths and branches the repository holds —
+its own content, not ours — so `cli/` prints them through `inertLine`, as it does
+`GitError.stderr`: a catalogue file committed with an escape sequence in its name is text to
+show, never a command to the terminal.
 
 ## What a forge can do, and what it cannot
 

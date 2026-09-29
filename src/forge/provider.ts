@@ -19,7 +19,12 @@ export type Submitted =
   | { readonly outcome: 'already-submitted'; readonly branch: string; readonly commit: string }
   /** No edit changes a byte: no branch, no commit. */
   | { readonly outcome: 'unchanged' }
-  /** Refused at the moment of acting. Nothing observable was written. */
+  /**
+   * Refused at the moment of acting. Nothing observable was written. `reason`
+   * names paths and branches read from the repository — its own content, which
+   * may hold a control or bidi character — so `cli/` prints it through
+   * `inertLine`, as it does `GitError.stderr`.
+   */
   | { readonly outcome: 'refused'; readonly reason: string }
 
 /**
@@ -43,7 +48,10 @@ export interface ForgeProvider {
   readonly repository: Repository
   /** HEAD as a branch and a commit. Refuses a detached or unborn HEAD. */
   base(): Promise<Base>
-  /** Each way the base differs from what the gates judged, as a sentence. Empty: it does not. */
+  /**
+   * Each way the base differs from what the gates judged, as a sentence. Empty: it does not.
+   * A sentence names paths the repository holds: `cli/` prints it through `inertLine`.
+   */
   diverges(base: Base, expected: Expectation): Promise<readonly string[]>
   /** Re-reads the base, re-checks divergence, then creates one branch — or says why not. */
   submit(change: Cleared, base: Base): Promise<Submitted>

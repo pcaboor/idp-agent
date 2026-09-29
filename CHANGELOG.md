@@ -133,6 +133,23 @@ Each pull request adds its line here.
   reads back. `init`'s output is unchanged — a drop in its preview, which nothing reaches
   today, now ends on exit 1 as the clearance refuses it — and nothing writes yet
   ([#106](https://github.com/pcaboor/idp-agent/pull/106)).
+- The local forge, `src/forge/local/` (`openLocalForge`): a `Cleared` becomes one new branch
+  under `idp-agent/`, cut from `HEAD` through git's plumbing — blobs with `hash-object
+  --no-filters`, trees with `mktree`, a commit with `commit-tree`, and one create-only
+  `update-ref` that can never move a ref, `main` included — with nothing checked out and
+  `HEAD`, the index and the working tree never written. Opened for one repository, it refuses
+  a directory that is not a working tree's root, a missing `git` and an author or committer
+  identity git would have to guess, before any model; `submit` refuses a value `clear.ts` did
+  not mint, a clearance for the other repository, a `HEAD` that moved or became detached, a
+  file the gates read that is not `HEAD`'s byte for byte (uncommitted, untracked, ignored or a
+  symbolic link, by name), a catalogue file `HEAD` holds and the gates never read, and a
+  branch of that name that is not exactly this change on this base — a symbolic ref, a merge,
+  or somebody else's message included — and its one write never follows a symbolic ref; the
+  same bytes submitted twice name the existing branch, and an empty change cuts none. The
+  repository's hooks never run. §9.2's atomicity is checked over real repositories by failing
+  every git call of a submission, before it runs and after, and by a stranger creating the
+  branch before each. ADR 0010 is accepted. No command reaches the forge yet: `--submit` is
+  next ([#108](https://github.com/pcaboor/idp-agent/pull/108)).
 
 ### Changed
 

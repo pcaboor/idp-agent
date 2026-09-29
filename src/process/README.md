@@ -1,7 +1,8 @@
 # `process/` — the one place a process is started
 
 A leaf of two modules. `context/project-fs` reads a repository through it (`git ls-files`),
-and the forge will write one through it (stage 5, ADR-0010). Neither may start a process of
+and the local forge (`forge/local/`) writes one through it (ADR-0010) — though no command
+reaches the forge until `--submit`. Neither may start a process of
 its own: the launcher is shared so that every hardening line below applies to every call or
 to none.
 
