@@ -14,6 +14,14 @@ export interface SiSummary {
   components: Bucket
   resources: Bucket
   danglingReferences: number
+  /**
+   * The organisation the graph holds, bucketed as the entities are — present
+   * only when it holds a Group, a User, a System or a Domain, so a summary of
+   * a source that holds none is the one every recording was made against.
+   * Not among `entities`, and its references not among `danglingReferences`:
+   * those are the write model's (`EntityGraph.all()`).
+   */
+  organisation?: { groups: Bucket; users: Bucket; systems: Bucket; domains: Bucket }
 }
 
 export type { Vocabulary } from '../../core/schemas/vocabulary.js'
@@ -54,6 +62,8 @@ export function summariseGraph(graph: EntityGraph): {
   const kinds = entities.map((entity) => entity.kind)
   const types = entities.map((entity) => entity.spec.type)
   const owners = entities.map((entity) => entity.spec.owner)
+  const nodes = graph.nodes()
+  const ofKind = (kind: string): Bucket => bucket(nodes.filter((node) => node.kind === kind).length)
 
   return {
     summary: {
@@ -61,6 +71,16 @@ export function summariseGraph(graph: EntityGraph): {
       components: bucket(entities.filter((entity) => entity.kind === 'Component').length),
       resources: bucket(entities.filter((entity) => entity.kind === 'Resource').length),
       danglingReferences: graph.danglingReferences().length,
+      ...(graph.holdsOrganisation
+        ? {
+            organisation: {
+              groups: ofKind('Group'),
+              users: ofKind('User'),
+              systems: ofKind('System'),
+              domains: ofKind('Domain'),
+            },
+          }
+        : {}),
     },
     // Deliberately no `levels`. A level is not vocabulary: `sign.ts` reads this
     // list to decide that a proposed value was already in use rather than

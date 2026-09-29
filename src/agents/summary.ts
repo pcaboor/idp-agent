@@ -121,6 +121,14 @@ export function formatSummary(
     `  entities: ${summary.entities}`,
     `  components: ${summary.components}`,
     `  resources: ${summary.resources}`,
+    // The organisation, only when the graph holds one: a source that holds
+    // none is summarised byte for byte as it was before the organisation was read.
+    ...(summary.organisation === undefined
+      ? []
+      : [
+          `  organisation: groups ${summary.organisation.groups}, users ${summary.organisation.users}, ` +
+            `systems ${summary.organisation.systems}, domains ${summary.organisation.domains}`,
+        ]),
     `  dangling references: ${summary.danglingReferences}`,
     'vocabulary:',
     list('kinds', shown.kinds),

@@ -45,6 +45,23 @@ export const apiSearchCriteriaSchema = z
   })
   .refine((criteria) => Object.keys(criteria).length > 0, 'a search needs at least one criterion')
 
+/**
+ * The Analyst's search over a source that holds an organisation: the same
+ * criteria, and Backstage's Group, User, System and Domain among the kinds.
+ * Its own schema, beside `apiSearchCriteriaSchema`, for that one's reason:
+ * the Analyst's specs over a source that holds none are the ones its tapes
+ * were recorded against, and stay byte for byte what they were.
+ */
+export const organisationSearchCriteriaSchema = z
+  .object({
+    kind: z.enum(['Component', 'Resource', 'API', 'Group', 'User', 'System', 'Domain']).optional(),
+    type: z.string().min(1).max(QUERY_LIMITS.maxName).optional(),
+    env: z.string().min(1).max(QUERY_LIMITS.maxName).optional(),
+    owner: ownerRefSchema.optional(),
+    nameContains: z.string().min(1).max(QUERY_LIMITS.maxName).optional(),
+  })
+  .refine((criteria) => Object.keys(criteria).length > 0, 'a search needs at least one criterion')
+
 export const getEntityInputSchema = z.object({ ref: entityRefSchema })
 
 /**
@@ -164,6 +181,22 @@ export const getRelationsInputSchema = z
   })
 
 /**
+ * `get_relations` over a source that holds an organisation: the relations of
+ * `RELATIONS` and the six of `ORGANISATION_RELATIONS`, one enum, so a model
+ * reads them side by side. Built apart, for the reason the search is.
+ */
+export const organisationRelationsInputSchema = z
+  .object({
+    ref: entityRefSchema,
+    relation: z.enum([...RELATIONS, ...ORGANISATION_RELATIONS]),
+    to: otherEnd(),
+  })
+  .refine((input) => input.relation !== 'between' || input.to !== undefined, {
+    message: '"between" needs "to", the other entity',
+    path: ['to'],
+  })
+
+/**
  * One commentary field: optional, and DROPPED rather than refused when it is
  * malformed — `.catch` turns any failure into `undefined`, which no reader
  * tells from an absent field, so the answer it rode on is kept and no repair
@@ -275,6 +308,46 @@ export const answerSchema = z.discriminatedUnion('outcome', [
 ])
 
 /**
+ * `answerSchema` over a source that holds an organisation: the `relation`
+ * branch also names the six organisation relations, and "ref" may be a
+ * Group, a User, a System or a Domain a tool returned. Every other branch,
+ * and what the engine does with the answer, is the same; the model still
+ * chooses only which node and which relation, and the engine writes the
+ * block `idpa relations` prints.
+ */
+export const organisationAnswerSchema = z.discriminatedUnion('outcome', [
+  entitiesAnswer(),
+  nothingAnswer(),
+  overviewAnswer(),
+  z
+    .object({
+      outcome: z.literal('relation'),
+      ref: entityRefSchema.describe(
+        'The entity, Group, User, System or Domain the relation is read from: a reference a tool returned.',
+      ),
+      relation: z
+        .enum([...RELATIONS, ...ORGANISATION_RELATIONS])
+        .describe(
+          'What to trace from "ref": "consumes" (what it reaches through its rights), ' +
+            '"consumed-by" (who reaches it), "depends-on", "impacts" (what needs it), ' +
+            '"provides", "provided-by", or "between" with "to"; over the organisation, ' +
+            '"owns" (what a team or a person owns), "owned-by" (who owns it), "member-of" ' +
+            '(a person\'s or a team\'s groups), "has-member" (who is in a team), "part-of" ' +
+            '(its system and domain) or "has-part" (what a system or a domain holds).',
+        ),
+      to: otherEnd().describe(
+        'With "between" only: the other entity, a reference a tool returned.',
+      ),
+      ...commentary(),
+    })
+    .refine((answer) => answer.relation !== 'between' || answer.to !== undefined, {
+      message: '"between" needs "to", the other entity',
+      path: ['to'],
+    }),
+  unanswerableAnswer(),
+])
+
+/**
  * The same union less `relation`, for the registry the Architect is built
  * from. The Architect is never offered `answer` (`architect.ts` filters it
  * out), but its registry's specs are held byte for byte to
@@ -289,6 +362,7 @@ export const answerSchemaWithoutRelation = z.discriminatedUnion('outcome', [
   unanswerableAnswer(),
 ])
 
-export type Answer = z.infer<typeof answerSchema>
-/** Either search's criteria: the Analyst's is the wider. */
-export type SearchCriteria = z.infer<typeof apiSearchCriteriaSchema>
+/** Either answer: the organisation's is the wider, by the relations its `relation` may name. */
+export type Answer = z.infer<typeof organisationAnswerSchema>
+/** Any search's criteria: the organisation's is the widest. */
+export type SearchCriteria = z.infer<typeof organisationSearchCriteriaSchema>

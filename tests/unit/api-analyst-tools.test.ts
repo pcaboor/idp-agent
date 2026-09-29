@@ -6,7 +6,11 @@ import { runAsk } from '../../src/cli/commands/ask.js'
 import { FixtureProvider } from '../../src/context/fixtures/index.js'
 import { EntityGraph, refOf } from '../../src/context/graph/entity-graph.js'
 import type { AgentName, GenerateResult, LlmClient } from '../../src/llm/client.js'
-import { apiSearchCriteriaSchema, searchCriteriaSchema } from '../../src/core/schemas/query.js'
+import {
+  apiSearchCriteriaSchema,
+  organisationSearchCriteriaSchema,
+  searchCriteriaSchema,
+} from '../../src/core/schemas/query.js'
 import { offeredTools } from '../support/offered-tools.js'
 
 /**
@@ -211,14 +215,16 @@ describe("the Analyst's registry", () => {
   })
 
   it("is checked beside the Architect's search, not in place of it", async () => {
-    // Two specs of one name, both sent to a provider: the contract checks
+    // Three specs of one name, each sent to a provider: the contract checks
     // every distinct spec an agent offers, and the Architect's is the one the
-    // plan-mode tapes were recorded against.
+    // plan-mode tapes were recorded against. The third is the Analyst's over
+    // a source that holds an organisation (backstage-http slice 3, 3.3).
     const searches = (await offeredTools()).filter((spec) => spec.name === 'search_entities')
     const offered = new Set(searches.map((spec) => spec.parameters))
     expect(offered.has(searchCriteriaSchema)).toBe(true)
     expect(offered.has(apiSearchCriteriaSchema)).toBe(true)
-    expect(searches).toHaveLength(2)
+    expect(offered.has(organisationSearchCriteriaSchema)).toBe(true)
+    expect(searches).toHaveLength(3)
   })
 })
 

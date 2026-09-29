@@ -124,6 +124,32 @@ Plain data, handed in. Never a graph, never a provider, never a path.
   a path runs through; the reference declared nowhere joins `declaredNowhere`, never
   `witnessed`. The Architect has no such tool, and its `answer` spec — never offered to
   it, but held to its golden — is `answerSchemaWithoutRelation`.
+- **Over a source that holds an organisation** — a Group, a User, a System or a Domain
+  read (`graph.holdsOrganisation`) — `ask` builds the Analyst's registry with
+  `organisation: true` too, and only then (backstage-http slice 3, 3.3): its search takes
+  the four kinds (`organisationSearchCriteriaSchema`), a name fragment with no kind finds
+  them after the entities, and an `env` on one of their kinds is refused, since none
+  declares one; `get_entity` reads one as its card lists it (`OrganisationRow`: a Group's
+  `parent`, `children`, `members` and `owns`; a User's `memberOf` and `owns`; a System's
+  `owner`, `domain` and `contains`; a Domain's `owner`, `subdomainOf`, `systems` and
+  `subdomains`), each list read from both ends and bounded at `QUERY_LIMITS.maxRows`, the
+  cut said (`<list>Truncated`), what it declares that is declared nowhere, where its kind
+  was read whole, under `danglingReferences`, and nothing of a User but its name and
+  groups; `get_relations` and `answer` take the six organisation relations too
+  (`organisationRelationsInputSchema`, `organisationAnswerSchema`), an organisation step
+  carrying its kind and type and never an environment, a reference set aside beside the
+  rows under `setAside` and one only read as a name under `readAsNames` (at most 25, the
+  cut said), neither witnessed. What an organisation document writes where a reference goes
+  and that is no `kind:namespace/name` — an email among a Group's members, an address as a
+  System's owner — is never shown: a row or a result counts it (`<list>NotShown`,
+  `notShown`), and an owner, a domain or a parent domain says `not shown`.
+  The three tools' descriptions say so in one sentence each, the system prompt gains one
+  paragraph after the `relation` line, and the summary one line (`organisation: groups …`).
+  An entity's row is unchanged: an owner declared nowhere is learnt by walking `owned-by`.
+  The loop parses the answer with the schema the registry advertises (`tools.answer`).
+  Over a source that holds none — the demo SI, every tape's — specs, prompt, summary and
+  rows are the ones every recording was made against (`organisation-analyst.test.ts`,
+  `tests/scenarios/prompt-digests.test.ts`).
 - The Analyst's `answer` **discards** any field its outcome does not declare — the flat
   advertisement shows `refs` and `reason` beside every outcome, and a real model fills
   them — and never reads it (ADR-0007, amended). When every answer it sent was refused,

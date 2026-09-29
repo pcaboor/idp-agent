@@ -1,8 +1,10 @@
 # `backstage-http` slice 3 — the organisation in the read model
 
 **Status: 3.1 built** ([#99](https://github.com/pcaboor/idp-agent/pull/99)), **3.2 built**
-([#100](https://github.com/pcaboor/idp-agent/pull/100)). Three stacked pull requests, 3.1
-to 3.3, and one owner step after them (the keyed recordings); 3.3 is not started. The
+([#100](https://github.com/pcaboor/idp-agent/pull/100)), **3.3 built**
+([#101](https://github.com/pcaboor/idp-agent/pull/101)): the slice's code is done. Three
+stacked pull requests, 3.1 to 3.3, and one owner step after them (the keyed recordings),
+which is what is left. The
 owner's answers to the three questions are [below](#questions-for-the-owner), settled on
 2026-09-28.
 
@@ -1270,14 +1272,14 @@ with `…Truncated: "N more not shown"` beside it, as `danglingReferences` is bo
 judged ones (`unresolvedOrganisationOf`), joining `declaredNowhere`. Every reference a row
 names that resolves is witnessed, as a row's `provides` is. An entity's row is built as today.
 
-- [ ] **Step 1: Pin the Analyst's registry and prompts without an organisation (passes now)**
+- [x] **Step 1: Pin the Analyst's registry and prompts without an organisation (passes now)**
 
 In `tests/unit/organisation-analyst.test.ts`, first: `buildTools(graphOf(DEMO), { apis: true
 })`'s `JSON.stringify(specs)`, the Analyst's `SYSTEM` and `formatSummary(...)` of the demo SI,
 each hashed, equal constants measured on `f8bcb43`. Green on the unchanged tree; it and
 `prompt-digests.test.ts` stay green after Step 3.
 
-- [ ] **Step 2: Write the tests (fail: no `organisation` option)**
+- [x] **Step 2: Write the tests (fail: no `organisation` option)**
 
 ```typescript
 describe('the Analyst over a source that holds an organisation', () => {
@@ -1286,11 +1288,15 @@ describe('the Analyst over a source that holds an organisation', () => {
   it('refuses a kind nothing carries, naming the kinds in use, the organisation’s included', …)
   it('witnesses the Group get_entity read, and the references its row resolves; never one declared nowhere', …)
   it('walks owns from group:default/tiger at 25 rows, stating the cut', …)
+  // `between` with a Group at either end refuses naming that end, `ref` first (review fix).
+  it('reads at most 25 names beside the rows, the cut stated, where the kind was not read whole', …) // review fix
   it('refuses a relation answer about a Group no tool returned', …)
   it('returns an entity’s row as f8bcb43 did: invoicing-worker’s carries no owner among its danglingReferences', …)
   it('sends no @, no directory id and no picture: a User served whole with microsoft.com/email and a profile', () => {
     // every tool result of a scripted conversation over it, and the summary, match none of /@|user-id|data:image/
   })
+  // Review fix: an email written where a reference goes is counted, never shown.
+  it('sends no @ written where a reference goes: a Group’s members and children, a System’s owner and domain, from a catalogue and from files', …)
 })
 
 describe('the two questions, end to end on a scripted client, over the fake serving tests/golden/organisation', () => {
@@ -1316,7 +1322,7 @@ from the fake with (slice 1's "a question read from a catalogue is tested on a s
 client"). Run: `pnpm vitest run tests/unit/organisation-analyst.test.ts`. Expected: the pins
 green, the rest FAIL on `organisation` not being an option.
 
-- [ ] **Step 3: The registry, the loop, the summary, `ask`**
+- [x] **Step 3: The registry, the loop, the summary, `ask`**
 
 `buildTools`: with `organisation`, `search` is `organisationSearchCriteriaSchema`,
 `get_relations` takes `organisationRelationsInputSchema`, `answer` advertises
@@ -1357,7 +1363,7 @@ changes" says it, and Step 2's `platform` test pins it both ways.
 **Exhaustive switches:** the `Answer` switch in `ask.ts`'s `block` and `analyst.ts`'s
 `referencesOf` (the `relation` branch's type widens, its members do not change).
 
-- [ ] **Step 4: Checks**
+- [x] **Step 4: Checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -1374,8 +1380,9 @@ warning.
 ```bash
 git add src/core/schemas/query.ts src/agents/tools/graph-tools.ts src/agents/analyst.ts \
   src/agents/summary.ts src/context/graph/summary.ts src/cli/commands/ask.ts src/agents/README.md \
-  tests/unit/organisation-analyst.test.ts AGENTS.md SECURITY.md README.md CHANGELOG.md \
-  docs/roadmap.md docs/backstage-http-brief.md docs/plans/backstage-http-slice-3.md
+  src/context/README.md tests/unit/organisation-analyst.test.ts tests/unit/organisation-graph.test.ts \
+  tests/unit/api-analyst-tools.test.ts tests/support/offered-tools.ts AGENTS.md SECURITY.md README.md \
+  CHANGELOG.md docs/design.md docs/roadmap.md docs/backstage-http-brief.md docs/plans/backstage-http-slice-3.md
 git commit -m "feat(agents): let the Analyst read and walk the organisation, when the source holds one"
 ```
 
