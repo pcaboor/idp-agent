@@ -5,7 +5,9 @@
  * Backstage with Docker, waits until its catalogue holds the demo SI, runs the
  * built binary against it as a person would, and stops it. No model, no key.
  *
- * Every step states what it expects, and the demo fails on anything else:
+ * Every step states what it expects, and the demo fails on anything else;
+ * when Backstage does not start, or step 1 times out, it prints Backstage's
+ * own log first, since stopping the container removes it:
  *   1. the catalogue serves every entity of the demo SI, the demo's
  *      organisation (five Groups, two Users) and three Locations — the
  *      registration and the one Backstage generates for each
@@ -30,6 +32,8 @@
  * Backstage, no token — and the first page of the organisation read beside
  * it (`org-by-query-<version>.json`), which proves the real Backstage honours
  * `fields`: no profile, no annotation — a page holding either is not written.
+ * A page that differs from its fixture only in the uids and etags a run draws,
+ * and the order they give it, leaves the fixture as it is.
  * Needs Docker and the network for the first build.
  */
 import { spawnSync } from 'node:child_process'
@@ -37,10 +41,11 @@ import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writ
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { compose, shown } from './backstage-compose.mjs'
+import { comparable, overserved } from './backstage-recording.mjs'
 
 const ROOT = path.resolve(fileURLToPath(import.meta.url), '../..')
 const BIN = path.join(ROOT, 'dist/cli/bin.js')
-const COMPOSE = path.join(ROOT, 'tools/backstage/compose.yml')
 const BASE = 'http://127.0.0.1:7007/api/catalog'
 /**
  * compose.yml's default, public in this repository: a demo value, never a
@@ -86,13 +91,16 @@ if (spawnSync('docker', ['compose', 'version'], { stdio: 'ignore' }).status !== 
   fail('needs Docker with Compose v2 (docker compose version)')
 }
 
-/** docker compose on the demo's file, its output shown; exits on a failure. */
-function compose(args) {
-  const run = spawnSync('docker', ['compose', '-f', COMPOSE, ...args], {
-    stdio: 'inherit',
-    env: { ...process.env, IDPA_CATALOG_TOKEN: TOKEN },
-  })
-  if (run.status !== 0) fail(`docker compose ${args.join(' ')} exited ${run.status}`)
+/** The environment of every compose call: the demo's token (scripts/backstage-compose.mjs). */
+const COMPOSE_ENV = { ...process.env, IDPA_CATALOG_TOKEN: TOKEN }
+
+/**
+ * Backstage's own last lines, on stderr. Called before failing: the exit runs
+ * `down`, which removes the container and its log with it.
+ */
+function showBackstageLog() {
+  console.error(`\n${bold("Backstage's own log, its last 200 lines")}`)
+  shown(['logs', '--no-color', '--tail=200', 'backstage'], COMPOSE_ENV)
 }
 
 let stopped = false
@@ -100,7 +108,7 @@ function down() {
   if (keep || stopped) return
   stopped = true
   console.log(`\n${bold('Stopping the demo Backstage')}`)
-  spawnSync('docker', ['compose', '-f', COMPOSE, 'down'], { stdio: 'inherit' })
+  compose(['down'], COMPOSE_ENV)
 }
 process.on('exit', down)
 process.on('SIGINT', () => process.exit(130))
@@ -131,10 +139,36 @@ async function kinds() {
   return Object.fromEntries(JSON.parse(body).facets.kind.map(({ value, count }) => [value, count]))
 }
 
+/**
+ * Writes a recorded page, unless the file already holds the same recording
+ * (`comparable`): a run that served nothing new leaves the fixture's bytes, and
+ * git, as they were.
+ */
+function writeRecording(file, served, request) {
+  let before
+  try {
+    before = JSON.parse(readFileSync(file, 'utf8'))
+  } catch {
+    before = undefined
+  }
+  const name = path.relative(ROOT, file)
+  if (before !== undefined && comparable(before) === comparable(served)) {
+    console.log(`${name} unchanged: ${request} served what it holds, but for uids, etags and order`)
+    return
+  }
+  writeFileSync(file, `${JSON.stringify(served, null, 2)}\n`)
+  console.log(`recorded ${name}: ${request}`)
+}
+
 console.log(bold(`Building and starting Backstage ${BACKSTAGE_VERSION} (tools/backstage/compose.yml)`))
-const started = performance.now()
-compose(['up', '-d', '--build', '--wait'])
-console.log(`ready in ${Math.round((performance.now() - started) / 1000)} s`)
+console.log("a first build takes about 3 minutes; compose's own output is shown only if it fails")
+const startedAt = performance.now()
+const started = compose(['up', '-d', '--build', '--wait'], COMPOSE_ENV)
+if (started !== 0) {
+  showBackstageLog()
+  fail('the demo Backstage did not start: what compose printed, and its own log, are above')
+}
+console.log(`ready in ${Math.round((performance.now() - startedAt) / 1000)} s`)
 
 // The backend is ready before the catalogue has read every file: the
 // processing loop ingests the Location, then its targets, then stitches.
@@ -153,7 +187,10 @@ for (;;) {
   ) {
     break
   }
-  if (Date.now() > until) fail(`the catalogue did not hold the demo SI within 3 minutes: ${JSON.stringify(served)}`)
+  if (Date.now() > until) {
+    showBackstageLog()
+    fail(`the catalogue did not hold the demo SI within 3 minutes: ${JSON.stringify(served)}; its log is above`)
+  }
   await new Promise((resolve) => setTimeout(resolve, 2_000))
 }
 console.log(`the catalogue serves ${JSON.stringify(served)}: the ${DEMO_ENTITIES} entities of fixtures/si-demo, its registration and the organisation`)
@@ -262,24 +299,21 @@ if (failed) {
 if (record) {
   const page = await get('entities/by-query', MODELLED_QUERY)
   if (page.status !== 200) fail(`the modelled read answered ${page.status}; the contract fixture was not rewritten`)
-  writeFileSync(FIXTURE, `${JSON.stringify(JSON.parse(page.body), null, 2)}\n`)
-  console.log(`\nrecorded ${path.relative(ROOT, FIXTURE)}: GET ${BASE}/entities/by-query?${MODELLED_QUERY}`)
+  console.log('')
+  writeRecording(FIXTURE, JSON.parse(page.body), `GET ${BASE}/entities/by-query?${MODELLED_QUERY}`)
   const organisation = await get('entities/by-query', ORGANISATION_QUERY)
   if (organisation.status !== 200) fail(`the organisation read answered ${organisation.status}; its fixture was not rewritten`)
   const served = JSON.parse(organisation.body)
   // The fixture is the proof that Backstage honours `fields`: a page that
   // carries what was not asked for proves the opposite, and is not written.
-  const overserved = (served.items ?? []).filter(
-    (item) => item?.spec?.profile !== undefined || item?.metadata?.annotations !== undefined,
-  )
-  if (overserved.length > 0) {
+  const refused = overserved(served)
+  if (refused.length > 0) {
     fail(
-      `the organisation read served ${overserved.length} items with a profile or annotations it did not ask for: ` +
+      `the organisation read served ${refused.length} items with a profile or annotations it did not ask for: ` +
         'the catalogue did not honour `fields`; its fixture was not rewritten',
     )
   }
-  writeFileSync(ORGANISATION_FIXTURE, `${JSON.stringify(served, null, 2)}\n`)
-  console.log(`recorded ${path.relative(ROOT, ORGANISATION_FIXTURE)}: GET ${BASE}/entities/by-query?${ORGANISATION_QUERY}`)
+  writeRecording(ORGANISATION_FIXTURE, served, `GET ${BASE}/entities/by-query?${ORGANISATION_QUERY}`)
 }
 console.log(`\n${bold('Done.')} No model was called and no key was read.`)
 if (keep) {

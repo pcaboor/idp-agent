@@ -1,0 +1,104 @@
+{
+  "items": [
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Group",
+      "metadata": {
+        "name": "dodowarriors",
+        "namespace": "default",
+        "uid": "2557e8f7-579b-4d81-ba42-addc99bdcf43"
+      },
+      "spec": {
+        "type": "team",
+        "children": []
+      }
+    },
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "User",
+      "metadata": {
+        "name": "linus",
+        "namespace": "default",
+        "uid": "39c2d38f-6e05-4936-98cb-92c882b74e33"
+      },
+      "spec": {
+        "memberOf": [
+          "common"
+        ]
+      }
+    },
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "User",
+      "metadata": {
+        "name": "ada",
+        "namespace": "default",
+        "uid": "4ad00035-f28e-45df-8a53-5c91c56b95b9"
+      },
+      "spec": {
+        "memberOf": [
+          "tiger"
+        ]
+      }
+    },
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Group",
+      "metadata": {
+        "name": "elephant",
+        "namespace": "default",
+        "uid": "6a6ad59d-d335-4185-9aa3-1555c05f75b1"
+      },
+      "spec": {
+        "type": "team",
+        "children": []
+      }
+    },
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Group",
+      "metadata": {
+        "name": "tiger",
+        "namespace": "default",
+        "uid": "9d151cc7-b73f-4573-adc5-e518d351ca32"
+      },
+      "spec": {
+        "type": "team",
+        "children": []
+      }
+    },
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Group",
+      "metadata": {
+        "name": "engineering",
+        "namespace": "default",
+        "uid": "b3481627-c700-48fb-9b67-d7e009a51dc7"
+      },
+      "spec": {
+        "type": "department",
+        "children": [
+          "common",
+          "dodowarriors",
+          "elephant",
+          "tiger"
+        ]
+      }
+    },
+    {
+      "apiVersion": "backstage.io/v1alpha1",
+      "kind": "Group",
+      "metadata": {
+        "name": "common",
+        "namespace": "default",
+        "uid": "ef50a370-b66a-4c1d-97db-8f42752b0b0f"
+      },
+      "spec": {
+        "type": "team",
+        "children": []
+      }
+    }
+  ],
+  "totalItems": 7,
+  "pageInfo": {}
+}

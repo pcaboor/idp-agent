@@ -100,6 +100,16 @@ Each pull request adds its line here.
 
 ### Changed
 
+- `pnpm demo:backstage:docker`, `backstage:up`, `backstage:down` and `backstage:clean` print
+  one line per compose call instead of compose's progress bar, which printed each redraw as a
+  line once piped: compose runs with `--progress plain`, its output held, and a call that
+  fails shows all of it in the order compose printed it, the build's log included, with its
+  exit status; a demo Backstage that does not start, or whose catalogue does not fill, shows
+  its own last 200 log lines before `down` removes them; `--record` wrote
+  `tests/contract/backstage/org-by-query-1.55.2.json`, the organisation page Backstage 1.55.2
+  served, which holds no profile, no annotation and no `@` and proves it honours `fields`,
+  and leaves a fixture served again but for its uids, etags and order as it is
+  ([#102](https://github.com/pcaboor/idp-agent/pull/102)).
 - The reader of entity documents is two halves: `readDocuments` turns YAML into values and
   `readValue` reads one value, so the `backstage-http` provider will read a catalogue's
   entities with the very decisions a file gets; the YAML road's output is pinned before and
