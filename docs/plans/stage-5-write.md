@@ -3703,11 +3703,11 @@ moved besides:
   - `interface SubmitOptions { readonly confirm?: Confirm; readonly open?: (root: string, repository: Repository) => Promise<ForgeProvider> }`
   - `interface Opened { readonly root: string; readonly forge: ForgeProvider; readonly base: Base }`
   - `function openForSubmission(root: string, repository: Repository, options: SubmitOptions): Promise<Opened>`
-  - `function refuseDivergence(opened: Opened, expected: Expectation): Promise<CommandResult | undefined>`
+  - `function refuseDivergence(opened: Opened, expected: Expectation, options?: { readonly json?: boolean }): Promise<CommandResult | undefined>` — with `json`, the report is `{ submission: { outcome: 'refused', reasons } }` alone (D11)
   - `type SubmissionReport` · `function submit(input: { opened; cleared; render; confirm? }): Promise<{ result: CommandResult; report: SubmissionReport }>`
   - `PlanOptions.submit?: SubmitOptions` · `MainDeps.confirm?: Confirm`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/unit/plan-command.test.ts`, reusing its `scaffoldedRepository`, `planFile`,
 `declare`, `answering`, `CREATE_PLAN`, `CLOSING`, `DATABASE_PATH` and `ACCESS_PATH`, with
@@ -3913,12 +3913,12 @@ Then, in the same `describe`, the cases `main` added since `eee67d6` (written re
 - **A preview byte for byte.** Without `--submit`, over the same clone, `out` equals what
   `d0fdee9` prints — the existing tests asserting `CLOSING` stay unchanged and pass.
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `pnpm vitest run tests/unit/plan-command.test.ts`
 Expected: FAIL — `--submit` is an unknown option (exit 2), and `Confirm` does not exist.
 
-- [ ] **Step 3: The footer, one module both roads print from**
+- [x] **Step 3: The footer, one module both roads print from**
 
 `src/cli/render/footer.ts`:
 
@@ -3997,7 +3997,7 @@ In `src/cli/commands/plan.ts`:
 
 Stage 4's output is byte-identical, and its tests prove it.
 
-- [ ] **Step 4: The submission step**
+- [x] **Step 4: The submission step**
 
 `src/cli/commands/submit.ts`:
 
@@ -4181,7 +4181,7 @@ export async function submit(input: {
 }
 ```
 
-- [ ] **Step 5: Wire `runPlan`**
+- [x] **Step 5: Wire `runPlan`**
 
 In `src/cli/commands/plan.ts`:
 
@@ -4282,7 +4282,7 @@ The ask loop below it stays as it is (`:1045-1127`). Its two `return previewPlan
 ```
 
 
-- [ ] **Step 6: Wire the CLI**
+- [x] **Step 6: Wire the CLI**
 
 In `src/cli/index.ts`:
 
@@ -4380,12 +4380,12 @@ const confirmOf = (deps: MainDeps, json: boolean): Confirm | undefined => {
   and the merge authorises either way.
 ```
 
-- [ ] **Step 7: Run the tests**
+- [x] **Step 7: Run the tests**
 
 Run: `pnpm vitest run tests/unit/plan-command.test.ts tests/unit/main.test.ts tests/unit/cli-args.test.ts`
 Expected: PASS.
 
-- [ ] **Step 8: The built binary**
+- [x] **Step 8: The built binary**
 
 In `scripts/smoke.mjs`, give `hashTree` a second parameter so it can skip the root `.git`
 (`hashTree(dir, { skipGit: true })`). Then add, after the stage-4 `plan --from` assertions:
@@ -4435,7 +4435,7 @@ Run: `pnpm build && pnpm smoke`
 Expected: every check passes. The total is printed from `checks`, and `AGENTS.md` must say
 the new number.
 
-- [ ] **Step 9: Correct what this task makes false, in this commit**
+- [x] **Step 9: Correct what this task makes false, in this commit**
 
 In `AGENTS.md`:
 - the exit-code paragraph: `0` includes "a branch submitted, or already submitted", `1`
@@ -4451,7 +4451,7 @@ the schema, the signature, the policies and the re-check — no Reviewer — and
 reach the default branch; the merge authorises (ADR-0006). In `README.md`, the `--submit`
 line in the command list and one sentence on what a local submission does and does not do.
 
-- [ ] **Step 10: Traceability**
+- [x] **Step 10: Traceability**
 
 - `CHANGELOG.md`, Unreleased → Added: one line with the link.
 - `docs/roadmap.md`: stage 5's queue item says task 5 is on `main`; cli-ux-10's item (under
@@ -4483,9 +4483,14 @@ refused at stage 5 (D8, task 5).
 
 **Files:**
 - Modify: `src/cli/commands/plan.ts` (`runIntent`, `renderOutcome`)
-- Modify: `src/cli/index.ts` (delete task 5's interim refusal; pass `submit` to `runIntent`)
-- Modify: `tests/unit/plan-intent.test.ts` (a `describe('plan "<intent>" --submit')`)
-- Modify: `tests/unit/cli-args.test.ts` (delete task 5's interim-refusal test)
+- Modify: `src/cli/index.ts` (delete task 5's interim refusal; pass `submit` to `runIntent`;
+  name `plan "<intent>" --submit` again in `parsePhrase`'s D8 refusal, which task 5 narrowed
+  to `plan --from <plan.json> --submit` while the intent road was itself refused)
+- Modify: `tests/unit/plan-intent.test.ts` (a `describe('plan "<intent>" --submit')`; its
+  divergence case run with `--json` too — `refuseDivergence(opened, expected, { json })`
+  answers with a report holding only the `submission` key, as task 5 pins for `--from`)
+- Modify: `tests/unit/cli-args.test.ts` (delete task 5's interim-refusal test; the D8 test's
+  message names the intent road again)
 - Modify: `CHANGELOG.md`, `docs/roadmap.md`
 
 **Interfaces:**
@@ -5295,12 +5300,12 @@ tracing), 0010 was reserved for the stage-5 check, and 0011 is `backstage-http`'
 
 **In task 5's pull request**
 
-- [ ] `AGENTS.md`: the exit-code paragraph; "`init platform` is still the only command that
+- [x] `AGENTS.md`: the exit-code paragraph; "`init platform` is still the only command that
   writes" (`:171`, contradiction 8); `[--submit]` in the commands block.
-- [ ] `SECURITY.md`: the `--from` road worded by route (D4).
-- [ ] `README.md`: the `--submit` line and one sentence on what a local submission does and
+- [x] `SECURITY.md`: the `--from` road worded by route (D4).
+- [x] `README.md`: the `--submit` line and one sentence on what a local submission does and
   does not do.
-- [ ] `docs/roadmap.md`: cli-ux-10's item names the `submission` key (D11); `idpa "<phrase>"
+- [x] `docs/roadmap.md`: cli-ux-10's item names the `submission` key (D11); `idpa "<phrase>"
   --submit` recorded as a follow-up (D8).
 
 **In task 7's pull request** — what is left

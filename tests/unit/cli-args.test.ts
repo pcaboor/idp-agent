@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseArguments } from '../../src/cli/index.js'
+import { HELP, parseArguments, usageOf } from '../../src/cli/index.js'
 
 describe('parseArguments', () => {
   it('reads the graph command with its filters', () => {
@@ -134,4 +134,63 @@ describe('parseArguments: --demo on the read commands', () => {
       expect(parseArguments(argv).name).toBe('error')
     },
   )
+})
+
+describe('parseArguments: --submit', () => {
+  it('is a flag of plan --from, and absent unless typed', () => {
+    expect(parseArguments(['plan', '--from', 'plan.json', '--submit'])).toStrictEqual({
+      name: 'plan',
+      source: { from: 'plan.json' },
+      json: false,
+      submit: true,
+    })
+    expect(parseArguments(['plan', '--from', 'plan.json'])).not.toHaveProperty('submit')
+  })
+
+  it('is refused on plan "<intent>" until that road submits, rather than dropped', () => {
+    // Removed by the next change, which teaches the intent road to submit.
+    expect(parseArguments(['plan', 'give billing-api read access', '--submit'])).toStrictEqual({
+      name: 'error',
+      message: 'plan "<intent>" --submit is not wired yet; use --from <plan.json> --submit',
+    })
+  })
+
+  it('is refused on a phrase, pointing at the one road that submits today (D8)', () => {
+    // Only plan --from: plan "<intent>" --submit is refused too until the next
+    // change, and a refusal that points at another refusal is a dead end.
+    for (const argv of [
+      ['give billing-api read access to orders-db', '--submit'],
+      ['give billing-api read access to orders-db', '--submit', '--demo'],
+    ]) {
+      expect(parseArguments(argv)).toStrictEqual({
+        name: 'error',
+        message: 'idpa "<phrase>" does not submit; a change is submitted with plan --from <plan.json> --submit',
+      })
+    }
+  })
+
+  it('is refused with --demo only because plan knows no --demo: no write meets the demo SI', () => {
+    // Not a --submit rule: plan reads a declarations repository and never the
+    // demo SI, so the parser refuses the option whatever else is typed.
+    for (const argv of [
+      ['plan', '--from', 'plan.json', '--submit', '--demo'],
+      ['plan', '--from', 'plan.json', '--demo'],
+    ]) {
+      expect(parseArguments(argv)).toStrictEqual({
+        name: 'error',
+        message: expect.stringContaining("Unknown option '--demo'"),
+      })
+    }
+  })
+})
+
+describe('HELP: --submit', () => {
+  it('is in the usage plan prints, and HELP says what it writes and by which route', () => {
+    expect(usageOf('plan')).toContain('idp-agent plan --from <plan.json> [--repo <directory>] [--json] [--submit]')
+    // The sentence stage 4 said, whatever its case and however it is wrapped.
+    expect(HELP.replace(/\s+/g, ' ').toLowerCase()).not.toContain('none of them writes.')
+    expect(HELP.replace(/\s+/g, ' ')).toContain('None of them writes, and neither does plan without --submit.')
+    expect(HELP).toContain('four gates')
+    expect(HELP).toContain('the merge authorises')
+  })
 })

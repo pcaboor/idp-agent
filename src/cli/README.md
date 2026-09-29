@@ -202,8 +202,8 @@ matches nothing, an ambiguous name, a relation that holds nothing, or a reposito
 not conform — and a model call that failed, in the one line `llm/failures.ts` wrote for it),
 `EXIT.badUsage` is 2 (the arguments were refused, or no model, no key or no usable
 `IDP_TIMEOUT` or `IDP_SUPERVISOR_MODEL` is configured), `EXIT.unsupported` is 3 (understood,
-and this build will not act on it), `EXIT.interrupted` is 130 (Ctrl-C at a question,
-`InterruptedError`; Ctrl-D stays a decline). Only `cli/index.ts` turns `CommandResult.found`
+and this build will not act on it), `EXIT.interrupted` is 130 (Ctrl-C at a question or at
+`--submit`'s confirmation, `InterruptedError`; Ctrl-D stays a decline). Only `cli/index.ts` turns `CommandResult.found`
 into an exit code — a command states the fact and stays free of the process — and `bin.ts`
 assigns it to `process.exitCode`.
 
@@ -353,6 +353,27 @@ A stop over a value the user gave does not end on "name the value the gate could
 accept": it names the value as theirs, kept through every redraft, and for a level what
 would pass — a separate grant at their level, for whom and over what as far as the engine
 knows (`renderStopped`, `RepairOutcome.kept`).
+
+**Submitting (`--submit`).** `commands/submit.ts` holds every step a submission takes, in the
+order it takes them, so `plan --from`, and the intent road and `init` when they submit, share
+one copy; until then `plan "<intent>" --submit` and `idpa "<phrase>" --submit` are refused,
+exit 2 (D8).
+`openForSubmission` opens the forge before anything is read: a root that is not a clone's,
+no `git`, no committer identity or a detached `HEAD` is a `ForgeInputError`, exit 2. The root
+is the one `declarationsFor`'s chain resolved, and stderr names what chose it as it does
+without `--submit` (D19). `refuseDivergence` then refuses, exit 1, a catalogue whose working
+tree differs from `HEAD`, naming the files, before any question is asked or any diff shown.
+`submit` clears the plan (`clearPlan`), asks `Confirm` — a structured `SubmissionSummary`,
+the rendered preview one of its fields (D5) — and hands the `Cleared` to the forge. The
+default `Confirm` is decided by `confirmOf`: the prompt on stderr, with the diff on stdout,
+when stdin is a TTY and no sink was injected, and none otherwise — a script, a pipe and
+`--json` have `--submit` as their answer, which is safe because the merge, not the prompt,
+authorises (ADR-0006). Only `y` or `yes` submits. A plan that changes nothing never reaches
+the forge: it is the same answer, and the same code, as without `--submit`. The closing
+lines come from `render/footer.ts`'s `closingLines`, the one place a run says what became of
+its diff; without `--submit` they are stage 4's, byte for byte. `--json` carries the outcome
+under `submission`, its shape pinned by `plan-command.test.ts` (D11). `plan --from … --submit`
+crosses four gates and no Reviewer; the branch cannot reach the default one either way.
 
 **Tracing.** `trace-sink.ts` is the only way a trace leaves the process: `mlflowSink` posts
 OTLP/JSON to `IDP_MLFLOW_TRACKING_URI`'s `/v1/traces` — never `MLFLOW_TRACKING_URI`'s, which
