@@ -6,8 +6,8 @@ import { FixtureProvider } from '../../src/context/fixtures/index.js'
 import type { CatalogueFetch } from '../../src/context/backstage/transport.js'
 import { prePass, refOfItem } from '../../src/context/backstage/translate.js'
 import { refOf } from '../../src/context/graph/entity-graph.js'
-import type { CatalogueEntity } from '../../src/core/schemas/entity.js'
-import { readValue } from '../../src/core/yaml/serialize.js'
+import type { CatalogueEntity, OrganisationEntity } from '../../src/core/schemas/entity.js'
+import { parseDocuments, readValue } from '../../src/core/yaml/serialize.js'
 import { catalogueOf } from '../../tools/fake-backstage.js'
 import { fakeBackstage } from '../support/fake-backstage.js'
 
@@ -29,6 +29,13 @@ import { fakeBackstage } from '../support/fake-backstage.js'
  * The page holds no `status` on any item: Backstage 1.55.2 serves it only
  * when an entity's processing failed, and none of the demo SI's did. That the
  * pre-pass drops `status` stays proven by tests/unit/backstage-prepass.test.ts.
+ *
+ * Beside it, recorded by the same run, the first page of the organisation read
+ * (`org-by-query-<version>.json`): tools/backstage/org.yaml's Groups and Users
+ * as Backstage served them for the fields the provider asks for. It is the
+ * proof that a real Backstage honours `fields` — ada's profile and email
+ * annotation are ingested and never served — and the run that records it
+ * refuses to write a page holding either.
  */
 
 /** The release the fixture came from: the demo Backstage's, which names the file. */
@@ -38,7 +45,9 @@ const VERSION = (
   }
 ).version
 const PAGE = path.resolve(import.meta.dirname, `backstage/by-query-${VERSION}.json`)
+const ORGANISATION_PAGE = path.resolve(import.meta.dirname, `backstage/org-by-query-${VERSION}.json`)
 const DEMO = path.resolve(import.meta.dirname, '../../fixtures/si-demo')
+const ORG = path.resolve(import.meta.dirname, '../../tools/backstage/org.yaml')
 const BASE = new URL('http://127.0.0.1:7007/api/catalog')
 const MANAGED_BY = 'backstage.io/managed-by-location'
 const ORIGIN = 'backstage.io/managed-by-origin-location'
@@ -156,5 +165,146 @@ describe(`the contract fixture: a by-query page from Backstage ${VERSION}`, () =
     expect(real.ignored).toEqual(fake.ignored)
     expect(real.unread).toEqual(fake.unread)
     expect(real.census).toMatchObject({ served: 33, pages: 1, repeated: 0 })
+  })
+})
+
+/** The organisation read, as `loadCatalogue` sends it and `pnpm demo:backstage:docker --record` recorded it. */
+const ORGANISATION_QUERY =
+  '?filter=kind%3Dgroup&filter=kind%3Duser' +
+  '&fields=apiVersion%2Ckind%2Cmetadata.name%2Cmetadata.namespace%2Cmetadata.uid%2Cspec.type%2Cspec.parent' +
+  '%2Cspec.children%2Cspec.members%2Cspec.memberOf%2Cspec.owner%2Cspec.domain%2Cspec.subdomainOf&limit=250'
+
+const organisationRecorded = readFileSync(ORGANISATION_PAGE, 'utf8')
+const organisationPage = JSON.parse(organisationRecorded) as Page
+
+/** An item through the pre-pass and `readValue`, which must read it as an organisation node. */
+function organisationReading(item: unknown): { entity: OrganisationEntity; unread: readonly string[] } {
+  const passed = prePass(item)
+  if (!('value' in passed)) throw new Error(`${String(refOfItem(item as Item))} was set aside`)
+  const reading = readValue(passed.value)
+  if (reading.as !== 'organisation') throw new Error(`${String(refOfItem(item as Item))} was read as ${reading.as}`)
+  return { entity: reading.entity, unread: reading.unread }
+}
+
+/** What org.yaml declares, as the read model holds it: written out, so a change to the reader shows here. */
+const ORGANISATION: OrganisationEntity[] = [
+  ...['common', 'dodowarriors', 'elephant'].map((name) => ({
+    apiVersion: 'backstage.io/v1alpha1',
+    kind: 'Group' as const,
+    metadata: { name },
+    spec: { type: 'team', children: [] },
+  })),
+  {
+    apiVersion: 'backstage.io/v1alpha1',
+    kind: 'Group',
+    metadata: { name: 'engineering' },
+    spec: {
+      type: 'department',
+      children: ['group:default/common', 'group:default/dodowarriors', 'group:default/elephant', 'group:default/tiger'],
+    },
+  },
+  {
+    apiVersion: 'backstage.io/v1alpha1',
+    kind: 'Group',
+    metadata: { name: 'tiger' },
+    spec: { type: 'team', children: [] },
+  },
+  {
+    apiVersion: 'backstage.io/v1alpha1',
+    kind: 'User',
+    metadata: { name: 'ada' },
+    spec: { memberOf: ['group:default/tiger'] },
+  },
+  {
+    apiVersion: 'backstage.io/v1alpha1',
+    kind: 'User',
+    metadata: { name: 'linus' },
+    spec: { memberOf: ['group:default/common'] },
+  },
+] as OrganisationEntity[]
+
+const byRef = (left: OrganisationEntity, right: OrganisationEntity): number =>
+  refOf(left) < refOf(right) ? -1 : refOf(left) > refOf(right) ? 1 : 0
+
+/**
+ * A catalogue that answers the facets with the kinds of both recorded pages,
+ * the modelled read with the one and the organisation read with the other,
+ * byte for byte; every by-query request is kept.
+ */
+function recordedWithOrganisation(): { fetch: CatalogueFetch; queries: string[] } {
+  const queries: string[] = []
+  const fetch: CatalogueFetch = async (url) => {
+    await Promise.resolve()
+    const headers = { 'content-type': 'application/json; charset=utf-8' }
+    if (url.pathname === `${BASE.pathname}/entity-facets`) {
+      const counts = new Map<string, number>()
+      for (const item of [...page.items, ...organisationPage.items]) {
+        counts.set(String(item['kind']), (counts.get(String(item['kind'])) ?? 0) + 1)
+      }
+      const kind = [...counts].map(([value, count]) => ({ value, count }))
+      return new Response(JSON.stringify({ facets: { kind } }), { status: 200, headers })
+    }
+    queries.push(url.search)
+    const body = url.searchParams.getAll('filter').includes('kind=group') ? organisationRecorded : recorded
+    return new Response(body, { status: 200, headers })
+  }
+  return { fetch, queries }
+}
+
+describe(`the contract fixture: the organisation page from Backstage ${VERSION}`, () => {
+  it('holds what was asked for and nothing else: no profile, no annotation, no @', () => {
+    expect(Object.keys(organisationPage).sort()).toEqual(['items', 'pageInfo', 'totalItems'])
+    expect(organisationPage.totalItems).toBe(7)
+    expect(organisationPage.pageInfo).toEqual({})
+    expect(organisationPage.items.map((item) => `${String(item['kind'])}:${String(metadataOf(item)['name'])}`).sort()).toEqual([
+      'Group:common',
+      'Group:dodowarriors',
+      'Group:elephant',
+      'Group:engineering',
+      'Group:tiger',
+      'User:ada',
+      'User:linus',
+    ])
+    for (const item of organisationPage.items) {
+      expect(Object.keys(item).sort()).toEqual(['apiVersion', 'kind', 'metadata', 'spec'])
+      expect(Object.keys(metadataOf(item)).sort()).toEqual(['name', 'namespace', 'uid'])
+      expect(item['spec']).not.toHaveProperty('profile')
+    }
+    // ada's email is in org.yaml twice, and Backstage ingested both: served, either would carry an @.
+    expect(readFileSync(ORG, 'utf8')).toContain('ada@acme.example')
+    expect(organisationRecorded).not.toContain('@')
+  })
+
+  it('reads, item by item through the pre-pass and readValue, as org.yaml declares the organisation', () => {
+    const read = organisationPage.items.map(organisationReading)
+    expect(read.map(({ entity }) => entity).sort(byRef)).toEqual(ORGANISATION)
+    expect(read.flatMap(({ unread }) => unread)).toEqual([])
+    // The file road reads the same nodes out of the same file.
+    expect([...parseDocuments(readFileSync(ORG, 'utf8')).organisation].sort(byRef)).toEqual(ORGANISATION)
+  })
+
+  it('reads a server that ignored `fields` as this page: the profile goes no further than the pre-pass', () => {
+    const ada = organisationPage.items.find((item) => metadataOf(item)['name'] === 'ada')
+    const profile = { displayName: 'Ada', email: 'ada@acme.example', picture: 'data:image/png;base64,iVBORw0KGgo=' }
+    const overserved = { ...ada, spec: { ...(ada?.['spec'] as Item), profile } }
+    expect(organisationReading(overserved)).toEqual(organisationReading(ada))
+    expect(organisationReading(overserved).unread).toEqual([])
+  })
+
+  it("loads as the fake's organisation loads, answering exactly the request the provider sends", async () => {
+    const catalogue = recordedWithOrganisation()
+    const real = await new BackstageProvider({ base: BASE, token: 'contract', catalogueFetch: catalogue.fetch }).load()
+    const fake = await new BackstageProvider({
+      base: BASE,
+      token: 'contract',
+      catalogueFetch: fakeBackstage({ entities: catalogueOf(DEMO, { org: ORG }), token: 'contract' }).fetch,
+    }).load()
+
+    expect(catalogue.queries).toEqual(['?filter=kind%3Dcomponent&filter=kind%3Dresource&filter=kind%3Dapi&limit=250', ORGANISATION_QUERY])
+    expect(real.organisation).toEqual(fake.organisation)
+    expect([...(real.organisation ?? [])].sort(byRef)).toEqual(ORGANISATION)
+    expect(real.judged).toEqual(fake.judged)
+    expect(real.unread).toEqual(fake.unread)
+    expect(real.entities.map(withoutCatalogueAnnotations)).toEqual(fake.entities.map(withoutCatalogueAnnotations))
   })
 })

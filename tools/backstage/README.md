@@ -16,6 +16,13 @@ $ pnpm backstage:down
 $ pnpm backstage:clean                         # stop it and remove its image
 ```
 
+Each of these makes its compose calls through `scripts/backstage-compose.mjs`, which prints
+one line a call rather than compose's progress bar, redrawn line after line once piped; a call
+that fails prints everything compose printed, in its order, the build's own log included, and
+its status. When the demo Backstage does not start, or its catalogue does not fill within
+three minutes, `pnpm demo:backstage:docker` also prints Backstage's own last 200 log lines
+before it stops the container, which takes the log with it.
+
 Open `http://127.0.0.1:7007`, choose **Enter** as a guest, and the catalogue is the landing
 page: five Components, and under the Resource kind every database, cache, API and right of
 the demo SI. An entity's page draws its relations — `billing-db-prod` depends on
@@ -92,8 +99,11 @@ allowed `Group` and `User` and nothing else: the department `engineering`, the f
 demo SI names as owners (its children), and two people, `ada` in tiger and `linus` in common.
 `idpa` reads them as the organisation (backstage-http slice 3) for their names, types and
 memberships, and asks the catalogue for nothing else: ada's email annotation and profile are
-ingested by Backstage and never requested. The fake (`tools/fake-backstage.ts`) serves the same
-file, so the two hold one organisation, and every owner of the demo SI names a team it holds.
+ingested by Backstage and never requested, and never served either —
+`tests/contract/backstage/org-by-query-1.55.2.json`, the organisation page this Backstage
+answered that read with, holds neither, and `--record` refuses to write one that does. The
+fake (`tools/fake-backstage.ts`) serves the same file, so the two hold one organisation, and
+every owner of the demo SI names a team it holds.
 
 **The read token, the adopting page's.** `backend.auth.externalAccess` is the page's block, a
 static token restricted to `catalog.entity.read`. Its value is `IDPA_CATALOG_TOKEN`, whose
@@ -155,9 +165,11 @@ Take the next release's manifest (`https://versions.backstage.io/v1/releases/<ve
 set every `@backstage/*` version in `app/` and `backstage.json` from it, compare `app/` with
 that release's create-app `default-app` template, regenerate `yarn.lock` in a Node container
 (`yarn install --mode=update-lockfile`), move the image tag in `compose.yml`, then run
-`pnpm build && pnpm demo:backstage:docker --record`, which writes the contract fixture under
-the new version's name, and delete the old one: `tests/contract/backstage-page.test.ts` reads
-the version from `backstage.json`.
+`pnpm build && pnpm demo:backstage:docker --record`, which writes the two contract fixtures,
+`by-query-<version>.json` and `org-by-query-<version>.json`, under the new version's name, and
+delete the old ones: `tests/contract/backstage-page.test.ts` reads the version from
+`backstage.json`. A run that serves a recorded page again, but for the uids and etags it draws
+and the order they give it, leaves that fixture as it is.
 
 ## Measured
 

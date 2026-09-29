@@ -1,8 +1,12 @@
-import { readFileSync } from 'node:fs'
+import { type SpawnSyncReturns, spawnSync } from 'node:child_process'
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { parse, parseAllDocuments } from 'yaml'
 import { renderRegistration } from '../../src/core/validate/registration.js'
+import { comparable, overserved } from '../../scripts/backstage-recording.mjs'
 
 /**
  * The demo Backstage in Docker (tools/backstage/README.md), read as files:
@@ -111,13 +115,173 @@ describe('the demo Backstage', () => {
       expect(recorded).toBeGreaterThan(refused)
     })
 
+    describe('records a page only when the catalogue served something new, and never one that was overserved', () => {
+      const script = readFileSync(path.join(ROOT, 'scripts/demo-backstage-docker.mjs'), 'utf8')
+      type Recorded = { items: { metadata: Record<string, unknown>; spec?: Record<string, unknown> }[] }
+      const recorded = (name: string): Recorded =>
+        JSON.parse(readFileSync(path.join(ROOT, 'tests/contract/backstage', name), 'utf8')) as Recorded
+      const fixtures = readdirSync(path.join(ROOT, 'tests/contract/backstage'))
+      const modelled = fixtures.find((name) => name.startsWith('by-query-'))
+      const organisation = fixtures.find((name) => name.startsWith('org-by-query-'))
+
+      /** The page served again: the same entities, in the reverse order, with the uids and etags a new run draws. */
+      const servedAgain = (before: Recorded): Recorded => ({
+        ...before,
+        items: before.items
+          .map((item, index) => ({ ...item, metadata: { ...item.metadata, uid: `uid-${index}`, etag: `etag-${index}` } }))
+          .reverse(),
+      })
+
+      it.each([modelled, organisation])('holds %s, served again with new uids, etags and order, as the same recording', (name) => {
+        const before = recorded(String(name))
+        const again = servedAgain(before)
+        expect(again.items[0]).not.toEqual(before.items[0])
+        expect(comparable(again)).toBe(comparable(before))
+      })
+
+      it('holds a page with one changed field, or one annotation more, as a new recording', () => {
+        const before = recorded(String(modelled))
+        const [first, ...rest] = servedAgain(before).items
+        const changed = { ...first, spec: { ...first?.spec, lifecycle: 'deprecated' } }
+        expect(comparable({ ...before, items: [first, ...rest] })).toBe(comparable(before))
+        expect(comparable({ ...before, items: [changed, ...rest] })).not.toBe(comparable(before))
+        const annotated = { ...first, metadata: { ...first?.metadata, annotations: { note: 'new' } } }
+        expect(comparable({ ...before, items: [annotated, ...rest] })).not.toBe(comparable(before))
+      })
+
+      it('finds, in an organisation page, the items that carry a profile or annotations it did not ask for', () => {
+        const page = recorded(String(organisation))
+        expect(overserved(page)).toEqual([])
+        const [ada, ...rest] = page.items
+        const profiled = { ...ada, spec: { ...ada?.spec, profile: { email: 'ada@acme.example' } } }
+        const annotated = { ...ada, metadata: { ...ada?.metadata, annotations: { 'acme.example/email': 'ada@acme.example' } } }
+        expect(overserved({ ...page, items: [profiled, ...rest] })).toEqual([profiled])
+        expect(overserved({ ...page, items: [annotated, ...rest] })).toEqual([annotated])
+      })
+
+      it('writes a fixture only through the comparison, and the organisation one only after the refusal', () => {
+        expect(script).toContain("import { comparable, overserved } from './backstage-recording.mjs'")
+        expect(script).toContain('if (before !== undefined && comparable(before) === comparable(served)) {')
+        expect(script).toContain('writeRecording(FIXTURE, JSON.parse(page.body),')
+        // writeRecording is the one place a fixture is written.
+        expect(script.match(/writeFileSync\(/g)).toHaveLength(1)
+        const refused = script.indexOf('const refused = overserved(served)')
+        expect(refused).toBeGreaterThan(0)
+        expect(script.indexOf('if (refused.length > 0) {')).toBeGreaterThan(refused)
+        expect(script.indexOf('writeRecording(ORGANISATION_FIXTURE, served,')).toBeGreaterThan(script.indexOf('if (refused.length > 0) {'))
+      })
+    })
+
     it('is started, demonstrated and stopped by package scripts, never by the suite', () => {
       const { scripts } = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')) as { scripts: Record<string, string> }
       expect(scripts['demo:backstage:docker']).toBe('node scripts/demo-backstage-docker.mjs')
-      expect(scripts['backstage:up']).toBe('docker compose -f tools/backstage/compose.yml up -d --build --wait')
-      expect(scripts['backstage:down']).toBe('docker compose -f tools/backstage/compose.yml down')
-      expect(scripts['backstage:clean']).toBe('docker compose -f tools/backstage/compose.yml down --rmi all')
+      expect(scripts['backstage:up']).toBe('node scripts/backstage-compose.mjs up -d --build --wait')
+      expect(scripts['backstage:down']).toBe('node scripts/backstage-compose.mjs down')
+      expect(scripts['backstage:clean']).toBe('node scripts/backstage-compose.mjs down --rmi all')
       expect(scripts['test']).toBe('vitest run')
+    })
+
+    describe('runs compose quietly: one line a call, and all of it when a call fails', () => {
+      const helper = readFileSync(path.join(ROOT, 'scripts/backstage-compose.mjs'), 'utf8')
+      const script = readFileSync(path.join(ROOT, 'scripts/demo-backstage-docker.mjs'), 'utf8')
+
+      it('asks compose for plain progress, which never redraws, and holds its output', () => {
+        expect(helper).toContain("['compose', '-f', COMPOSE_FILE, '--progress', 'plain', ...args]")
+        // stdout and stderr share one file descriptor: held, and in the order compose wrote them.
+        expect(helper).toContain("stdio: ['ignore', fd, fd]")
+      })
+
+      it('makes every compose call of the Docker demo through it', () => {
+        expect(script).toContain("import { compose, shown } from './backstage-compose.mjs'")
+        // The one direct call left is the check that Compose v2 is installed, whose output is ignored.
+        expect(script.match(/'compose'/g)).toEqual(["'compose'"])
+        expect(script).toContain("spawnSync('docker', ['compose', 'version'], { stdio: 'ignore' })")
+      })
+
+      // A fake `docker` on PATH: it prints a redrawn progress bar, as compose
+      // does when piped, on stdout and stderr in turn, and exits as told.
+      // Docker itself is never started.
+      const fakeDocker = (
+        status: number,
+        call = "compose(['up', '-d', '--build', '--wait'])",
+        quiet = false,
+      ): { run: SpawnSyncReturns<string>; argv: string[] } => {
+        const bin = mkdtempSync(path.join(tmpdir(), 'fake-docker-'))
+        try {
+          const log = path.join(bin, 'argv.json')
+          writeFileSync(
+            path.join(bin, 'docker'),
+            [
+              '#!/usr/bin/env node',
+              `require('node:fs').writeFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)))`,
+              "if (process.env.FAKE_QUIET !== '1') for (let i = 0; i < 40; i++) (i % 2 ? process.stdout : process.stderr).write(`[+] Running ${i}/40\\n`)",
+              "if (process.env.FAKE_STATUS !== '0') process.stderr.write('#9 ERROR: process \"yarn install\" did not complete successfully: exit code: 1\\n')",
+              'process.exit(Number(process.env.FAKE_STATUS))',
+            ].join('\n'),
+          )
+          chmodSync(path.join(bin, 'docker'), 0o755)
+          const helper = pathToFileURL(path.join(ROOT, 'scripts/backstage-compose.mjs')).href
+          const run = spawnSync(
+            process.execPath,
+            ['--input-type=module', '-e', `import { compose, shown } from ${JSON.stringify(helper)}; process.exitCode = ${call}`],
+            {
+              encoding: 'utf8',
+              env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env['PATH'] ?? ''}`, FAKE_STATUS: String(status), FAKE_QUIET: quiet ? '1' : '0' },
+            },
+          )
+          return { run, argv: JSON.parse(readFileSync(log, 'utf8')) as string[] }
+        } finally {
+          rmSync(bin, { recursive: true, force: true })
+        }
+      }
+      const running = Array.from({ length: 40 }, (_, i) => `[+] Running ${i}/40\n`).join('')
+
+      it.skipIf(process.platform === 'win32')('prints one line when compose succeeds', () => {
+        const { run, argv } = fakeDocker(0)
+        expect(argv).toEqual(['compose', '-f', path.join(DEMO, 'compose.yml'), '--progress', 'plain', 'up', '-d', '--build', '--wait'])
+        expect(run.status).toBe(0)
+        expect(run.stdout).toBe('docker compose up -d --build --wait: done\n')
+        expect(run.stderr).toBe('')
+      })
+
+      it.skipIf(process.platform === 'win32')("shows compose's whole output, in the order compose printed it, and its status when it fails", () => {
+        const { run } = fakeDocker(17)
+        expect(run.status).toBe(17)
+        expect(run.stdout).toBe('')
+        expect(run.stderr).toBe(
+          `${running}#9 ERROR: process "yarn install" did not complete successfully: exit code: 1\n` +
+            'docker compose up -d --build --wait exited 17\n',
+        )
+      })
+
+      it.skipIf(process.platform === 'win32')('passes through what a call is run for, such as Backstage\'s own log', () => {
+        const { run, argv } = fakeDocker(0, "shown(['logs', '--no-color', '--tail=200', 'backstage'])")
+        expect(argv).toEqual(['compose', '-f', path.join(DEMO, 'compose.yml'), '--progress', 'plain', 'logs', '--no-color', '--tail=200', 'backstage'])
+        expect(run.status).toBe(0)
+        expect(run.stdout).toBe('')
+        expect(run.stderr).toBe(running)
+      })
+
+      it.skipIf(process.platform === 'win32')('says so when that call printed nothing, as `logs` does with no container', () => {
+        const { run } = fakeDocker(0, "shown(['logs', '--no-color', '--tail=200', 'backstage'])", true)
+        expect(run.status).toBe(0)
+        expect(run.stderr).toBe('docker compose logs --no-color --tail=200 backstage printed nothing\n')
+      })
+
+      it('shows Backstage\'s own log before `down` removes it, when it did not start or its catalogue did not fill', () => {
+        const log = "shown(['logs', '--no-color', '--tail=200', 'backstage'], COMPOSE_ENV)"
+        expect(script).toContain(log)
+        const start = script.indexOf("compose(['up', '-d', '--build', '--wait'], COMPOSE_ENV)")
+        const notStarted = script.indexOf('if (started !== 0) {', start)
+        expect(start).toBeGreaterThan(0)
+        expect(notStarted).toBeGreaterThan(start)
+        expect(script.slice(notStarted, script.indexOf('}', notStarted))).toContain('showBackstageLog()')
+        const timeout = script.indexOf('if (Date.now() > until) {')
+        expect(timeout).toBeGreaterThan(notStarted)
+        expect(script.slice(timeout, script.indexOf('}', timeout))).toContain('showBackstageLog()')
+        // The helper already said how compose exited: the demo says what it did not do.
+        expect(script).not.toMatch(/fail\(`docker compose .* exited/)
+      })
     })
 
     it('registers the organisation as data of its own, allowed Group and User and nothing else', () => {

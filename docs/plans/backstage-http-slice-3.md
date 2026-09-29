@@ -270,8 +270,9 @@ Nothing on the list reopens a decision of § 14.
   past it as every ceiling is, with the scope named ("Groups, Users, Systems and Domains").
   The byte bounds are § 6's, unchanged. At row 2's fields a User shaped as the Microsoft
   Graph provider writes one, in two groups, is 260 bytes of JSON, against 138 for today's
-  refs read and 804 whole without a picture (measured on a hand-built item; Step 9
-  re-measures on the recorded Backstage 1.55.2 page): 200,000 Users are about 50 MiB, where
+  refs read and 804 whole without a picture (measured on a hand-built item; on the recorded
+  Backstage 1.55.2 page, Step 9, a User in one group with a short name is 175 to 178 bytes
+  of compact JSON, uid included, and a Group 185 to 239): 200,000 Users are about 50 MiB, where
   the refs read spent about 26 MiB and a whole read about 153 MiB before any picture, under
   the 256 MiB a run may read (`limits.ts`). A catalogue that loads on `f8bcb43` at the
   ceiling still loads.
@@ -834,13 +835,30 @@ fixture wait for the owner and 3.1 says so in its description.
 
 *As built in 3.1:* everything above but the recording. `pnpm demo:backstage:docker` was not run
 (no Docker run in 3.1), so `tests/contract/backstage/org-by-query-1.55.2.json` and the
-`backstage-page.test.ts` rows that read it wait for the owner's `pnpm demo:backstage:docker
+`backstage-page.test.ts` rows that read it were left to a later `pnpm demo:backstage:docker
 --record`, which now writes that page too. The `show tiger` step compares the catalogue's
 card with the one the same files print (`--repo` over a copy of the demo SI and `org.yaml`),
-which is what the fake serves. So that a real Backstage honours `fields` — no profile, no
-annotation, no `@` — is unproven in 3.1, and its description says so: the proof waits for
-the owner's `--record`, which refuses to write an organisation page whose items carry
-`spec.profile` or `metadata.annotations`, and says the catalogue did not honour `fields`.
+which is what the fake serves.
+
+*As recorded, 2026-09-29* (the pull request that made the demo's compose calls quiet): `pnpm
+demo:backstage:docker --record` ran every step as documented against Backstage 1.55.2 and
+wrote `tests/contract/backstage/org-by-query-1.55.2.json`: the five Groups and two Users of
+`org.yaml`, `totalItems` 7, one page, 2,222 bytes as committed (1,390 as compact JSON).
+Every item holds `apiVersion`, `kind`, `metadata.name`, `metadata.namespace`,
+`metadata.uid` and the spec fields it declares, and nothing else: no `spec.profile`, no
+`metadata.annotations`, no `@` anywhere, so Backstage 1.55.2 honours `fields` — the run
+refuses to write a page whose items carry either. `by-query-1.55.2.json` was served again
+but for its uids, etags and order, and `--record` leaves such a page's fixture as it is.
+`backstage-page.test.ts` holds four rows on the page. The first checks the recorded bytes:
+the seven items, their keys, no profile, no `@`. The other three read it: through the
+pre-pass and `readValue`, item by item, it gives the nodes `org.yaml` gives as a file,
+written out in the test, with nothing unread; ada served with `org.yaml`'s profile, as a
+server ignoring `fields` would send her, reads as the recorded ada; and loaded, it gives
+what the fake's organisation read gives, answering exactly the request the provider sends.
+Each of the three was seen to fail: the pre-pass keeping the profile failed the ada row;
+`readValue` no longer reading an organisation document failed all three; `readValue`
+handing on the served value instead of its reading failed the item-by-item and the load
+rows.
 
 - [x] **Step 10: Checks**
 
@@ -902,8 +920,7 @@ git add src/core/schemas/entity.ts src/core/yaml/serialize.ts src/core/README.md
   tests/unit/{backstage-prepass,backstage-transport,render-overview}.test.ts \
   AGENTS.md docs/design.md docs/adopting-backstage.md README.md CHANGELOG.md docs/plans/backstage-http-slice-3.md \
   docs/roadmap.md docs/backstage-http-brief.md
-# once the owner's --record wrote it (Step 9): tests/contract/backstage/org-by-query-1.55.2.json
-# and the tests/contract/backstage-page.test.ts rows that read it
+# org-by-query-1.55.2.json and the backstage-page.test.ts rows that read it came later (Step 9)
 git commit -m "feat: read Groups, Users, Systems and Domains as read-only nodes of the graph"
 ```
 
