@@ -439,6 +439,24 @@ assert(
   '--submit cut no branch, or more than one',
 )
 check({ args: ['plan', '--from', OPEN_NETWORK, '--repo', 'repo', '--submit'], code: 2, stderr: /not a git working tree/ })
+// The intent road with no model configured, as here: a directory that cannot
+// take a branch is refused before the configuration is, so the answer is about
+// the repository and no model could have been called. Over a clone, the forge
+// opens and the refusal is the configuration's — and nothing is written.
+const INTENT = 'declare the database orders-db-prod in prod'
+check({
+  args: ['plan', INTENT, '--repo', 'repo', '--submit'],
+  code: 2,
+  stderr: /not a git working tree/,
+  absentFromStderr: /no model configured/,
+})
+check({ args: ['plan', INTENT, '--repo', 'submitted', '--submit'], code: 2, stderr: /no model configured/ })
+assert(
+  'plan "<intent>" --submit with no model cut nothing',
+  fixtureGit('for-each-ref', '--format=%(refname)', 'refs/heads/idp-agent/').split('\n').filter(Boolean).length === 1 &&
+    fixtureGit('rev-parse', 'main') === mainBefore,
+  'plan "<intent>" --submit with no model moved a ref',
+)
 
 // The read commands over a declarations repository of the user's own, and the
 // line that says when they are NOT reading one. A copy of the demo SI, so the

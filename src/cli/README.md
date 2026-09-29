@@ -355,9 +355,8 @@ would pass — a separate grant at their level, for whom and over what as far as
 knows (`renderStopped`, `RepairOutcome.kept`).
 
 **Submitting (`--submit`).** `commands/submit.ts` holds every step a submission takes, in the
-order it takes them, so `plan --from`, and the intent road and `init` when they submit, share
-one copy; until then `plan "<intent>" --submit` and `idpa "<phrase>" --submit` are refused,
-exit 2 (D8).
+order it takes them, so both roads of `plan` share one copy, and `init` will when it submits;
+until then `idpa "<phrase>" --submit` is refused, exit 2, naming the two roads that do (D8).
 `openForSubmission` opens the forge before anything is read: a root that is not a clone's,
 no `git`, no committer identity or a detached `HEAD` is a `ForgeInputError`, exit 2. The root
 is the one `declarationsFor`'s chain resolved, and stderr names what chose it as it does
@@ -372,8 +371,17 @@ authorises (ADR-0006). Only `y` or `yes` submits. A plan that changes nothing ne
 the forge: it is the same answer, and the same code, as without `--submit`. The closing
 lines come from `render/footer.ts`'s `closingLines`, the one place a run says what became of
 its diff; without `--submit` they are stage 4's, byte for byte. `--json` carries the outcome
-under `submission`, its shape pinned by `plan-command.test.ts` (D11). `plan --from … --submit`
-crosses four gates and no Reviewer; the branch cannot reach the default one either way.
+under `submission`, its shape pinned by `plan-command.test.ts` (D11), and the intent road
+answers under the same key. `plan --from … --submit` crosses four gates and no Reviewer;
+the branch cannot reach the default one either way.
+
+`plan "<intent>" --submit` moves the forge's opening earlier still: `main` opens it before the
+model is configured, so a directory that cannot take a branch is an argument error even with
+no model set, and hands it to `runIntent` through `reopening`, which refuses to serve any
+other root. `runIntent` reads the base again and refuses divergence after the configuration
+and before the Inspector — no model is paid for either refusal — then crosses five gates,
+the Reviewer last, and submits only a `planned` outcome: a question and a stop answer as
+they do without `--submit`. `plan-intent.test.ts` counts zero model calls on each refusal.
 
 **Tracing.** `trace-sink.ts` is the only way a trace leaves the process: `mlflowSink` posts
 OTLP/JSON to `IDP_MLFLOW_TRACKING_URI`'s `/v1/traces` — never `MLFLOW_TRACKING_URI`'s, which

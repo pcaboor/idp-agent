@@ -169,6 +169,15 @@ Each pull request adds its line here.
   `plan "<intent>" --submit` and `idpa "<phrase>" --submit` are refused, exit 2, for now.
   Without `--submit`, `plan` prints what it printed, byte for byte
   ([#109](https://github.com/pcaboor/idp-agent/pull/109)).
+- `plan "<intent>" --submit`: a drafted plan becomes the same local branch, cut once all
+  five gates have passed, the Reviewer last, and everything that would refuse it is found
+  before any model is paid — a directory that cannot take a branch (not a clone's root, no
+  committer identity, a detached `HEAD`) before the model is even configured, exit 2, and a
+  catalogue that differs from `HEAD` once one is, before the Inspector, exit 1, in `--json` under the
+  `submission` key alone; scripted clients count zero calls on each. `--json` reports the
+  submission as `--from` does. `idpa "<phrase>" --submit` stays refused, and now names both
+  roads that submit. Without `--submit`, `plan "<intent>"` prints what it printed, byte for
+  byte ([#110](https://github.com/pcaboor/idp-agent/pull/110)).
 
 ### Changed
 

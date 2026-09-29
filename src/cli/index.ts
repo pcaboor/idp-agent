@@ -47,7 +47,7 @@ import {
 } from '../core/schemas/query.js'
 import { runValidate } from './commands/validate.js'
 import { PlanInputError, questionLines, runIntent, runPlan, type Ask } from './commands/plan.js'
-import type { Confirm } from './commands/submit.js'
+import { openForSubmission, reopening, type Confirm, type SubmitOptions } from './commands/submit.js'
 import { ForgeInputError } from '../forge/errors.js'
 import type { GitError } from '../process/git.js'
 import { wantsColour } from './render/diff.js'
@@ -200,7 +200,7 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   idp-agent relations <name-or-reference> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-reference>] [--depth <n>] [--repo <directory> | --demo | --backstage]
   idp-agent ask "<question>" [--repo <directory> | --demo | --backstage] [--quiet]
   idp-agent validate <directory>
-  idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json]
+  idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json] [--submit]
   idp-agent plan --from <plan.json> [--repo <directory>] [--json] [--submit]
   idp-agent init [--repo <directory>] [--name <name>] [--lifecycle experimental|production|deprecated] [--owner group:<namespace>/<name>]
   idp-agent init platform <directory> --owner @org/team
@@ -238,13 +238,16 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   It is read once per run, with the token in IDP_BACKSTAGE_TOKEN, and a
   change is still decided against a declarations repository, never it.
   A phrase, ask, plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL. None
-  of them writes, and neither does plan without --submit. With it, plan --from
-  cuts a branch idp-agent/… from HEAD in the declarations repository, which
-  must be a git clone's root, for review; nothing else moves, nothing is
-  pushed, and no merge request is opened. It crosses four gates and no
-  Reviewer, and the merge authorises. Every model-backed command also needs
-  that provider's key (ANTHROPIC_API_KEY, MISTRAL_API_KEY or OPENAI_API_KEY);
-  IDP_TIMEOUT bounds each model call, in seconds, 120 by default.
+  of them writes, and neither does plan without --submit. With it, plan cuts
+  a branch idp-agent/… from HEAD in the declarations repository, which must
+  be a git clone's root, for review; nothing else moves, nothing is pushed,
+  and no merge request is opened. plan "<intent>" --submit crosses five
+  gates, the Reviewer last, and refuses a repository that cannot take the
+  branch before any model is paid; plan --from crosses four gates and no
+  Reviewer. Either way the merge authorises. Every model-backed command
+  also needs that provider's key (ANTHROPIC_API_KEY, MISTRAL_API_KEY or
+  OPENAI_API_KEY); IDP_TIMEOUT bounds each model call, in seconds, 120 by
+  default.
   IDP_SUPERVISOR_MODEL gives the Supervisor, which only classifies a phrase,
   another model of the same provider; unset, it uses IDP_MODEL.
 `
@@ -396,16 +399,6 @@ export function parseArguments(argv: string[]): Command {
         return {
           name: 'error',
           message: `an intent is limited to ${PLAN_LIMITS.maxIntentLength} characters`,
-        }
-      }
-      if (values.submit === true && from === undefined) {
-        // Removed by the next change, which teaches the intent road to submit.
-        // Refused out loud until then: `IntentOptions` has no `submit`, and a
-        // flag passed to it would be dropped in silence — a run that printed
-        // "nothing written" and exited 0 for a request to submit.
-        return {
-          name: 'error',
-          message: 'plan "<intent>" --submit is not wired yet; use --from <plan.json> --submit',
         }
       }
       // No --repo is not refused here: IDP_REPO or the personal configuration
@@ -651,15 +644,15 @@ function parsePhrase(argv: string[]): Command {
       return { name: 'error', message: `options go after the command: idpa ${first} … ${option}` }
     }
     // D8: a phrase reaches the Supervisor before it is known to be a change,
-    // and a submission refuses a divergent repository before any model is
-    // paid. Until the entry does that too, a change is submitted by plan.
+    // and a submission refuses a repository that cannot take it before any
+    // model is paid. Until the entry does that too, a change is submitted by
+    // plan, by either road.
     if (values.submit === true) {
       return {
         name: 'error',
         message:
-          // Only the road that submits today: plan "<intent>" --submit is
-          // refused too until the next change, which names it here again.
-          'idpa "<phrase>" does not submit; a change is submitted with plan --from <plan.json> --submit',
+          'idpa "<phrase>" does not submit; a change is submitted with plan "<intent>" --submit, ' +
+          'or plan --from <plan.json> --submit',
       }
     }
     const phrase = positionals.join(' ').trim()
@@ -1293,6 +1286,34 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     }
     const project = inspected(roots.project, err)
 
+    // --submit's repository, opened on this side of the model too, and for
+    // the same reason: a directory that cannot take a branch — not a clone's
+    // root, nobody to commit as, a detached HEAD — is an argument, and is
+    // refused before the configuration is. Nobody is told to set a key only
+    // to learn the directory could never take the branch, and nothing is paid
+    // for a refusal. `runIntent` is handed this forge, reads its base again
+    // and judges the working tree against it, before its Inspector.
+    //
+    // Divergence is judged there, AFTER the configuration: it is not an
+    // argument but the repository's state, a negative answer (exit 1), and
+    // judging it here would read the catalogue before a model is known to
+    // exist. So a clone with an uncommitted catalogue file and no model
+    // configured answers "no model configured" first, and the divergence
+    // once one is. Neither order pays a model for a refusal.
+    let submit: SubmitOptions | undefined
+    if (command.submit === true) {
+      const confirm = confirmOf(deps, command.json)
+      try {
+        const { forge } = await openForSubmission(roots.repo, 'declarations', {})
+        submit = {
+          ...(confirm !== undefined ? { confirm } : {}),
+          open: reopening(forge, roots.repo, 'declarations'),
+        }
+      } catch (error) {
+        return failed(error, err)
+      }
+    }
+
     return agentBacked(
       deps,
       err,
@@ -1325,6 +1346,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
         json: command.json,
         colour,
         notice: toStderr(err),
+        ...(submit !== undefined ? { submit } : {}),
       }),
     )
   }

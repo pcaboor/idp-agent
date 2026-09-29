@@ -23,7 +23,7 @@ each:
 | 2 | Question mode | done |
 | 3 | `init platform` and `validate` | done |
 | 4 | Preview only: nothing is written | done |
-| 5 | Write + local branch | in progress ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)): task 1, `Cleared` for the declarations repository, on `main` ([#105](https://github.com/pcaboor/idp-agent/pull/105)); task 2, `Cleared` for the service repository, on `main` ([#106](https://github.com/pcaboor/idp-agent/pull/106)); task 3, the shared git launcher and the `forge/` types, on `main` ([#107](https://github.com/pcaboor/idp-agent/pull/107)); task 4, the local forge — create-only, idempotent, atomic — on `main` ([#108](https://github.com/pcaboor/idp-agent/pull/108)); no command writes yet: `--submit` is task 5 |
+| 5 | Write + local branch | in progress ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)): task 1, `Cleared` for the declarations repository, on `main` ([#105](https://github.com/pcaboor/idp-agent/pull/105)); task 2, `Cleared` for the service repository, on `main` ([#106](https://github.com/pcaboor/idp-agent/pull/106)); task 3, the shared git launcher and the `forge/` types, on `main` ([#107](https://github.com/pcaboor/idp-agent/pull/107)); task 4, the local forge — create-only, idempotent, atomic — on `main` ([#108](https://github.com/pcaboor/idp-agent/pull/108)); task 5, `plan --from … --submit`, on `main` ([#109](https://github.com/pcaboor/idp-agent/pull/109)); task 6, `plan "<intent>" --submit`, refused before a model is paid, on `main` ([#110](https://github.com/pcaboor/idp-agent/pull/110)); `init --submit` is task 7 |
 | 6 | GitHub pull request | not started |
 | 7 | Polish: Ink TUI, asciinema, npm publish | not started |
 | 8 | Discovery | designed ([the design note](stage-8-brief.md), [#76](https://github.com/pcaboor/idp-agent/pull/76)); not started |
@@ -65,8 +65,11 @@ here, one pull request each, each naming the check run together at the end.
    atomic, proved by failing every git call of a submission — is on `main` too
    ([#108](https://github.com/pcaboor/idp-agent/pull/108)), with ADR 0010 accepted. Task 5,
    `plan --from … --submit` — the first write, a local branch, confirmed at a terminal — is on
-   `main` too ([#109](https://github.com/pcaboor/idp-agent/pull/109)); task 6,
-   `plan "<intent>" --submit`, is next. `idpa "<phrase>" --submit` stays refused at stage 5
+   `main` too ([#109](https://github.com/pcaboor/idp-agent/pull/109)). Task 6,
+   `plan "<intent>" --submit` — the same branch after all five gates, a repository that
+   cannot take it refused before any model is paid — is on `main` too
+   ([#110](https://github.com/pcaboor/idp-agent/pull/110)); task 7, `init --submit` and
+   `.idp-agent.yml`, is next. `idpa "<phrase>" --submit` stays refused at stage 5
    (D8) and is a follow-up: when it comes, divergence is refused before the Supervisor. The check itself, this queue's first item until
    2026-09-29, is done: the check, the brief as a dated record, the revised plan, and ADR
    0010 and ADR 0012 *proposed* ([#104](https://github.com/pcaboor/idp-agent/pull/104)).
