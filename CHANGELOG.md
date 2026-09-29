@@ -97,6 +97,13 @@ Each pull request adds its line here.
   team, a person or a system no tool returned — even as a common word — is dropped; over a
   source that holds none, what the model is sent does not change
   ([#101](https://github.com/pcaboor/idp-agent/pull/101)).
+- Three questions answered from a Backstage catalogue are recorded and replay with no key —
+  "who owns billing-api?" over the demo SI and its organisation, "what does team tiger own?"
+  and "which system is billing-api in?" over `tests/golden/organisation` — each read through
+  the in-process fake (`tests/scenarios/backstage-mode.test.ts`; tapes
+  `question-backstage-owner`, `question-organisation-owns`, `question-organisation-system`),
+  failing on a stale tape and on any `@` in what the model was sent; this closes
+  `backstage-http` slices 1 and 3 ([#103](https://github.com/pcaboor/idp-agent/pull/103)).
 
 ### Changed
 

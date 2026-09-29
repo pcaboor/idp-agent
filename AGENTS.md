@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3680 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3683 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -155,8 +155,9 @@ Groups, Users, Systems and Domains, read-only nodes beside the entities, from fi
 from a catalogue alike, which `show` prints and the overview counts (`backstage-http` slice
 3.1), and which a question reads too, over a source that holds some — "what does team tiger
 own?", "who is in tiger?", "which system is billing-api in?", answered with the relation
-block `relations` prints (`backstage-http` slice 3.3, on scripted clients: the keyed
-recordings are the owner's step R); and stage 4's two previews, which write nothing to a
+block `relations` prints (`backstage-http` slice 3.3; recorded and replayed with no key in
+`tests/scenarios/backstage-mode.test.ts`, with slice 1's question); and stage 4's two
+previews, which write nothing to a
 repository:
 
 ```bash
@@ -560,8 +561,9 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   `node:https`, `node:net`, `node:tls` and `WebSocket` throw, and `tests/setup/shell.ts`
   removes every `IDP_` variable but `IDP_TRACE_DIR` and every `*_API_KEY`, unless a scenario
   is being recorded (`IDP_RECORDING=record`, in `tests/scenarios/` only) — and
-  `IDP_BACKSTAGE_URL` and `IDP_BACKSTAGE_TOKEN` even then, so no tape holds what a catalogue
-  serves. A forgotten
+  `IDP_BACKSTAGE_URL` and `IDP_BACKSTAGE_TOKEN` even then, so no tape holds what a real
+  catalogue serves: `backstage-mode.test.ts` names its own URL and reads the in-process fake.
+  A forgotten
   recording fails loudly instead of quietly spending whoever's key is in the shell, and the
   suite passes the same with the README's variables exported. What stales a tape, and how
   to record one: [`tests/README.md`](tests/README.md). An agent-backed command is driven
