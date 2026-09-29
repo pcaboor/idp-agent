@@ -249,6 +249,12 @@ Each pull request adds its line here.
 
 ### Documentation
 
+- Stage 5 is checked against `main` and planned: [the check](docs/stage-5-check.md) of the
+  owner's uncommitted work and plan (every piece kept, three adapted, measured green), the
+  owner's nineteen decisions of 2026-09-29, the brief kept as a dated record, the plan
+  revised in place against `d0fdee9`, and ADR 0010 (a submission is a create-only ref) and
+  ADR 0012 (declared is not provisioned), both proposed
+  ([#104](https://github.com/pcaboor/idp-agent/pull/104)).
 - The review's 133 findings that no pull request named are swept against `main`: 15 fixed,
   39 partly fixed, 79 still true, none obsolete; the review's Status section records each
   verdict, and the roadmap batches the cheap fixes into pull requests and lists what waits
