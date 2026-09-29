@@ -360,6 +360,10 @@ describe('the brand', () => {
     expect(() =>
       (result.paths as Map<number, string>).set(0, 'catalog/databases/elsewhere.yml'),
     ).toThrow(TypeError)
+    // Map's own method, borrowed, reaches a Map's slots past any shadow.
+    expect(() =>
+      Map.prototype.set.call(result.paths, 0, 'catalog/databases/elsewhere.yml'),
+    ).toThrow(TypeError)
     expect(result.paths.get(0)).toBe('dependencies/access/billing-api-orders-db-prod.yml')
   })
 

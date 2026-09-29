@@ -104,6 +104,22 @@ Each pull request adds its line here.
   `question-backstage-owner`, `question-organisation-owns`, `question-organisation-system`),
   failing on a stale tape and on any `@` in what the model was sent; this closes
   `backstage-http` slices 1 and 3 ([#103](https://github.com/pcaboor/idp-agent/pull/103)).
+- `Cleared`, the only value stage 5's forge will accept (`src/core/plan/clear.ts`):
+  `clearPlan` re-runs the questions, the policies, the edits and the re-check against the
+  provenance `signPlan` now seals into the `SignedPlan`, over one reading of the bytes, and
+  refuses a dropped operation, no bytes to change where the repository does not already say
+  the plan, a folder it could not read, an amended file whose name holds a line break or a
+  bidi control, and a plan that also writes into the service repository, by name, pointing
+  at `init --submit`. What it mints carries the edits, the
+  bytes they were judged against, an engine-named `idp-agent/` branch and a commit subject
+  written from the operations; it is deep-frozen, its maps refuse even a borrowed
+  `Map.prototype.set`, and it is registered, so `isCleared` refuses a copy or a hand-built
+  object. The declarations reader and the demo SI's recognise a
+  catalogue file by one predicate (`src/core/paths/catalogue.ts`), a parity test holds the
+  clearance to the preview's verdict, and §9.2's fifth invariant — applying a plan twice is
+  applying it once — is a property. No raw bidi control, zero-width, joiner, mark, soft hyphen or byte-order mark is left in
+  `src/`, `tests/` or `scripts/`, and a test keeps it so. Nothing writes yet
+  ([#105](https://github.com/pcaboor/idp-agent/pull/105)).
 
 ### Changed
 

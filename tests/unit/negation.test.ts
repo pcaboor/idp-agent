@@ -173,7 +173,7 @@ describe('negates', () => {
     ['across a change of script', '给billing-api授予非prod的读取权限'],
     ['in capitals', 'give billing-api read access to orders-db, NOT prod'],
     ['full-width', 'give billing-api read access to orders-db, ＮＯＴ prod'],
-    ['split by a soft hyphen', 'give billing-api read access to orders-db, n­ot prod'],
+    ['split by a soft hyphen', 'give billing-api read access to orders-db, n\u00ADot prod'],
     ['as two words', 'give billing-api read access to anything but prod'],
   ])('reads a marker %s', (_how, intent) => {
     expect(negates(intent)).toBe(true)

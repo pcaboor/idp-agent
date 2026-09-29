@@ -18,6 +18,7 @@ import { summariseGraph, type SiSummary } from '../../context/graph/summary.js'
 import { readRepository } from '../../context/iac-fs/snapshot.js'
 import { readProject } from '../../context/project-fs/snapshot.js'
 import { renderUnifiedDiff, type FileEdit } from '../../core/diff/unified.js'
+import { clearPlan, type Cleared, type ClearRefusal } from '../../core/plan/clear.js'
 import { answer, AnswerError, questionsOf, type Question } from '../../core/plan/clarify.js'
 import { deriveOwners } from '../../core/plan/derive.js'
 import { namesakesIn } from '../../core/plan/environment.js'
@@ -105,6 +106,14 @@ export interface PlanOptions {
    * audible wherever it happens.
    */
   readonly emit?: EventSink
+  /**
+   * Handed what `clearPlan` makes of the plan this run previews — from the
+   * very signature, contexts and bytes the preview is decided on — and told
+   * nothing else. Absent, nothing is cleared. Nothing writes yet: this is how
+   * `tests/unit/clear-parity.test.ts` holds the preview and the clearance to
+   * one verdict (D2), and the seam `--submit` takes over.
+   */
+  readonly clearance?: (result: Cleared | ClearRefusal) => void
 }
 
 /**
@@ -1144,8 +1153,14 @@ function previewPlan(
   provenance: Provenance,
   snapshot: RepositorySnapshot,
   contents: ReadonlyMap<string, string>,
-  options: { readonly repo: string; readonly json?: boolean; readonly colour?: boolean },
+  options: {
+    readonly repo: string
+    readonly json?: boolean
+    readonly colour?: boolean
+    readonly clearance?: (result: Cleared | ClearRefusal) => void
+  },
 ): CommandResult {
+  options.clearance?.(clearPlan(signed, { policy: contexts.policy, snapshot, contents }))
   const policies = checkPolicies(signed, contexts.policy, provenance)
   // The edits come first, and the re-check reads them: what CI would say is
   // asked about the very bytes the reviewer is shown, not about a second model

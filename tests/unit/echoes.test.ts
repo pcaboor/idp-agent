@@ -175,21 +175,21 @@ describe('echoes, across typographic hyphens', () => {
  */
 describe('echoes, across invisible characters', () => {
   it.each([
-    ['a soft hyphen', 'orders-db non­prod'],
-    ['a zero-width space', 'orders-db non​prod'],
-    ['a zero-width joiner', 'orders-db non‍prod'],
-    ['a word joiner', 'orders-db non⁠prod'],
+    ['a soft hyphen', 'orders-db non\u00ADprod'],
+    ['a zero-width space', 'orders-db non\u200Bprod'],
+    ['a zero-width joiner', 'orders-db non\u200Dprod'],
+    ['a word joiner', 'orders-db non\u2060prod'],
   ])('reads a word split by %s as one token', (_what, intent) => {
     expect(echoes(intent, 'prod')).toBe(false)
   })
 
   it('names a value an invisible character sits inside', () => {
-    expect(echoes('give billing­-api access', 'billing-api')).toBe(true)
-    expect(echoes('orders-db in pr​od', 'prod')).toBe(true)
+    expect(echoes('give billing\u00AD-api access', 'billing-api')).toBe(true)
+    expect(echoes('orders-db in pr\u200Bod', 'prod')).toBe(true)
   })
 
   it('reads a name the same way', () => {
-    expect(environmentsNamedBy('orders-db-non­prod', ['prod'])).toEqual([])
+    expect(environmentsNamedBy('orders-db-non\u00ADprod', ['prod'])).toEqual([])
   })
 })
 

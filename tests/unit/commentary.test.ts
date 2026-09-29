@@ -452,7 +452,7 @@ describe('checkCommentary ends a sentence before a name, whatever its case', () 
   })
 
   it('ends it after closing punctuation and before a name hiding a zero-width character', () => {
-    expect(kept('It is owned by tiger.) orders​-db-prod is not.')).toEqual([
+    expect(kept('It is owned by tiger.) orders\u200B-db-prod is not.')).toEqual([
       'It is owned by tiger.)',
     ])
   })

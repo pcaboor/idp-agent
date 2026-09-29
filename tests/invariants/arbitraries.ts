@@ -206,3 +206,56 @@ export const arbitraryPlan = fc.record({
       { minLength: 1, maxLength: 5 },
     ),
 })
+
+/**
+ * A database and a right over it, which the proposal schema accepts: a right
+ * is over something and granted to somebody (§4.1). `arbitraryPlan` cannot
+ * produce one, because its rights carry neither `dependsOn` nor
+ * `dependencyOf` and the schema refuses them — so without this, §9.2's
+ * idempotence property never met a grant.
+ *
+ * The intent names the database, the consumer and the right, so the composed
+ * right name is vouched for by a person's words. The level and the
+ * environment are not: no word states either, and the property answers them
+ * at their paths (`asDrafted` in core.test.ts).
+ */
+export const arbitraryGrantPlan = fc
+  .record({
+    database: entityName,
+    consumer: entityName,
+    env: fc.constantFrom('dev', 'staging', 'prod'),
+    level: fc.constantFrom('read', 'readwrite'),
+  })
+  .filter(({ database, consumer }) => database !== consumer)
+  .map(({ database, consumer, env, level }) => {
+    const right = `${consumer}-${database}`.slice(0, 63).replace(/[._-]+$/, '')
+    return {
+      intent:
+        `declare ${database} in ${env} owned by group:default/tiger and give ` +
+        `component:default/${consumer} ${right} on resource:default/${database}`,
+      operations: [
+        {
+          op: 'create-entity' as const,
+          entity: {
+            kind: 'Resource' as const,
+            metadata: { name: database, env },
+            spec: { type: 'database', owner: 'group:default/tiger' },
+          },
+        },
+        {
+          op: 'create-entity' as const,
+          entity: {
+            kind: 'Resource' as const,
+            metadata: { name: right, env },
+            spec: {
+              type: 'database-access',
+              access: level,
+              owner: 'group:default/tiger',
+              dependsOn: [`resource:default/${database}`],
+              dependencyOf: [`component:default/${consumer}`],
+            },
+          },
+        },
+      ],
+    }
+  })

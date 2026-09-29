@@ -20,6 +20,8 @@ are the same computation rather than two that agree until they do not.
 | `policies.ts` | is it expressible, vouched for, and still wrong? |
 | `recheck.ts` | is it still true, against the repository as it is now? |
 | `edits.ts` | what bytes would it leave behind? |
+| `clear.ts` | may these bytes be handed to a forge, and which repository's? — the free gates re-run against the signed provenance, one `Cleared` minted and registered |
+| `seal.ts` | a Map that refuses to change, for the signature's paths and a clearance's bytes |
 
 Four gates, four different kinds of refusal, and none of them substitutes for another. The
 schema rejects what cannot be requested. The signature turns a value nobody can vouch for

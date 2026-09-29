@@ -16,7 +16,7 @@
 const NEWLINE = '\n'
 const CRLF = '\r\n'
 const MARKER = '---'
-const BOM = '﻿'
+const BOM = '\uFEFF'
 
 interface Block {
   /** first line of the document, header comments included */

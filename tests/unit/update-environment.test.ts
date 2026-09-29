@@ -506,10 +506,10 @@ describe('a request naming the thing the grant is over', () => {
     ['after a full-width colon', `${OWNER}（参照：orders-db-dev）`],
     ['as namespace/name', `${OWNER}, comme legacy/orders-db-dev`],
     ['after a colon', `${OWNER}, comme resource:orders-db-dev`],
-    ['split by a soft hyphen', `${OWNER}, comme orders-db-­dev`],
-    ['split by a zero-width space', `${OWNER}, comme orders-db​-dev`],
-    ['split by a zero-width joiner', `${OWNER}, comme orders-‍db-dev`],
-    ['split by a word joiner', `${OWNER}, comme orders⁠-db-dev`],
+    ['split by a soft hyphen', `${OWNER}, comme orders-db-\u00ADdev`],
+    ['split by a zero-width space', `${OWNER}, comme orders-db\u200B-dev`],
+    ['split by a zero-width joiner', `${OWNER}, comme orders-\u200Ddb-dev`],
+    ['split by a word joiner', `${OWNER}, comme orders\u2060-db-dev`],
   ])('is asked when another environment’s entity is mentioned %s', (_how, intent) => {
     expect(asks(intent)).toEqual([ENVIRONMENT])
   })
@@ -657,11 +657,11 @@ describe('a request naming the thing the grant is over', () => {
     })
   })
 
-  it('asks a request whose "non­prod" shows no hyphen, end to end', async () => {
+  it('asks a request whose "non\u00ADprod" shows no hyphen, end to end', async () => {
     // It named prod once — the soft hyphen was a boundary — and the prod
     // grant then passed as the environment asked for.
     const repo = await repository()
-    const intent = 'give billing-api read access to orders-db in non­prod'
+    const intent = 'give billing-api read access to orders-db in non\u00ADprod'
     const { ask, asked } = answering(undefined)
 
     const result = await runPlan({

@@ -23,7 +23,7 @@ each:
 | 2 | Question mode | done |
 | 3 | `init platform` and `validate` | done |
 | 4 | Preview only: nothing is written | done |
-| 5 | Write + local branch | checked and planned ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)); the owner's start is not on `main` yet |
+| 5 | Write + local branch | in progress ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)): task 1, `Cleared` for the declarations repository, on `main` ([#105](https://github.com/pcaboor/idp-agent/pull/105)); nothing writes yet |
 | 6 | GitHub pull request | not started |
 | 7 | Polish: Ink TUI, asciinema, npm publish | not started |
 | 8 | Discovery | designed ([the design note](stage-8-brief.md), [#76](https://github.com/pcaboor/idp-agent/pull/76)); not started |
@@ -54,14 +54,17 @@ here, one pull request each, each naming the check run together at the end.
    [the owner's plan](plans/stage-5-write.md), revised in place on 2026-09-29 against
    `d0fdee9` after [the stage-5 check](stage-5-check.md): eight tasks, one stacked pull
    request each for tasks 1 to 7, the documents riding with each. Task 1 — `Cleared` for the
-   declarations repository — carries the owner's uncommitted work on `feat/s5-cleared`,
-   discarding nothing already written. The check itself, this queue's first item until
+   declarations repository — is on `main` ([#105](https://github.com/pcaboor/idp-agent/pull/105)), carrying the owner's uncommitted work on
+   `feat/s5-cleared` and discarding none of it; task 2, `Cleared` for the service
+   repository, is next. The check itself, this queue's first item until
    2026-09-29, is done: the check, the brief as a dated record, the revised plan, and ADR
    0010 and ADR 0012 *proposed* ([#104](https://github.com/pcaboor/idp-agent/pull/104)).
 2. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
    hand-written files in every shape, and `signPlan` properties over plans valid by
-   construction. `tests/invariants/arbitraries.ts` and `core.test.ts` are also edited on
-   `feat/s5-cleared`, so it goes on top of stage 5.
+   construction. Stage 5's task 1 put the owner's `arbitraryGrantPlan` and §9.2's
+   idempotence property in `tests/invariants/` ([#105](https://github.com/pcaboor/idp-agent/pull/105)), which closes
+   gap-stage5-readiness-11 in part; B1 builds on that generator rather than writing a second
+   one, and goes on top of stage 5.
 3. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
    gap-stage5-readiness-4: one lstat, realpath and `O_NOFOLLOW` primitive shared from
    `project-fs`, used by `scaffold/write.ts` and by the iac-fs walk, which rejects a
@@ -500,11 +503,11 @@ vocabulary), product-gap-6 (no offset and no system, lifecycle or tag criteria i
   picks its shape.
 - **One evaluation for every route.** architecture-1, gap-stage5-readiness-10: a shared
   `evaluatePlan()`. For stage 5 the check chose a parity test between the preview and the
-  clearance (D2), and `plan --from` keeps four gates, said by route (D4); the refactor stays
-  here.
+  clearance (D2), now `tests/unit/clear-parity.test.ts` ([#105](https://github.com/pcaboor/idp-agent/pull/105)), and `plan --from` keeps
+  four gates, said by route (D4); the refactor stays here.
 - **Settled by the stage-5 check** (2026-09-29, [its § 7](stage-5-check.md)), each closed
   by the stage-5 pull request that builds it: core-plan-9 and gap-stage5-readiness-5 (a
-  `Cleared` minted after the free gates, with a runtime brand, D3), gap-stage5-readiness-3
+  `Cleared` minted after the free gates, with a runtime brand, D3; closed, [#105](https://github.com/pcaboor/idp-agent/pull/105)), gap-stage5-readiness-3
   (the base is `HEAD`, the bytes read proven equal to it), gap-stage5-readiness-12 (the
   branch name as the plan's identity; design §4.3 reworded), gap-stage5-readiness-13 and
   cli-ux-12 (a `Confirm` seam taking a structured summary, D5). Still open here: cli-ux-10, a
@@ -534,7 +537,9 @@ vocabulary), product-gap-6 (no offset and no system, lifecycle or tag criteria i
 - **Toolchain and release.** build-ci-10 (a linter and formatter), build-ci-9 (a dependency
   policy), build-ci-6 (reserving the npm name).
 
-*Belongs elsewhere.* gap-stage5-readiness-6 (compare before writing) is stage 5's writer; architecture-10
+*Belongs elsewhere.* gap-stage5-readiness-6 (compare before writing) is stage 5's writer — in
+part since [#105](https://github.com/pcaboor/idp-agent/pull/105): the edits and the re-check of a clearance judge one reading of the bytes, while
+its `PolicyContext` is still built from the first read; architecture-10
 (one bounded agent loop) and the rest of architecture-6 (exhaustive dispatch beyond batch A4)
 are refactors left unordered.
 

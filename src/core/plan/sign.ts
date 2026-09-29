@@ -5,6 +5,7 @@ import { PLAN_LIMITS } from '../schemas/plan.js'
 import { computeEntityPath } from '../paths/entity-path.js'
 import type { ResourceType } from '../schemas/resource-types.js'
 import type { Vocabulary } from '../schemas/vocabulary.js'
+import { sealed } from './seal.js'
 
 /**
  * The write-side guarantee ADR-0007 said propose() owed.
@@ -80,6 +81,14 @@ export interface SignedPlan {
   readonly paths: ReadonlyMap<number, string>
   readonly refs: ReadonlyMap<number, string>
   readonly classified: readonly LeafFinding[]
+  /**
+   * What the user stated when this plan was signed: the one provenance every
+   * later gate is re-run against. Bound here so a clearance judges exactly
+   * what was signed (D1) — a provenance handed to `clearPlan` beside the plan
+   * would be the caller's word, and a caller holding another one could clear
+   * a plan the policies refused.
+   */
+  readonly provenance: Provenance
   readonly [signature]: true
 }
 
@@ -504,9 +513,16 @@ export function signPlan(
   // `bound` below for what it does and does not buy.
   return bound({
     plan: deepFreeze(withQuestions),
-    paths: sealed(paths),
-    refs: sealed(refs),
+    paths: sealed(paths, SEALED),
+    refs: sealed(refs, SEALED),
     classified: Object.freeze(classified),
+    // A copy, sealed: the caller's own may be the ask loop's, which the next
+    // round changes, and the one a clearance reads is the one signed here.
+    provenance: Object.freeze({
+      intent: provenance.intent,
+      wordsOf: provenance.wordsOf,
+      answers: sealed(provenance.answers, SEALED),
+    }),
   })
 }
 
@@ -518,11 +534,13 @@ const SEALED = 'a signed plan is what was signed; sign the plan you changed'
  *
  * The brand proved `signPlan` returned this object once. It did not prove the
  * object still held what was signed: `Plan` is `z.infer<…>` and mutable,
- * `SignedPlan` marks only its own four fields readonly, and nothing froze
+ * `SignedPlan` marks only its own fields readonly, and nothing froze
  * anything — so `spec.owner = 'group:default/nobody'` compiled, ran, reached
  * `planEdits` and was written, while `classified` went on reporting the owner
- * the gate had vouched for. Stage 5 hands a `SignedPlan` to a writer, and
- * "signed" has to mean the bytes it composes are the ones the gates judged.
+ * the gate had vouched for. Stage 5 hands a `SignedPlan` to `clearPlan`, which
+ * re-runs the free gates against the provenance bound here and mints the only
+ * value a forge accepts, and "signed" has to mean the bytes it composes are
+ * the ones the gates judged.
  *
  * Freezing rather than carrying a digest, and the reason is reach: a digest
  * protects whichever caller remembers to compare it, and the readers of a
@@ -554,6 +572,7 @@ const bound = (signed: {
   paths: ReadonlyMap<number, string>
   refs: ReadonlyMap<number, string>
   classified: readonly LeafFinding[]
+  provenance: Provenance
 }): SignedPlan => Object.freeze(signed) as unknown as SignedPlan
 
 /**
@@ -574,32 +593,6 @@ function deepFreeze<T>(value: T): T {
   }
 
   return value
-}
-
-/**
- * A Map that refuses to change.
- *
- * `Object.freeze` does nothing to one: `set` lives on the prototype and writes
- * internal slots, so a frozen Map is still a writable Map. `paths` is the
- * field §5.2 is about — the engine chooses where bytes go, and a model cannot
- * aim at a path — so leaving it writable would leave the strongest guarantee
- * in the design as the one field a mutation could still move. The mutators are
- * shadowed on the instance (non-writable and non-configurable by
- * `defineProperty`'s defaults, so the shadow cannot be removed), and the
- * instance is then frozen.
- *
- * What this does NOT cover: `ReadonlyMap` already said no at compile time, and
- * this only answers the cast that ignores it.
- */
-const sealed = <K, V>(entries: ReadonlyMap<K, V>): ReadonlyMap<K, V> => {
-  const map = new Map(entries)
-  const refuse = (): never => {
-    throw new TypeError(SEALED)
-  }
-  for (const mutator of ['set', 'delete', 'clear']) {
-    Object.defineProperty(map, mutator, { value: refuse })
-  }
-  return Object.freeze(map)
 }
 
 /** Replaces each novel leaf with the question the CLI will put to the user. */
