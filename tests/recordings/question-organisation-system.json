@@ -1,0 +1,532 @@
+{
+  "version": 1,
+  "scenario": "question-organisation-system",
+  "turns": [
+    {
+      "agent": "analyst",
+      "turn": 0,
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "digest": "sha256:0bd60986afa6471d0d77d5148efb5c8666c5757d924deafbbdf536dac3db3790",
+      "recordedAt": "2026-09-29T08:23:15.000Z",
+      "call": {
+        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\nA reference marked \"declared\": false is written in the catalogue and names no entity:\nsay so, and never treat it as the entity that shares its name.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  relation      with \"ref\" and \"relation\", when asked how an entity is related:\n                what it consumes or reaches (\"consumes\"), who consumes or uses\n                it (\"consumed-by\"), what it depends on (\"depends-on\"), what\n                breaks or is affected if it fails (\"impacts\"), the APIs it\n                provides or who provides one (\"provides\", \"provided-by\"), or\n                how two entities are related (\"between\", the other one as\n                \"to\": the paths where one depends on the other, else what both\n                reach). The engine computes every path and writes it; \"ref\"\n                and \"to\" must be references a tool returned. get_relations\n                shows you those paths; read them before you conclude on them.\n                Over the organisation — Groups (teams), Users (people),\n                Systems and Domains, found with search_entities and read\n                with get_entity — \"relation\" also answers what a team or a\n                person owns (\"owns\"), who owns something and the teams above\n                (\"owned-by\"), a person's or a team's groups (\"member-of\"),\n                who is in a team (\"has-member\"), which system and domain\n                something is in (\"part-of\"), and what a system or a domain\n                holds (\"has-part\").\n  nothing       when no entity matches\n  overview      when asked to describe, summarise or give an overview of the\n                catalogue, SI, repository or project as a whole. The engine\n                writes the description; call it straight away, and never answer\n                \"unanswerable\" for such a request\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nWith \"entities\", \"relation\", \"nothing\" or \"overview\" you may add \"intro\", one\nshort sentence introducing the answer, and \"conclusion\", at most three short\nsentences on what the result means for the question. Write both in the\nlanguage of the question. Say only what the tool results state; where they do\nnot say, say it is not declared rather than guess. Do not restate the list or its figures: the engine\nprints them. Name only entities a tool returned in this conversation: the\nengine deletes any sentence that names anything else, an identifier nobody\nreturned included. Both are optional: omit them rather than pad.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "question: which system is billing-api in?\n\nsi:\n  entities: 1-9\n  components: 1-9\n  resources: 1-9\n  organisation: groups 1-9, users 1-9, systems 1-9, domains 1-9\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: database, database-access, service, website\n  environments: prod\n  owners: group:default/lion, group:default/tiger, user:default/ada\n"
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_kM7bdHKKREMRs8Sd0yscunDg",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Component",
+                  "nameContains": "billing-api"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "call_kM7bdHKKREMRs8Sd0yscunDg",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "component:default/billing-api",
+                  "name": "billing-api",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "(undeclared)",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_2dHutvkyY85SFr8esbbDaavE",
+                "name": "get_relations",
+                "args": {
+                  "ref": "component:default/billing-api",
+                  "relation": "part-of"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "call_2dHutvkyY85SFr8esbbDaavE",
+            "name": "get_relations",
+            "result": {
+              "relation": "part-of",
+              "subject": {
+                "ref": "component:default/billing-api",
+                "kind": "Component",
+                "type": "service",
+                "env": "(undeclared)"
+              },
+              "rows": [
+                {
+                  "ref": "system:default/billing",
+                  "kind": "System",
+                  "type": "product",
+                  "depth": 1,
+                  "path": [
+                    {
+                      "ref": "component:default/billing-api",
+                      "kind": "Component",
+                      "type": "service",
+                      "env": "(undeclared)"
+                    },
+                    {
+                      "ref": "system:default/billing",
+                      "kind": "System",
+                      "type": "product"
+                    }
+                  ]
+                },
+                {
+                  "ref": "domain:default/finance",
+                  "kind": "Domain",
+                  "depth": 2,
+                  "path": [
+                    {
+                      "ref": "component:default/billing-api",
+                      "kind": "Component",
+                      "type": "service",
+                      "env": "(undeclared)"
+                    },
+                    {
+                      "ref": "system:default/billing",
+                      "kind": "System",
+                      "type": "product"
+                    },
+                    {
+                      "ref": "domain:default/finance",
+                      "kind": "Domain"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_oapASxPpHYXKAbDXN3BDWbP2",
+                "name": "answer",
+                "args": {
+                  "outcome": "relation",
+                  "ref": "component:default/billing-api",
+                  "relation": "part-of",
+                  "intro": "billing-api pertenece al sistema indicado a continuación."
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "call_kM7bdHKKREMRs8Sd0yscunDg",
+            "toolName": "search_entities",
+            "input": {
+              "kind": "Component",
+              "nameContains": "billing-api"
+            },
+            "providerMetadata": {
+              "openai": {
+                "itemId": "fc_03e65582dac56e47016abb7574a3d887d29605afcc5215103f"
+              }
+            }
+          }
+        ],
+        "finishReason": "tool-calls",
+        "usage": {
+          "inputTokens": 2496,
+          "outputTokens": 24,
+          "totalTokens": 2520
+        }
+      }
+    },
+    {
+      "agent": "analyst",
+      "turn": 1,
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "digest": "sha256:298149a98d2fc7146ed7b5e4a7ab2da13c62d812f93889ce2d6d93d1654f03b8",
+      "recordedAt": "2026-09-29T08:23:17.000Z",
+      "call": {
+        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\nA reference marked \"declared\": false is written in the catalogue and names no entity:\nsay so, and never treat it as the entity that shares its name.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  relation      with \"ref\" and \"relation\", when asked how an entity is related:\n                what it consumes or reaches (\"consumes\"), who consumes or uses\n                it (\"consumed-by\"), what it depends on (\"depends-on\"), what\n                breaks or is affected if it fails (\"impacts\"), the APIs it\n                provides or who provides one (\"provides\", \"provided-by\"), or\n                how two entities are related (\"between\", the other one as\n                \"to\": the paths where one depends on the other, else what both\n                reach). The engine computes every path and writes it; \"ref\"\n                and \"to\" must be references a tool returned. get_relations\n                shows you those paths; read them before you conclude on them.\n                Over the organisation — Groups (teams), Users (people),\n                Systems and Domains, found with search_entities and read\n                with get_entity — \"relation\" also answers what a team or a\n                person owns (\"owns\"), who owns something and the teams above\n                (\"owned-by\"), a person's or a team's groups (\"member-of\"),\n                who is in a team (\"has-member\"), which system and domain\n                something is in (\"part-of\"), and what a system or a domain\n                holds (\"has-part\").\n  nothing       when no entity matches\n  overview      when asked to describe, summarise or give an overview of the\n                catalogue, SI, repository or project as a whole. The engine\n                writes the description; call it straight away, and never answer\n                \"unanswerable\" for such a request\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nWith \"entities\", \"relation\", \"nothing\" or \"overview\" you may add \"intro\", one\nshort sentence introducing the answer, and \"conclusion\", at most three short\nsentences on what the result means for the question. Write both in the\nlanguage of the question. Say only what the tool results state; where they do\nnot say, say it is not declared rather than guess. Do not restate the list or its figures: the engine\nprints them. Name only entities a tool returned in this conversation: the\nengine deletes any sentence that names anything else, an identifier nobody\nreturned included. Both are optional: omit them rather than pad.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "question: which system is billing-api in?\n\nsi:\n  entities: 1-9\n  components: 1-9\n  resources: 1-9\n  organisation: groups 1-9, users 1-9, systems 1-9, domains 1-9\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: database, database-access, service, website\n  environments: prod\n  owners: group:default/lion, group:default/tiger, user:default/ada\n"
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_kM7bdHKKREMRs8Sd0yscunDg",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Component",
+                  "nameContains": "billing-api"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "call_kM7bdHKKREMRs8Sd0yscunDg",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "component:default/billing-api",
+                  "name": "billing-api",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "(undeclared)",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_2dHutvkyY85SFr8esbbDaavE",
+                "name": "get_relations",
+                "args": {
+                  "ref": "component:default/billing-api",
+                  "relation": "part-of"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "call_2dHutvkyY85SFr8esbbDaavE",
+            "name": "get_relations",
+            "result": {
+              "relation": "part-of",
+              "subject": {
+                "ref": "component:default/billing-api",
+                "kind": "Component",
+                "type": "service",
+                "env": "(undeclared)"
+              },
+              "rows": [
+                {
+                  "ref": "system:default/billing",
+                  "kind": "System",
+                  "type": "product",
+                  "depth": 1,
+                  "path": [
+                    {
+                      "ref": "component:default/billing-api",
+                      "kind": "Component",
+                      "type": "service",
+                      "env": "(undeclared)"
+                    },
+                    {
+                      "ref": "system:default/billing",
+                      "kind": "System",
+                      "type": "product"
+                    }
+                  ]
+                },
+                {
+                  "ref": "domain:default/finance",
+                  "kind": "Domain",
+                  "depth": 2,
+                  "path": [
+                    {
+                      "ref": "component:default/billing-api",
+                      "kind": "Component",
+                      "type": "service",
+                      "env": "(undeclared)"
+                    },
+                    {
+                      "ref": "system:default/billing",
+                      "kind": "System",
+                      "type": "product"
+                    },
+                    {
+                      "ref": "domain:default/finance",
+                      "kind": "Domain"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_oapASxPpHYXKAbDXN3BDWbP2",
+                "name": "answer",
+                "args": {
+                  "outcome": "relation",
+                  "ref": "component:default/billing-api",
+                  "relation": "part-of",
+                  "intro": "billing-api pertenece al sistema indicado a continuación."
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "call_2dHutvkyY85SFr8esbbDaavE",
+            "toolName": "get_relations",
+            "input": {
+              "ref": "component:default/billing-api",
+              "relation": "part-of"
+            },
+            "providerMetadata": {
+              "openai": {
+                "itemId": "fc_0c4535130427b752016abb75761e5c87d29c413b4af549f85b"
+              }
+            }
+          }
+        ],
+        "finishReason": "tool-calls",
+        "usage": {
+          "inputTokens": 2573,
+          "outputTokens": 29,
+          "totalTokens": 2602
+        }
+      }
+    },
+    {
+      "agent": "analyst",
+      "turn": 2,
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "digest": "sha256:ba163a236183b797f2d0087df95f7d39b113e80b10802c05961cc0e9e1fac6ef",
+      "recordedAt": "2026-09-29T08:23:19.000Z",
+      "call": {
+        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\nA reference marked \"declared\": false is written in the catalogue and names no entity:\nsay so, and never treat it as the entity that shares its name.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  relation      with \"ref\" and \"relation\", when asked how an entity is related:\n                what it consumes or reaches (\"consumes\"), who consumes or uses\n                it (\"consumed-by\"), what it depends on (\"depends-on\"), what\n                breaks or is affected if it fails (\"impacts\"), the APIs it\n                provides or who provides one (\"provides\", \"provided-by\"), or\n                how two entities are related (\"between\", the other one as\n                \"to\": the paths where one depends on the other, else what both\n                reach). The engine computes every path and writes it; \"ref\"\n                and \"to\" must be references a tool returned. get_relations\n                shows you those paths; read them before you conclude on them.\n                Over the organisation — Groups (teams), Users (people),\n                Systems and Domains, found with search_entities and read\n                with get_entity — \"relation\" also answers what a team or a\n                person owns (\"owns\"), who owns something and the teams above\n                (\"owned-by\"), a person's or a team's groups (\"member-of\"),\n                who is in a team (\"has-member\"), which system and domain\n                something is in (\"part-of\"), and what a system or a domain\n                holds (\"has-part\").\n  nothing       when no entity matches\n  overview      when asked to describe, summarise or give an overview of the\n                catalogue, SI, repository or project as a whole. The engine\n                writes the description; call it straight away, and never answer\n                \"unanswerable\" for such a request\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nWith \"entities\", \"relation\", \"nothing\" or \"overview\" you may add \"intro\", one\nshort sentence introducing the answer, and \"conclusion\", at most three short\nsentences on what the result means for the question. Write both in the\nlanguage of the question. Say only what the tool results state; where they do\nnot say, say it is not declared rather than guess. Do not restate the list or its figures: the engine\nprints them. Name only entities a tool returned in this conversation: the\nengine deletes any sentence that names anything else, an identifier nobody\nreturned included. Both are optional: omit them rather than pad.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "question: which system is billing-api in?\n\nsi:\n  entities: 1-9\n  components: 1-9\n  resources: 1-9\n  organisation: groups 1-9, users 1-9, systems 1-9, domains 1-9\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: database, database-access, service, website\n  environments: prod\n  owners: group:default/lion, group:default/tiger, user:default/ada\n"
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_kM7bdHKKREMRs8Sd0yscunDg",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Component",
+                  "nameContains": "billing-api"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "call_kM7bdHKKREMRs8Sd0yscunDg",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "component:default/billing-api",
+                  "name": "billing-api",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "(undeclared)",
+                  "owner": "group:default/tiger"
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_2dHutvkyY85SFr8esbbDaavE",
+                "name": "get_relations",
+                "args": {
+                  "ref": "component:default/billing-api",
+                  "relation": "part-of"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "call_2dHutvkyY85SFr8esbbDaavE",
+            "name": "get_relations",
+            "result": {
+              "relation": "part-of",
+              "subject": {
+                "ref": "component:default/billing-api",
+                "kind": "Component",
+                "type": "service",
+                "env": "(undeclared)"
+              },
+              "rows": [
+                {
+                  "ref": "system:default/billing",
+                  "kind": "System",
+                  "type": "product",
+                  "depth": 1,
+                  "path": [
+                    {
+                      "ref": "component:default/billing-api",
+                      "kind": "Component",
+                      "type": "service",
+                      "env": "(undeclared)"
+                    },
+                    {
+                      "ref": "system:default/billing",
+                      "kind": "System",
+                      "type": "product"
+                    }
+                  ]
+                },
+                {
+                  "ref": "domain:default/finance",
+                  "kind": "Domain",
+                  "depth": 2,
+                  "path": [
+                    {
+                      "ref": "component:default/billing-api",
+                      "kind": "Component",
+                      "type": "service",
+                      "env": "(undeclared)"
+                    },
+                    {
+                      "ref": "system:default/billing",
+                      "kind": "System",
+                      "type": "product"
+                    },
+                    {
+                      "ref": "domain:default/finance",
+                      "kind": "Domain"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_oapASxPpHYXKAbDXN3BDWbP2",
+                "name": "answer",
+                "args": {
+                  "outcome": "relation",
+                  "ref": "component:default/billing-api",
+                  "relation": "part-of",
+                  "intro": "billing-api pertenece al sistema indicado a continuación."
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "call_oapASxPpHYXKAbDXN3BDWbP2",
+            "toolName": "answer",
+            "input": {
+              "outcome": "relation",
+              "ref": "component:default/billing-api",
+              "relation": "part-of",
+              "intro": "billing-api pertenece al sistema indicado a continuación."
+            },
+            "providerMetadata": {
+              "openai": {
+                "itemId": "fc_03839f11d52f8920016abb7577a05887d288517a59e3a44e99"
+              }
+            }
+          }
+        ],
+        "finishReason": "tool-calls",
+        "usage": {
+          "inputTokens": 2788,
+          "outputTokens": 44,
+          "totalTokens": 2832
+        }
+      }
+    },
+    {
+      "agent": "supervisor",
+      "turn": 0,
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "digest": "sha256:ee5322f934a2221c143d84fadd0a7e52148940e28684b51189c32f00e5c96bcd",
+      "recordedAt": "2026-09-29T08:23:14.000Z",
+      "call": {
+        "system": "You classify a request about an infrastructure catalogue.\n\nAnswer with exactly one word:\n  QUESTION  the request asks about what exists\n  MUTATION  the request asks for something to change\n\nNo explanation, no punctuation, no other word.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "request: which system is billing-api in?\n\nsi:\n  entities: 1-9\n  components: 1-9\n  resources: 1-9\n  organisation: groups 1-9, users 1-9, systems 1-9, domains 1-9\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: database, database-access, service, website\n  environments: prod\n  owners: group:default/lion, group:default/tiger, user:default/ada"
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "reasoning",
+            "text": "",
+            "providerMetadata": {
+              "openai": {
+                "itemId": "rs_0c4b38a0f1535d9c016abb757366a487d2a6238fa3823d56d8",
+                "reasoningEncryptedContent": "gAAAAABqu3Vz_4RPEcbDOZrIm8W67sLYOzZF_WcuS210xP7HhGY1_Cku-OtyR9W9ppFa5u9NJopmNrFjAWSnBZaNi7GoYCIUWZg6-9ZZ0KQAtUwnQhtyoJK8sSsIOuQW0Tsp26n6O2mxApJPn1gwrZJdFxQWJt1afRZO-BYIk3DhOmaeQ3dLJOibc8YPc9OIDO2SJPkXxloOscelIkn_g04fdVx6YloupGbSqyE4kDlPReJdKwZFX6eLAQk4ba-FwT8RmI-sBgGvRA4B0GcuFDcuztfP-KGRRqnj4GYX4M8KREtTV-GUnu9vS6w4SIbUJIonPngSKLNckIJutyf2mkJKv5KhfGeVRUgAuwC9MpuYdJvwTIYWNxuewLcnKlEcvIGZ03xZ-ZY1CVFO7iRCJs_KJ8Wq6f3p2i7GehVtaAxQNkm1X2YA3gs3eRKrhVaXzOaY_o_hCnVLgP5hCmeh-sjl4xuZvQCF1TWZOBKVnKxDNuzyYxdbCEkylnwY_dIwhDWRtL0iv2-a4gHebz1NQppdRGJ8RYa-XtR67EsiOZXzE6V2s3yZYYLgkSDbPrD66wIDzD65Ivo0AECR2ICibeHdbXr7-fXLAiVRaKtPLChpOM5z1KgKHNzccAV9a_ULqiUABK5lMS8qKQcg2YGmu-7G0DIz6rz1jqrFpck9WIa59NOmfa9qGI1FKMhZtuX8C284pbIcSM9a6dZDUkIwQHfZQn6c-as_cFc2KKeqzgK2Z02zfR-QDiaOn2OkUI8NHbmH9KY-l1QFoWt1ZEUMByjLNuYmqSzixr-xN-gP_U0mpiusdDxiTSzTp6UOtOuzZGKMemX0XDTJe7IPedup9OlB_WnGRL8L_Y775Dabb66bdH52tz46V21_PpQSYU9is7WAT5fEPJTDKzsSlq4l_hxoAfuceo3QpSQRe7AogaG_kORoiKTx2Ami3pHD1M_FYk9-O1Z2aWLgfCJBo3hHnLzpk6iazwesDHBVtueHwinounTlhEVGD26jeAtvJG9jg0DRT07e-D0qyO82KDxpU11zaeUwT0oP-2XePwfK_BFXrN8IzYXQJ18O8zBl7sSMAAGtKDjRwPr4xgeEnbNYFws2XXADPV77ICcQL4NWZJH_DlZsjU0QrOuat3bype7lRcSc0RlRv-sOcdzNqcYF1Ef8UpflNVHVfDWPhwr8G5_VSagTAVBtDap1ZfDwOlmRJ7g9Wau047rJLWIgv3JRH6CuXNQohDm3qw1hTsTGG8ATCAIouvly-tU="
+              }
+            }
+          },
+          {
+            "type": "text",
+            "text": "QUESTION",
+            "providerMetadata": {
+              "openai": {
+                "itemId": "msg_0c4b38a0f1535d9c016abb75738bb887d287d7fd8279088405",
+                "phase": "final_answer"
+              }
+            }
+          }
+        ],
+        "finishReason": "stop",
+        "usage": {
+          "inputTokens": 173,
+          "outputTokens": 22,
+          "totalTokens": 195
+        }
+      }
+    }
+  ]
+}

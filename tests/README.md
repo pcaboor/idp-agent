@@ -11,8 +11,8 @@ one stale, and what to do when your change does.
 | `architecture/` | the import rules of `AGENTS.md`, and checks that they cannot pass on an empty tree |
 | `invariants/` | properties over generated input (`fast-check`) |
 | `golden/` | small catalogues the unit tests read, each built for one case |
-| `scenarios/` | the whole chain against a recorded model: `plan-mode.test.ts` and `question-mode.test.ts` |
-| `recordings/` | the tapes those two replay, one JSON file per scenario |
+| `scenarios/` | the whole chain against a recorded model: `plan-mode.test.ts`, `question-mode.test.ts`, and `backstage-mode.test.ts`, questions over the fake Backstage |
+| `recordings/` | the tapes those three replay, one JSON file per scenario |
 | `setup/` | what runs before every test file, below |
 | `support/` | helpers shared by tests; `fake-backstage.ts`, the fake catalogue as an injected `fetch`, below |
 
@@ -70,9 +70,10 @@ loops, the tools, the gates, the renderers all run for real.
 - **A turn whose request changed warns** — `the prompt changed since recording; replaying
   anyway` — and replays the old answer. That answer was given to a request the code no
   longer sends. `scenarios/plan-mode.test.ts` turns the warning into a failure, naming the
-  scenario: `the recording is stale — re-record it`. `scenarios/question-mode.test.ts` does
-  not yet, and its tapes are stale today ([`docs/roadmap.md`](../docs/roadmap.md), "Recordings
-  that need the owner's key").
+  scenario: `the recording is stale — re-record it`, and so does
+  `scenarios/backstage-mode.test.ts`. `scenarios/question-mode.test.ts` does not yet, and
+  its tapes are stale today ([`docs/roadmap.md`](../docs/roadmap.md), "Recordings that need
+  the owner's key").
 
 ### What makes a tape stale
 

@@ -1,0 +1,672 @@
+{
+  "version": 1,
+  "scenario": "question-organisation-owns",
+  "turns": [
+    {
+      "agent": "analyst",
+      "turn": 0,
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "digest": "sha256:9d3da125613b33ec657bc0daac9175235eb10483761e1aff103f14b025c59bdf",
+      "recordedAt": "2026-09-29T08:22:32.000Z",
+      "call": {
+        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\nA reference marked \"declared\": false is written in the catalogue and names no entity:\nsay so, and never treat it as the entity that shares its name.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  relation      with \"ref\" and \"relation\", when asked how an entity is related:\n                what it consumes or reaches (\"consumes\"), who consumes or uses\n                it (\"consumed-by\"), what it depends on (\"depends-on\"), what\n                breaks or is affected if it fails (\"impacts\"), the APIs it\n                provides or who provides one (\"provides\", \"provided-by\"), or\n                how two entities are related (\"between\", the other one as\n                \"to\": the paths where one depends on the other, else what both\n                reach). The engine computes every path and writes it; \"ref\"\n                and \"to\" must be references a tool returned. get_relations\n                shows you those paths; read them before you conclude on them.\n                Over the organisation — Groups (teams), Users (people),\n                Systems and Domains, found with search_entities and read\n                with get_entity — \"relation\" also answers what a team or a\n                person owns (\"owns\"), who owns something and the teams above\n                (\"owned-by\"), a person's or a team's groups (\"member-of\"),\n                who is in a team (\"has-member\"), which system and domain\n                something is in (\"part-of\"), and what a system or a domain\n                holds (\"has-part\").\n  nothing       when no entity matches\n  overview      when asked to describe, summarise or give an overview of the\n                catalogue, SI, repository or project as a whole. The engine\n                writes the description; call it straight away, and never answer\n                \"unanswerable\" for such a request\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nWith \"entities\", \"relation\", \"nothing\" or \"overview\" you may add \"intro\", one\nshort sentence introducing the answer, and \"conclusion\", at most three short\nsentences on what the result means for the question. Write both in the\nlanguage of the question. Say only what the tool results state; where they do\nnot say, say it is not declared rather than guess. Do not restate the list or its figures: the engine\nprints them. Name only entities a tool returned in this conversation: the\nengine deletes any sentence that names anything else, an identifier nobody\nreturned included. Both are optional: omit them rather than pad.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "question: what does team tiger own?\n\nsi:\n  entities: 1-9\n  components: 1-9\n  resources: 1-9\n  organisation: groups 1-9, users 1-9, systems 1-9, domains 1-9\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: database, database-access, service, website\n  environments: prod\n  owners: group:default/lion, group:default/tiger, user:default/ada\n"
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_pe5mYg4KTRnOrV6CbDK6ABwY",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Group",
+                  "nameContains": "tiger"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "call_pe5mYg4KTRnOrV6CbDK6ABwY",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "group:default/tiger",
+                  "name": "tiger",
+                  "kind": "Group",
+                  "type": "team",
+                  "parent": [
+                    "group:default/engineering"
+                  ],
+                  "children": [],
+                  "members": [
+                    "user:default/ada"
+                  ],
+                  "owns": [
+                    "component:default/billing-api",
+                    "resource:default/billing-api-billing-db-prod",
+                    "resource:default/billing-db-prod",
+                    "system:default/billing"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_88pIsrhB312pjcilGHr4BFPt",
+                "name": "get_relations",
+                "args": {
+                  "ref": "group:default/tiger",
+                  "relation": "owns"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "call_88pIsrhB312pjcilGHr4BFPt",
+            "name": "get_relations",
+            "result": {
+              "relation": "owns",
+              "subject": {
+                "ref": "group:default/tiger",
+                "kind": "Group",
+                "type": "team"
+              },
+              "rows": [
+                {
+                  "ref": "component:default/billing-api",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "(undeclared)",
+                  "depth": 1,
+                  "path": [
+                    {
+                      "ref": "group:default/tiger",
+                      "kind": "Group",
+                      "type": "team"
+                    },
+                    {
+                      "ref": "component:default/billing-api",
+                      "kind": "Component",
+                      "type": "service",
+                      "env": "(undeclared)"
+                    }
+                  ]
+                },
+                {
+                  "ref": "resource:default/billing-api-billing-db-prod",
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "access": "read",
+                  "depth": 1,
+                  "path": [
+                    {
+                      "ref": "group:default/tiger",
+                      "kind": "Group",
+                      "type": "team"
+                    },
+                    {
+                      "ref": "resource:default/billing-api-billing-db-prod",
+                      "kind": "Resource",
+                      "type": "database-access",
+                      "env": "prod",
+                      "right": true,
+                      "access": "read"
+                    }
+                  ]
+                },
+                {
+                  "ref": "resource:default/billing-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "depth": 1,
+                  "path": [
+                    {
+                      "ref": "group:default/tiger",
+                      "kind": "Group",
+                      "type": "team"
+                    },
+                    {
+                      "ref": "resource:default/billing-db-prod",
+                      "kind": "Resource",
+                      "type": "database",
+                      "env": "prod"
+                    }
+                  ]
+                },
+                {
+                  "ref": "system:default/billing",
+                  "kind": "System",
+                  "type": "product",
+                  "depth": 1,
+                  "path": [
+                    {
+                      "ref": "group:default/tiger",
+                      "kind": "Group",
+                      "type": "team"
+                    },
+                    {
+                      "ref": "system:default/billing",
+                      "kind": "System",
+                      "type": "product"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_tynjEcudYCfk5hthXi2XAxNu",
+                "name": "answer",
+                "args": {
+                  "outcome": "relation",
+                  "ref": "group:default/tiger",
+                  "relation": "owns",
+                  "intro": "Team tiger owns the entities listed below."
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "call_pe5mYg4KTRnOrV6CbDK6ABwY",
+            "toolName": "search_entities",
+            "input": {
+              "kind": "Group",
+              "nameContains": "tiger"
+            },
+            "providerMetadata": {
+              "openai": {
+                "itemId": "fc_0dd3febb380a6156016abb7549d8f087d2a01647117d4f4ac1"
+              }
+            }
+          }
+        ],
+        "finishReason": "tool-calls",
+        "usage": {
+          "inputTokens": 2495,
+          "outputTokens": 24,
+          "totalTokens": 2519
+        }
+      }
+    },
+    {
+      "agent": "analyst",
+      "turn": 1,
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "digest": "sha256:b9f8fe52d2ce67fb53e04e3f3aab22ac66887087b536aed97dbbb3db9531b555",
+      "recordedAt": "2026-09-29T08:22:34.000Z",
+      "call": {
+        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\nA reference marked \"declared\": false is written in the catalogue and names no entity:\nsay so, and never treat it as the entity that shares its name.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  relation      with \"ref\" and \"relation\", when asked how an entity is related:\n                what it consumes or reaches (\"consumes\"), who consumes or uses\n                it (\"consumed-by\"), what it depends on (\"depends-on\"), what\n                breaks or is affected if it fails (\"impacts\"), the APIs it\n                provides or who provides one (\"provides\", \"provided-by\"), or\n                how two entities are related (\"between\", the other one as\n                \"to\": the paths where one depends on the other, else what both\n                reach). The engine computes every path and writes it; \"ref\"\n                and \"to\" must be references a tool returned. get_relations\n                shows you those paths; read them before you conclude on them.\n                Over the organisation — Groups (teams), Users (people),\n                Systems and Domains, found with search_entities and read\n                with get_entity — \"relation\" also answers what a team or a\n                person owns (\"owns\"), who owns something and the teams above\n                (\"owned-by\"), a person's or a team's groups (\"member-of\"),\n                who is in a team (\"has-member\"), which system and domain\n                something is in (\"part-of\"), and what a system or a domain\n                holds (\"has-part\").\n  nothing       when no entity matches\n  overview      when asked to describe, summarise or give an overview of the\n                catalogue, SI, repository or project as a whole. The engine\n                writes the description; call it straight away, and never answer\n                \"unanswerable\" for such a request\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nWith \"entities\", \"relation\", \"nothing\" or \"overview\" you may add \"intro\", one\nshort sentence introducing the answer, and \"conclusion\", at most three short\nsentences on what the result means for the question. Write both in the\nlanguage of the question. Say only what the tool results state; where they do\nnot say, say it is not declared rather than guess. Do not restate the list or its figures: the engine\nprints them. Name only entities a tool returned in this conversation: the\nengine deletes any sentence that names anything else, an identifier nobody\nreturned included. Both are optional: omit them rather than pad.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "question: what does team tiger own?\n\nsi:\n  entities: 1-9\n  components: 1-9\n  resources: 1-9\n  organisation: groups 1-9, users 1-9, systems 1-9, domains 1-9\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: database, database-access, service, website\n  environments: prod\n  owners: group:default/lion, group:default/tiger, user:default/ada\n"
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_pe5mYg4KTRnOrV6CbDK6ABwY",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Group",
+                  "nameContains": "tiger"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "call_pe5mYg4KTRnOrV6CbDK6ABwY",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "group:default/tiger",
+                  "name": "tiger",
+                  "kind": "Group",
+                  "type": "team",
+                  "parent": [
+                    "group:default/engineering"
+                  ],
+                  "children": [],
+                  "members": [
+                    "user:default/ada"
+                  ],
+                  "owns": [
+                    "component:default/billing-api",
+                    "resource:default/billing-api-billing-db-prod",
+                    "resource:default/billing-db-prod",
+                    "system:default/billing"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_88pIsrhB312pjcilGHr4BFPt",
+                "name": "get_relations",
+                "args": {
+                  "ref": "group:default/tiger",
+                  "relation": "owns"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "call_88pIsrhB312pjcilGHr4BFPt",
+            "name": "get_relations",
+            "result": {
+              "relation": "owns",
+              "subject": {
+                "ref": "group:default/tiger",
+                "kind": "Group",
+                "type": "team"
+              },
+              "rows": [
+                {
+                  "ref": "component:default/billing-api",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "(undeclared)",
+                  "depth": 1,
+                  "path": [
+                    {
+                      "ref": "group:default/tiger",
+                      "kind": "Group",
+                      "type": "team"
+                    },
+                    {
+                      "ref": "component:default/billing-api",
+                      "kind": "Component",
+                      "type": "service",
+                      "env": "(undeclared)"
+                    }
+                  ]
+                },
+                {
+                  "ref": "resource:default/billing-api-billing-db-prod",
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "access": "read",
+                  "depth": 1,
+                  "path": [
+                    {
+                      "ref": "group:default/tiger",
+                      "kind": "Group",
+                      "type": "team"
+                    },
+                    {
+                      "ref": "resource:default/billing-api-billing-db-prod",
+                      "kind": "Resource",
+                      "type": "database-access",
+                      "env": "prod",
+                      "right": true,
+                      "access": "read"
+                    }
+                  ]
+                },
+                {
+                  "ref": "resource:default/billing-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "depth": 1,
+                  "path": [
+                    {
+                      "ref": "group:default/tiger",
+                      "kind": "Group",
+                      "type": "team"
+                    },
+                    {
+                      "ref": "resource:default/billing-db-prod",
+                      "kind": "Resource",
+                      "type": "database",
+                      "env": "prod"
+                    }
+                  ]
+                },
+                {
+                  "ref": "system:default/billing",
+                  "kind": "System",
+                  "type": "product",
+                  "depth": 1,
+                  "path": [
+                    {
+                      "ref": "group:default/tiger",
+                      "kind": "Group",
+                      "type": "team"
+                    },
+                    {
+                      "ref": "system:default/billing",
+                      "kind": "System",
+                      "type": "product"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_tynjEcudYCfk5hthXi2XAxNu",
+                "name": "answer",
+                "args": {
+                  "outcome": "relation",
+                  "ref": "group:default/tiger",
+                  "relation": "owns",
+                  "intro": "Team tiger owns the entities listed below."
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "call_88pIsrhB312pjcilGHr4BFPt",
+            "toolName": "get_relations",
+            "input": {
+              "ref": "group:default/tiger",
+              "relation": "owns"
+            },
+            "providerMetadata": {
+              "openai": {
+                "itemId": "fc_086e30f67c38ea73016abb754b67f887d28314bb93a6cf7ed6"
+              }
+            }
+          }
+        ],
+        "finishReason": "tool-calls",
+        "usage": {
+          "inputTokens": 2612,
+          "outputTokens": 27,
+          "totalTokens": 2639
+        }
+      }
+    },
+    {
+      "agent": "analyst",
+      "turn": 2,
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "digest": "sha256:fb8ef9429821f541eff953acda3d797cb6cd82f89fa097f0b15b8e740b4710a5",
+      "recordedAt": "2026-09-29T08:22:36.000Z",
+      "call": {
+        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\nA reference marked \"declared\": false is written in the catalogue and names no entity:\nsay so, and never treat it as the entity that shares its name.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  relation      with \"ref\" and \"relation\", when asked how an entity is related:\n                what it consumes or reaches (\"consumes\"), who consumes or uses\n                it (\"consumed-by\"), what it depends on (\"depends-on\"), what\n                breaks or is affected if it fails (\"impacts\"), the APIs it\n                provides or who provides one (\"provides\", \"provided-by\"), or\n                how two entities are related (\"between\", the other one as\n                \"to\": the paths where one depends on the other, else what both\n                reach). The engine computes every path and writes it; \"ref\"\n                and \"to\" must be references a tool returned. get_relations\n                shows you those paths; read them before you conclude on them.\n                Over the organisation — Groups (teams), Users (people),\n                Systems and Domains, found with search_entities and read\n                with get_entity — \"relation\" also answers what a team or a\n                person owns (\"owns\"), who owns something and the teams above\n                (\"owned-by\"), a person's or a team's groups (\"member-of\"),\n                who is in a team (\"has-member\"), which system and domain\n                something is in (\"part-of\"), and what a system or a domain\n                holds (\"has-part\").\n  nothing       when no entity matches\n  overview      when asked to describe, summarise or give an overview of the\n                catalogue, SI, repository or project as a whole. The engine\n                writes the description; call it straight away, and never answer\n                \"unanswerable\" for such a request\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nWith \"entities\", \"relation\", \"nothing\" or \"overview\" you may add \"intro\", one\nshort sentence introducing the answer, and \"conclusion\", at most three short\nsentences on what the result means for the question. Write both in the\nlanguage of the question. Say only what the tool results state; where they do\nnot say, say it is not declared rather than guess. Do not restate the list or its figures: the engine\nprints them. Name only entities a tool returned in this conversation: the\nengine deletes any sentence that names anything else, an identifier nobody\nreturned included. Both are optional: omit them rather than pad.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "question: what does team tiger own?\n\nsi:\n  entities: 1-9\n  components: 1-9\n  resources: 1-9\n  organisation: groups 1-9, users 1-9, systems 1-9, domains 1-9\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: database, database-access, service, website\n  environments: prod\n  owners: group:default/lion, group:default/tiger, user:default/ada\n"
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_pe5mYg4KTRnOrV6CbDK6ABwY",
+                "name": "search_entities",
+                "args": {
+                  "kind": "Group",
+                  "nameContains": "tiger"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "call_pe5mYg4KTRnOrV6CbDK6ABwY",
+            "name": "search_entities",
+            "result": {
+              "rows": [
+                {
+                  "ref": "group:default/tiger",
+                  "name": "tiger",
+                  "kind": "Group",
+                  "type": "team",
+                  "parent": [
+                    "group:default/engineering"
+                  ],
+                  "children": [],
+                  "members": [
+                    "user:default/ada"
+                  ],
+                  "owns": [
+                    "component:default/billing-api",
+                    "resource:default/billing-api-billing-db-prod",
+                    "resource:default/billing-db-prod",
+                    "system:default/billing"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_88pIsrhB312pjcilGHr4BFPt",
+                "name": "get_relations",
+                "args": {
+                  "ref": "group:default/tiger",
+                  "relation": "owns"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "id": "call_88pIsrhB312pjcilGHr4BFPt",
+            "name": "get_relations",
+            "result": {
+              "relation": "owns",
+              "subject": {
+                "ref": "group:default/tiger",
+                "kind": "Group",
+                "type": "team"
+              },
+              "rows": [
+                {
+                  "ref": "component:default/billing-api",
+                  "kind": "Component",
+                  "type": "service",
+                  "env": "(undeclared)",
+                  "depth": 1,
+                  "path": [
+                    {
+                      "ref": "group:default/tiger",
+                      "kind": "Group",
+                      "type": "team"
+                    },
+                    {
+                      "ref": "component:default/billing-api",
+                      "kind": "Component",
+                      "type": "service",
+                      "env": "(undeclared)"
+                    }
+                  ]
+                },
+                {
+                  "ref": "resource:default/billing-api-billing-db-prod",
+                  "kind": "Resource",
+                  "type": "database-access",
+                  "env": "prod",
+                  "access": "read",
+                  "depth": 1,
+                  "path": [
+                    {
+                      "ref": "group:default/tiger",
+                      "kind": "Group",
+                      "type": "team"
+                    },
+                    {
+                      "ref": "resource:default/billing-api-billing-db-prod",
+                      "kind": "Resource",
+                      "type": "database-access",
+                      "env": "prod",
+                      "right": true,
+                      "access": "read"
+                    }
+                  ]
+                },
+                {
+                  "ref": "resource:default/billing-db-prod",
+                  "kind": "Resource",
+                  "type": "database",
+                  "env": "prod",
+                  "depth": 1,
+                  "path": [
+                    {
+                      "ref": "group:default/tiger",
+                      "kind": "Group",
+                      "type": "team"
+                    },
+                    {
+                      "ref": "resource:default/billing-db-prod",
+                      "kind": "Resource",
+                      "type": "database",
+                      "env": "prod"
+                    }
+                  ]
+                },
+                {
+                  "ref": "system:default/billing",
+                  "kind": "System",
+                  "type": "product",
+                  "depth": 1,
+                  "path": [
+                    {
+                      "ref": "group:default/tiger",
+                      "kind": "Group",
+                      "type": "team"
+                    },
+                    {
+                      "ref": "system:default/billing",
+                      "kind": "System",
+                      "type": "product"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "role": "assistant",
+            "text": "",
+            "toolCalls": [
+              {
+                "id": "call_tynjEcudYCfk5hthXi2XAxNu",
+                "name": "answer",
+                "args": {
+                  "outcome": "relation",
+                  "ref": "group:default/tiger",
+                  "relation": "owns",
+                  "intro": "Team tiger owns the entities listed below."
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "tool-call",
+            "toolCallId": "call_tynjEcudYCfk5hthXi2XAxNu",
+            "toolName": "answer",
+            "input": {
+              "outcome": "relation",
+              "ref": "group:default/tiger",
+              "relation": "owns",
+              "intro": "Team tiger owns the entities listed below."
+            },
+            "providerMetadata": {
+              "openai": {
+                "itemId": "fc_0af31da110d1e17f016abb754c8dfc87d2a75055ed83295557"
+              }
+            }
+          }
+        ],
+        "finishReason": "tool-calls",
+        "usage": {
+          "inputTokens": 2966,
+          "outputTokens": 41,
+          "totalTokens": 3007
+        }
+      }
+    },
+    {
+      "agent": "supervisor",
+      "turn": 0,
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "digest": "sha256:9de5253e44db43e62dd0b6b53248fef06109302a98e265b27267a1703a335fcd",
+      "recordedAt": "2026-09-29T08:22:31.000Z",
+      "call": {
+        "system": "You classify a request about an infrastructure catalogue.\n\nAnswer with exactly one word:\n  QUESTION  the request asks about what exists\n  MUTATION  the request asks for something to change\n\nNo explanation, no punctuation, no other word.",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "request: what does team tiger own?\n\nsi:\n  entities: 1-9\n  components: 1-9\n  resources: 1-9\n  organisation: groups 1-9, users 1-9, systems 1-9, domains 1-9\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: database, database-access, service, website\n  environments: prod\n  owners: group:default/lion, group:default/tiger, user:default/ada"
+          }
+        ]
+      },
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "QUESTION",
+            "providerMetadata": {
+              "openai": {
+                "itemId": "msg_019eff90c188d16a016abb7548871887d287ec832dbda29081",
+                "phase": "final_answer"
+              }
+            }
+          }
+        ],
+        "finishReason": "stop",
+        "usage": {
+          "inputTokens": 172,
+          "outputTokens": 5,
+          "totalTokens": 177
+        }
+      }
+    }
+  ]
+}

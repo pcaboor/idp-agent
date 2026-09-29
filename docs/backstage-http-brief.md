@@ -789,8 +789,10 @@ to what the fake serves for the same files; and it is checked against the envelo
 reads, not against a copy of catalog-backend's `openapi.yaml`, a second schema nothing here
 reads. The page showed one difference the fake does not reproduce: Backstage stitches the
 inverse of every relation onto its target, so an entity is served relations its own file
-never declares, which the pre-pass drops. The `question-backstage-owner` tape is what is left
-of slice 1: it needs the owner's key, and the owner (`docs/roadmap.md`).
+never declares, which the pre-pass drops. The `question-backstage-owner` tape, the last of
+slice 1, was recorded by the owner on 2026-09-29 with slice 3's two
+(`tests/scenarios/backstage-mode.test.ts`,
+[#103](https://github.com/pcaboor/idp-agent/pull/103)): **slice 1 is closed**.
 
 1. **`readValue` in core.** Extract the per-value loop from `parseDocuments`, with no change in
    behaviour, and add the golden equivalence of the YAML road before and after.
@@ -863,9 +865,11 @@ with witnessed Group and System nodes. Three pull requests, not two (the owner's
 [#101](https://github.com/pcaboor/idp-agent/pull/101), the plan
 [`docs/plans/backstage-http-slice-3.md`](plans/backstage-http-slice-3.md)): the two questions
 are answered with the Group and the System witnessed, on scripted clients; the slice is
-**closed by 3.3** once the owner's step R records its three tapes
+**closed by 3.3** and the owner's step R, which recorded its three tapes on 2026-09-29
 (`question-backstage-owner` of slice 1, `question-organisation-owns`,
-`question-organisation-system`) with the scenario that replays them. With these departures,
+`question-organisation-system`) with the scenario that replays them,
+`tests/scenarios/backstage-mode.test.ts`
+([#103](https://github.com/pcaboor/idp-agent/pull/103)). With these departures,
 each for what the code or Backstage's source showed. Three pull requests, not two. The
 organisation is read for the fields the read model reads (`ORGANISATION_FIELDS`), a third
 read sent only when the facets name one of the four kinds, never the kinds whole as refs. An

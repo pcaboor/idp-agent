@@ -37,8 +37,10 @@ against a fake and demonstrated against a real Backstage 1.55.2 in Docker, `tool
 Domains read, walked with `idpa relations` and asked about in plain words (`backstage-http`
 slice 3, [#99](https://github.com/pcaboor/idp-agent/pull/99),
 [#100](https://github.com/pcaboor/idp-agent/pull/100) and
-[#101](https://github.com/pcaboor/idp-agent/pull/101); its keyed recordings wait for the
-owner, below).
+[#101](https://github.com/pcaboor/idp-agent/pull/101)). Slices 1 and 3 are closed: their
+three keyed recordings, a question answered from a catalogue and the two organisation
+questions, were recorded by the owner on 2026-09-29 and replay with no key
+([#103](https://github.com/pcaboor/idp-agent/pull/103)).
 
 ## The queue
 
@@ -294,8 +296,10 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
 
 **Recordings that need the owner's key**
 
-- **The question-mode recordings are stale.** `tests/recordings/question-*.json` warn "the
-  prompt changed since recording" on the Analyst's turns. So does `mutation-classified-link.json`
+- **The question-mode recordings are stale.** `tests/scenarios/question-mode.test.ts`'s
+  question tapes (`question-prod-databases.json`, `question-consumers-of-billing-db.json`,
+  `question-unanswerable-ranking.json`) warn "the prompt changed since recording" on the
+  Analyst's turns. So does `mutation-classified-link.json`
   on the Supervisor's, for another reason: `tests/scenarios/question-mode.test.ts` asks it
   "give billing-api read access to orders-db in prod", and the tape was recorded on "give
   billing-api access to orders-db in prod" — that one needs no key, only the scenario's
@@ -305,20 +309,6 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
   and answer tool ([#55](https://github.com/pcaboor/idp-agent/pull/55) says so). They still
   replay and pass. A re-record needs the owner's key, and #54 suggests recording a
   `question-overview` scenario at the same time.
-- **No tape answers a question from a catalogue.** `question-backstage-owner`, a question
-  answered from the fake Backstage, waits for a recording with the owner's key; until then a
-  question read from a catalogue is tested on a scripted client (`MainDeps.client`). It is
-  all that is left of `backstage-http` slice 1, whose demo against a real Backstage in Docker
-  and contract fixture closed the queue's former first item
-  ([#98](https://github.com/pcaboor/idp-agent/pull/98)); it needs the owner's key, and
-  the owner present. `backstage-http` slice 3 adds two beside it,
-  `question-organisation-owns` ("what does team tiger own?") and
-  `question-organisation-system` ("which system is billing-api in?"), over the fake serving
-  `tests/golden/organisation`: the three are the plan's owner step R
-  ([the plan](plans/backstage-http-slice-3.md#owner-step-r-the-keyed-recordings-owner-present-after-33-merges)),
-  one pull request with `tests/scenarios/backstage-mode.test.ts`, since a scenario cannot
-  merge before its tape. Until then 3.3 is tested on scripted clients
-  (`tests/unit/organisation-analyst.test.ts`, [#101](https://github.com/pcaboor/idp-agent/pull/101)).
 - **Commentary on plans is not built** (ADR-0008, "Consequences"). It changes what plan mode
   sends, and `tests/scenarios/plan-mode.test.ts` fails on a stale plan-mode recording, so it
   waits for a re-record with a key.
@@ -329,7 +319,7 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
   `src/agents/repair.ts` still tells the Reviewer that update "would be written to the
   repository". The recorded `link-already-declared` scenario is exactly that update, so
   saying "changes nothing" stales its Reviewer turn; it waits for a re-record.
-- **No Anthropic recording exists.** The nine recordings are OpenAI's and Mistral's; the
+- **No Anthropic recording exists.** The twelve recordings are OpenAI's and Mistral's; the
   provider contract test checks Anthropic's request shape, not a live run.
 - **The Architect is told the user's answers only when a refusal is at them.** Listing them
   on every repair report would let it converge sooner, but changes what it is sent after an

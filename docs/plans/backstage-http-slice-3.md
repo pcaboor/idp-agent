@@ -1436,6 +1436,13 @@ pnpm vitest run tests/unit/organisation-analyst.test.ts tests/scenarios
 
 ### Owner step R: the keyed recordings (owner present, after 3.3 merges)
 
+- [x] **Recorded by the owner on 2026-09-29**
+  ([#103](https://github.com/pcaboor/idp-agent/pull/103)). The scenario file follows the
+  sketch below on the real helpers: `run` asserts, before anything else, that no turn was
+  missing and none replayed under a changed prompt, that the catalogue was read, that the
+  trace agrees with the stream, and that no request on the tape holds an `@`; each test holds
+  the refs it names to a line the engine wrote, not a `› ` line the model did.
+
 A new scenario cannot merge before its tape: a turn the tape does not hold is fatal
 (`src/llm/recording.ts:65-71`), and a skipped scenario would be a green test that replayed
 nothing. So the scenario file and its three tapes land together, in one pull request made
