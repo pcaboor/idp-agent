@@ -329,8 +329,8 @@ stderr, naming the folder and what named it, as it is today (D19).
 | The same bytes were already submitted, on the same base: the existing branch is named, nothing written | 0 |
 | Nothing to change, every operation already declared (#83): no branch, no commit, the stage-4 sentence | 0 |
 | Declined at the prompt: `not submitted · nothing written` | 0 |
-| Refused at a gate, a partial plan, a plan writing into both repositories (D6), the base moved, working tree ≠ `HEAD`, the branch exists with other content or on another parent (D7), git failed | 1 |
-| The resolved root is not a git working tree or not its root, `HEAD` is detached or unborn, no `git` on `PATH`, no committer identity (D13), `--submit` with `--demo` or with no repository resolved, `idpa "<phrase>" --submit` (D8), `init --submit` in a subfolder of a repository (D12) | 2 |
+| Refused at a gate, a partial plan, a plan writing into both repositories (D6), the base moved, working tree ≠ `HEAD`, the branch exists with other content, under another message or on another parent (D7), git failed | 1 |
+| The resolved root is not a git working tree or not its root, `HEAD` is detached or unborn, no `git` on `PATH`, no author or committer identity (D13), `--submit` with `--demo` or with no repository resolved, `idpa "<phrase>" --submit` (D8), `init --submit` in a subfolder of a repository (D12) | 2 |
 | Questions left and nobody to ask; a plan that changes nothing and nothing says it is satisfied (#83) | 3 — nothing submitted |
 
 Every submitted run still ends on §7.4's line, and a local run says what it did not do:
@@ -2734,6 +2734,34 @@ clearance and submission. Stated, not closed, beside gap-stage5-readiness-6's
 error. Closing it means the clearance holding those files' bytes, which is a change to
 `ClearInput`, not to the forge.
 
+*Built on 2026-09-29 ([#108](https://github.com/pcaboor/idp-agent/pull/108)), after the
+owner validated this task and ADR 0010 (the base is `HEAD`; a working tree differing from it
+is a refusal naming the files; no hook or fsmonitor runs). Where the code differs from the
+text below, and why:* **the fixture** mints its `Cleared` through `runPlan`'s `clearance`
+seam — the one `clear-parity.test.ts` observes — rather than a hand-built `PolicyContext`,
+since `contextsOf` is not exported and a hand-built one is how the eee67d6 fixture drifted;
+**the atomicity property** fails *every* git call of a submission, counted on a clean run,
+before and after it runs, instead of 24 random draws over twelve mutating steps, which could
+leave a step untried and never failed a read; a second property creates a stranger's branch
+before each call; **`existing()`** also compares the modes, so our bytes made executable are
+not "already submitted"; **`writeTree`** also refuses a file written where the base has a
+folder; **`diverges()`** names a symbolic link as one. Tests the text below does not list were
+added for the objects, a missing `git`, an unborn `HEAD`, an uncommitted, an ignored and a
+never-read catalogue file, the race and the failure after `update-ref`, and the other
+direction of the role check. *The review of that build added, each test seen failing first:*
+**`existing()`** refuses a symbolic ref at the branch name, and the one `update-ref` is
+`--no-deref` — measured, a dangling symbolic ref there made the write create its target
+(`refs/heads/release`) and report `created`; a dangling one planted *between* the check and
+the write is replaced by the branch, since git's create-only test reads it as absent, which is
+stated in `forge.ts`, ADR 0010 and `SECURITY.md`. **`existing()`** also compares the commit
+message with the engine's (D18), so our tree under somebody else's words, or the same bytes
+requested in other words, is refused rather than `already-submitted`. **Opening** probes the
+author identity as well as the committer's: git configures them apart. **`Submitted.reason`**
+is documented as repository text for `cli/` to print through `inertLine`, which task 5
+already does. Tests now reach the guards that had none: a path read as absent that `HEAD`
+now holds, our tree as a merge whose first parent is the base, and `writeTree` writing a file
+where the base has a folder.
+
 **Files:**
 - Create: `src/forge/local/objects.ts`, `src/forge/local/forge.ts`
 - Create: `tests/support/forge-fixture.ts`, `tests/unit/local-forge.test.ts`, `tests/invariants/forge.test.ts`
@@ -2756,7 +2784,7 @@ empty old value means *create, and refuse if it exists*. Everything before it wr
 objects no ref reaches. That is the whole of the atomicity argument, and the property in
 this task checks it.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/support/forge-fixture.ts` is shared by both test files below. It holds a scaffolded
 declarations repository that has been committed, plus a `Cleared` minted the way the CLI
@@ -3226,12 +3254,12 @@ describe('§9.2 — application is atomic', () => {
 })
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `pnpm vitest run tests/unit/local-forge.test.ts tests/invariants/forge.test.ts`
 Expected: FAIL — `forge.js` not found.
 
-- [ ] **Step 3: Write the object layer**
+- [x] **Step 3: Write the object layer**
 
 `src/forge/local/objects.ts`:
 
@@ -3331,7 +3359,7 @@ export async function writeTree(
 }
 ```
 
-- [ ] **Step 4: Write the forge**
+- [x] **Step 4: Write the forge**
 
 `src/forge/local/forge.ts`:
 
@@ -3562,7 +3590,7 @@ export async function openLocalForge(
 }
 ```
 
-- [ ] **Step 5: Run the tests, then everything**
+- [x] **Step 5: Run the tests, then everything**
 
 Run: `pnpm vitest run tests/unit/local-forge.test.ts tests/invariants/forge.test.ts tests/architecture`
 Expected: PASS. `forge.ts` and `objects.ts` import only `core/`, `process/`, `node:crypto` and
@@ -3578,7 +3606,7 @@ targeted, and the full suite only with 2 GiB free on `/` (`pnpm test && pnpm typ
   safe direction.
 - An aborted submission leaves unreachable objects for `git gc`.
 
-- [ ] **Step 6: Correct what this makes false, in this commit**
+- [x] **Step 6: Correct what this makes false, in this commit**
 
 - `docs/design.md` §8: the row "Write interrupted | full rollback, initial state restored" →
   "Write interrupted | nothing to roll back: nothing a person can observe exists before
@@ -3608,7 +3636,7 @@ targeted, and the full suite only with 2 GiB free on `/` (`pnpm test && pnpm typ
   writers (`scaffold/write.ts`, `cli/recording-fs.ts`, `cli/trace-sink.ts`), and the forge,
   through git.
 
-- [ ] **Step 7: Traceability**
+- [x] **Step 7: Traceability**
 
 - `CHANGELOG.md`, Unreleased → Added: one line with the link.
 - `docs/roadmap.md`: stage 5's queue item says task 4 is on `main`; gap-stage5-readiness-8's
@@ -5241,13 +5269,13 @@ tracing), 0010 was reserved for the stage-5 check, and 0011 is `backstage-http`'
 
 **In task 4's pull request**
 
-- [ ] `docs/design.md` §8 (nothing to roll back), §9.2 ("initial state" is the observable
+- [x] `docs/design.md` §8 (nothing to roll back), §9.2 ("initial state" is the observable
   state; idempotence at two levels), §4.3 (gap-stage5-readiness-12: two amendments of one
   grant conflict at the merge).
-- [ ] `src/scaffold/write.ts:7`, `src/scaffold/README.md:17`, the `scaffold/` rule's comment in
+- [x] `src/scaffold/write.ts:7`, `src/scaffold/README.md:17`, the `scaffold/` rule's comment in
   `tests/architecture/dependencies.test.ts`: the seam stays, and a branch in an existing
   repository is `forge/local/`'s (ADR-0010) — contradiction 3.
-- [ ] `SECURITY.md`: *Writes nothing, except* (`:34`) gains the submission; the "check at the
+- [x] `SECURITY.md`: *Writes nothing, except* (`:34`) gains the submission; the "check at the
   moment of writing" item (`:218`) moves to *Guaranteed today* with its tests; the writers
   are named (contradiction 10); and, in *Guaranteed today*, each row naming its test:
   - a submission writes one new ref and moves none (`local-forge.test.ts`);
@@ -5263,7 +5291,7 @@ tracing), 0010 was reserved for the stage-5 check, and 0011 is `backstage-http`'
   - a symlinked catalogue file is refused at submission, though the preview still reads
     through it until B3 (`local-forge.test.ts`, D17);
   - only `process/git.ts` starts a process (architecture).
-- [ ] `AGENTS.md`: the writers.
+- [x] `AGENTS.md`: the writers.
 
 **In task 5's pull request**
 
@@ -5326,8 +5354,8 @@ tracing), 0010 was reserved for the stage-5 check, and 0011 is `backstage-http`'
   `local`, opened for one repository; it has no `merge` and no `delete` (ADR-0010)."
 - [ ] ADR-0006, Consequences: add "Stage 5's local forge makes the first half testable: a
   submission cannot move an existing ref, `main` included (ADR-0010)."
-- [ ] ADR 0010's status: the owner accepts it, and the pull request that does records the
-  date. ADR 0012 stays *proposed* until stage 6 builds its first mechanism.
+- [x] ADR 0010's status: the owner accepts it, and the pull request that does records the
+  date. *(Accepted on 2026-09-29, recorded in task 4's pull request.)* ADR 0012 stays *proposed* until stage 6 builds its first mechanism.
 - [ ] `SECURITY.md`: "stage 4 of 7" (`:6`) → "stage 5 of 7": it writes one new branch per
   submission, in the repository named, and no token until stage 6; "no secret reaches the
   model" and the Inspector's confinement stay where #78 put them.

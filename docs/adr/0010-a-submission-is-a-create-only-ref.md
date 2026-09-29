@@ -1,6 +1,15 @@
 # ADR-0010 — a submission is a create-only ref
 
-**Date** 2026-09-29 · **Status** proposed · **Builds on** ADR-0006, ADR-0011
+**Date** 2026-09-29 · **Status** accepted, 2026-09-29 · **Builds on** ADR-0006, ADR-0011
+
+*Accepted by the owner on 2026-09-29, after a presentation of this record and of stage 5's
+task 4, with three explicit choices, each already the decision below: the base is `HEAD`,
+the branch checked out, and a detached or unborn `HEAD` is refused; a catalogue file that
+differs from `HEAD` in the working tree — uncommitted, untracked or ignored — makes the
+submission a refusal for divergence, naming the files; and the repository's hooks and
+fsmonitor never run during a submission, which is documented for teams relying on
+`pre-commit` (`SECURITY.md`, *Not guaranteed, by design*). The local forge that implements it
+is `src/forge/local/`.*
 
 ## Context
 
@@ -38,16 +47,18 @@ The **base is `HEAD`**, and before writing the forge proves that `HEAD` holds ex
 the gates judged — at the read, and again at the moment of writing, with the base re-read. A
 file the gates read that is not in `HEAD`, differs from it or is a symbolic link there, and in
 the declarations repository any catalogue file of `HEAD` the gates never read, is refused. A
-branch that already exists is ours only when it is one commit, **on the base**, touching
-exactly our paths with our bytes; anything else is refused, never reported as submitted.
+branch that already exists is ours only when it is a branch — not a symbolic ref — of one
+commit, **on the base**, touching exactly our paths with our bytes and modes, under the
+message the engine wrote; anything else is refused, never reported as submitted. The one
+write never follows a symbolic ref (`update-ref --no-deref`).
 
 Every git call goes through the one launcher every process `src/` starts goes through: in
 `spawnedEnvironment()` — no provider key, no catalogue token (ADR-0011) — minus every `GIT_*`
 variable, hooks and fsmonitor disabled, started outside the repository with a bound on time
-and output. The committer identity comes from git's configuration, never from a guess — git
-runs with `user.useConfigOnly=true`, so with no `user.name`/`user.email` configured it
-refuses rather than making one up from the login and host names — and it is probed when the
-forge opens, before any model.
+and output. The author and committer identities come from git's configuration, never from a
+guess — git runs with `user.useConfigOnly=true`, so with no `user.name`/`user.email`
+configured it refuses rather than making one up from the login and host names — and both are
+probed when the forge opens, before any model.
 
 `plan --from … --submit` crosses four gates and no Reviewer; `plan "<intent>" --submit` crosses
 five. Either way the branch cannot reach the default branch, and the merge authorises
@@ -79,7 +90,9 @@ state — every ref, `HEAD`, the index, the working tree — is the initial stat
 branch, never part of it (§ 9.2, checked by injected failures). The repository's hooks never
 run, which a team relying on a `pre-commit` hook must know: the branch is reviewed in the merge
 request, not by the hook. Working-tree bytes that differ from `HEAD` only through
-`core.autocrlf` are refused as divergence. The preview still reads a file through a symbolic
+`core.autocrlf` are refused as divergence. A dangling symbolic ref planted at the branch name
+between the check and the write is replaced by the branch, because git's create-only test
+reads it as absent; nothing outside `refs/heads/idp-agent/` is written. The preview still reads a file through a symbolic
 link, which the submission refuses; one primitive for both (batch B3) comes after stage 5, and
 the writer does not need it, since it never writes the working tree. The Reviewer is not
 re-proved at submission: it is a model and cannot be re-run for free, and the merge still

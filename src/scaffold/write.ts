@@ -4,8 +4,10 @@ import { assertInsideRepo } from '../core/paths/entity-path.js'
 import type { ScaffoldFile } from './layout.js'
 
 /**
- * The only module in `scaffold/` that writes. Stage 5's atomic applier
- * replaces this seam, which is why it is one file and not five.
+ * The only module in `scaffold/` that writes. It stays the writer for a
+ * repository being created — `init platform` makes one, and a repository being
+ * created has no branch to write to; a branch in an existing one is
+ * `forge/local/`'s (ADR-0010).
  */
 
 export interface WriteReport {

@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3772 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3811 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -276,8 +276,8 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 | `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |
 | `agents/` | the five agents, the bounded turn, the repair loop, the tool registries — reaches no disk, transitively |
 | `trace/` | the trace of one run: `createTraceBuilder` over the event stream and the model calls, the `traced` client decorator, and `toOtlpJson` — pure; `cli/trace-sink.ts` is how a trace leaves |
-| `scaffold/` | the `init platform` layout, the packaged templates, and the only writer we own |
-| `forge/` | where a submission becomes a branch: `provider.ts` — `ForgeProvider`, `Base`, `Submitted`, types only, with no merge, no delete and no caller-chosen name — and `ForgeInputError`, a refusal that is the user's arguments. The local forge is stage 5's next task |
+| `scaffold/` | the `init platform` layout, the packaged templates, and `write.ts`, the writer for a repository being created |
+| `forge/` | where a submission becomes a branch: `provider.ts` — `ForgeProvider`, `Base`, `Submitted`, types only, with no merge, no delete and no caller-chosen name — `ForgeInputError`, a refusal that is the user's arguments — and `local/`, the local forge: `openLocalForge` for one repository, which writes git objects and one create-only ref, through the launcher, and never the working tree, the index or `HEAD` (ADR-0010). No command reaches it yet: `--submit` is stage 5's next task |
 | `process/` | the one place a process is started: `git.ts`'s `gitIn` — hooks and fsmonitor off, `user.useConfigOnly`, every `GIT_*` scrubbed, started outside the repository, bounded — and `environment.ts`'s `spawnedEnvironment`, the one builder of a child process's environment |
 
 Each folder carries its own README stating what lives there, what may not, and which
@@ -553,8 +553,9 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   modules touch the disk, among them `commands/plan.ts` and `config.ts`, which read the
   repositories too. Across `src/`, only `scaffold/write.ts`, `cli/recording-fs.ts` and
   `cli/trace-sink.ts` import a writing function — `project-fs/snapshot.ts` opens files, read
-  only — each named with the functions it may use, and only `process/git.ts` starts a
-  process, for the Inspector's `git ls-files` and the forge, from one call, given the
+  only — each named with the functions it may use; the forge is the fourth writer, through
+  git and nothing else. Only `process/git.ts` starts a process, for the Inspector's
+  `git ls-files` and the forge, from one call, given the
   environment `spawnedEnvironment` builds: without any `IDP_BACKSTAGE_*` variable and without
   any provider key; only `context/project-fs/snapshot.ts` and `forge/` load that launcher.
   `process/` imports nothing of ours, only `node:` built-ins; `forge/` imports `core/`,

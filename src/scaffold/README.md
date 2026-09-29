@@ -14,8 +14,9 @@ the writer that produces one does not.
 Two modules touch the disk, for two different things. `templates.ts` *reads* the files
 shipped inside the package, into memory; `write.ts` *writes* into someone else's repository,
 and is the only module here importing a writing function. `tests/architecture/` names both
-and holds both lines. Stage 5's atomic applier replaces the writer's seam: one file is a
-refactor, five would be a rewrite.
+and holds both lines. The writer stays the writer for a repository being created — one
+being created has no branch to write to; a branch in an existing one is `forge/local/`'s
+(ADR-0010).
 
 Everything else — deriving the file list, rendering CODEOWNERS — is a pure function of its
 arguments, and tested as one.

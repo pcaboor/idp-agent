@@ -5,8 +5,9 @@ import { spawnedEnvironment } from './environment.js'
 /**
  * The only module in `src/` that starts a process, and an architecture test
  * holds that. The Inspector's `git ls-files` and everything the local forge
- * will do to a repository go through `gitIn`, so every line below applies to
- * every call or to none.
+ * (`forge/local/`) does to a repository go through `gitIn` — no command reaches
+ * the forge until `--submit` — so every line below applies to every call or to
+ * none.
  *
  * What was measured, and what each line answers:
  *

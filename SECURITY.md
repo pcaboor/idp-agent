@@ -33,7 +33,11 @@ names the test that fails if it stops being true.
   names, or as a file in the directory `IDP_TRACE_DIR` names.
 - **Writes nothing, except** the files `init platform` scaffolds into the directory it is
   handed, and a trace file when `IDP_TRACE_DIR` is set. (A contributor's
-  `IDP_RECORDING=record` also writes a tape into `tests/recordings/`.)
+  `IDP_RECORDING=record` also writes a tape into `tests/recordings/`.) The named writers
+  are `scaffold/write.ts`, `cli/recording-fs.ts` and `cli/trace-sink.ts`; the fourth is the
+  local forge, through git: one new branch per submission, cut in the repository named, and
+  the objects it reaches — never the working tree, the index or `HEAD`. No command reaches
+  the forge yet: `--submit` is stage 5's next task.
 
 ## What leaves your machine
 
@@ -151,6 +155,13 @@ Inspector.
 | A preview writes nothing: both repositories are byte for byte as they were | `tests/unit/plan-command.test.ts` — *leaves the repository byte-identical*; `tests/unit/plan-intent.test.ts` — *leaves the declarations repository byte-identical*, *leaves the application repository byte-identical too*; `pnpm smoke`, on the built binary |
 | No module reachable from `agents/` touches the disk or the network, reaches `context/backstage/` or names `fetch`; nothing in `context/` names `fetch`; only named modules write, and one starts a process — `process/git.ts`, the launcher the Inspector and the forge share, which only `context/project-fs` and `forge/` load; nothing reachable from `core/` reads or writes; only `cli/` reaches `forge/` at run time, however many hops away, and `forge/` imports no package and no built-in that reads, writes or opens a socket | `tests/architecture/dependencies.test.ts` — *no module reachable from agents/ touches the disk or the network*, *nothing reachable from agents/ is in context/backstage/, names fetch or names a global*, *nothing in context/ names fetch or a global, and only the transport calls what it is handed*, *nothing in scaffold/ but write.ts imports a writing function*, *only the named modules write, and only one starts a process*, *only the named modules of cli/ touch the disk*, *core/ neither reads nor writes, however many hops away*, *process/ imports nothing of ours, and only node: built-ins*, *forge/ imports core/, process/, node:crypto and node:path, and nothing else*, *only context/project-fs and forge/ load the git launcher*, *only cli/ reaches forge/ at runtime*; the rules fail on a missing folder or an unresolved import — *the architecture rules themselves* |
 | No child process is handed a provider key or the Backstage token: `git`, started by the one launcher `process/git.ts` for the Inspector and the forge alike, runs — and so does whatever git runs — without any `*_API_KEY`, without `IDP_BACKSTAGE_TOKEN` or any other `IDP_BACKSTAGE_*` variable, and without any `GIT_*` variable; with hooks and fsmonitor off, never guessing a committer identity, from outside the repository, and bounded in time and output | `tests/unit/spawned-environment.test.ts` — *is what git runs in when the Inspector reads a directory*, *drops the Backstage token and every provider key, and keeps the rest*, *drops every IDP_BACKSTAGE_ variable: a swapped pair puts the token in the URL one*; `tests/unit/process-git.test.ts` — *hands git, and whatever git runs, no provider key, no catalogue variable and no identity*, *does not run the repository's hooks*, *does not run the fsmonitor the repository's configuration names*, *never runs a git planted in the repository*, *never lets git guess who is committing*, *cannot be redirected to another repository by an inherited GIT_DIR*, *stops a call past its output bound, and reads nothing of it*, *stops a call past its time bound, and says so*; `tests/architecture/dependencies.test.ts` — *every process src/ starts is given spawnedEnvironment* |
+| A submission creates one new ref under `refs/heads/idp-agent/` and moves none, `main` included: every other ref, `HEAD`, the index and the working tree are as they were; the same bytes on the same base name the same branch, recognised and not written twice; a change that changes nothing cuts no branch; a symbolic ref at the branch name is refused, and the one write never follows one | `tests/unit/local-forge.test.ts` — *cuts one branch from HEAD, and nothing else a person can observe moves*, *submitting the same bytes twice is submitting them once*, *refuses when the branch exists and carries something else*, *cuts no branch for a change that changes nothing*, *never follows a symbolic ref planted at the branch name*, *never writes outside idp-agent/ when a symbolic ref appears between the check and the write* |
+| A failed submission leaves the observable state — every ref, `HEAD`, the index, the working tree — as it found it, or the whole branch, never part of one; a branch somebody else creates meanwhile is never moved nor claimed | `tests/invariants/forge.test.ts` — *a submission failing at any git call leaves the initial state, or the complete branch* (every call, before it runs and after), *a branch a stranger creates at any moment of a submission is never moved, nor claimed*; `tests/unit/local-forge.test.ts` — *refuses a stranger who creates the branch between the check and the write*, *calls its own branch created when git fails after making it* |
+| The forge takes only a value `clear.ts` minted — never a spread, a cast or a clone of one (D3) — and only for the repository it was opened on | `tests/unit/local-forge.test.ts` — *cannot be aimed at main, even by a cast that ignores the brand*, *refuses a clearance for the other repository, before anything else — both ways* |
+| A branch that exists is this submission only when it is one commit, on the base, touching exactly its paths with its bytes and modes, under the message the engine wrote (D18): the same files on another parent (D7), as a merge whose first parent is the base, with one more file, made executable, or under somebody else's message are refused, never reported as submitted | `tests/unit/local-forge.test.ts` — *refuses our files on a parent that is not the base*, *refuses our tree as a merge whose first parent is the base*, *does not mistake a squatted branch for its own, however right its files look*, *does not call its own a branch holding its bytes as executables*, *does not vouch for a message it did not write* |
+| Bytes the gates did not judge are never submitted: at the moment of writing the base is re-read, and every file the gates read must be in `HEAD` byte for byte — a file uncommitted, untracked or ignored, a path the gates read as absent that `HEAD` now holds, a catalogue file `HEAD` holds and the gates never read, a symbolic link (read through by the preview until B3, D17), a `HEAD` that moved or became detached is refused, by name | `tests/unit/local-forge.test.ts` — *refuses when the working tree is not what HEAD holds, naming the file*, *names a tracked file changed in the working tree and not committed*, *names a catalogue file git ignores, which the gates read and HEAD does not hold*, *names a catalogue file HEAD holds and the gates never read*, *refuses a path the gates read as absent that HEAD now holds*, *never carries a linked file into a submitted blob*, *refuses when HEAD moved between reading and writing*, *refuses — never an argument error — when HEAD is detached during the run* |
+| A directory inside another repository, a detached or unborn `HEAD`, no `git` and no author or committer identity are refused when the forge opens — git never guesses who commits (D13) | `tests/unit/local-forge.test.ts` — *refuses a directory inside someone else's repository*, *refuses a detached HEAD, which no merge request could target*, *refuses an unborn HEAD, which has no commit to cut from*, *says git is missing, as an argument error, when there is no git to run*, *says there is no committer identity before anything is read*, *says there is no author identity when only the committer is configured*; `tests/unit/process-git.test.ts` — *never lets git guess who is committing* |
+| A submission runs none of the repository's hooks | `tests/unit/local-forge.test.ts` — *runs none of the repository's hooks while it writes*; `tests/unit/process-git.test.ts` — *does not run the repository's hooks* |
 | `init platform` never overwrites and never deletes | `tests/unit/scaffold-write.test.ts` — *leaves a hand-edited file byte for byte*, *does not delete anything that was already there* |
 | The key reaches its provider, in its header, and nothing else: no request body, no trace, no tracking server, no output — on each of the three providers, for a question and for a change | `tests/contract/key-reach.test.ts` — *the {anthropic, mistral, openai} key on a real run*: *reaches its provider in its header, and nothing else, on a question*, *… on a change* |
 | A missing key is refused with exit 2, naming the variable, before any agent runs | `tests/unit/model-failures.test.ts` — *is refused for … with exit 2, naming …, before any agent runs*, one per provider |
@@ -204,6 +215,16 @@ open.
   runtime-probe-11). `iac-fs` follows a symbolic link to a file, wherever it points, and
   `init platform` writes through a linked folder. Both act on a repository you chose; the
   project-fs rules above do not apply there.
+- **A submission proves the catalogue files the gates read, not the hidden ones**
+  (gap-stage5-readiness-6). The `.witness.yml` files and `.idp-agent.yml` the gates also
+  judged are not in a clearance's expectation, so one removed or changed between the
+  preview and the submission is not caught there; `validate` over the branch still reports
+  a missing witness, as an error. Working-tree bytes that differ from `HEAD` only through
+  `core.autocrlf` are refused as a divergence, and an aborted submission leaves
+  unreachable objects for `git gc`. A dangling symbolic ref somebody plants at the branch
+  name between the forge's check and its write is replaced by the branch — git's
+  create-only test reads a dangling symbolic ref as absent — though nothing outside
+  `refs/heads/idp-agent/` is written.
 - **What the agents read from the declarations repository is sent as written.** Nothing
   there is filtered: it is the catalogue the question is about.
 
@@ -215,8 +236,6 @@ Claimed by `docs/design.md`, not by the code. Do not rely on them today.
   write to the main branch: writing a branch is stage 5, the merge request stage 6.
 - **One token per capability.** The token that opens a merge request will not be able to
   merge it, and a test will assert that this action *fails* (stage 6).
-- **Every anti-destruction check repeated engine-side, at the moment of writing**, against
-  the repository as it is then (stage 5). Today the re-check runs at preview time.
 
 ## Not guaranteed, by design
 
@@ -224,6 +243,10 @@ Claimed by `docs/design.md`, not by the code. Do not rely on them today.
   from, never whether it is right: an owner that exists and is the wrong team signs
   cleanly. Review decides; the tool exists to produce a reviewable change, not to be
   trusted unread.
+- **A submission runs none of the repository's hooks** — no `pre-commit`, no
+  `reference-transaction`, no fsmonitor (ADR-0010). A hook is its repository's code, and
+  this tool does not run it. A team relying on a `pre-commit` hook reviews the branch in the
+  merge request, where CI runs, rather than by the hook.
 - **The catalogue lags the repository** by about two minutes. The repository, not the
   catalogue, is the source of truth at write time.
 
