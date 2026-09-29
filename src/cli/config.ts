@@ -1,29 +1,23 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { parse, YAMLParseError } from 'yaml'
-import { z } from 'zod'
+import {
+  CONFIG_FILE,
+  repositoryConfigSchema,
+  type RepositoryConfig,
+} from '../core/schemas/config.js'
 import { reasonOf } from '../core/schemas/reject.js'
 import type { Vocabulary } from '../core/schemas/vocabulary.js'
 
 /**
- * `.idp-agent.yml`, design §7.0.
- *
- * It is committed, so a whole team shares one configuration and a newcomer has
- * nothing to set up. It holds **no secret** — model credentials come from the
- * environment and the forge token from `GITHUB_TOKEN`, and nothing below reads
- * either: what is shared is versioned, what is personal never enters the
- * repository.
- *
- * Its absence is a fact about a repository, not a failure of one. §7.0 says so
- * in as many words — the missing file is what makes the CLI offer a guided tour
- * rather than fail — so `readConfig` returns `undefined` and the vocabulary
- * falls back to what the entities show. A file that is *there* and malformed is
- * the opposite case and throws, naming the field: it was written on purpose,
- * and quietly falling back would answer a typo with a run that silently asks
- * about everything.
+ * Reading `.idp-agent.yml` (design §7.0) from a repository on disk. What the
+ * file may hold — the schema, `CONFIG_FILE`, and the serialiser `init --submit`
+ * writes it with — is `core/schemas/config.ts`'s, re-exported here so no
+ * importer changes: a service's clearance carries the file's bytes, and
+ * `core/` imports no `cli/`.
  */
 
-export const CONFIG_FILE = '.idp-agent.yml'
+export { CONFIG_FILE, type RepositoryConfig } from '../core/schemas/config.js'
 
 /**
  * Refused, not absent. Thrown rather than returned for the reason
@@ -38,42 +32,6 @@ export class ConfigError extends Error {
   }
 }
 
-/**
- * The ceiling `proposedResourceSchema.metadata.env` already uses. Borrowed
- * rather than restated: an environment a configuration declares and a proposal
- * could never carry is a value whose only possible outcome is a refusal.
- */
-const MAX_ENVIRONMENT_LENGTH = 63
-
-/**
- * §7.0's three fields, and only those. `backstage` carries the document's `#
- * optional` comment; the other two do not, and inventing a second optionality
- * is exactly the drift this schema exists to prevent — a repository with no
- * `environments` is the one every environment policy goes silent on.
- *
- * `strictObject`, so `enviroments:` is a message rather than a mystery. A typo
- * in a committed file is otherwise invisible: the key is dropped, the
- * vocabulary falls back to the entities, and a fresh repository asks about
- * every environment for no stated reason.
- *
- * What this does NOT hold is a credential, and there is deliberately no field
- * that could carry one (§7.0). A token in a committed file is a token in every
- * clone of it.
- */
-const configSchema = z.strictObject({
-  /** Where the declarations live. §7.0's own example is `github.com/org/iac-repo`. */
-  iacRepo: z.string().min(1).max(512),
-  backstage: z.string().min(1).max(512).optional(),
-  /**
-   * The environments this organisation has. Bounded like every other list the
-   * engine carries: these reach a model through the catalogue summary, and an
-   * unbounded one is an unbounded prompt.
-   */
-  environments: z.array(z.string().min(1).max(MAX_ENVIRONMENT_LENGTH)).min(1).max(64),
-})
-
-export type RepositoryConfig = z.infer<typeof configSchema>
-
 /** The read errors that mean "no such file", as opposed to "unreadable". */
 const isAbsent = (error: unknown): boolean => {
   const code = (error as { code?: unknown } | null)?.code
@@ -82,7 +40,9 @@ const isAbsent = (error: unknown): boolean => {
 
 /**
  * Reads the configuration at the root of one repository, or reports that there
- * is none.
+ * is none — with the bytes it was read from. `init --submit` needs both: the
+ * parsed value to compare with what the person typed, the bytes so the forge
+ * can prove the base still holds them.
  *
  * The distinction it refuses to blur: a file that is not there and a file that
  * cannot be read. The first is a repository that never declared one; the second
@@ -90,7 +50,9 @@ const isAbsent = (error: unknown): boolean => {
  * "no configuration" would hand the user a run that behaves as if their
  * committed file did not exist.
  */
-export async function readConfig(root: string): Promise<RepositoryConfig | undefined> {
+export async function readConfigFile(
+  root: string,
+): Promise<{ readonly config: RepositoryConfig; readonly text: string } | undefined> {
   const file = path.join(root, CONFIG_FILE)
 
   let text: string
@@ -102,7 +64,16 @@ export async function readConfig(root: string): Promise<RepositoryConfig | undef
       `cannot read ${CONFIG_FILE}: ${error instanceof Error ? error.message : String(error)}`,
     )
   }
+  return { config: parseConfig(text), text }
+}
 
+/** The configuration alone: what every run but `init --submit` seeds its vocabulary from. */
+export async function readConfig(root: string): Promise<RepositoryConfig | undefined> {
+  return (await readConfigFile(root))?.config
+}
+
+/** The bytes of a file that is there, as YAML and then as §7.0's three fields. */
+function parseConfig(text: string): RepositoryConfig {
   let value: unknown
   try {
     value = parse(text)
@@ -111,7 +82,7 @@ export async function readConfig(root: string): Promise<RepositoryConfig | undef
     throw new ConfigError(`${CONFIG_FILE} is not YAML: ${error.message}`)
   }
 
-  const parsed = configSchema.safeParse(value)
+  const parsed = repositoryConfigSchema.safeParse(value)
   if (!parsed.success) {
     // `reasonOf` puts the offending field in front of the message, which is the
     // half Zod leaves in the issue path. The same repair both repository

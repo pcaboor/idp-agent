@@ -1579,7 +1579,7 @@ which. The five functions that decide where `init` files move with it, all pure,
 preview and the clearance are the one reading: `clearService` mints from the same `target`
 and `kept` the preview uses, never a second read.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/unit/catalog-info.test.ts` — the moved functions, and the effect check `catalogInfoEdits`
 gains. `main`'s skips an operation that does not materialise with a silent `continue`
@@ -1792,12 +1792,12 @@ it('writes exactly what readConfig reads back', async () => {
 })
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `pnpm vitest run tests/unit/clear-service.test.ts tests/unit/catalog-info.test.ts tests/unit/config.test.ts`
 Expected: FAIL — modules not found.
 
-- [ ] **Step 3: Move the schema and the catalog-info composition into `core/`**
+- [x] **Step 3: Move the schema and the catalog-info composition into `core/`**
 
 `src/core/schemas/config.ts` takes the schema (`src/cli/config.ts:63`), `RepositoryConfig`
 (`:75`), `CONFIG_FILE` (`:26`) and `MAX_ENVIRONMENT_LENGTH` (`:46`) **with their comments**,
@@ -1901,7 +1901,7 @@ Then:
 `init`'s preview output is byte-identical to before, `APPLY` tail included: the functions
 moved, and the only new branch — a drop — was a silent `continue`.
 
-- [ ] **Step 4: Write `clearService`**
+- [x] **Step 4: Write `clearService`**
 
 Append to `src/core/plan/clear.ts`, with the imports it needs (`asCatalogInfo`, `filedIn`
 and `catalogInfoEdits` from `./catalog-info.js`; `CONFIG_FILE`, `serializeConfig`,
@@ -2002,7 +2002,7 @@ declaring another name asks it. What it re-runs is what the forge must not take 
 question left, nothing dropped, the file `init` previews and nothing else, the configuration
 never rewritten.
 
-- [ ] **Step 5: Run the tests, then everything**
+- [x] **Step 5: Run the tests, then everything**
 
 Run: `pnpm vitest run tests/unit/clear-service.test.ts tests/unit/catalog-info.test.ts tests/unit/config.test.ts tests/unit/init-command.test.ts tests/unit/clear.test.ts tests/architecture`
 Expected: PASS.
@@ -2010,7 +2010,7 @@ Expected: PASS.
 Run, if `df -h /` shows at least 2 GiB free: `pnpm test && pnpm typecheck`
 Expected: PASS. `init`'s preview output is byte-identical to before.
 
-- [ ] **Step 6: Traceability**
+- [x] **Step 6: Traceability**
 
 - `CHANGELOG.md`, Unreleased → Added (or Changed, for the move): one line with the link.
 - `docs/roadmap.md`: stage 5's queue item says task 2 is on `main`.
@@ -2020,9 +2020,14 @@ Expected: PASS. `init`'s preview output is byte-identical to before.
 - [ ] **Step 7: Commit** *(after the owner's go-ahead)*
 
 ```bash
-git add src/core src/cli/config.ts src/cli/commands/init.ts tests/unit CHANGELOG.md docs/roadmap.md docs/reviews/2026-09-23-deep-review.md
+git add src/core src/cli/config.ts src/cli/commands/init.ts tests/unit CHANGELOG.md docs/roadmap.md docs/reviews/2026-09-23-deep-review.md docs/audit-attacks/core-attacks.test.ts docs/plans/stage-5-write.md
 git commit -m "feat(core): clear a service's declaration where init files it, and write a configuration the reader reads back"
 ```
+
+`docs/audit-attacks/core-attacks.test.ts` is in that line because it imports
+`catalogInfoEdits` and `CATALOG_INFO`, which moved out of `init.ts`; `tsconfig.json` includes
+only `src/` and `tests/`, so neither `pnpm typecheck` nor `pnpm test` would notice it left
+behind — only the next run of the audit harness would. The plan file carries the ticked boxes.
 
 ---
 
@@ -4693,6 +4698,13 @@ from a person answering a question, and `repositoryConfigSchema` is the gate; a 
 configuration is never rewritten and one equal in value is left alone; flags the schema
 refuses and questions it needs are settled before the first model call; and the stated limit
 that the Inspector reads the uncommitted working tree.
+
+A value holding a control, format or bidi character (`\p{Cc}\p{Cf}\p{Zl}\p{Zp}`, the class
+`isCatalogInfoPath` holds a path to) is refused where the flag or the answer is read, before
+any model, naming the flag. `clearService` refuses the same values (task 2),
+but only after the Inspector and the Architect have been paid for: that is the engine's
+re-check at the moment of acting, not the place a person should first hear of a typo. A test
+in `init-command.test.ts` pins `--environment 'prod\u2066'` as exit 2 with no model call.
 
 **Files:**
 - Modify: `src/cli/index.ts` (`init` options, HELP)

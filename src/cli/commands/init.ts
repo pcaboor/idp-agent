@@ -8,22 +8,25 @@ import type { ProjectFacts } from '../../agents/tools/project-tools.js'
 import { EntityGraph } from '../../context/graph/entity-graph.js'
 import { summariseGraph } from '../../context/graph/summary.js'
 import { readProject } from '../../context/project-fs/snapshot.js'
-import type { FileEdit } from '../../core/diff/unified.js'
+import {
+  asCatalogInfo,
+  catalogInfoEdits,
+  filedIn,
+  fold,
+  identitiesOf,
+  isComponent,
+  isSetAside,
+  isThis,
+  targetOf,
+  type Identity,
+} from '../../core/plan/catalog-info.js'
 import { questionsOf, type Question } from '../../core/plan/clarify.js'
-import { materialise } from '../../core/plan/materialise.js'
 import type { Provenance } from '../../core/plan/provenance.js'
 import { signPlan } from '../../core/plan/sign.js'
 import { COMPONENT_LIFECYCLES, ownerRefSchema } from '../../core/schemas/entity.js'
-import {
-  isCatalogInfoPath,
-  planSchema,
-  proposedName,
-  type Operation,
-  type Plan,
-} from '../../core/schemas/plan.js'
+import { planSchema, proposedName, type Operation, type Plan } from '../../core/schemas/plan.js'
 import { reasonOf } from '../../core/schemas/reject.js'
-import { documentNames, parseDocuments, serializeEntity } from '../../core/yaml/serialize.js'
-import { insertDocument } from '../../core/yaml/surgery.js'
+import { parseDocuments } from '../../core/yaml/serialize.js'
 import type { LlmClient } from '../../llm/client.js'
 import { readConfig, seededVocabulary } from '../config.js'
 import { budgetNotice, selectionNotice } from '../repository.js'
@@ -181,18 +184,6 @@ const listing = (report: WriteReport): string[] => [
  */
 
 /**
- * Where a service declares itself when it keeps no catalog-info yet.
- * Backstage's own convention, at the root of the repository the CLI was
- * pointed at.
- *
- * Never a field: §5.2 says the engine chooses where a declaration is filed,
- * and this is that choice for the one operation whose file lives outside the
- * declarations repository. A repository that already keeps one — a `.yml`,
- * or one in another folder — is added to where it keeps it (`targetOf`).
- */
-export const CATALOG_INFO = 'catalog-info.yaml'
-
-/**
  * The request, composed by the ENGINE out of what the inspection established.
  *
  * `init` has no sentence a user typed — the gesture is "declare this
@@ -317,29 +308,6 @@ function inspected(facts: ProjectFacts, proposals: readonly Operation[]): Map<st
 }
 
 /**
- * The operation §7.3 names, minted by the engine out of a proposal the
- * signature has already vouched for.
- *
- * The order is the whole of it. Minting first put `repoPath` in front of
- * `signPlan`, which classifies a leaf by where it came from and has no class
- * for "the engine wrote this" — so `catalog-info.yaml` came out `novel` and the
- * CLI asked the user which path it should be, about a path chosen by the code
- * putting the question. Provenance is a question about what a MODEL wrote, and
- * this field was never the model's to write.
- *
- * One argument, as stage 5's plan moves it (docs/stage-8-brief.md §11); the
- * file a repository already keeps is a second step, `filedIn`.
- */
-const asCatalogInfo = (operation: Operation): Operation =>
-  operation.op === 'create-entity' && operation.entity.kind === 'Component'
-    ? { op: 'create-catalog-info', repoPath: CATALOG_INFO, entity: operation.entity }
-    : operation
-
-/** A minted operation, filed where the engine chose (`targetOf`), never the model. */
-const filedIn = (operation: Operation, repoPath: string): Operation =>
-  operation.op === 'create-catalog-info' ? { ...operation, repoPath } : operation
-
-/**
  * The person's own values for the three fields no file of a service states
  * reliably (review, gap-init-real-repos-2): its catalogue name, its lifecycle —
  * no common file states one — and its owner, which CODEOWNERS states only as
@@ -447,55 +415,9 @@ interface Kept {
   readonly workspace?: string
 }
 
-/** A document's identity as it states it: kind + namespace + name, unchecked. */
-interface Identity {
-  readonly kind: string | undefined
-  readonly namespace: string
-  readonly name: string
-}
-
-/**
- * The identities a file states, and whether one of its documents states a kind
- * or a name nobody can read.
- *
- * Read by `documentNames`, which reads the stream as `parseDocuments` does —
- * with or without `---`, in CRLF or not — and without the schema: a Component
- * this tool would not write (a lifecycle of `unknown`, a name in upper case)
- * is still that Component to Backstage, and to this. Identity is kind +
- * namespace + name (review, core-yaml-4): an API or a Resource of the same
- * name is another entity. A namespace a document does not state is
- * Backstage's `default`.
- */
-function identitiesOf(text: string): { identities: Identity[]; unreadable: boolean } {
-  const { named, unreadable } = documentNames(text)
-  return {
-    identities: named.map((document) => ({
-      kind: document.kind,
-      namespace: document.namespace ?? 'default',
-      name: document.name,
-    })),
-    // A document with a name and no kind is refused by the reader, and may be
-    // a Component: nobody can say, so it counts as unreadable.
-    unreadable: unreadable || named.some((document) => document.kind === undefined),
-  }
-}
-
-/** Backstage compares references case-insensitively. */
-const fold = (text: string): string => text.toLowerCase()
-
-const isComponent = (identity: Identity): boolean => fold(identity.kind ?? '') === 'component'
-
 /** The reference as the file states it, for the line that quotes it. */
 const refOf = (identity: Identity): string =>
   `component:${identity.namespace}/${identity.name}`
-
-/** Whether `identity` is `component:default/<name>` — what init writes. */
-const isThis = (identity: Identity, name: string): boolean =>
-  isComponent(identity) && fold(identity.namespace) === 'default' && fold(identity.name) === fold(name)
-
-/** Whether a file declares the Component init would write under `name`. */
-const declaresComponent = (text: string, name: string): boolean =>
-  identitiesOf(text).identities.some((identity) => isThis(identity, name))
 
 type Recognition =
   /** Declared already: `refused` holds the reader's reasons when this tool would not write that document. */
@@ -537,61 +459,6 @@ function recognise(
     return same === undefined ? undefined : declared(file, same)
   }
   return { conflictIn: file.path, refs: components.map(refOf) }
-}
-
-/**
- * Folders whose catalog-info describes something other than the service: a
- * test's fixture, an example, a template not rendered yet. Never where init
- * files the service, never what it compares with, and never what stops it.
- */
-const SET_ASIDE = new Set([
-  '__fixtures__',
-  '__snapshots__',
-  '__tests__',
-  'e2e',
-  'example',
-  'examples',
-  'fixture',
-  'fixtures',
-  'sample',
-  'samples',
-  'skeleton',
-  'spec',
-  'template',
-  'templates',
-  'test',
-  'testdata',
-  'tests',
-])
-
-const isSetAside = (file: string): boolean =>
-  file
-    .toLowerCase()
-    .split('/')
-    .slice(0, -1)
-    .some((folder) => SET_ASIDE.has(folder))
-
-/**
- * Which file a new Component is added to — the engine's choice, never the
- * model's (§5.2): the root's `catalog-info.yaml`, else the root's `.yml`, else
- * the one plain catalog-info the repository keeps elsewhere, else a new
- * `catalog-info.yaml` at the root. A catalog-info in a workspace — a folder
- * with its own package manifest — is that workspace's, and one in a test's or
- * an example's folder is set aside before this is asked (`isSetAside`). Two
- * or more elsewhere and none at the root is a monorepo's, each folder's own,
- * and none of them is this one.
- */
-function targetOf(declarations: readonly { readonly path: string; readonly workspace?: string }[]): string {
-  for (const root of [CATALOG_INFO, 'catalog-info.yml']) {
-    if (declarations.some((file) => file.path === root)) return root
-  }
-  // A plain catalog-info, by the test a Plan's `repoPath` is held to: one in
-  // a hidden folder — `.github` is walked — is never where init files the
-  // service, since the plan naming it would be refused.
-  const elsewhere = declarations.filter(
-    (file) => isCatalogInfoPath(file.path) && file.workspace === undefined,
-  )
-  return elsewhere.length === 1 && elsewhere[0] !== undefined ? elsewhere[0].path : CATALOG_INFO
 }
 
 /** The service's own: a catalog-info at the root, or the file init would add to. */
@@ -933,13 +800,17 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
   }
 }
 
-/** The signed Component, minted into the file the engine chose, and its diff. */
-function previewOf(
+/**
+ * The signed Component, minted into the file the engine chose, and its diff.
+ * Exported for its test alone: no signed plan reaches a drop through
+ * `runInitRepo` today (see below), so the exit a drop gets is pinned here.
+ */
+export function previewOf(
   signed: Parameters<typeof renderPreview>[0]['signed'],
   request: string,
   kept: readonly Kept[],
   target: string,
-  options: InitOptions,
+  options: Pick<InitOptions, 'colour'>,
 ): CommandResult {
   // Only now. The plan boundary is re-crossed because this is a different
   // object from the one `draftPlan` parsed — the same reason `repair` runs gate
@@ -955,19 +826,32 @@ function previewOf(
     }
   }
 
-  return renderPreview({
+  // The `before` is the file as the repository keeps it, read whole and
+  // outside the budget — never a capped snapshot, which previewed a creation
+  // over a file the budget had left out (review, gap-stage5-readiness-8). The
+  // same composition `clearService` mints from, so the branch carries the file
+  // this showed.
+  //
+  // `planEdits` is not what drops here: it drops every create-catalog-info,
+  // because it describes the OTHER repository — the one this function is
+  // standing in. A drop is `catalogInfoEdits`' own effect check, rendered as
+  // `plan` renders one. No signed plan reaches it today: a question stops
+  // before this, and an own catalog-info nobody can read whole is refused
+  // before the model (`runInitRepo`).
+  const { edits, dropped } = catalogInfoEdits(minted.data, { files: kept })
+  const preview = renderPreview({
     signed,
-    // The `before` is the file as the repository keeps it, read whole and
-    // outside the budget — never a capped snapshot, which previewed a creation
-    // over a file the budget had left out (review, gap-stage5-readiness-8).
-    edits: catalogInfoEdits(minted.data, { files: kept }),
-    // Every operation produced bytes; `planEdits` is what drops a
-    // create-catalog-info, and it drops it because it describes the OTHER
-    // repository — the one this function is standing in.
-    dropped: [],
+    edits,
+    dropped,
     ...(options.colour !== undefined ? { colour: options.colour } : {}),
     apply: APPLY,
   })
+  // A drop is a negative answer, whatever else the diff shows: `renderPreview`
+  // has no re-check to read one from here, and would end a plan whose only
+  // Component was swallowed on "nothing to change." at exit 0 (#83).
+  // `clearService` refuses the same plan, so a preview never succeeds where
+  // the submission would not.
+  return dropped.length > 0 ? { ...preview, found: false } : preview
 }
 
 /**
@@ -986,69 +870,3 @@ const APPLY =
   "Nothing is written. To write it, save a run to a file, read it, and apply that file in the " +
   "service's repository — another run may draft other bytes than these: " +
   'idpa init > catalog-info.diff, then git apply catalog-info.diff'
-
-/**
- * The bytes a `create-catalog-info` would leave behind, in the SERVICE's own
- * repository.
- *
- * `planEdits` cannot do this and says so where it drops the operation: it
- * composes bytes for the declarations repository, and `repoPath` names a file
- * in a different one. What this does NOT do is compose them differently —
- * `materialise` is still the one translation from a proposal to an entity,
- * `serializeEntity` the one serialiser and `insertDocument` the one thing that
- * writes a document marker. This function supplies the repository those three
- * have no reader for, and nothing else.
- *
- * `files` are the catalog-info files the repository keeps, whole: the
- * `before` of every edit is read from them, so they must never be a capped
- * snapshot's.
- */
-export function catalogInfoEdits(
-  plan: Plan,
-  snapshot: { readonly files: readonly { readonly path: string; readonly text: string }[] },
-): FileEdit[] {
-  /**
-   * Keyed by PATH, never by operation — the same rule `planEdits` states and
-   * for the same reason, which is why it is repeated here rather than assumed:
-   * every `create-catalog-info` in a plan points at the SAME
-   * `catalog-info.yaml`, so one edit per operation printed two "create this
-   * file from /dev/null" hunks for one path, each computed against the
-   * untouched original, and called it two files. A diff is a statement about a
-   * file, not about the work that produced it.
-   */
-  const buffered = new Map<string, string>()
-  const order: string[] = []
-  const original = new Map<string, string | undefined>()
-
-  for (const operation of plan.operations) {
-    if (operation.op !== 'create-catalog-info') continue
-    const entity = materialise(operation.entity)
-    if (entity === undefined) continue
-
-    const path = operation.repoPath
-    if (!order.includes(path)) {
-      order.push(path)
-      original.set(path, snapshot.files.find((file) => file.path === path)?.text)
-    }
-    // Through the buffer, so a second component composes onto the first rather
-    // than replacing it.
-    const existing = buffered.get(path) ?? original.get(path)
-    // Decided by kind, namespace and name as the documents state them —
-    // never by a scan for `name:` lines, which needed a `---` and took an API
-    // of the same name for this Component (review, core-yaml-4).
-    const declared = existing !== undefined && declaresComponent(existing, entity.metadata.name)
-    // Already declared there: an edit whose two sides are equal, so the diff
-    // comes out empty rather than absent. Absent means already done (§4.3),
-    // but only if it is visible — and a repository re-inits after a merge.
-    buffered.set(
-      path,
-      declared ? existing : insertDocument(existing ?? '', serializeEntity(entity)),
-    )
-  }
-
-  return order.map((path) => ({
-    path,
-    before: original.get(path),
-    after: buffered.get(path) ?? '',
-  }))
-}

@@ -32,7 +32,8 @@ import { ENV_ANNOTATION } from '../schemas/vocabulary.js'
  * though it were an answer.
  *
  * Both callers already check: `planEdits` drops an operation that carries one,
- * and `catalogInfoEdits` relies on ITS caller having checked. The audit's
+ * and `catalogInfoEdits` drops it too, where it once relied on ITS caller
+ * having checked and skipped the operation in silence. The audit's
  * point (F12) is that relying is not the same as being unable to, and the
  * cheap end of that is here, in the one function both of them go through.
  */
