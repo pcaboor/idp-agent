@@ -23,7 +23,7 @@ each:
 | 2 | Question mode | done |
 | 3 | `init platform` and `validate` | done |
 | 4 | Preview only: nothing is written | done |
-| 5 | Write + local branch | in progress ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)): task 1, `Cleared` for the declarations repository, on `main` ([#105](https://github.com/pcaboor/idp-agent/pull/105)); nothing writes yet |
+| 5 | Write + local branch | in progress ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)): task 1, `Cleared` for the declarations repository, on `main` ([#105](https://github.com/pcaboor/idp-agent/pull/105)); task 2, `Cleared` for the service repository, on `main` ([#106](https://github.com/pcaboor/idp-agent/pull/106)); nothing writes yet |
 | 6 | GitHub pull request | not started |
 | 7 | Polish: Ink TUI, asciinema, npm publish | not started |
 | 8 | Discovery | designed ([the design note](stage-8-brief.md), [#76](https://github.com/pcaboor/idp-agent/pull/76)); not started |
@@ -55,8 +55,11 @@ here, one pull request each, each naming the check run together at the end.
    `d0fdee9` after [the stage-5 check](stage-5-check.md): eight tasks, one stacked pull
    request each for tasks 1 to 7, the documents riding with each. Task 1 — `Cleared` for the
    declarations repository — is on `main` ([#105](https://github.com/pcaboor/idp-agent/pull/105)), carrying the owner's uncommitted work on
-   `feat/s5-cleared` and discarding none of it; task 2, `Cleared` for the service
-   repository, is next. The check itself, this queue's first item until
+   `feat/s5-cleared` and discarding none of it. Task 2 — `Cleared` for the service
+   repository, filed where `init` previews it — is on `main` too
+   ([#106](https://github.com/pcaboor/idp-agent/pull/106)); task 3, the shared git
+   launcher and the `forge/` layer, is next; the owner validates the architecture before
+   task 4's local forge. The check itself, this queue's first item until
    2026-09-29, is done: the check, the brief as a dated record, the revised plan, and ADR
    0010 and ADR 0012 *proposed* ([#104](https://github.com/pcaboor/idp-agent/pull/104)).
 2. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:

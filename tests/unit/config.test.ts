@@ -1,8 +1,16 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import fc from 'fast-check'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { CONFIG_FILE, ConfigError, readConfig, seededVocabulary } from '../../src/cli/config.js'
+import {
+  CONFIG_FILE,
+  ConfigError,
+  readConfig,
+  readConfigFile,
+  seededVocabulary,
+} from '../../src/cli/config.js'
+import { serializeConfig } from '../../src/core/schemas/config.js'
 import type { Vocabulary } from '../../src/core/schemas/vocabulary.js'
 
 const temp = (): Promise<string> => mkdtemp(path.join(tmpdir(), 'idp-config-'))
@@ -89,6 +97,46 @@ describe('.idp-agent.yml', () => {
     await mkdir(path.join(root, CONFIG_FILE))
 
     await expect(readConfig(root)).rejects.toThrow(ConfigError)
+  })
+
+  it('hands back the bytes it read beside the value, or nothing when there is no file', async () => {
+    // `init --submit` needs both: the value to compare with what the person
+    // typed, the bytes for the forge to prove the base still holds.
+    const text = 'iacRepo: github.com/org/iac-repo\nenvironments: [dev, prod]\n'
+    const root = await withConfig(text)
+
+    expect(await readConfigFile(root)).toEqual({
+      config: { iacRepo: 'github.com/org/iac-repo', environments: ['dev', 'prod'] },
+      text,
+    })
+    expect(await readConfigFile(await temp())).toBeUndefined()
+  })
+
+  it('writes exactly what readConfig reads back', async () => {
+    // What `init --submit` writes is what every later run seeds its vocabulary
+    // from. A serialiser the reader disagrees with would seed something nobody
+    // typed — or refuse, on the next run, the file this tool just wrote. No
+    // `backstage:`: init --submit never writes one (D9). One folder for every
+    // run, removed after: each test run's temp folders are what fills a disk.
+    const word = fc.stringMatching(/^[a-z][a-z0-9-]{0,20}$/)
+    const root = await temp()
+    try {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.record({
+            iacRepo: fc.stringMatching(/^[a-z0-9./:_-]{1,60}$/),
+            environments: fc.array(word, { minLength: 1, maxLength: 5 }),
+          }),
+          async (config) => {
+            await writeFile(path.join(root, CONFIG_FILE), serializeConfig(config), 'utf8')
+            expect(await readConfig(root)).toEqual(config)
+          },
+        ),
+        { numRuns: 40 },
+      )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })
 

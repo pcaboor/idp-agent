@@ -120,6 +120,19 @@ Each pull request adds its line here.
   applying it once — is a property. No raw bidi control, zero-width, joiner, mark, soft hyphen or byte-order mark is left in
   `src/`, `tests/` or `scripts/`, and a test keeps it so. Nothing writes yet
   ([#105](https://github.com/pcaboor/idp-agent/pull/105)).
+- `Cleared` for the service repository (`clearService`): `init`'s Component, filed where
+  `init` previews it — the root's `catalog-info.yaml`, its `.yml`, or the one catalog-info
+  kept elsewhere, never a twin beside it — and `.idp-agent.yml` only when a person typed
+  one, a committed configuration compared by value and never rewritten; it proves every
+  catalog-info it read, refuses a question left, a drop, a configuration the reader would
+  refuse or holding a control, format or bidi character, and anything but the service's
+  Component. Where `init` files moved to `src/core/plan/catalog-info.ts`, so the preview and
+  the clearance are one reading, and `catalogInfoEdits` now reports an operation it could
+  not carry instead of skipping it; the configuration's schema moved to
+  `src/core/schemas/config.ts` as `repositoryConfigSchema`, with a serialiser `readConfig`
+  reads back. `init`'s output is unchanged — a drop in its preview, which nothing reaches
+  today, now ends on exit 1 as the clearance refuses it — and nothing writes yet
+  ([#106](https://github.com/pcaboor/idp-agent/pull/106)).
 
 ### Changed
 

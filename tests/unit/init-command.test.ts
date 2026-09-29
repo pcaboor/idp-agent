@@ -4,8 +4,11 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { main } from '../../src/cli/index.js'
-import { catalogInfoEdits, runInitRepo } from '../../src/cli/commands/init.js'
+import { previewOf, runInitRepo } from '../../src/cli/commands/init.js'
 import { renderPreview } from '../../src/cli/commands/plan.js'
+import { catalogInfoEdits } from '../../src/core/plan/catalog-info.js'
+import { signPlan } from '../../src/core/plan/sign.js'
+import { planSchema } from '../../src/core/schemas/plan.js'
 import { readRepository } from '../../src/context/iac-fs/snapshot.js'
 import { IacFsProvider } from '../../src/context/iac-fs/provider.js'
 import { renderRegistration } from '../../src/core/validate/registration.js'
@@ -412,6 +415,38 @@ describe('init, per application', () => {
     expect(empty().at(-1)).toBe('Nothing is provisioned yet. The merge is what authorises it.')
   })
 
+  it('ends a preview whose Component was dropped on a negative answer, never exit 0', () => {
+    // A document appended after an open quoted scalar is swallowed by it:
+    // "nothing to change." at exit 0 would say the service is declared when
+    // nothing declares it (#83). Unreachable through `runInitRepo` today — a
+    // file like this one is refused before the model — so pinned here.
+    const request = 'declare this repository in the catalogue'
+    const signed = signPlan(
+      planSchema.parse({ intent: request, operations: [COMPONENT] }),
+      {
+        witnessed: new Set(),
+        vocabulary: { kinds: [], types: [], environments: [], owners: [] },
+        repoRoot: '/service',
+        declared: new Map(),
+      },
+      {
+        intent: request,
+        wordsOf: 'engine',
+        answers: new Map([
+          ['operations.0.entity.metadata.name', 'billing-api'],
+          ['operations.0.entity.spec.type', 'service'],
+          ['operations.0.entity.spec.lifecycle', 'production'],
+          ['operations.0.entity.spec.owner', 'group:default/tiger'],
+        ]),
+      },
+    )
+    if ('outcome' in signed) throw new Error(JSON.stringify(signed.refusals))
+    const kept = [{ path: 'catalog-info.yaml', text: 'description: "open\n' }]
+    const result = previewOf(signed, request, kept, 'catalog-info.yaml', {})
+    expect(result.text).toContain('the edit did not declare it')
+    expect(result.found).toBe(false)
+  })
+
   it('files it where the engine says, never where the model does', async () => {
     // §5.2. The propose tool has no `create-catalog-info` member at all, so
     // there is no `repoPath` field in front of the model; the engine mints the
@@ -627,7 +662,7 @@ describe('two components, one catalog-info.yaml', () => {
       },
     })
 
-    const edits = catalogInfoEdits(
+    const { edits } = catalogInfoEdits(
       {
         intent: 'declare this service',
         operations: [componentOf('billing-api'), componentOf('billing-worker')],
@@ -659,7 +694,7 @@ describe('a catalog-info.yaml written with CRLF line endings', () => {
       '  owner: group:default/tiger',
       '',
     ].join('\r\n')
-    const edits = catalogInfoEdits(
+    const { edits } = catalogInfoEdits(
       {
         intent: 'declare this service',
         operations: [

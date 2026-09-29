@@ -4,7 +4,8 @@ import path from 'node:path'
 import { describe, expect } from 'vitest'
 import { it } from './oracle.js'
 import { reviewPlan, VERDICT_TOOL } from '../../src/agents/reviewer.js'
-import { runInitPlatform, requestOf, catalogInfoEdits, CATALOG_INFO } from '../../src/cli/commands/init.js'
+import { runInitPlatform, requestOf } from '../../src/cli/commands/init.js'
+import { catalogInfoEdits, CATALOG_INFO } from '../../src/core/plan/catalog-info.js'
 import { renderQuestions, renderStopped, runPlan } from '../../src/cli/commands/plan.js'
 import { main, renderEvent } from '../../src/cli/index.js'
 import { planEdits } from '../../src/core/plan/edits.js'
@@ -157,7 +158,7 @@ describe('A. a Component spec.type is free text and signs as derived', () => {
           : operation,
       ),
     })
-    const edits = catalogInfoEdits(minted, { files: [] })
+    const { edits } = catalogInfoEdits(minted, { files: [] })
     expect(edits[0]?.after).toContain(`type: ${invented}`)
     console.log('[A3] catalog-info bytes:\n' + edits[0]?.after)
   })
