@@ -1,6 +1,6 @@
 import type { Cleared, ClearRefusal, Expectation, Repository } from '../../core/plan/clear.js'
 import { openLocalForge } from '../../forge/local/forge.js'
-import type { Base, ForgeProvider } from '../../forge/provider.js'
+import type { Base, ForgeProvider, Submitted } from '../../forge/provider.js'
 import { baseOf, closingLines, type PreviewStatus } from '../render/footer.js'
 import { inertLine } from '../render/plain.js'
 import type { CommandResult } from './result.js'
@@ -10,8 +10,9 @@ import type { CommandResult } from './result.js'
  * review (ADR-0010). Everything a run decides about that lives here, in the
  * order it happens — open the forge before anything is read, refuse a
  * repository whose working tree is not `HEAD` before anything is previewed,
- * then clear, confirm and submit — so both roads of `plan`, and `init` after
- * them, take the same steps rather than three copies of them.
+ * then clear, recognise a branch already there, confirm and submit — so both
+ * roads of `plan`, and `init` after them, take the same steps rather than
+ * three copies of them.
  *
  * Nothing here authorises anything. The branch is a request; the merge, which
  * nobody can perform from this terminal, is what authorises it (§4.2).
@@ -154,7 +155,8 @@ export type SubmissionReport =
   | { readonly outcome: 'refused'; readonly reasons: readonly string[] }
 
 /**
- * Clear, confirm, submit — in that order, and each one can end the run.
+ * Clear, recognise, confirm, submit — in that order, and each one can end the
+ * run.
  *
  * `render` is the preview renderer with everything bound but its status, so
  * the diff a person confirms is the diff the preview printed; a second
@@ -183,9 +185,19 @@ export async function submit(input: {
 
   const changed = cleared.edits.length
   // With a prompt, the diff was already printed by it; the result is the
-  // closing lines only, or the person reads the diff twice.
+  // closing lines only, or the person reads the diff twice. A run the forge
+  // answers before the prompt prints the same lines as one it answers after:
+  // what the prompt would have shown is not printed in its place.
   const said = (status: PreviewStatus): string =>
     confirm === undefined ? render(status).text : closingLines(status, changed).join('\n')
+
+  // Before anyone is asked: a branch that is already there is either this
+  // very submission — nothing to confirm, and nothing to write — or somebody
+  // else's, which no answer at the prompt could make ours. The forge only
+  // reads to say so; `submit` below looks again at the moment of writing,
+  // for a branch created while the person read the diff.
+  const known = await opened.forge.recognise(cleared, opened.base)
+  if (known !== undefined) return outcomeOf(known, opened.base, said)
 
   if (confirm !== undefined) {
     const yes = await confirm({
@@ -207,7 +219,18 @@ export async function submit(input: {
     }
   }
 
-  const submitted = await opened.forge.submit(cleared, opened.base)
+  return outcomeOf(await opened.forge.submit(cleared, opened.base), opened.base, said)
+}
+
+/**
+ * What the forge said, as the run's result and its `--json` key — the same
+ * words whether it said them before the prompt or at the moment of writing.
+ */
+function outcomeOf(
+  submitted: Submitted,
+  base: Base,
+  said: (status: PreviewStatus) => string,
+): { readonly result: CommandResult; readonly report: SubmissionReport } {
   switch (submitted.outcome) {
     case 'created':
     case 'already-submitted': {
@@ -215,10 +238,10 @@ export async function submit(input: {
         kind: 'submitted',
         again: submitted.outcome === 'already-submitted',
         branch: submitted.branch,
-        base: opened.base,
+        base,
       }
       return {
-        report: { ...submitted, base: opened.base },
+        report: { ...submitted, base },
         result: { text: said(status), found: true },
       }
     }

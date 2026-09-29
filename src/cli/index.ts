@@ -51,7 +51,14 @@ import { openForSubmission, reopening, type Confirm, type SubmitOptions } from '
 import { ForgeInputError } from '../forge/errors.js'
 import type { GitError } from '../process/git.js'
 import { wantsColour } from './render/diff.js'
-import { initAnswersOf, runInitPlatform, runInitRepo, type InitAnswers } from './commands/init.js'
+import {
+  configFlagsOf,
+  initAnswersOf,
+  runInitPlatform,
+  runInitRepo,
+  type ConfigFlags,
+  type InitAnswers,
+} from './commands/init.js'
 import { ConfigError } from './config.js'
 import { isForgeHandle } from '../scaffold/codeowners.js'
 import { VERSION } from '../core/index.js'
@@ -165,7 +172,19 @@ export type Command =
    * service states reliably — its catalogue name, lifecycle and owner —
    * already held to what each field accepts.
    */
-  | { name: 'init'; repo?: string; answers: InitAnswers }
+  | {
+      name: 'init'
+      repo?: string
+      answers: InitAnswers
+      /** `--submit`: the preview becomes a branch in the service's repository. Omitted when absent. */
+      submit?: true
+      /**
+       * `--iac-repo` and `--environment`, what `.idp-agent.yml` says — omitted
+       * when neither was typed. No `backstage`: init has no --backstage option,
+       * and a URL is never taken from a command line (D9, ADR-0011).
+       */
+      flags?: ConfigFlags
+    }
   /**
    * `usage`, present when a command was asked for its own (`show --help`):
    * that command's lines of HELP, rather than all of it.
@@ -202,7 +221,7 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   idp-agent validate <directory>
   idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json] [--submit]
   idp-agent plan --from <plan.json> [--repo <directory>] [--json] [--submit]
-  idp-agent init [--repo <directory>] [--name <name>] [--lifecycle experimental|production|deprecated] [--owner group:<namespace>/<name>]
+  idp-agent init [--repo <directory>] [--name <name>] [--lifecycle experimental|production|deprecated] [--owner group:<namespace>/<name>] [--submit] [--iac-repo <locator>] [--environment <name>]...
   idp-agent init platform <directory> --owner @org/team
   idp-agent version
 
@@ -220,7 +239,13 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
 
   init previews the catalog-info.yaml of the service it is run in, or adds to
   the one the repository keeps. --name, --lifecycle and --owner answer what
-  its files do not state; at a terminal it asks instead.
+  its files do not state; at a terminal it asks instead. --iac-repo and
+  --environment, repeated, state the service's .idp-agent.yml, which is
+  previewed beside it — from what was typed or answered, never from the
+  inspection, and never over a committed one that says otherwise. With
+  --submit, both go on one branch idp-agent/… cut from HEAD in the service's
+  repository, which must be a git clone's root; a service in a subfolder of
+  its repository is not submitted yet.
 
   idpa is idp-agent. Every command but init and validate finds the
   declarations repository the same way: --repo, else the current directory
@@ -238,7 +263,7 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   It is read once per run, with the token in IDP_BACKSTAGE_TOKEN, and a
   change is still decided against a declarations repository, never it.
   A phrase, ask, plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL. None
-  of them writes, and neither does plan without --submit. With it, plan cuts
+  of them writes, and neither do plan and init without --submit. With it, plan cuts
   a branch idp-agent/… from HEAD in the declarations repository, which must
   be a git clone's root, for review; nothing else moves, nothing is pushed,
   and no merge request is opened. plan "<intent>" --submit crosses five
@@ -292,14 +317,20 @@ export function parseArguments(argv: string[]): Command {
             name: { type: 'string' },
             lifecycle: { type: 'string' },
             owner: { type: 'string' },
+            submit: { type: 'boolean' },
+            // Several, so a second is refused rather than kept in silence (`configFlagsOf`).
+            'iac-repo': { type: 'string', multiple: true },
+            environment: { type: 'string', multiple: true },
           },
           strict: true,
         })
         // Refused here, as a bad flag, rather than after an inspection a
         // model was paid for: the same rules an answer typed at the prompt is
-        // held to (`initAnswersOf`).
+        // held to (`initAnswersOf`, `configFlagsOf`).
         const answers = initAnswersOf(values)
         if ('refused' in answers) return { name: 'error', message: answers.refused }
+        const config = configFlagsOf(values)
+        if ('refused' in config) return { name: 'error', message: config.refused }
         // Omitted rather than passed as undefined: exactOptionalPropertyTypes
         // draws the distinction, and "the directory I am standing in" is an
         // absence rather than a value main has to invent here.
@@ -307,6 +338,8 @@ export function parseArguments(argv: string[]): Command {
           name: 'init',
           ...(values.repo !== undefined ? { repo: values.repo } : {}),
           answers: answers.answers,
+          ...(values.submit === true ? { submit: true as const } : {}),
+          ...(Object.keys(config.flags).length > 0 ? { flags: config.flags } : {}),
         }
       } catch (error) {
         return { name: 'error', message: (error as Error).message }
@@ -1131,6 +1164,25 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     } catch (error) {
       return failed(error, err)
     }
+    // --submit's repository, the service's own, opened before a model is
+    // configured, as `plan "<intent>"` opens its own: a directory that cannot
+    // take a branch — not a clone's root, a service in a subfolder of its
+    // repository (D12), nobody to commit as, a detached HEAD — is an argument,
+    // refused before anyone is told to set a key. `runInitRepo` is handed this
+    // forge and reads its base again.
+    let submit: SubmitOptions | undefined
+    if (command.submit === true) {
+      const confirm = confirmOf(deps, false)
+      try {
+        const { forge } = await openForSubmission(project, 'service', {})
+        submit = {
+          ...(confirm !== undefined ? { confirm } : {}),
+          open: reopening(forge, project, 'service'),
+        }
+      } catch (error) {
+        return failed(error, err)
+      }
+    }
     return agentBacked(
       deps,
       err,
@@ -1148,6 +1200,8 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
           ...(ask !== undefined ? { ask } : {}),
           colour: colourOf(deps),
           notice: toStderr(err),
+          ...(submit !== undefined ? { submit } : {}),
+          ...(command.flags !== undefined ? { flags: command.flags } : {}),
         })
       },
     )

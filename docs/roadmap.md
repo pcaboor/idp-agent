@@ -23,7 +23,7 @@ each:
 | 2 | Question mode | done |
 | 3 | `init platform` and `validate` | done |
 | 4 | Preview only: nothing is written | done |
-| 5 | Write + local branch | in progress ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)): task 1, `Cleared` for the declarations repository, on `main` ([#105](https://github.com/pcaboor/idp-agent/pull/105)); task 2, `Cleared` for the service repository, on `main` ([#106](https://github.com/pcaboor/idp-agent/pull/106)); task 3, the shared git launcher and the `forge/` types, on `main` ([#107](https://github.com/pcaboor/idp-agent/pull/107)); task 4, the local forge — create-only, idempotent, atomic — on `main` ([#108](https://github.com/pcaboor/idp-agent/pull/108)); task 5, `plan --from … --submit`, on `main` ([#109](https://github.com/pcaboor/idp-agent/pull/109)); task 6, `plan "<intent>" --submit`, refused before a model is paid, on `main` ([#110](https://github.com/pcaboor/idp-agent/pull/110)); `init --submit` is task 7 |
+| 5 | Write + local branch | done ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)): task 1, `Cleared` for the declarations repository ([#105](https://github.com/pcaboor/idp-agent/pull/105)); task 2, `Cleared` for the service repository ([#106](https://github.com/pcaboor/idp-agent/pull/106)); task 3, the shared git launcher and the `forge/` types ([#107](https://github.com/pcaboor/idp-agent/pull/107)); task 4, the local forge — create-only, idempotent, atomic ([#108](https://github.com/pcaboor/idp-agent/pull/108)); task 5, `plan --from … --submit` ([#109](https://github.com/pcaboor/idp-agent/pull/109)); task 6, `plan "<intent>" --submit`, refused before a model is paid ([#110](https://github.com/pcaboor/idp-agent/pull/110)); task 7, `init --submit` and `.idp-agent.yml`, and a branch already there answered before the confirmation ([#111](https://github.com/pcaboor/idp-agent/pull/111)) |
 | 6 | GitHub pull request | not started |
 | 7 | Polish: Ink TUI, asciinema, npm publish | not started |
 | 8 | Discovery | designed ([the design note](stage-8-brief.md), [#76](https://github.com/pcaboor/idp-agent/pull/76)); not started |
@@ -50,54 +50,34 @@ Each line says what the item is for. The sweep of the review is done
 ([its verdicts](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27)); its batches are
 here, one pull request each, each naming the check run together at the end.
 
-1. **Stage 5, write + local branch.** The first write, atomic and idempotent, built from
-   [the owner's plan](plans/stage-5-write.md), revised in place on 2026-09-29 against
-   `d0fdee9` after [the stage-5 check](stage-5-check.md): eight tasks, one stacked pull
-   request each for tasks 1 to 7, the documents riding with each. Task 1 — `Cleared` for the
-   declarations repository — is on `main` ([#105](https://github.com/pcaboor/idp-agent/pull/105)), carrying the owner's uncommitted work on
-   `feat/s5-cleared` and discarding none of it. Task 2 — `Cleared` for the service
-   repository, filed where `init` previews it — is on `main` too
-   ([#106](https://github.com/pcaboor/idp-agent/pull/106)). Task 3 — the one hardened git
-   launcher, `src/process/`, the Inspector and the forge share, the `forge/` types and the
-   rules that fence both — is on `main` too
-   ([#107](https://github.com/pcaboor/idp-agent/pull/107)). The owner validated the
-   architecture on 2026-09-29, and task 4 — the local forge, create-only, idempotent and
-   atomic, proved by failing every git call of a submission — is on `main` too
-   ([#108](https://github.com/pcaboor/idp-agent/pull/108)), with ADR 0010 accepted. Task 5,
-   `plan --from … --submit` — the first write, a local branch, confirmed at a terminal — is on
-   `main` too ([#109](https://github.com/pcaboor/idp-agent/pull/109)). Task 6,
-   `plan "<intent>" --submit` — the same branch after all five gates, a repository that
-   cannot take it refused before any model is paid — is on `main` too
-   ([#110](https://github.com/pcaboor/idp-agent/pull/110)); task 7, `init --submit` and
-   `.idp-agent.yml`, is next. `idpa "<phrase>" --submit` stays refused at stage 5
-   (D8) and is a follow-up: when it comes, divergence is refused before the Supervisor. The check itself, this queue's first item until
-   2026-09-29, is done: the check, the brief as a dated record, the revised plan, and ADR
-   0010 and ADR 0012 *proposed* ([#104](https://github.com/pcaboor/idp-agent/pull/104)).
-2. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
+1. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
    hand-written files in every shape, and `signPlan` properties over plans valid by
    construction. Stage 5's task 1 put the owner's `arbitraryGrantPlan` and §9.2's
    idempotence property in `tests/invariants/` ([#105](https://github.com/pcaboor/idp-agent/pull/105)), which closes
    gap-stage5-readiness-11 in part; B1 builds on that generator rather than writing a second
-   one, and goes on top of stage 5.
-3. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
+   one, and goes on top of stage 5, which is done
+   ([#105](https://github.com/pcaboor/idp-agent/pull/105) to
+   [#111](https://github.com/pcaboor/idp-agent/pull/111); its follow-ups are under
+   *Known debts*).
+2. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
    gap-stage5-readiness-4 (its submission half closed by stage 5's task 4): one lstat,
    realpath and `O_NOFOLLOW` primitive shared from
    `project-fs`, used by `scaffold/write.ts` and by the iac-fs walk, which rejects a
    symbolic link by name. Medium, and after stage 5: the forge writes only objects and a
    ref, never the working tree, and refuses a symbolic link tracked in `HEAD`, so B3 is for
    the read side and `scaffold/write.ts` (the stage-5 check, D17).
-4. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
+3. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
    harness half of agents-llm-9: record from an empty tape, fail on a turn never replayed,
    and digest the JSON Schema the provider is sent. It needs no key, but it prunes dead turns
    and rewrites every tape's digest, so it waits for the owner's go-ahead.
-5. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
+4. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
    catalogue is plugged in.
-6. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
+5. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
    authorisation (ADR-0006).
-7. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
+6. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence.
-8. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
+7. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
    the project's end goal (2026-09-23).
 
 Within stage 8, its design note (section 11) states its own order:
@@ -261,10 +241,38 @@ The owner's decisions, dated, each with where it is recorded.
   the files; and the repository's git hooks and fsmonitor never run during a submission, the
   launcher's hardening, which `SECURITY.md` states for teams relying on `pre-commit`. ADR 0010
   is *accepted* ([#108](https://github.com/pcaboor/idp-agent/pull/108)).
+- After submitting a plan twice by hand, on stage 5's task 5: the second run asked the level,
+  showed the diff and asked `[y/N]` before saying "already submitted". Now, on every
+  `--submit` road, a branch already there is answered before the confirmation, by a look at
+  the forge that writes no object and no ref — the test `submit` makes: this very submission
+  is named, exit 0, and somebody else's branch of that name refused, exit 1, neither with a
+  prompt. The level question stays, since it decides the bytes and so the branch; `submit`
+  looks again at the moment of writing. For `init --submit`, the defaults held: no
+  `backstage:` written and `--backstage` takes no value (D9), `--environment` rather than
+  `--env`, a service in a subfolder of its repository refused with exit 2 (D12), `init`
+  without `--submit` byte-identical, and the order forge, configuration questions, the
+  project read, `init`'s verdicts, divergence, then the Inspector
+  ([#111](https://github.com/pcaboor/idp-agent/pull/111)).
 
 ## Known debts and open items
 
 Each was checked against `main` at `3b642fa`.
+
+**Stage 5's follow-ups**
+
+- **`init --submit` for a service in a subfolder of its repository** (D12). Refused with
+  exit 2: the forge cuts a branch at a clone's root, and the service's paths would need the
+  folder's prefix. `init` without `--submit` previews one.
+- **`idpa "<phrase>" --submit`** (D8). Refused with exit 2, pointing at `plan "<intent>"
+  --submit`; when it comes, divergence is refused before the Supervisor.
+- **`.idp-agent.yml` for a service already declared.** It rides on the branch of the
+  Component `init` adds; when the service's catalog-info already declares it, a typed
+  configuration is said to be left unwritten, and is written by hand.
+- **The Inspector reads the working tree.** `init --submit` proves the catalog-info files
+  it decides on and `.idp-agent.yml`, not an uncommitted `CODEOWNERS` or `package.json` the
+  inspection read — an owner read there is vouched for though the branch does not carry the
+  file. Proving every file read would refuse `init` in any repository with one dirty
+  unrelated file.
 
 **First contact, left from review id docs-2**
 

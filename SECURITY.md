@@ -3,8 +3,9 @@
 The project's whole point is to change an infrastructure repository on someone's behalf,
 so the threat model is stated here rather than left to be asked about.
 
-**Where it stands: stage 4 of 7.** It reads, it asks a model, and it previews; it does not
-yet write a branch or open a pull request. This file separates what is **guaranteed and
+**Where it stands: stage 5 of 7.** It reads, it asks a model, and it previews; asked with
+`--submit`, it writes one new branch per submission, in the repository named, and holds no
+forge token until stage 6; it does not yet push or open a pull request. This file separates what is **guaranteed and
 tested today** from what is **designed and not yet built**, and names what is **known to
 be incomplete**. A guarantee that is not enforced by a test is not claimed here: each one
 names the test that fails if it stops being true.
@@ -40,8 +41,10 @@ names the test that fails if it stops being true.
   reaches it, worded by its route (D4): `plan "<intent>"` crosses all five gates, the
   Reviewer last; `plan --from` crosses four — the schema, the signature, the policies and
   the re-check — and **no Reviewer**, since no model drafted the plan. Either way its branch
-  cannot reach the default branch. Nothing is pushed and no merge request is opened; the
-  merge is what authorises (ADR-0006).
+  cannot reach the default branch. `init --submit` reaches it for the service's own
+  repository: the catalog-info `init` previews and, when a person typed or answered it,
+  `.idp-agent.yml` — never with a `backstage:`, never over a committed one. Nothing is
+  pushed and no merge request is opened; the merge is what authorises (ADR-0006).
 
 ## What leaves your machine
 
@@ -167,6 +170,9 @@ Inspector.
 | A directory inside another repository, a detached or unborn `HEAD`, no `git` and no author or committer identity are refused when the forge opens — git never guesses who commits (D13) | `tests/unit/local-forge.test.ts` — *refuses a directory inside someone else's repository*, *refuses a detached HEAD, which no merge request could target*, *refuses an unborn HEAD, which has no commit to cut from*, *says git is missing, as an argument error, when there is no git to run*, *says there is no committer identity before anything is read*, *says there is no author identity when only the committer is configured*; `tests/unit/process-git.test.ts` — *never lets git guess who is committing* |
 | `plan --from … --submit` submits only the diff it printed, after the four gates and the confirmation: a declined or interrupted prompt, an open question, a gate's refusal, a plan writing into both repositories (D6) and a change that changes nothing cut no branch, and a catalogue differing from `HEAD` is refused before any preview, naming the files | `tests/unit/plan-command.test.ts` — *cuts one branch holding exactly the diff it printed, and leaves main alone*, *declined at the prompt: exit 0, not submitted, nothing written*, *interrupted at the prompt: exit 130, nothing written*, *submits nothing while a question is open and nobody can answer it*, *refuses a plan writing into both repositories, pointing at init --submit (D6)*, *answers a plan that changes nothing with #83’s exit 3, and asks no forge*, *refuses a repository whose working tree is not HEAD, before previewing*, *refuses at the moment of writing when the base moved after the preview*, *answers a git that fails mid-write with exit 1, and leaves what a person sees*; `pnpm smoke`, on the built binary |
 | `plan "<intent>" --submit` submits only after all five gates, the Reviewer last, and refuses a repository that cannot take the branch before any model is called: not a clone's root, no committer identity or a detached `HEAD` before the model is even configured (exit 2), and a catalogue differing from `HEAD` once a model is configured, before the Inspector (exit 1, in `--json` too, under `submission` alone) | `tests/unit/plan-intent.test.ts` — *cuts the branch the same plan cuts by --from, after all five gates*, *cuts no branch when the Reviewer refuses: the submission comes after it*, *refuses a repository that cannot take a branch as an argument, before a single model call*, *refuses a divergent repository before a single model call*, *refuses a divergent repository in --json with only the submission key, and no model call (D11)*, *refuses a --repo that cannot take a branch before the model is configured, and calls none*, *leaves the application repository byte-identical while submitting* |
+| A branch already there is answered before anyone is asked to confirm, by a look that writes no object and no ref: this very submission is named, exit 0, with no `[y/N]`; somebody else's branch of that name is refused, exit 1, with none either — on `plan --from`, `plan "<intent>"` and `init`; `submit` looks again at the moment of writing | `tests/unit/local-forge.test.ts` — *finds nothing where nothing was submitted, and writes nothing to say so*, *names its own branch, by the test submit() uses, with no object and no ref written*, *refuses a branch of that name that is someone else's, writing nothing*; `tests/unit/plan-command.test.ts` — *answers a second submission before the confirmation: the level asked, no [y/N], nothing written*, *refuses a branch of that name that is someone else's before the confirmation*; `tests/unit/plan-intent.test.ts` and `tests/unit/init-command.test.ts` — *answers a second submission before the confirmation, and writes nothing* |
+| `init --submit` cuts one branch in the service's own repository holding the catalog-info it previews, filed where the preview files it, and `.idp-agent.yml` only from `--iac-repo` and `--environment` or a person's answers — never from the inspection, never with a `backstage:`; a committed configuration that says otherwise is refused, one equal in value is left alone; a flag or an answer the schema refuses, or holding a control, format or bidi character, a question nobody can answer, a service in a subfolder of its repository (D12) and a working tree differing from `HEAD` on the files `init` decides on are all refused before any model call; without `--submit` or a flag, it prints what stage 4 printed and writes nothing | `tests/unit/init-command.test.ts` — *init --submit*: *cuts one branch in the application repository holding the catalog-info and the configuration*, *files in the root catalog-info.yml the service keeps, as the preview does*, *writes the configuration readConfig reads back*, *never rewrites a committed configuration that says something else, and says so before a model call*, *leaves a committed configuration alone when the flags say the same, however it is written*, *refuses flags the schema refuses before a single model call*, *refuses an answer holding a bidi control, as a refused answer, before a model call*, *asks for what the flags did not say, and exits 3, before a model call, when nobody can answer*, *refuses a working tree that is not HEAD before a single model call*, *refuses a service in a subfolder of its repository, at stage 5, before a model call*, *prints what it prints today without --submit or a flag, APPLY included*, *says the configuration a flag asked for is not written when the service is already declared*; *init --submit through main* — *refuses an --environment holding a bidi control, naming the flag, exit 2, with no model call* |
+| `.idp-agent.yml` never carries a credential: `iacRepo` refuses userinfo, a query or a fragment — where a clone URL copied from `git remote -v` keeps its token — in the one schema the flag, the answer, the reader and `clearService` all parse through, and the refusal never quotes the value; `--iac-repo` typed twice is refused rather than one kept in silence | `tests/unit/cli-args.test.ts` — *refuses a locator that carries a credential, naming the flag and never the secret*, *refuses --iac-repo typed twice, rather than keeping the last one in silence*; `tests/unit/init-command.test.ts` — *refuses a locator answer that carries a credential, never quoting it, before a model call*; `tests/unit/clear-service.test.ts` — *refuses a locator carrying a credential at the moment of acting, never quoting it*; `tests/unit/config.test.ts` — *refuses a committed locator that carries a credential, naming the field and not the token* |
 | A submission runs none of the repository's hooks | `tests/unit/local-forge.test.ts` — *runs none of the repository's hooks while it writes*; `tests/unit/process-git.test.ts` — *does not run the repository's hooks* |
 | `init platform` never overwrites and never deletes | `tests/unit/scaffold-write.test.ts` — *leaves a hand-edited file byte for byte*, *does not delete anything that was already there* |
 | The key reaches its provider, in its header, and nothing else: no request body, no trace, no tracking server, no output — on each of the three providers, for a question and for a change | `tests/contract/key-reach.test.ts` — *the {anthropic, mistral, openai} key on a real run*: *reaches its provider in its header, and nothing else, on a question*, *… on a change* |
@@ -231,6 +237,14 @@ open.
   name between the forge's check and its write is replaced by the branch — git's
   create-only test reads a dangling symbolic ref as absent — though nothing outside
   `refs/heads/idp-agent/` is written.
+- **`init --submit` proves the files it decides on and writes, not every file the Inspector
+  read.** The Inspector reads the application's working tree, an uncommitted `CODEOWNERS`
+  or `package.json` included; the divergence check covers the catalog-info files `init`
+  reads and `.idp-agent.yml`. An owner read out of an uncommitted file is vouched for
+  though the branch does not carry that file — the diff and the merge request are where a
+  person sees it. `.idp-agent.yml` goes only on the branch of a Component `init` adds: for
+  a service its catalog-info already declares, a typed configuration is said to be left
+  unwritten, and is written by hand.
 - **What the agents read from the declarations repository is sent as written.** Nothing
   there is filtered: it is the catalogue the question is about.
 
@@ -239,8 +253,8 @@ open.
 Claimed by `docs/design.md`, not by the code. Do not rely on them today.
 
 - **The merge is the act of authorisation.** The CLI will open a merge request (stage 6).
-  Today `plan … --submit`, on either road, cuts a local branch and never writes to the main
-  branch (stage 5), and nothing opens a merge request for it.
+  Today `plan … --submit`, on either road, and `init --submit` cut a local branch and never
+  write to the main branch (stage 5), and nothing opens a merge request for it.
 - **One token per capability.** The token that opens a merge request will not be able to
   merge it, and a test will assert that this action *fails* (stage 6).
 

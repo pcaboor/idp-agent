@@ -13,7 +13,8 @@ providers arrive from stage 4 on (design.md § 3, § 11, § 13).
 `ContextProvider` (`src/context/provider.ts`) declares `name` and `load(): Promise<LoadResult>`,
 where `LoadResult` carries `entities` alongside `rejected`: rejections are returned, never thrown
 and never swallowed. `FixtureProvider` (`src/context/fixtures/index.ts`) is the only implementation
-today; `ForgeProvider` (`src/forge/provider.ts`) is designed, not yet built.
+today; `ForgeProvider` (`src/forge/provider.ts`) ships at stage 5 with one implementation,
+`local`, opened for one repository; it has no `merge` and no `delete` (ADR-0010).
 
 ## Rejected alternative
 

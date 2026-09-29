@@ -2,7 +2,8 @@
 
 The layer that writes into a user's repository: one new ref under `refs/heads/idp-agent/`,
 cut through git's plumbing, and nothing else (ADR-0010). It holds its shapes, its refusals and
-the local forge; `plan … --submit`, on either road, reaches it, through `cli/commands/submit.ts`.
+the local forge; `plan … --submit`, on either road, and `init --submit`, for the service's own
+repository, reach it, through `cli/commands/submit.ts`.
 
 ## What lives here
 
@@ -11,7 +12,7 @@ the local forge; `plan … --submit`, on either road, reaches it, through `cli/c
 | `provider.ts` | `ForgeProvider`, `Base`, `Submitted` — **types only**, like `llm/client.ts` |
 | `errors.ts` | `ForgeInputError` — the refusals that are the user's arguments, exit 2 |
 | `local/objects.ts` | `blobId`, `treeOf`, `writeTree` — reading and writing git objects, never a ref |
-| `local/forge.ts` | `openLocalForge(repo, repository)` — `base`, `diverges`, `submit`, over a clone on this machine |
+| `local/forge.ts` | `openLocalForge(repo, repository)` — `base`, `diverges`, `recognise`, `submit`, over a clone on this machine |
 
 ## How a submission is atomic
 
@@ -45,8 +46,9 @@ show, never a command to the terminal.
 
 ## What a forge can do, and what it cannot
 
-`ForgeProvider` has three methods — `base`, `diverges`, `submit` — and the absences are the
-design. There is no `merge`: the merge is the act of authorisation (ADR-0006), and a method
+`ForgeProvider` has four methods — `base`, `diverges`, `recognise`, `submit` — one of which
+writes, and the absences are the design. `recognise` is `submit`'s own test of a branch
+already there, run before anyone is asked to confirm, and it only reads. There is no `merge`: the merge is the act of authorisation (ADR-0006), and a method
 nobody calls is not a guarantee. There is no `delete`, no push to a base and no way to name
 a branch: `submit` takes a `Cleared`, whose branch the engine computed from its bytes, and a
 ref can only be created, never moved — `main` included. A forge is opened for one

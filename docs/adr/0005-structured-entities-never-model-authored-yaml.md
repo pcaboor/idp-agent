@@ -15,7 +15,8 @@ pinned the options, and none do after.
 The model emits a structure; the engine writes the file. `serializeEntity` (`src/core/yaml/serialize.ts`)
 is the sole YAML writer, `insertDocument`/`removeDocument` (`src/core/yaml/surgery.ts`) place the
 document line by line with a blank line between them, and `resolveEntityPath` picks the path.
-`propose()` (design.md § 5.2) is designed, not yet built: it fills that structure, never text.
+`propose()` (design.md § 5.2, `src/agents/tools/propose-tool.ts`, stage 4) fills that structure,
+never text.
 
 ## Rejected alternative
 

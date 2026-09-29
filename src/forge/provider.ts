@@ -27,8 +27,11 @@ export type Submitted =
    */
   | { readonly outcome: 'refused'; readonly reason: string }
 
+/** What a look at the branch, before any write, can say of it. */
+export type Recognised = Extract<Submitted, { readonly outcome: 'already-submitted' | 'refused' }>
+
 /**
- * A forge can do three things, and the absences are the design (ADR-0006,
+ * A forge can do four things, one of them a write, and the absences are the design (ADR-0006,
  * ADR-0010).
  *
  * No `merge`: the merge is the act of authorisation, and a tool that could
@@ -53,6 +56,15 @@ export interface ForgeProvider {
    * A sentence names paths the repository holds: `cli/` prints it through `inertLine`.
    */
   diverges(base: Base, expected: Expectation): Promise<readonly string[]>
+  /**
+   * Read-only: is the branch this change names already there? `already-submitted`
+   * when it is exactly this change — the test `submit` makes, the same code —
+   * `refused` when it is somebody else's, `undefined` when there is none. It
+   * writes no object and no ref, so a run can answer a second submission
+   * before anyone is asked to confirm it; `submit` checks again at the moment
+   * of writing, for the branch created in between.
+   */
+  recognise(change: Cleared, base: Base): Promise<Recognised | undefined>
   /** Re-reads the base, re-checks divergence, then creates one branch — or says why not. */
   submit(change: Cleared, base: Base): Promise<Submitted>
 }

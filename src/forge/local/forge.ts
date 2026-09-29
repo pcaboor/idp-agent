@@ -3,7 +3,7 @@ import { branchFor, isCleared, SUBMISSION_PREFIX } from '../../core/plan/clear.j
 import { isCataloguePath } from '../../core/paths/catalogue.js'
 import { GitError, gitIn, type Git } from '../../process/git.js'
 import { ForgeInputError } from '../errors.js'
-import type { Base, ForgeProvider, Submitted } from '../provider.js'
+import type { Base, ForgeProvider, Recognised, Submitted } from '../provider.js'
 import { blobId, treeOf, writeTree, type TreeEntry } from './objects.js'
 
 /**
@@ -87,8 +87,14 @@ export async function openLocalForge(
   const prefix = text(await git(['rev-parse', '--show-prefix']))
   if (prefix !== '') {
     throw new ForgeInputError(
-      `${repo} is the folder ${prefix} of a git repository, not at its root; ` +
-        '--submit needs the root, or the branch would be cut in someone else’s repository',
+      repository === 'service'
+        ? // D12: `init` previews a service in a subfolder, and its paths would
+          // need the folder's prefix on a branch cut at the root — a follow-up.
+          `${repo} is the folder ${prefix} of a git repository, not at its root; ` +
+            'a service in a subfolder of its repository is not submitted at stage 5 — ' +
+            'init without --submit previews it'
+        : `${repo} is the folder ${prefix} of a git repository, not at its root; ` +
+            '--submit needs the root, or the branch would be cut in someone else’s repository',
     )
   }
   const format = text(await git(['rev-parse', '--show-object-format'])) === 'sha256' ? 'sha256' : 'sha1'
@@ -221,16 +227,45 @@ export async function openLocalForge(
     return { outcome: 'already-submitted', branch: change.branch, commit: head }
   }
 
-  const submit = async (change: Cleared, at: Base): Promise<Submitted> => {
-    // First, and before any git call: the value is one `clear.ts` minted
-    // (D3) — a spread, a cast or a clone of one is not — and it is for the
-    // repository this forge was opened on (check §5).
+  /**
+   * First, and before any git call: the value is one `clear.ts` minted (D3) —
+   * a spread, a cast or a clone of one is not — and it is for the repository
+   * this forge was opened on (check §5). Undefined: it may go on.
+   */
+  const unfit = (change: Cleared): Submitted | undefined => {
     if (!isCleared(change)) return refused('not a clearance minted by clearPlan or clearService')
     if (change.repository !== repository) {
       return refused(
         `a clearance for the ${change.repository} repository was handed to a forge on the ${repository} repository`,
       )
     }
+    return undefined
+  }
+
+  /**
+   * A second submission answered before a person is asked to confirm it — the
+   * owner's report of 2026-09-29: the level question, the diff and `[y/N]`,
+   * and only then "already submitted". `existing()` is the whole test, the one
+   * `submit` makes, and it only reads: `symbolic-ref`, `rev-parse`,
+   * `rev-list`, `diff-tree`, `ls-tree`, `cat-file` — blob ids are computed
+   * here, never written. Nothing is claimed for an empty change, whose branch
+   * name is the digest of nothing.
+   */
+  const recognise = async (
+    change: Cleared,
+    at: Base,
+  ): Promise<Recognised | undefined> => {
+    const wrong = unfit(change)
+    if (wrong?.outcome === 'refused') return wrong
+    if (change.edits.length === 0) return undefined
+    const found = await existing(`refs/heads/${change.branch}`, change, at)
+    if (found?.outcome === 'already-submitted' || found?.outcome === 'refused') return found
+    return undefined
+  }
+
+  const submit = async (change: Cleared, at: Base): Promise<Submitted> => {
+    const wrong = unfit(change)
+    if (wrong !== undefined) return wrong
     // §4.4: check the repository again at the moment of writing. A HEAD that
     // became detached or unborn DURING the run is not an argument the user
     // typed wrong — it is the repository moving — so it is a refusal (exit 1),
@@ -309,5 +344,5 @@ export async function openLocalForge(
     return { outcome: 'created', branch: change.branch, commit }
   }
 
-  return { name: 'local', repository, base, diverges, submit }
+  return { name: 'local', repository, base, diverges, recognise, submit }
 }

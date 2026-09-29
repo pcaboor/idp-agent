@@ -178,6 +178,23 @@ Each pull request adds its line here.
   submission as `--from` does. `idpa "<phrase>" --submit` stays refused, and now names both
   roads that submit. Without `--submit`, `plan "<intent>"` prints what it printed, byte for
   byte ([#110](https://github.com/pcaboor/idp-agent/pull/110)).
+- `init --submit`, and `.idp-agent.yml` written at last: the service's catalog-info — the
+  file `init` previews, where it files it — and, when `--iac-repo` or `--environment`
+  (repeatable) is typed, the configuration, go on one branch `idp-agent/init-<name>-<8 hex>`
+  cut from `HEAD` in the service's own repository. The configuration comes only from those
+  flags or a person's answers, never from the inspection, never with a `backstage:`, and a
+  committed one is never rewritten — one equal in value is left alone. Everything that would
+  refuse it is settled before any model call: a directory that cannot take a branch, a
+  service in a subfolder of its repository (D12), a flag the schema refuses or holding a
+  control, format or bidi character (spelled out in the refusal), `--iac-repo` typed twice,
+  and a locator carrying userinfo, a query or a fragment — where a pasted clone URL keeps
+  its token, never quoted back — are exit 2, a missing value is asked or exit 3, and a
+  working tree differing from `HEAD` on the files `init` decides on is exit 1. And, on every
+  `--submit` road, a branch already there is answered before the confirmation, by a look
+  that writes nothing: the same submission is named with no `[y/N]`, someone else's branch
+  of that name refused; the level question stays, since it decides the bytes. Without
+  `--submit` or a flag, `init` prints what it printed, byte for byte. Stage 5 is done
+  ([#111](https://github.com/pcaboor/idp-agent/pull/111)).
 
 ### Changed
 

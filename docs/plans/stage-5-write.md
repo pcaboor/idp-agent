@@ -4779,6 +4779,19 @@ today's `main`:
   follow-up.
 - `renderRefusedAnswer` is already exported (`plan.ts:849`): that step goes.
 
+*Built on 2026-09-29, where the code or the tests below asked for it:* a run that types no
+configuration flag is asked nothing and writes no `.idp-agent.yml` — the tests below submit
+without a flag and expect the catalog-info alone, and "Whether a person with no flags and no
+file is asked" is settled that way — while a flag, with or without `--submit`, asks for what
+it leaves out; a committed configuration that differs is refused before the model, not only
+by `clearService`; a flag's field is held to the schema and `holdsInvisible` (moved to
+`core/schemas/config.ts`, `clear.ts`'s regex) at parse time, exit 2; `main` opens the
+service's forge before the model is configured and hands it on with `reopening`, as task 6
+does; without `--submit` or a flag, `previewOf` is left exactly as it was; `init --backstage
+<url>` is refused as an option `init` does not know, which it already was. The owner's
+addition — a branch already there answered before the confirmation, on every road — is
+`ForgeProvider.recognise`, called by `submit()` before `Confirm`.
+
 What holds: the configuration never passes through a model — its values come from flags, or
 from a person answering a question, and `repositoryConfigSchema` is the gate; a committed
 configuration is never rewritten and one equal in value is left alone; flags the schema
@@ -4815,7 +4828,7 @@ person answering a question, and `repositoryConfigSchema` is the gate. The Inspe
 are not an input to it, so a test can say so by construction: `configFor` does not take
 them.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/unit/init-command.test.ts`, reusing `application`, `drafting`, `COMPONENT`,
 `temp` and `hashTree`, and importing `committed`, `git`, `observable`, `show` from
@@ -5016,12 +5029,12 @@ In `tests/unit/cli-args.test.ts`: `init --environment dev --environment prod --i
 parses; `init --backstage https://…` is refused as `--backstage` taking no value; `init --env`
 is unknown to `init`.
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `pnpm vitest run tests/unit/init-command.test.ts tests/unit/cli-args.test.ts`
 Expected: FAIL — `submit` and `flags` are not `InitOptions` fields.
 
-- [ ] **Step 3: Parse the flags**
+- [x] **Step 3: Parse the flags**
 
 In `parseArguments`' `init` branch (not `init platform`), the options gain:
 
@@ -5038,7 +5051,7 @@ absent. `main` passes `flags` and `submit` (built exactly as in task 5) into `ru
 beside the `ask` it already passes. `HELP`'s `init` line names the new flags, and `usageOf`
 prints them.
 
-- [ ] **Step 4: Compose the configuration, and submit**
+- [x] **Step 4: Compose the configuration, and submit**
 
 In `src/cli/commands/init.ts`, add the pure decision and its questions:
 
@@ -5226,13 +5239,13 @@ would refuse `init` in any repository with a dirty unrelated file, which is a wo
 Keep the existing comments above `previewOf` about the service repository and the `before`
 read whole. They are still true.
 
-- [ ] **Step 5: Correct what this makes false, in this commit**
+- [x] **Step 5: Correct what this makes false, in this commit**
 
 Task 8 lists the document edits this pull request carries: design §7.0, §7.2, §7.3, §7.4 and
 §9.4; the ADR-0003 and ADR-0006 amendments; `SECURITY.md`'s state line and its forge rows;
 `AGENTS.md`'s current state; `README.md`; the `init-command.test.ts` title.
 
-- [ ] **Step 6: Traceability**
+- [x] **Step 6: Traceability**
 
 - `CHANGELOG.md`, Unreleased → Added: one line with the link.
 - `docs/roadmap.md`: stage 5 **done** in the state table and the queue item removed, the queue
@@ -5336,7 +5349,7 @@ tracing), 0010 was reserved for the stage-5 check, and 0011 is `backstage-http`'
 
 **In task 7's pull request** — what is left
 
-- [ ] **`docs/design.md`**:
+- [x] **`docs/design.md`**:
   - **§5.1.** "The last box is not built. Stage 4 ends at the diff, and the branch and the
     merge request arrive at stages 5 and 6" → "The branch is built at stage 5: a ref under
     `idp-agent/`, cut from `HEAD` and never moving one. The merge request is stage 6."
@@ -5369,7 +5382,7 @@ tracing), 0010 was reserved for the stage-5 check, and 0011 is `backstage-http`'
     deleted (ADR-0012, proposed)."
   - **§13**, extend the "Real Kong / Tufin / Jira integrations" bullet: "…and with them the
     reconciler of ADR-0012 — until then, `main` says *authorised*, not *provisioned*."
-- [ ] `src/cli/commands/init.ts`: `BRANCH_PROTECTION` (`:60`) gains one line after "include
+- [x] `src/cli/commands/init.ts`: `BRANCH_PROTECTION` (`:60`) gains one line after "include
   administrators":
 
   ```
@@ -5380,17 +5393,21 @@ tracing), 0010 was reserved for the stage-5 check, and 0011 is `backstage-http`'
   and `tests/unit/init-command.test.ts`'s "prints the branch protection it cannot set" adds
   `expect(run.out).toContain('status')`. Re-run `pnpm smoke`: its `init platform` check
   matches the count of files written, which the added line does not change.
-- [ ] ADR-0003: "`ForgeProvider` (`src/forge/provider.ts`) is designed, not yet built" →
+- [x] ADR-0003: "`ForgeProvider` (`src/forge/provider.ts`) is designed, not yet built" →
   "`ForgeProvider` (`src/forge/provider.ts`) ships at stage 5 with one implementation,
   `local`, opened for one repository; it has no `merge` and no `delete` (ADR-0010)."
-- [ ] ADR-0006, Consequences: add "Stage 5's local forge makes the first half testable: a
+- [x] ADR-0002 and ADR-0005: "`propose()` — designed, not yet built" → `propose()`
+  (`src/agents/tools/propose-tool.ts`, stage 4) fills the typed buffer. It has existed since
+  stage 4; the sentence was the last match of the grep below outside a record. *(Found by the
+  review of task 7's pull request, 2026-09-29.)*
+- [x] ADR-0006, Consequences: add "Stage 5's local forge makes the first half testable: a
   submission cannot move an existing ref, `main` included (ADR-0010)."
 - [x] ADR 0010's status: the owner accepts it, and the pull request that does records the
   date. *(Accepted on 2026-09-29, recorded in task 4's pull request.)* ADR 0012 stays *proposed* until stage 6 builds its first mechanism.
-- [ ] `SECURITY.md`: "stage 4 of 7" (`:6`) → "stage 5 of 7": it writes one new branch per
+- [x] `SECURITY.md`: "stage 4 of 7" (`:6`) → "stage 5 of 7": it writes one new branch per
   submission, in the repository named, and no token until stage 6; "no secret reaches the
   model" and the Inspector's confinement stay where #78 put them.
-- [ ] `AGENTS.md`:
+- [x] `AGENTS.md`:
   - "Current state": stage 5 **done**; replace "Stage 5 is in progress and none of it is on
     `main`";
   - "Shipped and working": `--submit` on `plan` and `init`, and the test, file and smoke
@@ -5399,11 +5416,11 @@ tracing), 0010 was reserved for the stage-5 check, and 0011 is `backstage-http`'
   - *Open questions*: "a submission ignores the repository's hooks (ADR-0010)", and
     "**declared is not provisioned** — a merged declaration can still be refused or fail
     downstream, and nothing detects it yet (ADR-0012)".
-- [ ] `README.md`: `init --submit` in the command list.
-- [ ] `tests/unit/init-command.test.ts`: the title that says `catalog-info.yml` and asserts
+- [x] `README.md`: `init --submit` in the command list.
+- [x] `tests/unit/init-command.test.ts`: the title that says `catalog-info.yml` and asserts
   `.yaml` → `catalog-info.yaml`.
 
-- [ ] **Verify the documents against the code, in each of those pull requests**
+- [x] **Verify the documents against the code, in each of those pull requests**
 
 Every count in `AGENTS.md` and `SECURITY.md` is re-measured, not edited by hand:
 
@@ -5415,7 +5432,8 @@ rtk proxy grep -rn "stage 4 of 7\|replaces this seam\|only command that writes\|
 ```
 
 Expected, once task 7 is merged: the grep finds only historical plans (`docs/plans/stage-*`)
-and dated reviews, which are records of what was decided then and stay as written. The rule
+and dated records — the reviews, and `docs/stage-5-check.md`, which quotes the old
+`SECURITY.md` line (`:450`) — which are records of what was decided then and stay as written. The rule
 count is searched in bold (`**Nineteen**` in `AGENTS.md`, `**nineteen**` in design §5.5):
 a bare "nineteen" also finds the stage-5 check's nineteen decisions and the roadmap's dated
 entry for them, which count something else and stay.

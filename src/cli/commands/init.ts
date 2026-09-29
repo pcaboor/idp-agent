@@ -20,15 +20,24 @@ import {
   targetOf,
   type Identity,
 } from '../../core/plan/catalog-info.js'
+import { clearService } from '../../core/plan/clear.js'
 import { questionsOf, type Question } from '../../core/plan/clarify.js'
 import type { Provenance } from '../../core/plan/provenance.js'
 import { signPlan } from '../../core/plan/sign.js'
+import {
+  CONFIG_FILE,
+  holdsInvisible,
+  repositoryConfigSchema,
+  serializeConfig,
+  type RepositoryConfig,
+  type WrittenConfig,
+} from '../../core/schemas/config.js'
 import { COMPONENT_LIFECYCLES, ownerRefSchema } from '../../core/schemas/entity.js'
 import { planSchema, proposedName, type Operation, type Plan } from '../../core/schemas/plan.js'
 import { reasonOf } from '../../core/schemas/reject.js'
 import { parseDocuments } from '../../core/yaml/serialize.js'
 import type { LlmClient } from '../../llm/client.js'
-import { readConfig, seededVocabulary } from '../config.js'
+import { ConfigError, readConfigFile, seededVocabulary } from '../config.js'
 import { budgetNotice, selectionNotice } from '../repository.js'
 import { loadTemplates } from '../../scaffold/templates.js'
 import { scaffoldLayout } from '../../scaffold/layout.js'
@@ -52,8 +61,16 @@ import {
   renderRefusedAnswer,
   type Ask,
 } from './plan.js'
+import type { PreviewStatus } from '../render/footer.js'
 import { inertLine } from '../render/plain.js'
 import type { CommandResult } from './result.js'
+import {
+  openForSubmission,
+  refuseDivergence,
+  submit,
+  type Opened,
+  type SubmitOptions,
+} from './submit.js'
 
 /**
  * Printed on every run, including the one that writes nothing. The second
@@ -66,6 +83,8 @@ const BRANCH_PROTECTION = `Branch protection is set in the forge, not here. Requ
   · dismiss stale approvals on a new push
   · no force push, no branch deletion
   · include administrators
+  · require the downstream decision (Tufin, AlgoSec, a DBA's queue) as a status
+    check, once one reports — a refused request must never merge (stage 6, ADR-0012)
 This build cannot verify these. The live check — that the token which opens a
 request cannot merge it — arrives at stage 6.`
 
@@ -374,6 +393,201 @@ export function initAnswersOf(values: {
   }
 }
 
+/** What a person typed for `.idp-agent.yml`: `--iac-repo`, and each `--environment`. */
+export interface ConfigFlags {
+  readonly iacRepo?: string
+  readonly environments?: readonly string[]
+}
+
+/**
+ * A value `holdsInvisible` refused, with every character it refuses spelled as
+ * its code point. `inertLine` spells only the controls a terminal obeys and the
+ * bidi ones, and removes the rest of C0 and C1: a refusal that printed a U+200B
+ * as it is would name a value the person cannot see anything wrong with.
+ */
+const spelledOut = (value: string): string =>
+  inertLine(
+    value.replace(
+      /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu,
+      (char) => `\\u${(char.codePointAt(0) ?? 0).toString(16).padStart(4, '0')}`,
+    ),
+  )
+
+/**
+ * The configuration flags as typed, refused before a model is chosen — exit 2,
+ * naming the flag, the way `initAnswersOf` refuses a lifecycle — when
+ * `--iac-repo` is typed more than once (parseArgs would keep the last in
+ * silence), when a field of the schema refuses a value — an empty locator, one
+ * carrying a credential, an environment too long — or when a value holds a
+ * control, format or bidi character (`holdsInvisible`). The schema first: its
+ * reasons never quote a value, and a locator it refuses is one whose userinfo
+ * may be a token. The schema stays the gate: `configFor` parses the whole
+ * configuration again, flags and answers together, before any model is paid.
+ */
+export function configFlagsOf(values: {
+  readonly 'iac-repo'?: readonly string[] | undefined
+  readonly environment?: readonly string[] | undefined
+}): { flags: ConfigFlags } | { refused: string } {
+  const locators = values['iac-repo'] ?? []
+  if (locators.length > 1) {
+    // Neither value quoted: either may be the one carrying a credential.
+    return {
+      refused:
+        `--iac-repo was typed ${String(locators.length)} times; a ${CONFIG_FILE} names one ` +
+        'declarations repository, so type it once',
+    }
+  }
+  const [iacRepo] = locators
+  const fields = repositoryConfigSchema.shape
+  const refusal = [
+    ['--iac-repo', iacRepo === undefined ? undefined : fields.iacRepo.safeParse(iacRepo)],
+    ['--environment', values.environment === undefined ? undefined : fields.environments.safeParse(values.environment)],
+  ] as const
+  for (const [flag, parsed] of refusal) {
+    if (parsed !== undefined && !parsed.success) {
+      return { refused: `${flag} does not make a ${CONFIG_FILE} — ${inertLine(reasonOf(parsed.error))}` }
+    }
+  }
+  const typed: [string, string][] = [
+    ...(iacRepo !== undefined ? [['--iac-repo', iacRepo] as [string, string]] : []),
+    ...(values.environment ?? []).map((one) => ['--environment', one] as [string, string]),
+  ]
+  const unseen = typed.find(([, value]) => holdsInvisible(value))
+  if (unseen !== undefined) {
+    return {
+      refused:
+        `${unseen[0]} ${spelledOut(unseen[1])} holds a control, format or bidi character, ` +
+        `which ${CONFIG_FILE} never holds; type it again without one`,
+    }
+  }
+  return {
+    flags: {
+      ...(iacRepo !== undefined ? { iacRepo } : {}),
+      ...(values.environment !== undefined ? { environments: [...values.environment] } : {}),
+    },
+  }
+}
+
+/** The two questions `.idp-agent.yml` can put to a person, and the flag that answers each. */
+const CONFIG_QUESTIONS = {
+  iacRepo: {
+    path: `${CONFIG_FILE}.iacRepo`,
+    question: 'Where do the declarations live? A repository locator, e.g. github.com/acme/iac',
+  },
+  environments: {
+    path: `${CONFIG_FILE}.environments`,
+    question: 'Which environments does this organisation have? Comma-separated, e.g. dev, staging, prod',
+  },
+} as const satisfies Record<string, Question>
+
+const CONFIG_FLAGS: readonly (readonly [string, string])[] = [
+  [CONFIG_QUESTIONS.iacRepo.path, '--iac-repo'],
+  [CONFIG_QUESTIONS.environments.path, '--environment'],
+]
+
+type ConfigDecision =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'write'; readonly config: WrittenConfig }
+  | { readonly kind: 'missing'; readonly questions: readonly Question[] }
+  /** A committed configuration says otherwise: it is never rewritten. */
+  | { readonly kind: 'differs' }
+
+/**
+ * What `.idp-agent.yml` should say, from what a PERSON typed and nothing else.
+ * The inspection is deliberately not a parameter: the configuration seeds the
+ * vocabulary every gate measures against (§7.0), so a model's reading of the
+ * project must never be where it came from. `backstage:` is never written
+ * (D9): it is never requested either, and a URL is never taken from a command
+ * line (ADR-0011).
+ *
+ * No flag, no configuration: a person who typed none of it has not asked for
+ * one, and is not asked two questions about the organisation on every
+ * service's submission — so `init` without a flag prints what it printed at
+ * stage 4, and `init --submit` without one submits the catalog-info alone. A
+ * flag starts the configuration, and what it leaves out is asked — with or
+ * without `--submit`, since a preview that silently dropped a typed flag
+ * would be a flag ignored in silence. A value the committed file already
+ * holds is not asked again.
+ *
+ * Flags and file agreeing, however the file happens to be written, is nothing
+ * to write — compared by value, through the one serialiser. Disagreeing is
+ * `differs`, and refused here, by `runInitRepo`, before anything else: a
+ * configuration is changed by hand, in a reviewed change. `clearService` is
+ * never handed one to write over an existing file that disagrees; a file
+ * changed after this read is refused at the moment of acting by the forge's
+ * divergence check on `.idp-agent.yml`'s bytes (`refuseDivergence`).
+ */
+function configFor(flags: ConfigFlags, existing: RepositoryConfig | undefined): ConfigDecision {
+  if (flags.iacRepo === undefined && flags.environments === undefined) return { kind: 'none' }
+  const iacRepo = flags.iacRepo ?? existing?.iacRepo
+  const environments = flags.environments ?? existing?.environments
+  const missing = [
+    ...(iacRepo === undefined ? [CONFIG_QUESTIONS.iacRepo] : []),
+    ...(environments === undefined ? [CONFIG_QUESTIONS.environments] : []),
+  ]
+  if (missing.length > 0) return { kind: 'missing', questions: missing }
+  const parsed = repositoryConfigSchema.safeParse({ iacRepo, environments })
+  if (!parsed.success) {
+    throw new ConfigError(
+      `the configuration flags do not make a ${CONFIG_FILE} — ${reasonOf(parsed.error)}`,
+    )
+  }
+  const config = { iacRepo: parsed.data.iacRepo, environments: parsed.data.environments }
+  if (existing === undefined) return { kind: 'write', config }
+  return serializeConfig(existing) === serializeConfig(config) ? { kind: 'none' } : { kind: 'differs' }
+}
+
+/**
+ * The configuration's questions put to the person, before `readProject` and
+ * the Inspector: a question is a person's time, and it is not asked after
+ * three paid round-trips. An answer is held to what a flag is held to — no
+ * invisible character, then the schema — and refused as an ANSWER (exit 1),
+ * the way `plan` refuses one, not as an argument.
+ */
+async function settleConfig(
+  decided: ConfigDecision,
+  flags: ConfigFlags,
+  existing: RepositoryConfig | undefined,
+  ask: Ask | undefined,
+): Promise<ConfigDecision | CommandResult> {
+  if (decided.kind !== 'missing') return decided
+  if (ask === undefined) return renderInitQuestions(decided.questions)
+  const answers = new Map<string, string>()
+  for (const [index, question] of decided.questions.entries()) {
+    const said = (await ask(question))?.trim()
+    if (said === undefined || said === '') return renderInitQuestions(decided.questions.slice(index), true)
+    // The locator's field first, as for the flag: a locator it refuses may
+    // carry a token, and its reason quotes nothing.
+    if (question === CONFIG_QUESTIONS.iacRepo) {
+      const locator = repositoryConfigSchema.shape.iacRepo.safeParse(said)
+      if (!locator.success) return renderRefusedAnswer(`${question.path}: ${reasonOf(locator.error)}`)
+    }
+    if (holdsInvisible(said)) {
+      return renderRefusedAnswer(
+        `${question.path}: ${spelledOut(said)} holds a control, format or bidi character, which ${CONFIG_FILE} never holds`,
+      )
+    }
+    answers.set(question.path, said)
+  }
+  const iacRepo = answers.get(CONFIG_QUESTIONS.iacRepo.path)
+  const environments = answers.get(CONFIG_QUESTIONS.environments.path)
+  try {
+    return configFor(
+      {
+        ...flags,
+        ...(iacRepo !== undefined ? { iacRepo } : {}),
+        ...(environments !== undefined
+          ? { environments: environments.split(',').map((one) => one.trim()).filter((one) => one !== '') }
+          : {}),
+      },
+      existing,
+    )
+  } catch (error) {
+    if (error instanceof ConfigError) return renderRefusedAnswer(error.message)
+    throw error
+  }
+}
+
 /**
  * The flags, put into every Component the Architect proposed, and recorded as
  * answers at the fields they fill — whatever the draft had there, a value or
@@ -481,6 +695,12 @@ const settledNames = (plan: Plan): { name: string; index: number }[] =>
  */
 const renderDeclared = (
   found: readonly { declaredIn: string; ref: string; refused: readonly string[] }[],
+  /**
+   * The configuration a flag asked for, left unwritten: it rides on the
+   * Component's branch, and there is no Component to add. Said, never dropped
+   * in silence.
+   */
+  unwritten?: string,
 ): CommandResult => ({
   text: [
     'nothing to change — the repository already declares it:',
@@ -497,6 +717,13 @@ const renderDeclared = (
             ...refused.map((reason) => `      ${inertLine(reason)}`),
           ]),
     ]),
+    ...(unwritten === undefined
+      ? []
+      : [
+          '',
+          `${unwritten} is not written either: init writes it beside a Component it adds, and ` +
+            'there is none to add — write it by hand, in a reviewed change.',
+        ]),
     '',
     '0 files · nothing written',
   ].join('\n'),
@@ -514,7 +741,8 @@ function renderInitQuestions(
   declined = false,
 ): CommandResult {
   const flagOf = (question: Question): string | undefined =>
-    INIT_FLAGS.find(([field]) => question.path.endsWith(`.entity.${field}`))?.[2]
+    INIT_FLAGS.find(([field]) => question.path.endsWith(`.entity.${field}`))?.[2] ??
+    CONFIG_FLAGS.find(([path]) => question.path === path)?.[1]
   const flags = [...new Set(questions.map(flagOf).filter((flag) => flag !== undefined))]
   const unflagged = questions.filter((question) => flagOf(question) === undefined)
   const count = questions.length
@@ -566,13 +794,50 @@ export interface InitOptions {
    * read, which is compared with no further. Absent, nothing is said.
    */
   readonly notice?: (line: string) => void
+  /**
+   * `--submit`: the preview becomes one new branch in the service's own
+   * repository, cut from `HEAD`, for review (`commands/submit.ts`). Absent,
+   * this run writes nothing, and prints what stage 4 printed.
+   */
+  readonly submit?: SubmitOptions
+  /** `--iac-repo` and `--environment`: what `.idp-agent.yml` says, as a person typed it. */
+  readonly flags?: ConfigFlags
 }
 
 export async function runInitRepo(options: InitOptions): Promise<CommandResult> {
+  // Everything free, and every question for a person, before the first model
+  // call — in this order (D12 and the owner's order of 2026-09-29): the forge,
+  // the configuration's questions, the project's files, init's own verdicts on
+  // them, the divergence, and only then the Inspector.
+  //
+  // First, before anything is read: a directory that cannot take a branch —
+  // not a clone's root (a service in a subfolder of its repository, at stage
+  // 5), nobody to commit as, a detached HEAD — is an argument, exit 2.
+  const opened =
+    options.submit === undefined
+      ? undefined
+      : await openForSubmission(options.project, 'service', options.submit)
   // Read before a single agent runs. A committed file that does not parse is
   // not a repository that declared nothing, and this one is about to be
   // rewritten by §7.3 — answering a typo by ignoring it is the worst of both.
-  const config = await readConfig(options.project)
+  // Its bytes too: a submission proves the base still holds them.
+  const read = await readConfigFile(options.project)
+  const config = read?.config
+  const flags = options.flags ?? {}
+  const settled = await settleConfig(configFor(flags, config), flags, config, options.ask)
+  if (!('kind' in settled)) return settled
+  if (settled.kind === 'differs') {
+    return {
+      text: [
+        `${CONFIG_FILE} already says something else, and a configuration is changed by ` +
+          'hand, in a reviewed change — never by this command.',
+        'Run this again without --iac-repo and --environment, or with what it says.',
+        'Nothing was previewed, and nothing was written.',
+      ].join('\n'),
+      found: false,
+    }
+  }
+  const written = settled.kind === 'write' ? settled.config : undefined
   // Taken on this side of the line, with every exclusion and cap applied:
   // `agents/` reaches no disk, so the bytes are read here and handed over.
   const snapshot = await readProject(options.project)
@@ -623,6 +888,27 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
       ].join('\n'),
       found: false,
     }
+  }
+
+  if (opened !== undefined) {
+    // The gates are about to judge these bytes, and the branch is cut from
+    // HEAD: the target's bytes or its absence, every kept declaration the
+    // "already declared" and name decisions read, and the configuration's
+    // bytes or its absence (check §5.2) — never CATALOG_INFO by name. Refused
+    // here, before the Inspector is paid for a diff that cannot be submitted.
+    //
+    // A limit, stated: the Inspector reads the working tree, uncommitted
+    // CODEOWNERS and package.json included, and this proves only what init
+    // decides on and writes. An owner read out of an uncommitted file is
+    // vouched for though the branch does not carry that file; the diff and
+    // the merge request are where a person sees it. Proving every file the
+    // Inspector read would refuse init in any repository with one dirty
+    // unrelated file, which is the worse trade.
+    const files = new Map<string, string | undefined>(kept.map((file) => [file.path, file.text] as const))
+    if (!files.has(target)) files.set(target, undefined)
+    files.set(CONFIG_FILE, read?.text)
+    const refused = await refuseDivergence(opened, { files, scope: 'touched' })
+    if (refused !== undefined) return refused
   }
 
   const facts = await inspect(options.client, snapshot, options.emit)
@@ -735,7 +1021,9 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
     const declared = recognised.flatMap(({ found }) =>
       found !== undefined && 'declaredIn' in found ? [found] : [],
     )
-    if (names.length > 0 && declared.length === names.length) return renderDeclared(declared)
+    if (names.length > 0 && declared.length === names.length) {
+      return renderDeclared(declared, written === undefined ? undefined : CONFIG_FILE)
+    }
 
     // The file init would add to already declares another Component: in a
     // service's own file, most likely this service under another name or
@@ -780,7 +1068,9 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
     }
 
     const questions = questionsOf(signed.plan, { draft })
-    if (questions.length === 0) return previewOf(signed, request, kept, target, options)
+    if (questions.length === 0) {
+      return concluded(signed, request, kept, target, options, { opened, read, config: written })
+    }
     if (options.ask === undefined || round >= ASK_LIMITS.maxRounds) {
       return renderInitQuestions(questions)
     }
@@ -852,6 +1142,63 @@ export function previewOf(
   // `clearService` refuses the same plan, so a preview never succeeds where
   // the submission would not.
   return dropped.length > 0 ? { ...preview, found: false } : preview
+}
+
+/**
+ * Where a signed Component ends: the stage-4 preview, byte for byte, when
+ * nothing about it is submitted or configured; otherwise the clearance.
+ *
+ * With `--submit` or a configuration flag, the diff is the clearance's —
+ * `clearService` mints from the very `target` and `kept` the preview composes
+ * against, and adds `.idp-agent.yml` — so what is previewed is what would be
+ * submitted, filed at the same place. A clearance refused is refused with or
+ * without `--submit`: a preview of bytes that cannot be submitted would be a
+ * diff of something this command will never write.
+ */
+async function concluded(
+  signed: Parameters<typeof renderPreview>[0]['signed'],
+  request: string,
+  kept: readonly Kept[],
+  target: string,
+  options: InitOptions,
+  submission: {
+    readonly opened: Opened | undefined
+    readonly read: Parameters<typeof clearService>[1]['existing']
+    readonly config: WrittenConfig | undefined
+  },
+): Promise<CommandResult> {
+  const { opened, read, config } = submission
+  if (opened === undefined && config === undefined) return previewOf(signed, request, kept, target, options)
+  const cleared = clearService(signed, { target, kept, existing: read, config })
+  if ('outcome' in cleared) {
+    return {
+      text: [
+        'refused — nothing was previewed, and nothing was written:',
+        ...cleared.reasons.map((reason) => `  ${inertLine(reason)}`),
+      ].join('\n'),
+      found: false,
+    }
+  }
+  const render = (status: PreviewStatus): CommandResult =>
+    renderPreview({
+      signed,
+      edits: cleared.edits,
+      dropped: [],
+      status,
+      apply: APPLY,
+      ...(options.colour !== undefined ? { colour: options.colour } : {}),
+    })
+  // Without --submit, the tail is APPLY, as a preview's always was.
+  if (opened === undefined || cleared.edits.length === 0) {
+    return render({ kind: 'applied-by-hand', apply: APPLY })
+  }
+  const { result } = await submit({
+    opened,
+    cleared,
+    render,
+    ...(options.submit?.confirm !== undefined ? { confirm: options.submit.confirm } : {}),
+  })
+  return result
 }
 
 /**

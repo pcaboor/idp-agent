@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { main } from '../../src/cli/index.js'
 import { previewOf, runInitRepo } from '../../src/cli/commands/init.js'
 import { renderPreview } from '../../src/cli/commands/plan.js'
@@ -23,6 +23,9 @@ import type {
   LlmClient,
 } from '../../src/llm/client.js'
 import { hashTree } from '../support/tree.js'
+import { committed, git, observable, show, stored } from '../support/git.js'
+import { ConfigError, readConfig } from '../../src/cli/config.js'
+import { CONFIG_FILE, serializeConfig } from '../../src/core/schemas/config.js'
 import { listDocumentNames } from '../../src/core/yaml/surgery.js'
 
 /** The line a preview of `init` ends on, in place of `plan`'s about the merge. */
@@ -128,6 +131,8 @@ describe('init platform', () => {
       expect(run.out).toContain('Branch protection is set in the forge')
       expect(run.out).toMatch(/cannot verify/i)
       expect(run.out).toContain('stage 6')
+      // ADR-0012: a downstream refusal must never merge, once one reports.
+      expect(run.out).toContain('status')
     }
   })
 
@@ -315,8 +320,11 @@ const openingOf = (request: GenerateRequest | undefined): string => {
   return first !== undefined && first.role === 'user' ? first.text : ''
 }
 
-/** One application repository, with the two files an Inspector looks for. */
-const application = async (): Promise<string> => {
+/**
+ * One application repository, with the two files an Inspector looks for — and
+ * its `.idp-agent.yml`, when a test hands one, as `plan-intent.test.ts`'s does.
+ */
+const application = async (config?: string): Promise<string> => {
   const root = await temp()
   await writeFile(
     path.join(root, 'package.json'),
@@ -324,6 +332,7 @@ const application = async (): Promise<string> => {
     'utf8',
   )
   await writeFile(path.join(root, 'CODEOWNERS'), '* @acme/platform\n', 'utf8')
+  if (config !== undefined) await writeFile(path.join(root, CONFIG_FILE), config, 'utf8')
   return root
 }
 
@@ -353,7 +362,7 @@ const drafting = (operations: unknown[], facts: unknown = FACTS) =>
   })
 
 describe('init, per application', () => {
-  it('previews the catalog-info.yml it would write, and writes nothing', async () => {
+  it('previews the catalog-info.yaml it would write, and writes nothing', async () => {
     // §7.3, finally answered. The refusal stage 3 shipped named the Inspector
     // and propose(); both exist now.
     const project = await application()
@@ -634,6 +643,437 @@ describe('init, per application', () => {
 
     expect(code).toBe(2)
     expect(err).toContain('no model configured')
+  })
+})
+
+describe('init --submit', () => {
+  const FLAGS = { iacRepo: 'github.com/acme/iac', environments: ['dev', 'staging', 'prod'] }
+
+  // Every repository here is a real one, removed at the end: a small disk fills.
+  const made: string[] = []
+  afterAll(async () => {
+    await Promise.all(made.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
+  })
+
+  /** `application()`, remembered for removal. */
+  const service = async (config?: string): Promise<string> => {
+    const root = await application(config)
+    made.push(root)
+    return root
+  }
+
+  const clonedApplication = async (files: Record<string, string> = {}): Promise<string> => {
+    const project = await service()
+    for (const [file, text] of Object.entries(files)) {
+      await mkdir(path.dirname(path.join(project, file)), { recursive: true })
+      await writeFile(path.join(project, file), text, 'utf8')
+    }
+    await committed(project)
+    return project
+  }
+
+  const submitted = async (project: string): Promise<string> => {
+    const [branch] = (await git(project, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/idp-agent/')).split('\n')
+    return branch ?? ''
+  }
+
+  it('cuts one branch in the application repository holding the catalog-info and the configuration', async () => {
+    const project = await clonedApplication()
+    const before = await observable(project)
+
+    const result = await runInitRepo({
+      project,
+      client: drafting([COMPONENT]),
+      emit: () => {},
+      submit: {},
+      flags: FLAGS,
+    })
+
+    expect(result.found).toBe(true)
+    expect(result.text).toMatch(/submitted as idp-agent\/init-billing-api-[0-9a-f]{8} on top of main@[0-9a-f]{7}/)
+    const branch = await submitted(project)
+    expect(await git(project, 'diff', '--name-only', 'main', branch)).toBe(`${CONFIG_FILE}\ncatalog-info.yaml`)
+    expect(await show(project, branch, CONFIG_FILE)).toBe(serializeConfig(FLAGS))
+    const added = (await observable(project)).split('\n').filter((line) => !before.split('\n').includes(line))
+    expect(added).toHaveLength(1)
+  })
+
+  it('files in the root catalog-info.yml the service keeps, as the preview does', async () => {
+    // #82: never a twin catalog-info.yaml beside it.
+    const project = await clonedApplication({
+      'catalog-info.yml':
+        'apiVersion: backstage.io/v1alpha1\nkind: API\nmetadata:\n  name: billing\nspec:\n  type: openapi\n' +
+        '  lifecycle: production\n  owner: group:default/tiger\n  definition: "{}"\n',
+    })
+    const result = await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {}, submit: {} })
+    expect(result.found).toBe(true)
+    expect(await git(project, 'diff', '--name-only', 'main', await submitted(project))).toBe('catalog-info.yml')
+  })
+
+  it('files in the one catalog-info the service keeps in a folder', async () => {
+    const project = await clonedApplication({ 'deploy/catalog-info.yaml': '# nothing declared yet\n' })
+    const result = await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {}, submit: {} })
+    expect(result.found).toBe(true)
+    expect(await git(project, 'diff', '--name-only', 'main', await submitted(project))).toBe('deploy/catalog-info.yaml')
+  })
+
+  it('refuses a service in a subfolder of its repository, at stage 5, before a model call', async () => {
+    // D12: the forge cuts a branch at a clone's root; prefixed paths are a follow-up.
+    const root = await clonedApplication({ 'services/billing/package.json': '{ "name": "billing-api" }\n' })
+    const client = drafting([COMPONENT])
+    const before = await observable(root)
+    const refused = runInitRepo({ project: path.join(root, 'services', 'billing'), client, emit: () => {}, submit: {} })
+    await expect(refused).rejects.toThrow(/not at its root/)
+    await expect(refused).rejects.toThrow(/a service in a subfolder of its repository is not submitted at stage 5/)
+    expect(client.seen).toEqual([])
+    expect(await observable(root)).toBe(before)
+  })
+
+  it('writes the configuration readConfig reads back', async () => {
+    const project = await clonedApplication()
+    await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {}, submit: {}, flags: FLAGS })
+    const checkout = await temp()
+    made.push(checkout)
+    await writeFile(path.join(checkout, CONFIG_FILE), await show(project, await submitted(project), CONFIG_FILE))
+    expect(await readConfig(checkout)).toEqual(FLAGS)
+  })
+
+  it('asks for what the flags did not say, and exits 3, before a model call, when nobody can answer', async () => {
+    const project = await clonedApplication()
+    const client = drafting([COMPONENT])
+    const result = await runInitRepo({
+      project,
+      client,
+      emit: () => {},
+      submit: {},
+      flags: { iacRepo: 'github.com/acme/iac' },
+    })
+    expect(result.unsupported).toBe(true)
+    expect(result.text).toContain(`${CONFIG_FILE}.environments`)
+    expect(result.text).toContain('--environment')
+    expect(result.text).not.toContain(`${CONFIG_FILE}.iacRepo`)
+    expect(client.seen).toEqual([])
+    expect(await git(project, 'for-each-ref', 'refs/heads/idp-agent/')).toBe('')
+  })
+
+  it('takes the answer a person gives, and nothing the inspection read', async () => {
+    const project = await clonedApplication()
+    const client = drafting([COMPONENT])
+    let modelCallsWhenAsked = -1
+    const result = await runInitRepo({
+      project,
+      client,
+      emit: () => {},
+      submit: {},
+      flags: { iacRepo: 'github.com/acme/iac' },
+      ask: async (question) => {
+        if (!question.path.endsWith('.environments')) return undefined
+        // A person's time is asked for before a model is paid for.
+        modelCallsWhenAsked = client.seen.length
+        return 'dev, prod'
+      },
+    })
+    expect(result.found).toBe(true)
+    expect(modelCallsWhenAsked).toBe(0)
+    expect(await show(project, await submitted(project), CONFIG_FILE)).toContain('environments: ["dev", "prod"]')
+  })
+
+  it('refuses an answer holding a bidi control, as a refused answer, before a model call', async () => {
+    const project = await clonedApplication()
+    const client = drafting([COMPONENT])
+    const result = await runInitRepo({
+      project,
+      client,
+      emit: () => {},
+      submit: {},
+      flags: { iacRepo: 'github.com/acme/iac' },
+      ask: async () => 'dev, prod\u2066',
+    })
+    expect(result.found).toBe(false)
+    expect(result.unsupported).toBeUndefined()
+    expect(result.text).toContain('the answer was refused')
+    expect(result.text).not.toContain('\u2066')
+    expect(client.seen).toEqual([])
+  })
+
+  it('refuses an answer that spells a format character, spelled out, before a model call', async () => {
+    // U+200B is refused like a bidi control, and must be as visible in the refusal.
+    const project = await clonedApplication()
+    const client = drafting([COMPONENT])
+    const result = await runInitRepo({
+      project,
+      client,
+      emit: () => {},
+      submit: {},
+      flags: { iacRepo: 'github.com/acme/iac' },
+      ask: async () => 'dev,\u200bprod',
+    })
+    expect(result.found).toBe(false)
+    expect(result.text).toContain('dev,\\u200bprod')
+    expect(result.text).not.toContain('\u200b')
+    expect(client.seen).toEqual([])
+  })
+
+  it('refuses a locator answer that carries a credential, never quoting it, before a model call', async () => {
+    const project = await clonedApplication()
+    const client = drafting([COMPONENT])
+    const before = await observable(project)
+    const result = await runInitRepo({
+      project,
+      client,
+      emit: () => {},
+      submit: {},
+      flags: { environments: ['dev'] },
+      ask: async () => 'https://x-access-token:ghp_SECRET123@github.com/acme/iac',
+    })
+    expect(result.found).toBe(false)
+    expect(result.unsupported).toBeUndefined()
+    expect(result.text).toContain('the answer was refused')
+    expect(result.text).toContain('userinfo, a query or a fragment')
+    expect(result.text).not.toContain('SECRET')
+    expect(client.seen).toEqual([])
+    expect(await observable(project)).toBe(before)
+  })
+
+  it('says the configuration a flag asked for is not written when the service is already declared', async () => {
+    // Adaptation 5: the configuration rides on the Component's branch, and
+    // there is no Component to add. Said, never a typed flag dropped in silence.
+    const declared =
+      'apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: billing-api\nspec:\n' +
+      '  type: service\n  lifecycle: production\n  owner: group:default/tiger\n'
+    for (const submit of [undefined, {}] as const) {
+      const project = await clonedApplication({ 'catalog-info.yaml': declared })
+      const result = await runInitRepo({
+        project,
+        client: drafting([COMPONENT]),
+        emit: () => {},
+        flags: FLAGS,
+        ...(submit !== undefined ? { submit } : {}),
+      })
+      expect(result.found).toBe(true)
+      expect(result.text).toContain('catalog-info.yaml already declares component:default/billing-api')
+      expect(result.text).toContain(`${CONFIG_FILE} is not written either`)
+      expect(result.text).toMatch(/0 files · nothing written$/)
+      expect(await git(project, 'for-each-ref', 'refs/heads/idp-agent/')).toBe('')
+    }
+  })
+
+  it('never rewrites a committed configuration that says something else, and says so before a model call', async () => {
+    const project = await service('iacRepo: github.com/other/iac\nenvironments: [prod]\n')
+    await committed(project)
+    const before = await observable(project)
+    const client = drafting([COMPONENT])
+
+    const result = await runInitRepo({ project, client, emit: () => {}, submit: {}, flags: FLAGS })
+
+    expect(result.found).toBe(false)
+    expect(result.text).toContain(CONFIG_FILE)
+    expect(client.seen).toEqual([])
+    expect(await observable(project)).toBe(before)
+  })
+
+  it('leaves a committed configuration alone when the flags say the same, however it is written', async () => {
+    // Unquoted, as a person writes it; `serializeConfig` quotes. Compared by value.
+    const project = await service('iacRepo: github.com/acme/iac\nenvironments: [dev, staging, prod]\n')
+    await committed(project)
+
+    const result = await runInitRepo({
+      project,
+      client: drafting([COMPONENT]),
+      emit: () => {},
+      submit: {},
+      flags: FLAGS,
+    })
+
+    expect(result.found).toBe(true)
+    expect(await git(project, 'diff', '--name-only', 'main', await submitted(project))).toBe('catalog-info.yaml')
+  })
+
+  it('refuses flags the schema refuses before a single model call', async () => {
+    const project = await clonedApplication()
+    const client = drafting([COMPONENT])
+    await expect(
+      runInitRepo({ project, client, emit: () => {}, submit: {}, flags: { iacRepo: '', environments: ['dev'] } }),
+    ).rejects.toThrow(ConfigError)
+    expect(client.seen).toEqual([])
+  })
+
+  it('refuses a working tree that is not HEAD before a single model call', async () => {
+    const project = await clonedApplication({ 'catalog-info.yaml': '# committed\n' })
+    await writeFile(path.join(project, 'catalog-info.yaml'), '# changed, not committed\n', 'utf8')
+    const client = drafting([COMPONENT])
+    const before = await observable(project)
+    const result = await runInitRepo({ project, client, emit: () => {}, submit: {} })
+    expect(result.found).toBe(false)
+    expect(result.text).toContain('catalog-info.yaml')
+    expect(result.text).not.toContain('+++ b/')
+    expect(client.seen).toEqual([])
+    expect(await observable(project)).toBe(before)
+  })
+
+  it('refuses an uncommitted configuration it would have to vouch for, before a model call', async () => {
+    const project = await clonedApplication()
+    await writeFile(path.join(project, CONFIG_FILE), 'iacRepo: github.com/acme/iac\nenvironments: [dev]\n', 'utf8')
+    const client = drafting([COMPONENT])
+    const result = await runInitRepo({ project, client, emit: () => {}, submit: {} })
+    expect(result.found).toBe(false)
+    expect(result.text).toContain(CONFIG_FILE)
+    expect(client.seen).toEqual([])
+  })
+
+  it('answers a second submission before the confirmation, and writes nothing', async () => {
+    // The owner's addition of 2026-09-29, on init's road: the questions that
+    // decide the bytes are still asked, the [y/N] is not.
+    const project = await clonedApplication()
+    await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {}, submit: {}, flags: FLAGS })
+    const [seen, objects] = [await observable(project), await stored(project)]
+    let prompted = false
+
+    const result = await runInitRepo({
+      project,
+      client: drafting([COMPONENT]),
+      emit: () => {},
+      flags: FLAGS,
+      submit: {
+        confirm: async () => {
+          prompted = true
+          return true
+        },
+      },
+    })
+
+    expect(result.found).toBe(true)
+    expect(prompted).toBe(false)
+    expect(result.text).toMatch(/^2 files · already submitted as idp-agent\/init-billing-api-[0-9a-f]{8} · nothing written$/m)
+    expect(await observable(project)).toBe(seen)
+    expect(await stored(project)).toBe(objects)
+  })
+
+  it('shows the diff at the prompt, then submits, for the service repository', async () => {
+    const project = await clonedApplication()
+    const shown: { repository: string; files: readonly { path: string }[] }[] = []
+    const result = await runInitRepo({
+      project,
+      client: drafting([COMPONENT]),
+      emit: () => {},
+      flags: FLAGS,
+      submit: {
+        confirm: async (summary) => {
+          shown.push(summary)
+          return true
+        },
+      },
+    })
+    expect(result.found).toBe(true)
+    expect(shown).toHaveLength(1)
+    expect(shown[0]?.repository).toBe('service')
+    expect(shown[0]?.files.map((file) => file.path)).toEqual([CONFIG_FILE, 'catalog-info.yaml'])
+    expect(result.text).not.toContain('+++ b/')
+  })
+
+  it('prints what it prints today without --submit or a flag, APPLY included', async () => {
+    const project = await clonedApplication()
+    const before = await hashTree(project)
+    const result = await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {} })
+    expect(result.text.trimEnd().endsWith('then git apply catalog-info.diff')).toBe(true)
+    expect(result.text).not.toContain(CONFIG_FILE)
+    expect(await hashTree(project)).toBe(before)
+  })
+
+  it('previews the configuration a flag states without --submit, and writes nothing', async () => {
+    const project = await clonedApplication()
+    const before = await hashTree(project)
+    const result = await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {}, flags: FLAGS })
+    expect(result.found).toBe(true)
+    expect(result.text).toContain(`+++ b/${CONFIG_FILE}`)
+    expect(result.text).toContain('+++ b/catalog-info.yaml')
+    expect(result.text.trimEnd().endsWith('then git apply catalog-info.diff')).toBe(true)
+    expect(await hashTree(project)).toBe(before)
+  })
+})
+
+describe('init --submit through main', () => {
+  const made: string[] = []
+  afterAll(async () => {
+    await Promise.all(made.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
+  })
+
+  const run = async (args: string[], client?: LlmClient) => {
+    const io = capture()
+    const cwd = await temp()
+    made.push(cwd)
+    const code = await main(args, {
+      cwd,
+      out: (chunk) => void io.out.push(chunk),
+      err: (chunk) => void io.err.push(chunk),
+      ...(client !== undefined ? { client } : {}),
+    })
+    return { code, out: io.out.join(''), err: io.err.join('') }
+  }
+
+  it('refuses a directory that is not a clone as an argument, before a model is even configured', async () => {
+    const project = await application()
+    made.push(project)
+    const { code, err } = await run(['init', '--repo', project, '--submit'])
+    expect(code).toBe(2)
+    expect(err).toContain('not a git working tree')
+    expect(err).not.toContain('no model configured')
+  })
+
+  it('refuses a service in a subfolder of its repository with exit 2, before a model call (D12)', async () => {
+    const root = await application()
+    made.push(root)
+    await mkdir(path.join(root, 'services', 'billing'), { recursive: true })
+    await writeFile(path.join(root, 'services', 'billing', 'package.json'), '{ "name": "billing-api" }\n')
+    await committed(root)
+    const client = drafting([COMPONENT])
+    const { code, err } = await run(['init', '--repo', path.join(root, 'services', 'billing'), '--submit'], client)
+    expect(code).toBe(2)
+    expect(err).toContain('not submitted at stage 5')
+    expect(client.seen).toEqual([])
+  })
+
+  it('refuses an --environment holding a bidi control, naming the flag, exit 2, with no model call', async () => {
+    const root = await application()
+    made.push(root)
+    await committed(root)
+    const client = drafting([COMPONENT])
+    const { code, err } = await run(
+      ['init', '--repo', root, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'prod\u2066'],
+      client,
+    )
+    expect(code).toBe(2)
+    expect(err).toContain('--environment')
+    expect(err).not.toContain('\u2066')
+    expect(client.seen).toEqual([])
+  })
+
+  it('refuses flags the configuration schema refuses with exit 2, with no model call', async () => {
+    const root = await application()
+    made.push(root)
+    await committed(root)
+    const client = drafting([COMPONENT])
+    const long = 'x'.repeat(64)
+    const { code, err } = await run(
+      ['init', '--repo', root, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', long],
+      client,
+    )
+    expect(code).toBe(2)
+    expect(err).toContain(CONFIG_FILE)
+    expect(client.seen).toEqual([])
+  })
+
+  it('submits through main, and the second run names the branch it already cut', async () => {
+    const root = await application()
+    made.push(root)
+    await committed(root)
+    const args = ['init', '--repo', root, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev', '--environment', 'prod']
+    const first = await run(args, drafting([COMPONENT]))
+    expect(first.code).toBe(0)
+    expect(first.out).toMatch(/2 files · submitted as idp-agent\/init-billing-api-[0-9a-f]{8} on top of main@[0-9a-f]{7} · main untouched/)
+    const second = await run(args, drafting([COMPONENT]))
+    expect(second.code).toBe(0)
+    expect(second.out).toMatch(/2 files · already submitted as idp-agent\/init-billing-api-[0-9a-f]{8} · nothing written/)
   })
 })
 
