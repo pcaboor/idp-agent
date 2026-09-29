@@ -9,7 +9,7 @@ What has already shipped is in [`CHANGELOG.md`](../CHANGELOG.md). What the 2026-
 found, and which of its findings are closed, is in its
 [Status section](reviews/2026-09-23-deep-review.md#status).
 
-*Updated 2026-09-28, `main` at `2fc3d48`.*
+*Updated 2026-09-29, `main` at `d0fdee9`.*
 
 ## Where the project stands
 
@@ -23,7 +23,7 @@ each:
 | 2 | Question mode | done |
 | 3 | `init platform` and `validate` | done |
 | 4 | Preview only: nothing is written | done |
-| 5 | Write + local branch | in progress: the owner's own work, not on `main` |
+| 5 | Write + local branch | checked and planned ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)); the owner's start is not on `main` yet |
 | 6 | GitHub pull request | not started |
 | 7 | Polish: Ink TUI, asciinema, npm publish | not started |
 | 8 | Discovery | designed ([the design note](stage-8-brief.md), [#76](https://github.com/pcaboor/idp-agent/pull/76)); not started |
@@ -44,49 +44,42 @@ questions, were recorded by the owner on 2026-09-29 and replay with no key
 
 ## The queue
 
-**In order**, as the owner decided on 2026-09-23, 2026-09-25, 2026-09-26 and 2026-09-27.
+**In order**, as the owner decided on 2026-09-23, 2026-09-25, 2026-09-26, 2026-09-27 and
+2026-09-29.
 Each line says what the item is for. The sweep of the review is done
 ([its verdicts](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27)); its batches are
 here, one pull request each, each naming the check run together at the end.
 
-1. **A check of the owner's stage-5 plan** against the review's stage-5 readiness findings and
-   the current `main`, read only: what it covers and what it misses. It starts with an
-   **analysis of the owner's uncommitted stage-5 work** on `feat/s5-cleared`, written on
-   `eee67d6` before more than forty pull requests: what still applies, what `main` made
-   obsolete, what must be redone; its ADR becomes 0010. The result is shown to the owner
-   before a line of stage 5 is written. It includes **which
-   repository a `FileEdit` writes to**, the part of gap-stage5-readiness-8 review priority 9
-   left to stage 5 ([#82](https://github.com/pcaboor/idp-agent/pull/82)): `init`'s
-   edit names a file in the service's repository and `plan`'s one in the declarations
-   repository, and nothing in the shape says which — `init`'s `before` is now read whole
-   outside the budget, so only the identity is left. The plan's clearance must also file
-   where `init` files: `asCatalogInfo` keeps its one argument, but `init` then moves the
-   operation to `targetOf`'s choice over `ProjectRead.declarations` (`filedIn`) — the root's
-   `.yml`, or the one catalog-info kept elsewhere — so a `readCatalogInfo` that reads only the
-   root's `catalog-info.yaml` would bring back the twin and the capped `before` this removed.
-2. **Stage 5, write + local branch.** The first write, atomic and idempotent — taken on from
-   the owner's plan and branch, discarding nothing already written, once the check above is
-   agreed.
-3. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
+1. **Stage 5, write + local branch.** The first write, atomic and idempotent, built from
+   [the owner's plan](plans/stage-5-write.md), revised in place on 2026-09-29 against
+   `d0fdee9` after [the stage-5 check](stage-5-check.md): eight tasks, one stacked pull
+   request each for tasks 1 to 7, the documents riding with each. Task 1 — `Cleared` for the
+   declarations repository — carries the owner's uncommitted work on `feat/s5-cleared`,
+   discarding nothing already written. The check itself, this queue's first item until
+   2026-09-29, is done: the check, the brief as a dated record, the revised plan, and ADR
+   0010 and ADR 0012 *proposed* ([#104](https://github.com/pcaboor/idp-agent/pull/104)).
+2. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
    hand-written files in every shape, and `signPlan` properties over plans valid by
    construction. `tests/invariants/arbitraries.ts` and `core.test.ts` are also edited on
    `feat/s5-cleared`, so it goes on top of stage 5.
-4. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
+3. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
    gap-stage5-readiness-4: one lstat, realpath and `O_NOFOLLOW` primitive shared from
    `project-fs`, used by `scaffold/write.ts` and by the iac-fs walk, which rejects a
-   symbolic link by name. Medium, and what stage 5's writer will need.
-5. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
+   symbolic link by name. Medium, and after stage 5: the forge writes only objects and a
+   ref, never the working tree, and refuses a symbolic link tracked in `HEAD`, so B3 is for
+   the read side and `scaffold/write.ts` (the stage-5 check, D17).
+4. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
    harness half of agents-llm-9: record from an empty tape, fail on a turn never replayed,
    and digest the JSON Schema the provider is sent. It needs no key, but it prunes dead turns
    and rewrites every tape's digest, so it waits for the owner's go-ahead.
-6. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
+5. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
    catalogue is plugged in.
-7. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
+6. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
    authorisation (ADR-0006).
-8. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
+7. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence.
-9. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
+8. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
    the project's end goal (2026-09-23).
 
 Within stage 8, its design note (section 11) states its own order:
@@ -227,6 +220,22 @@ The owner's decisions, dated, each with where it is recorded.
   requests — 3.1 the nodes, 3.2 the relations, 3.3 the Analyst — then the owner's keyed step
   R; the note's "Closed by 3.2" becomes "Closed by 3.3"
   ([#99](https://github.com/pcaboor/idp-agent/pull/99)).
+
+**2026-09-29**
+
+- The stage-5 check's nineteen decisions ([its § 7](stage-5-check.md#7-decisions-for-the-owner--settled-2026-09-29),
+  [#104](https://github.com/pcaboor/idp-agent/pull/104)). Four chosen: the provenance is
+  sealed into the `SignedPlan` by `signPlan`, and `clearPlan` re-runs the policies against it,
+  never taking one from its caller (D1); a runtime brand on `Cleared`, a module `WeakSet`, the
+  forge refusing any other object (D3); a plan writing into both repositories is refused by
+  name, pointing at `init --submit` (D6); the brief is committed as it stands, dated, and the
+  plan is revised in place (D15). The check's other recommendations are the owner's defaults,
+  open to change — among them B3 after stage 5, since the forge writes only objects and a ref
+  (D17); the commit subject written by the engine from the operations, the request in the
+  body (D18); `--submit` taking `declarationsFor`'s whole chain, stderr naming what chose the
+  root (D19); no `idpa "<phrase>" --submit` at stage 5 (D8); no `backstage:` written into
+  `.idp-agent.yml` (D9); and "declared is not provisioned" as ADR 0012, *proposed* (D16).
+  [ADR 0010](adr/0010-a-submission-is-a-create-only-ref.md) is written, *proposed*.
 
 ## Known debts and open items
 
@@ -490,14 +499,17 @@ vocabulary), product-gap-6 (no offset and no system, lifecycle or tag criteria i
   runtime-probe-9: one `plan --answer <path>=<value>` (or `--answers file.json`); the owner
   picks its shape.
 - **One evaluation for every route.** architecture-1, gap-stage5-readiness-10: a shared
-  `evaluatePlan()`, and whether `plan --from` gets a Reviewer or the docs say it has four
-  gates.
-- **For the stage-5 check.** core-plan-9 and gap-stage5-readiness-5 (an `ApprovedChange`
-  minted after the five gates), gap-stage5-readiness-3 (the base is a commit, not the
-  working tree), gap-stage5-readiness-12 (a plan identity; design §4.3 reworded),
-  gap-stage5-readiness-13, cli-ux-10, cli-ux-12, architecture-9 and product-gap-13 (a
-  structured preview, a Confirm seam, a versioned `--json`, a session ADR before the
-  confirmation contract is fixed).
+  `evaluatePlan()`. For stage 5 the check chose a parity test between the preview and the
+  clearance (D2), and `plan --from` keeps four gates, said by route (D4); the refactor stays
+  here.
+- **Settled by the stage-5 check** (2026-09-29, [its § 7](stage-5-check.md)), each closed
+  by the stage-5 pull request that builds it: core-plan-9 and gap-stage5-readiness-5 (a
+  `Cleared` minted after the free gates, with a runtime brand, D3), gap-stage5-readiness-3
+  (the base is `HEAD`, the bytes read proven equal to it), gap-stage5-readiness-12 (the
+  branch name as the plan's identity; design §4.3 reworded), gap-stage5-readiness-13 and
+  cli-ux-12 (a `Confirm` seam taking a structured summary, D5). Still open here: cli-ux-10, a
+  versioned `--json`, which will name stage 5's `submission` key (D11); architecture-9 and
+  product-gap-13, a session ADR, which the check found no blocker for the confirmation (D5).
 - **The environment annotation and namespaces.** core-plan-8, domain-backstage-6,
   product-gap-5 (stage 8's question 6), architecture-5 and gap-ask-grounding-9 (one
   `refOf`/`parseRef` keeping the namespace; product-gap-4 needs no decision but goes with
