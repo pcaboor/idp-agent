@@ -23,7 +23,7 @@ import type { Ask } from '../../src/cli/commands/plan.js'
 import { confirmingEnvironment } from '../support/ask.js'
 import { ForgeInputError } from '../../src/forge/errors.js'
 import { clearedFor, clone, removeClones, scratch } from '../support/forge-fixture.js'
-import { committed, git, observable, show } from '../support/git.js'
+import { committed, git, observable, show, stored } from '../support/git.js'
 
 /**
  * Replays a scripted sequence of model turns, keyed by AGENT.
@@ -760,6 +760,31 @@ describe('plan "<intent>" --submit', () => {
     expect(cut).toEqual([(await clearedFor(repo)).branch])
     expect(await git(repo, 'rev-parse', 'main')).toBe(main0)
     expect(await show(repo, cut[0] ?? '', DATABASE_PATH)).toContain('name: orders-db-prod')
+  })
+
+  it('answers a second submission before the confirmation, and writes nothing', async () => {
+    // The owner's addition of 2026-09-29, on the intent road: the models run
+    // and the level is asked — they decide the bytes, hence the branch — and
+    // the branch already there is named without a [y/N].
+    const repo = await clone()
+    await submitting(repo, converging([CREATE_DATABASE, CREATE_ACCESS]))
+    const [seen, objects] = [await observable(repo), await stored(repo)]
+    let prompted = false
+
+    const result = await submitting(repo, converging([CREATE_DATABASE, CREATE_ACCESS]), {
+      submit: {
+        confirm: async () => {
+          prompted = true
+          return true
+        },
+      },
+    })
+
+    expect(result.found).toBe(true)
+    expect(prompted).toBe(false)
+    expect(result.text).toMatch(/already submitted as idp-agent\/orders-db-prod-[0-9a-f]{8} · nothing written/)
+    expect(await observable(repo)).toBe(seen)
+    expect(await stored(repo)).toBe(objects)
   })
 
   it('refuses a divergent repository before a single model call', async () => {

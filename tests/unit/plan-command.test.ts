@@ -12,7 +12,7 @@ import { GitError } from '../../src/process/git.js'
 import { hashTree } from '../support/tree.js'
 import type { Ask } from '../../src/cli/commands/plan.js'
 import { confirmingEnvironment } from '../support/ask.js'
-import { committed, git, observable, show } from '../support/git.js'
+import { committed, git, observable, show, stored } from '../support/git.js'
 
 const capture = (): { out: string[]; err: string[] } => ({ out: [], err: [] })
 
@@ -1128,6 +1128,72 @@ describe('plan --from --submit', () => {
     expect(code).toBe(0)
     expect(out).toMatch(/already submitted as idp-agent\/orders-db-prod-[0-9a-f]{8} · nothing written/)
     expect(await observable(repo)).toBe(between)
+  })
+
+  it('answers a second submission before the confirmation: the level asked, no [y/N], nothing written', async () => {
+    // The owner's report, 2026-09-29: the level question, the diff, [y/N], and
+    // only then "already submitted". The level stays — it decides the bytes,
+    // hence the branch — and the forge's read-only look answers the rest.
+    const repo = await clonedRepository()
+    const from = await planFile(repo, CREATE_PLAN)
+    const args = ['plan', '--from', from, '--repo', repo, '--submit']
+    await runWith(args, { ask: answering('read'), confirm: async () => true })
+    const [seen, objects] = [await observable(repo), await stored(repo)]
+    const asked: string[] = []
+    const confirmed: SubmissionSummary[] = []
+
+    const { code, out } = await runWith(args, {
+      ask: async (question) => {
+        asked.push(question.path)
+        return answering('read')(question)
+      },
+      confirm: async (summary) => {
+        confirmed.push(summary)
+        return true
+      },
+    })
+
+    expect(code).toBe(0)
+    expect(asked.some((one) => one.endsWith('.access'))).toBe(true)
+    expect(confirmed).toEqual([])
+    expect(out).toMatch(/^2 files · already submitted as idp-agent\/orders-db-prod-[0-9a-f]{8} · nothing written$/m)
+    // What a prompt would have printed is not printed instead of it.
+    expect(out).not.toContain('+++ b/')
+    expect(await observable(repo)).toBe(seen)
+    expect(await stored(repo)).toBe(objects)
+  })
+
+  it("refuses a branch of that name that is someone else's before the confirmation", async () => {
+    const repo = await clonedRepository()
+    const from = await planFile(repo, CREATE_PLAN)
+    const args = ['plan', '--from', from, '--repo', repo, '--submit']
+    // Declined once, to learn the name without writing it; then squatted.
+    let branch = ''
+    await runWith(args, {
+      ask: answering('read'),
+      confirm: async (summary) => {
+        branch = summary.branch
+        return false
+      },
+    })
+    await git(repo, 'update-ref', `refs/heads/${branch}`, 'HEAD')
+    const [seen, objects] = [await observable(repo), await stored(repo)]
+    let prompted = false
+
+    const { code, out } = await runWith(args, {
+      ask: answering('read'),
+      confirm: async () => {
+        prompted = true
+        return true
+      },
+    })
+
+    expect(code).toBe(1)
+    expect(prompted).toBe(false)
+    expect(out).toContain(`${branch} already exists and carries a different change`)
+    expect(out).toContain('Nothing was written.')
+    expect(await observable(repo)).toBe(seen)
+    expect(await stored(repo)).toBe(objects)
   })
 
   it('shows the diff before asking, and prints it once', async () => {

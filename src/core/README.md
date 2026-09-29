@@ -13,7 +13,8 @@ and nothing here can be steered by what it validates. Hence the property tests r
 
 - **Schemas** — `entitySchema`, `planSchema`, `operationSchema`, `PLAN_LIMITS`, `findUnknowns`,
   `isApplicable`, `RESOURCE_TYPES` behind `natureOf`/`folderOf`, and `.idp-agent.yml`'s
-  `repositoryConfigSchema` with the serialiser `init --submit` will write it with
+  `repositoryConfigSchema` with the serialiser `init --submit` writes it with, and
+  `holdsInvisible`, the characters a configuration value never holds
   (`schemas/config.ts`; `cli/config.ts` reads the file). The trust boundary: `Operation`
   is closed, so what is unmodelled cannot be requested, and an `{ unknown }` is never filled in.
   `entitySchema` reads Backstage's short references (`owner: team-a`) and yields the full

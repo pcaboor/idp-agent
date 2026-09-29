@@ -12,8 +12,8 @@ on the AI/deterministic boundary; the question was whether a write tool may cros
 
 An agent emits a `Plan` and nothing else: an intent plus a closed list of `Operation`s, defined in
 `src/core/schemas/plan.ts`. The engine chooses the path (`computeEntityPath`, `resolveEntityPath`),
-serialises (`serializeEntity`), and puts the bytes on disk. `propose()` — designed, not yet built —
-fills a typed buffer, never the filesystem.
+serialises (`serializeEntity`), and puts the bytes on disk. `propose()`
+(`src/agents/tools/propose-tool.ts`, stage 4) fills a typed buffer, never the filesystem.
 
 ## Rejected alternative
 

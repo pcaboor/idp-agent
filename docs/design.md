@@ -198,6 +198,10 @@ follows from the documentation of the tools involved.
 - **The catalogue lags the repository** (~2 min). Check against the repository before
   proposing, and **check again at the moment of writing**.
 - The catalogue **ignores duplicates silently**: CI must be the one to refuse.
+- **Declared is not provisioned.** A merged declaration is authorised, and a system
+  downstream may still refuse it or fail. Refusal is caught before the merge by a required
+  check (stage 6); failure is detected after it and reported as the entity's status, never
+  written back into the declaration and never deleted (ADR-0012, proposed).
 
 ---
 
@@ -265,8 +269,8 @@ operation naming itself, or a Component `planEdits` drops, is in no diff, and si
 └───────────────────────────────────────────────────────────────────┘
 ```
 
-The last box is not built. Stage 4 ends at the diff, and the branch and the merge request
-arrive at stages 5 and 6 — see § 7.4.
+The branch is built at stage 5: a ref under `idp-agent/`, cut from `HEAD` and never moving
+one (ADR-0010). The merge request is stage 6 — see § 7.4.
 
 ### 5.2 What `propose()` actually is
 
@@ -878,8 +882,13 @@ than fail.
 fields above are the whole schema — strict, so `enviroments:` is a named error rather than
 a silent fallback to "this repository declared nothing". There is deliberately no field
 that could carry a credential: a token in a committed file is a token in every clone of
-it. Writing the file is § 7.3's last clause, and writing arrives at stage 5, so `init`
-previews the `catalog-info.yaml` and leaves this one to the stage allowed to create it.
+it. The one a pasted clone URL could smuggle one into, `iacRepo`, refuses userinfo, a query
+and a fragment, and says so without quoting the value. Writing the file is § 7.3's last clause, and writing arrives at stage 5: `init --submit`
+writes it, on the same branch as the service's catalog-info, from `--iac-repo` and
+`--environment` or from answers — never from the inspection, never with a `backstage:` —
+and never rewrites one that is committed. Nothing reads `iacRepo` before stage 6. A run
+that types neither flag is asked nothing about it and writes none; one that types either is
+asked for the other, at a terminal, before any model.
 
 What the read buys is `environments`, which seeds the vocabulary the deterministic gates
 measure a proposal against. That vocabulary is otherwise empirical — what the catalogue
@@ -1043,9 +1052,12 @@ minting first puts a path in front of a gate that classifies a value by where it
 from, and the engine's own choice comes out as "nobody vouches for this" — a question the
 CLI would put to the user about a path chosen by the code asking.
 
-The fourth clause waits for stage 5. The `catalog-info.yaml` is previewed as a diff and
-nothing is written, `.idp-agent.yml` included — and "confirms the owner it inferred rather
-than assuming it" is a human reading that diff. The signature says a proposed value
+The fourth clause arrives with `--submit` at stage 5. Without it the `catalog-info.yaml` —
+the file `init` adds to, `targetOf`'s choice — is previewed as a diff and nothing is
+written, `.idp-agent.yml` included; with it, both go on one branch of the service's own
+repository, which must be a clone's root (a service in a subfolder of its repository is not
+submitted at stage 5). "Confirms the owner it inferred rather than assuming it" is a human
+reading that diff. The signature says a proposed value
 matches what the inspection established; the Inspector is a model reading files, so it
 says nothing about whether the inspection was right.
 
@@ -1081,8 +1093,8 @@ catalogue declares, levels still asked. The design note is
 8. branch + MR          an architect reviews -> merge = AUTHORISATION
 ```
 
-**Steps 2 to 7 are built — step 1 from a git repository, Backstage not yet, and step 7 is
-the diff alone. Step 8 arrives with the forge, at stages 5 and 6.** `idpa "<phrase>"` is
+**Steps 2 to 7 are built — step 1 from a git repository, Backstage not yet — and step 8's
+branch at stage 5; its merge request is stage 6.** `idpa "<phrase>"` is
 the gesture, typed from any directory: step 1 finds the declarations repository as § 7.0
 says, step 2 classifies the phrase once, and a `QUESTION` goes to the Analyst exactly as
 `ask` would take it (§ 7.6) while a `MUTATION` runs steps 3 to 7 exactly as
@@ -1104,11 +1116,15 @@ the change is decided against, is still refused before any model is chosen.
 
 `idp-agent plan "<intent>"` runs the Inspector when there is a service to read, the
 Architect over the declarations repository, the five gates of § 6.1, and renders the
-diff — then stops. There is no confirmation prompt at step 7 yet, because
-there is nothing on the other side of it to confirm: the branch is stage 5 and the merge
-request is stage 6. Until they exist, "diff + confirmation" is a diff and the closing line
-below, and the honest reading of "writes nothing" is that no code between the diff and a
-write has been written.
+diff. Steps 3 to 7 ship at stage 4, and step 8's branch at stage 5. `plan … --submit` shows
+the diff and, at a terminal, asks one question — *Submit this for review as
+idp-agent/… in <repository>?* — whose default is no. Without a terminal, `--submit` is
+the answer, which is safe because the confirmation was never the guard: the merge is.
+A branch that is already there is answered before that question, by a look that writes
+nothing: this very submission is named and nothing is asked, and somebody else's branch of
+that name is refused. The local forge cuts the branch and says it opened no merge request,
+because there is no forge to open one on until stage 6. `plan --from … --submit` crosses
+four gates and no Reviewer; `idpa "<phrase>"` does not submit at stage 5.
 
 The two `--repo` flags on this page name two different repositories, and the difference is
 the whole reason the flag exists. `plan --repo` is the **declarations** repository, which
@@ -1218,7 +1234,12 @@ test('the token that opens a merge request cannot merge it')
 test('no module under agents/ imports fs, git or child_process')
 test('a Plan carrying a path outside the repository is rejected')
 test('a Plan carrying an unknown field cannot be applied')
+test('a submission cannot move an existing ref, main included')
 ```
+
+The last is the local half of the first, and runs from stage 5 (`local-forge.test.ts`): a
+submission is `update-ref <ref> <commit> ""`, which creates or refuses. The first becomes
+real at stage 6, against a forge.
 
 ---
 
@@ -1377,7 +1398,7 @@ English throughout: code, comments, commits, docs, CLI output.
 
 Deliberately excluded; do not reintroduce without an explicit decision.
 
-- GitLab (v0.2 — one file to write once stage 5's `ForgeProvider` interface exists; it does not yet)
+- GitLab (v0.2 — one file to write against stage 5's `ForgeProvider` interface)
 - A change decided against the `backstage-http` provider. The provider is built for the
   read commands and questions (its slice 1, ADR-0011), and it still never decides a
   change: the catalogue lags the repository by about two minutes, so deciding to write
@@ -1386,7 +1407,9 @@ Deliberately excluded; do not reintroduce without an explicit decision.
   cache, the organisation's kinds and the two sources side by side are its later slices.
 - MCP server exposed by `idp-agent` (v0.2)
 - Extraction into a publishable monorepo (v0.2, once usage has revealed the interfaces)
-- Real Kong / Tufin / Jira integrations — they remain described destinations, not code
+- Real Kong / Tufin / Jira integrations — they remain described destinations, not code —
+  and with them the reconciler of ADR-0012; until then, `main` says *authorised*, not
+  *provisioned*
 - Delete operations
 - Live evals with a published score (v0.2, nightly)
 - Context compaction and long sessions

@@ -29,3 +29,6 @@ Nothing the tool does is provisioned by the tool: every run ends on "Nothing is 
 merge is what authorises it." (§ 7.4), and a user in a hurry gets no override. The tool also depends
 on branch protection it cannot configure — `init platform` will print the required settings and
 verify them, including a live check that the supplied token cannot merge (§ 7.2).
+
+Stage 5's local forge makes the first half testable: a submission cannot move an existing ref,
+`main` included (ADR-0010).

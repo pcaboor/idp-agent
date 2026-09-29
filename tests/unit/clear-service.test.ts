@@ -154,6 +154,20 @@ describe('clearService', () => {
     }
   })
 
+  it('refuses a locator carrying a credential at the moment of acting, never quoting it', () => {
+    // A token in a committed file is a token in every clone of it (§7.0).
+    for (const iacRepo of [
+      'https://x-access-token:ghp_SECRET123@github.com/acme/iac',
+      'github.com/acme/iac?access_token=ghp_SECRET123',
+    ]) {
+      const result = clearService(signed(), { ...NONE, config: { iacRepo, environments: ['dev'] } })
+      expect('outcome' in result && result.reasons).toEqual([
+        expect.stringMatching(new RegExp(`^\\${CONFIG_FILE}: iacRepo: .*userinfo, a query or a fragment`)),
+      ])
+      expect(JSON.stringify(result)).not.toContain('SECRET')
+    }
+  })
+
   it('refuses a plan with a question left, whatever the caller checked', () => {
     // D1: the provenance sealed in the signed plan is re-read at the moment of
     // acting. An owner nothing vouches for is a question, and a question is

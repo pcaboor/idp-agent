@@ -18,7 +18,7 @@ import {
   removeClones,
   scratch,
 } from '../support/forge-fixture.js'
-import { committed, git, observable, show } from '../support/git.js'
+import { committed, git, observable, show, stored } from '../support/git.js'
 
 // Every test here builds a real repository; the run's temp directory is
 // removed at the end anyway, and these go first (a small disk fills).
@@ -731,5 +731,91 @@ describe('submitting', () => {
     const submitted = await forge.submit(change, await forge.base())
     expect(submitted.outcome).toBe('created')
     await expect(readFile(marker)).rejects.toThrow()
+  })
+})
+
+describe('recognising a submission, before anyone is asked', () => {
+  /** Every git call the forge makes, kept: a read-only check must make no writing one. */
+  const recording = (repo: string): { run: Git; calls: string[][] } => {
+    const inner = gitIn(repo)
+    const calls: string[][] = []
+    return {
+      calls,
+      run: async (args, input) => {
+        calls.push([...args])
+        return inner(args, input)
+      },
+    }
+  }
+  const WRITES = new Set(['hash-object', 'mktree', 'commit-tree', 'update-ref'])
+  const writing = (calls: readonly string[][]): string[][] =>
+    calls.filter(([command]) => command !== undefined && WRITES.has(command))
+
+  it('finds nothing where nothing was submitted, and writes nothing to say so', async () => {
+    const repo = await clone()
+    const change = await clearedFor(repo)
+    const reading = recording(repo)
+    const forge = await openLocalForge(repo, 'declarations', reading.run)
+    const base = await forge.base()
+    const [seen, objects] = [await observable(repo), await stored(repo)]
+
+    expect(await forge.recognise(change, base)).toBeUndefined()
+
+    expect(await observable(repo)).toBe(seen)
+    expect(await stored(repo)).toBe(objects)
+    expect(writing(reading.calls)).toEqual([])
+  })
+
+  it('names its own branch, by the test submit() uses, with no object and no ref written', async () => {
+    const repo = await clone()
+    const change = await clearedFor(repo)
+    const writer = await openLocalForge(repo, 'declarations')
+    const first = await writer.submit(change, await writer.base())
+    if (first.outcome !== 'created') throw new Error(first.outcome)
+    const reading = recording(repo)
+    const forge = await openLocalForge(repo, 'declarations', reading.run)
+    const [seen, objects] = [await observable(repo), await stored(repo)]
+
+    const known = await forge.recognise(change, await forge.base())
+
+    expect(known).toEqual({ outcome: 'already-submitted', branch: change.branch, commit: first.commit })
+    expect(await observable(repo)).toBe(seen)
+    expect(await stored(repo)).toBe(objects)
+    expect(writing(reading.calls)).toEqual([])
+  })
+
+  it("refuses a branch of that name that is someone else's, writing nothing", async () => {
+    const repo = await clone()
+    const change = await clearedFor(repo)
+    await git(repo, 'update-ref', `refs/heads/${change.branch}`, 'HEAD')
+    const forge = await openLocalForge(repo, 'declarations')
+    const [seen, objects] = [await observable(repo), await stored(repo)]
+
+    const known = await forge.recognise(change, await forge.base())
+
+    expect(known).toEqual({
+      outcome: 'refused',
+      reason: `${change.branch} already exists and carries a different change`,
+    })
+    expect(await observable(repo)).toBe(seen)
+    expect(await stored(repo)).toBe(objects)
+  })
+
+  it('takes nothing clear.ts did not mint, nor a clearance for the other repository', async () => {
+    const repo = await clone()
+    const change = await clearedFor(repo)
+    const forged = { ...change } as unknown as Cleared
+    const declarations = await openLocalForge(repo, 'declarations')
+    const service = await openLocalForge(repo, 'service')
+    const base = await declarations.base()
+
+    expect(await declarations.recognise(forged, base)).toEqual({
+      outcome: 'refused',
+      reason: 'not a clearance minted by clearPlan or clearService',
+    })
+    expect(await service.recognise(change, base)).toEqual({
+      outcome: 'refused',
+      reason: 'a clearance for the declarations repository was handed to a forge on the service repository',
+    })
   })
 })

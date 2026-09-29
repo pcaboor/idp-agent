@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import type { FileEdit } from '../diff/unified.js'
 import {
   CONFIG_FILE,
+  holdsInvisible,
   repositoryConfigSchema,
   serializeConfig,
   type RepositoryConfig,
@@ -373,7 +374,7 @@ export function clearService(signed: SignedPlan, input: ServiceInput): Cleared |
     // override in it is a value a reviewer reads the wrong way round. The class
     // a catalog-info path is held to (`isCatalogInfoPath`), since JSON's
     // escaping leaves format characters and line separators as they are.
-    if ([typed.data.iacRepo, ...typed.data.environments].some((value) => HAS_INVISIBLE.test(value))) {
+    if ([typed.data.iacRepo, ...typed.data.environments].some((value) => holdsInvisible(value))) {
       return refused([
         `${CONFIG_FILE}: a value holds a control, format or bidi character; ` +
           'type it again without one',
@@ -450,14 +451,6 @@ export function branchFor(edits: readonly FileEdit[], label?: string): string {
 const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u202A-\u202E\u2066-\u2069]+/g
 /** The same set without `/g`, whose `lastIndex` would carry from one `test` to the next. */
 const HAS_UNSAFE = new RegExp(UNSAFE.source)
-
-/**
- * Wider than `UNSAFE`: every control, every format character (the bidi marks
- * and U+FEFF included) and the two line separators. A configuration value is a
- * host and a list of environment names, and holds none of them for any reason
- * a person means — unlike a name, where a mark is how right-to-left is typed.
- */
-const HAS_INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u
 
 /** Each unsafe character spelled as its code point: what a name holds, shown and inert. */
 const visible = (text: string): string =>

@@ -63,6 +63,14 @@ describe('.idp-agent.yml', () => {
     await expect(readConfig(root)).rejects.toThrow(/environments/)
   })
 
+  it('refuses a committed locator that carries a credential, naming the field and not the token', async () => {
+    // One gate for the flag, the answer, clearService and the reader (§7.0).
+    const root = await withConfig('iacRepo: https://oauth2:glpat-SECRET@gitlab.com/acme/iac\nenvironments: [dev]\n')
+
+    await expect(readConfig(root)).rejects.toThrow(/iacRepo: a locator never holds userinfo/)
+    await expect(readConfig(root)).rejects.not.toThrow(/SECRET/)
+  })
+
   it('names the field a malformed file leaves out', async () => {
     const root = await withConfig('backstage: https://backstage.internal\n')
 

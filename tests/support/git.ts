@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { hashWorktree } from './tree.js'
@@ -59,4 +59,20 @@ export async function observable(repo: string): Promise<string> {
     createHash('sha256').update(index).digest('hex'),
     await hashWorktree(repo),
   ].join('\n')
+}
+
+/**
+ * Every file of the object store, by path: what `observable` deliberately
+ * leaves out. A READ of a repository must not change it either — no blob, no
+ * tree, no commit — which is how a test tells a check that only looks from one
+ * that wrote and then said nothing.
+ */
+export async function stored(repo: string): Promise<string> {
+  const root = path.join(repo, '.git', 'objects')
+  const entries = await readdir(root, { recursive: true, withFileTypes: true })
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.relative(root, path.join(entry.parentPath, entry.name)))
+    .sort()
+    .join('\n')
 }

@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3862 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3905 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -83,8 +83,11 @@ from 1 to 100, a `.idp-agent.yml` or a personal `config.yml` that does not parse
 catalogue URL refused before any request, `IDP_BACKSTAGE_TOKEN` unset for a catalogue that
 is not on this machine or holding a character a header cannot carry, `--backstage` with none
 configured, a declarations repository `--submit` cannot cut a branch in (not a git clone's
-root, no `git`, no committer identity, a detached or unborn `HEAD` — on `plan "<intent>"`,
-refused before the model is configured), `--submit` with `--demo` or on `idpa "<phrase>"` — or no
+root, no `git`, no committer identity, a detached or unborn `HEAD` — on `plan "<intent>"`
+and `init`, refused before the model is configured), `init --submit` for a service in a
+subfolder of its repository, an `--iac-repo` or `--environment` the configuration's schema
+refuses or holding a control, format or bidi character, `--submit` with `--demo` or on
+`idpa "<phrase>"` — or no
 model, no key or no usable `IDP_TIMEOUT` or `IDP_SUPERVISOR_MODEL` is configured · `3` the
 request was understood and this build will not act on it: a change request put to `ask`
 (which names `idpa "<phrase>"` as the gesture that previews it), a question the model
@@ -118,12 +121,13 @@ registration**, which `init platform` writes with the path registry's folders as
 silence, fails on what Backstage would refuse or what reads outside the repository
 (`registration`, an error), and warns when no target reaches one of the registry's folders.
 
-## Current state — 2026-09-28
+## Current state — 2026-09-29
 
-`main` carries stages 0 through 4; history is linear, no merge commits. Each stage lands
+`main` carries stages 0 through 5; history is linear, no merge commits. Each stage lands
 as a stack of branches, one per task of its plan in `docs/plans/`, rebased and merged
-bottom-up. Stage 5 is in progress, one task per pull request: `Cleared`, the forge layer
-and the local forge are on `main`, and `plan … --submit`, on both roads, is its first write.
+bottom-up. Stage 5 landed that way, one task per pull request: `Cleared`, the forge layer,
+the local forge, `plan … --submit` on both roads, and `init --submit`, which writes a
+service's catalog-info and its `.idp-agent.yml` on one branch of its own repository.
 
 | # | Stage | State |
 |---|---|---|
@@ -132,7 +136,7 @@ and the local forge are on `main`, and `plan … --submit`, on both roads, is it
 | 2 | Question mode — Supervisor, recordings | done |
 | 3 | `init platform` — scaffold, CI, CODEOWNERS, witnesses, `validate` | done |
 | 4 | Preview only — Inspector, Architect, `Plan`, diff; writes nothing | done |
-| 5 | Write + local branch — `ForgeProvider`, atomicity, idempotence | in progress |
+| 5 | Write + local branch — `ForgeProvider`, atomicity, idempotence | done |
 | 6 | GitHub merge request — real forge, negative token test | |
 | 7 | Polish — Ink TUI, README, asciinema, npm publish | |
 
@@ -162,19 +166,20 @@ from a catalogue alike, which `show` prints and the overview counts (`backstage-
 own?", "who is in tiger?", "which system is billing-api in?", answered with the relation
 block `relations` prints (`backstage-http` slice 3.3; recorded and replayed with no key in
 `tests/scenarios/backstage-mode.test.ts`, with slice 1's question); and stage 4's two
-previews, which write nothing to a repository — unless `plan` is given `--submit`, stage 5's
-first write, a local branch for review:
+previews, which write nothing to a repository — unless `plan` or `init` is given `--submit`,
+stage 5's writes, a local branch for review; a branch already there is named, or refused,
+before anyone is asked to confirm:
 
 ```bash
 idpa "<phrase>" [--repo <dir> | --demo | --backstage] [--project <dir>] [--json] [--quiet]  # question or change
 idp-agent relations <name-or-ref> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-ref>] [--depth <n>] [--repo <dir> | --demo | --backstage]  # no model
 idp-agent plan --from <plan.json> --repo <dir> [--submit]  # no model, and none is possible
 idp-agent plan "<intent>" --repo <dir> [--json] [--submit]  # Inspector, Architect, five gates
-idp-agent init [--repo <dir>] [--name <n>] [--lifecycle <l>] [--owner <ref>]  # the catalog-info.yaml it would write
+idp-agent init [--repo <dir>] [--name <n>] [--lifecycle <l>] [--owner <ref>] [--submit] [--iac-repo <locator>] [--environment <name>]...  # the catalog-info.yaml, and .idp-agent.yml when a flag states it
 ```
 
-**`init platform` writes into the directory it was handed. `plan … --submit` writes one new
-ref and the objects it reaches, and nothing else** — never `HEAD`, the index, the
+**`init platform` writes into the directory it was handed. `plan … --submit` and
+`init --submit` write one new ref and the objects it reaches, and nothing else** — never `HEAD`, the index, the
 working tree or a ref that exists; nothing is pushed and no merge request is opened. With
 `IDP_TRACE_DIR` set, `idpa "<phrase>"`, `plan "<intent>"`, `ask` and `init` also write one
 trace file there, and nothing else. The two forms of `plan` and `init` read two repositories
@@ -285,7 +290,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 | `agents/` | the five agents, the bounded turn, the repair loop, the tool registries — reaches no disk, transitively |
 | `trace/` | the trace of one run: `createTraceBuilder` over the event stream and the model calls, the `traced` client decorator, and `toOtlpJson` — pure; `cli/trace-sink.ts` is how a trace leaves |
 | `scaffold/` | the `init platform` layout, the packaged templates, and `write.ts`, the writer for a repository being created |
-| `forge/` | where a submission becomes a branch: `provider.ts` — `ForgeProvider`, `Base`, `Submitted`, types only, with no merge, no delete and no caller-chosen name — `ForgeInputError`, a refusal that is the user's arguments — and `local/`, the local forge: `openLocalForge` for one repository, which writes git objects and one create-only ref, through the launcher, and never the working tree, the index or `HEAD` (ADR-0010). `plan … --submit`, on either road, reaches it, through `cli/commands/submit.ts` |
+| `forge/` | where a submission becomes a branch: `provider.ts` — `ForgeProvider`, `Base`, `Submitted`, types only, with no merge, no delete and no caller-chosen name — `ForgeInputError`, a refusal that is the user's arguments — and `local/`, the local forge: `openLocalForge` for one repository, which writes git objects and one create-only ref, through the launcher, and never the working tree, the index or `HEAD` (ADR-0010). `plan … --submit`, on either road, and `init --submit`, for the service's repository, reach it, through `cli/commands/submit.ts` |
 | `process/` | the one place a process is started: `git.ts`'s `gitIn` — hooks and fsmonitor off, `user.useConfigOnly`, every `GIT_*` scrubbed, started outside the repository, bounded — and `environment.ts`'s `spawnedEnvironment`, the one builder of a child process's environment |
 
 Each folder carries its own README stating what lives there, what may not, and which
@@ -368,8 +373,9 @@ changing that section first.
 Everything from the Supervisor to the unified diff runs, and on both roads of `plan` one
 step further: `plan … --submit` cuts the branch, locally, and pushes nothing — `plan
 "<intent>"` after all five gates, having refused a repository that cannot take it before any
-model was paid. What is not built is the far side — the merge request is stage 6 — and
-`init` and `idpa "<phrase>"` still end at the preview.
+model was paid. `init --submit` does the same in the service's own repository, for its
+catalog-info and `.idp-agent.yml`. What is not built is the far side — the merge request is
+stage 6 — and only `idpa "<phrase>"` still ends at the preview (D8).
 
 One object crosses **per direction of authority** (design §5.1, ADR-0007). The **`Plan`**
 crosses when the AI side asks for a change. The **`Answer`** crosses when it reports a
@@ -393,6 +399,7 @@ which is why the write side has a signature of its own.
 ```
 Supervisor → Inspector → Architect → Reviewer  │  Zod → signature → policies
                                                │  → re-check → Reviewer → Diff
+                                               │  → [submit] → branch
 ```
 
 The AI chooses the name, owner, environment and `dependsOn`. The **engine** chooses the
@@ -629,6 +636,16 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   then overwrites, or rename the entity and have the question asked again. Listing them on
   every report would let it converge sooner; it changes what the Architect is sent after
   an answered round, which stales the `link-db-missing` tape, so it waits for a re-record.
+- **A submission ignores the repository's hooks** (ADR-0010): no `pre-commit`, no
+  `reference-transaction`, no fsmonitor. A team relying on a hook reviews the branch in the
+  merge request instead, where CI runs.
+- **Declared is not provisioned.** A merged declaration can still be refused or fail
+  downstream, and nothing detects it yet (ADR-0012, proposed). `init platform` names the
+  status check stage 6 will require; the reconciler that reports a failure after the merge
+  arrives with the real integrations.
+- **`init --submit` is not offered for a service in a subfolder of its repository** (D12):
+  the forge cuts a branch at a clone's root, and the service's paths would need the
+  folder's prefix. `init` without `--submit` previews one.
 - **`docs/plans/stage-3-init-platform.md` still documents `init` as a tested refusal.**
   Stage 4 answered that refusal. The historical plan was left alone on purpose — a plan is
   a record of what was decided then — but it is not a description of the code now.
