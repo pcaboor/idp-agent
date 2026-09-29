@@ -1,10 +1,12 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { main, renderEvent } from '../../src/cli/index.js'
 import { runInitPlatform } from '../../src/cli/commands/init.js'
 import { runIntent } from '../../src/cli/commands/plan.js'
+import { reopening } from '../../src/cli/commands/submit.js'
+import type { ForgeProvider } from '../../src/forge/provider.js'
 import { CONFIG_FILE } from '../../src/cli/config.js'
 import type { AgentEvent } from '../../src/agents/events.js'
 import { REPORT_TOOL } from '../../src/agents/tools/project-tools.js'
@@ -19,6 +21,9 @@ import type {
 import { hashBoth, hashTree } from '../support/tree.js'
 import type { Ask } from '../../src/cli/commands/plan.js'
 import { confirmingEnvironment } from '../support/ask.js'
+import { ForgeInputError } from '../../src/forge/errors.js'
+import { clearedFor, clone, removeClones, scratch } from '../support/forge-fixture.js'
+import { committed, git, observable, show } from '../support/git.js'
 
 /**
  * Replays a scripted sequence of model turns, keyed by AGENT.
@@ -685,6 +690,425 @@ describe('plan "<intent>" through main', () => {
     expect(err).toContain('architect')
     expect(err).toContain('reviewer')
     expect(out).not.toContain('inspector')
+  })
+})
+
+describe('plan "<intent>" --submit', () => {
+  // Every repository here is a real one: removed at the end, a small disk fills.
+  afterAll(async () => {
+    await removeClones()
+    await Promise.all(applications.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
+  })
+
+  /** The application repository the Inspector reads, removed with the clones. */
+  const applications: string[] = []
+  const inspected = async (): Promise<string> => {
+    const root = await application()
+    applications.push(root)
+    return root
+  }
+
+  const branches = async (repo: string): Promise<string[]> =>
+    (await git(repo, 'for-each-ref', '--format=%(refname:short)', 'refs/heads/idp-agent/'))
+      .split('\n')
+      .filter((line) => line !== '')
+
+  /** One run of the intent road with `--submit`, on the scripted client it is handed. */
+  const submitting = async (
+    repo: string,
+    client: LlmClient,
+    extra: Partial<Parameters<typeof runIntent>[0]> = {},
+  ) =>
+    runIntent({
+      intent: INTENT,
+      repo,
+      project: await inspected(),
+      client,
+      emit: collect().emit,
+      ask: answering('read'),
+      submit: {},
+      ...extra,
+    })
+
+  it('cuts the branch the same plan cuts by --from, after all five gates', async () => {
+    const repo = await clone()
+    const client = converging([CREATE_DATABASE, CREATE_ACCESS])
+    const main0 = await git(repo, 'rev-parse', 'main')
+    // Asked for no confirmation by default; one is injected here only to see
+    // what had run by the time the submission was put to a person.
+    const before: string[] = []
+
+    const result = await submitting(repo, client, {
+      submit: {
+        confirm: async () => {
+          before.push(...client.seen.map((request) => request.agent))
+          return true
+        },
+      },
+    })
+
+    expect(result.found).toBe(true)
+    expect(result.text).toMatch(
+      /2 files · submitted as idp-agent\/orders-db-prod-[0-9a-f]{8} on top of main@[0-9a-f]{7} · main untouched/,
+    )
+    // The Reviewer is the fifth gate on this road (ADR-0010), and it judged
+    // the plan before anyone was asked to submit it.
+    expect(before.at(-1)).toBe('reviewer')
+    // The engine names the branch from the bytes: the plan `--from` clears
+    // over the same repository is the same branch, whoever drafted it.
+    const cut = await branches(repo)
+    expect(cut).toEqual([(await clearedFor(repo)).branch])
+    expect(await git(repo, 'rev-parse', 'main')).toBe(main0)
+    expect(await show(repo, cut[0] ?? '', DATABASE_PATH)).toContain('name: orders-db-prod')
+  })
+
+  it('refuses a divergent repository before a single model call', async () => {
+    // Three paid round-trips for a diff that cannot be submitted is the cost
+    // this ordering removes: the check runs before the Inspector.
+    const repo = await clone()
+    await writeFile(path.join(repo, 'catalog', 'databases', 'stray.yml'), '# stray\n', 'utf8')
+    const client = converging([CREATE_DATABASE, CREATE_ACCESS])
+    const before = await observable(repo)
+
+    const result = await submitting(repo, client)
+
+    expect(result.found).toBe(false)
+    expect(result.text).toContain('stray.yml')
+    expect(result.text).not.toContain('+++ b/')
+    expect(client.seen).toEqual([])
+    expect(await observable(repo)).toBe(before)
+  })
+
+  it('refuses a divergent repository in --json with only the submission key, and no model call (D11)', async () => {
+    const repo = await clone()
+    await writeFile(path.join(repo, 'catalog', 'databases', 'stray.yml'), '# stray\n', 'utf8')
+    const client = converging([CREATE_DATABASE, CREATE_ACCESS])
+
+    const result = await submitting(repo, client, { json: true })
+
+    expect(result.found).toBe(false)
+    const report = JSON.parse(result.text) as Record<string, unknown>
+    expect(Object.keys(report)).toEqual(['submission'])
+    expect(report['submission']).toEqual({
+      outcome: 'refused',
+      reasons: [expect.stringContaining('catalog/databases/stray.yml')],
+    })
+    expect(client.seen).toEqual([])
+  })
+
+  it('refuses a repository that cannot take a branch as an argument, before a single model call', async () => {
+    // Each is exit 2 at the CLI (`ForgeInputError`): not a clone, a folder of
+    // one, nobody to commit as, a detached HEAD. Found by the forge as it
+    // opens, before the snapshot is taken and long before the Inspector.
+    const plain = await scaffoldedRepository()
+    applications.push(path.dirname(plain))
+    const outer = await scratch('idp-intent-outer-')
+    await runInitPlatform({ root: path.join(outer, 'iac'), owner: '@acme/platform', version: '0.0.0-test' })
+    await committed(outer)
+    const anonymous = await clone()
+    await git(anonymous, 'config', 'user.name', '')
+    await git(anonymous, 'config', 'user.email', '')
+    const detached = await clone()
+    await git(detached, 'checkout', '-q', '--detach')
+
+    for (const [repo, said] of [
+      [plain, /not a git working tree/],
+      [path.join(outer, 'iac'), /not at its root/],
+      [anonymous, /identity/],
+      [detached, /detached/],
+    ] as const) {
+      const client = converging([CREATE_DATABASE, CREATE_ACCESS])
+      await expect(submitting(repo, client)).rejects.toThrow(ForgeInputError)
+      await expect(submitting(repo, client)).rejects.toThrow(said)
+      expect(client.seen).toEqual([])
+    }
+  })
+
+  it('cuts no branch when the Reviewer refuses: the submission comes after it', async () => {
+    const repo = await clone()
+    const rejected = turnCalling(VERDICT_TOOL, { verdict: 'reject', reason: 'not what was asked' })
+    const proposed = turnCalling(PROPOSE_TOOL, { operations: [CREATE_DATABASE, CREATE_ACCESS] })
+    const before = await observable(repo)
+
+    const result = await submitting(
+      repo,
+      scripted({
+        inspector: [turnCalling(REPORT_TOOL, FACTS)],
+        architect: [proposed, proposed, proposed],
+        reviewer: [rejected, rejected, rejected],
+      }),
+      {
+        submit: {
+          confirm: async () => {
+            throw new Error('a plan the Reviewer refused was put to a person')
+          },
+        },
+      },
+    )
+
+    expect(result.found).toBe(false)
+    expect(result.text).toContain('3 attempts')
+    expect(await branches(repo)).toEqual([])
+    expect(await observable(repo)).toBe(before)
+  })
+
+  it('submits a plan whose environment was answered at the prompt, not named', async () => {
+    // An environment is never read from the request's words (2026-09-27): the
+    // provenance holds the answer at its path, and the clearance re-runs the
+    // policies against the provenance the plan was signed with (D1).
+    const repo = await clone()
+    const asked: string[] = []
+
+    const result = await submitting(repo, converging([CREATE_DATABASE, CREATE_ACCESS]), {
+      // Every value named but the environment, which nothing in the words says.
+      intent:
+        'declare the database orders-db-prod owned by group:default/tiger, then give ' +
+        'component:default/billing-api a database-access granting read to resource:default/orders-db-prod',
+      ask: async (question) => {
+        asked.push(question.path)
+        return answering('read')(question)
+      },
+    })
+
+    expect(result.found).toBe(true)
+    expect(asked.some((one) => one.endsWith('.metadata.env'))).toBe(true)
+    expect(result.text).toMatch(/submitted as idp-agent\//)
+    expect(await branches(repo)).toHaveLength(1)
+  })
+
+  it('reports the submission in --json under the key --from pins, and never prompts there (D11)', async () => {
+    const repo = await clone()
+
+    const result = await submitting(repo, converging([CREATE_DATABASE, CREATE_ACCESS]), {
+      json: true,
+      submit: {
+        confirm: async () => {
+          throw new Error('a --json run asked a person')
+        },
+      },
+    })
+
+    expect(result.found).toBe(true)
+    const report = JSON.parse(result.text) as { outcome: string; submission: Record<string, unknown> }
+    expect(report.outcome).toBe('planned')
+    expect(Object.keys(report.submission).sort()).toEqual(['base', 'branch', 'commit', 'outcome'])
+    expect(report.submission['outcome']).toBe('created')
+    expect(report.submission['commit']).toBe(
+      await git(repo, 'rev-parse', String(report.submission['branch'])),
+    )
+    expect(report.submission['base']).toEqual({ branch: 'main', commit: await git(repo, 'rev-parse', 'main') })
+  })
+
+  it('answers `unchanged` in --json for a plan the repository already holds, as --from does (D11)', async () => {
+    const repo = await clone()
+    const created = await submitting(repo, converging([CREATE_DATABASE, CREATE_ACCESS]), { json: true })
+    const branch = (JSON.parse(created.text) as { submission: { branch: string } }).submission.branch
+    // Merged: the repository now says it, and there is nothing to submit.
+    await git(repo, 'merge', '-q', '--ff-only', branch)
+
+    const result = await submitting(repo, converging([CREATE_DATABASE, CREATE_ACCESS]), { json: true })
+
+    expect(result.found).toBe(true)
+    expect(result.unsupported).toBeUndefined()
+    const report = JSON.parse(result.text) as { outcome: string; submission: unknown }
+    expect(report.outcome).toBe('planned')
+    expect(report.submission).toEqual({ outcome: 'unchanged' })
+    expect(await branches(repo)).toEqual([branch])
+  })
+
+  it('refuses, and cuts nothing, when main moves while the person answers', async () => {
+    // §4.4: the repository is checked again at the moment of writing. The
+    // base was read before the Inspector; a commit landing while a question
+    // is open is the repository moving under a plan judged against the old one.
+    const repo = await clone()
+    let asked = 0
+
+    const result = await submitting(repo, converging([CREATE_DATABASE, CREATE_ACCESS]), {
+      ask: async (question) => {
+        asked += 1
+        await git(repo, 'commit', '-q', '--allow-empty', '-m', 'landed meanwhile')
+        return answering('read')(question)
+      },
+    })
+
+    expect(asked).toBeGreaterThan(0)
+    expect(result.found).toBe(false)
+    expect(result.text).toMatch(/main moved from [0-9a-f]{7} to main@[0-9a-f]{7} since the plan was read/)
+    expect(await branches(repo)).toEqual([])
+  })
+
+  it('hands the forge main opened only to the repository it was opened on', async () => {
+    // `main` opens the forge before the model is configured and hands it to
+    // `runIntent`, which opens it again from a root of its own. If the two
+    // roots ever disagreed, the confirmation would name one directory while
+    // the branch was cut in another; an opener that checks makes that an error.
+    const forge = {} as ForgeProvider
+    const open = reopening(forge, '/somewhere/iac', 'declarations')
+
+    await expect(open('/somewhere/iac', 'declarations')).resolves.toBe(forge)
+    await expect(open('/somewhere/else', 'declarations')).rejects.toThrow(/another repository/)
+    await expect(open('/somewhere/iac', 'service')).rejects.toThrow(/another repository/)
+  })
+
+  it('declined at the prompt: not submitted, nothing written', async () => {
+    const repo = await clone()
+    const before = await observable(repo)
+
+    const result = await submitting(repo, converging([CREATE_DATABASE, CREATE_ACCESS]), {
+      submit: { confirm: async () => false },
+    })
+
+    expect(result.found).toBe(true)
+    expect(result.text).toContain('not submitted · nothing written')
+    expect(await observable(repo)).toBe(before)
+  })
+
+  it('leaves the application repository byte-identical while submitting', async () => {
+    const repo = await clone()
+    const project = await inspected()
+    const before = await hashTree(project)
+
+    await submitting(repo, converging([CREATE_DATABASE, CREATE_ACCESS]), { project })
+
+    expect(await hashTree(project)).toBe(before)
+  })
+
+  it('prints stage 4’s preview over a clone without --submit, and writes nothing, .git included', async () => {
+    const plain = await scaffoldedRepository()
+    applications.push(path.dirname(plain))
+    const repo = await clone()
+    const before = await hashTree(repo)
+    const run = (root: string) =>
+      runIntent({
+        intent: INTENT,
+        repo: root,
+        project: undefined,
+        client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+        emit: collect().emit,
+        ask: answering('read'),
+      })
+
+    const overPlain = await run(plain)
+    const overClone = await run(repo)
+
+    expect(overClone.text).toBe(overPlain.text)
+    expect(overClone.text).toContain('2 files · nothing written')
+    expect(await hashTree(repo)).toBe(before)
+  })
+})
+
+describe('plan "<intent>" --submit through main', () => {
+  afterAll(removeClones)
+
+  const run = async (args: string[], deps: Parameters<typeof main>[1] = {}) => {
+    const out: string[] = []
+    const err: string[] = []
+    const code = await main(args, {
+      ...deps,
+      out: (chunk) => void out.push(chunk),
+      err: (chunk) => void err.push(chunk),
+    })
+    return { code, out: out.join(''), err: err.join('') }
+  }
+
+  it('refuses a --repo that cannot take a branch before the model is configured, and calls none', async () => {
+    // An argument is refused before the configuration is (`applicationRoot`'s
+    // rule): with no model configured, the answer is still about the
+    // repository, so nobody configures a key only to be told the directory
+    // cannot take a branch — and no model is called, since none could be.
+    const plain = path.join(await scratch('idp-intent-plain-'), 'iac')
+    await runInitPlatform({ root: plain, owner: '@acme/platform', version: '0.0.0-test' })
+    const outer = await scratch('idp-intent-outer-')
+    await runInitPlatform({ root: path.join(outer, 'iac'), owner: '@acme/platform', version: '0.0.0-test' })
+    await committed(outer)
+    const anonymous = await clone()
+    await git(anonymous, 'config', 'user.name', '')
+    await git(anonymous, 'config', 'user.email', '')
+    const detached = await clone()
+    await git(detached, 'checkout', '-q', '--detach')
+    const home = await scratch('idp-intent-home-')
+
+    for (const [repo, said] of [
+      [plain, 'not a git working tree'],
+      [path.join(outer, 'iac'), 'not at its root'],
+      [anonymous, 'identity'],
+      [detached, 'HEAD is detached'],
+    ] as const) {
+      const before = await hashTree(repo)
+      const { code, out, err } = await run(['plan', INTENT, '--repo', repo, '--submit'], {
+        cwd: home,
+        env: { HOME: home, XDG_CONFIG_HOME: home },
+      })
+      expect(code).toBe(2)
+      expect(err).toContain(said)
+      expect(err).not.toContain('no model configured')
+      expect(out).toBe('')
+      expect(await hashTree(repo)).toBe(before)
+    }
+  })
+
+  it('cuts the branch on exit 0, and asks nobody when nobody is at a terminal', async () => {
+    const repo = await clone()
+    const project = await scratch('idp-intent-app-')
+    await writeFile(path.join(project, 'package.json'), '{ "name": "billing-api" }\n', 'utf8')
+
+    const { code, out } = await run(['plan', INTENT, '--repo', repo, '--submit'], {
+      ask: answering('read'),
+      cwd: project,
+      client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+      env: {},
+    })
+
+    expect(code).toBe(0)
+    expect(out).toMatch(/submitted as idp-agent\/orders-db-prod-[0-9a-f]{8}/)
+    expect(out.trimEnd().endsWith(CLOSING)).toBe(true)
+  })
+
+  it('answers exit 1, not 2, and cuts nothing, when HEAD is detached while the person answers', async () => {
+    // Detached when the run starts is an argument (exit 2, above); detached
+    // DURING the run is the repository moving, which is a refusal (§4.4).
+    const repo = await clone()
+    const project = await scratch('idp-intent-app-')
+    await writeFile(path.join(project, 'package.json'), '{ "name": "billing-api" }\n', 'utf8')
+    let asked = 0
+
+    const { code, out, err } = await run(['plan', INTENT, '--repo', repo, '--submit'], {
+      ask: async (question) => {
+        asked += 1
+        await git(repo, 'checkout', '-q', '--detach')
+        return answering('read')(question)
+      },
+      cwd: project,
+      client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+      env: {},
+    })
+
+    expect(asked).toBeGreaterThan(0)
+    expect(code).toBe(1)
+    expect(out + err).toContain('main changed during the run')
+    expect(
+      await git(repo, 'for-each-ref', '--format=%(refname)', 'refs/heads/idp-agent/'),
+    ).toBe('')
+  })
+
+  it('refuses a divergent repository on exit 1, with no model call, in --json too', async () => {
+    const repo = await clone()
+    await writeFile(path.join(repo, 'catalog', 'databases', 'stray.yml'), '# stray\n', 'utf8')
+    const project = await scratch('idp-intent-app-')
+    await writeFile(path.join(project, 'package.json'), '{ "name": "billing-api" }\n', 'utf8')
+
+    for (const json of [[], ['--json']]) {
+      const client = converging([CREATE_DATABASE, CREATE_ACCESS])
+      const { code, out } = await run(['plan', INTENT, '--repo', repo, '--submit', ...json], {
+        ask: answering('read'),
+        cwd: project,
+        client,
+        env: {},
+      })
+      expect(code).toBe(1)
+      expect(out).toContain('stray.yml')
+      expect(client.seen).toEqual([])
+    }
   })
 })
 

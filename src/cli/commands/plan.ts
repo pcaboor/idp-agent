@@ -18,7 +18,7 @@ import { summariseGraph, type SiSummary } from '../../context/graph/summary.js'
 import { readRepository } from '../../context/iac-fs/snapshot.js'
 import { readProject } from '../../context/project-fs/snapshot.js'
 import { renderUnifiedDiff, type FileEdit } from '../../core/diff/unified.js'
-import { clearPlan, type Cleared, type ClearRefusal } from '../../core/plan/clear.js'
+import { clearPlan, type Cleared, type ClearInput, type ClearRefusal } from '../../core/plan/clear.js'
 import { answer, AnswerError, questionsOf, type Question } from '../../core/plan/clarify.js'
 import { deriveOwners } from '../../core/plan/derive.js'
 import { namesakesIn } from '../../core/plan/environment.js'
@@ -51,9 +51,8 @@ import { inertLine, visible } from '../render/plain.js'
 import { budgetNotice, declarationsRoot, selectionNotice } from '../repository.js'
 
 /**
- * Steps 3 to 7 of §7.4, wired end to end: the branch with `--submit` on the
- * `--from` road (`commands/submit.ts`), and never the merge request, which is
- * stage 6.
+ * Steps 3 to 7 of §7.4, wired end to end: the branch with `--submit` on both
+ * roads (`commands/submit.ts`), and never the merge request, which is stage 6.
  *
  * **Two ways in, one way out.** `runPlan` reads a Plan from a file — no model is
  * involved and none can be — and `runIntent` drafts one: Inspector, Architect,
@@ -1359,6 +1358,20 @@ export interface IntentOptions {
    * (`selectionNotice`). Absent, nothing is said.
    */
   readonly notice?: (line: string) => void
+  /**
+   * `--submit`: the preview becomes one new branch in `repo`, cut from `HEAD`,
+   * once all five gates passed — the Reviewer last. A repository that cannot
+   * take the branch is refused before any model is paid. Absent, this run
+   * writes nothing, and prints what stage 4 printed, byte for byte.
+   */
+  readonly submit?: SubmitOptions
+}
+
+/** What `--submit` needs once the loop has planned: the forge, the prompt, and what to clear against. */
+interface Submission {
+  readonly opened: Opened
+  readonly confirm?: Confirm
+  readonly clear: ClearInput
 }
 
 /**
@@ -1373,6 +1386,14 @@ export interface IntentOptions {
  */
 export async function runIntent(options: IntentOptions): Promise<CommandResult> {
   const root = await declarationsRoot('plan', options.repo)
+  // Before anything is read, and before any model is paid: a repository that
+  // cannot take a branch — not a clone's root, nobody to commit as, a detached
+  // HEAD — is an argument error, and a run that found it out after three
+  // round-trips would have charged someone for a refusal.
+  const opened =
+    options.submit === undefined
+      ? undefined
+      : await openForSubmission(root, 'declarations', options.submit)
   // Read before a single agent runs, and before the project is walked. A
   // committed file that does not parse is not a repository that declared
   // nothing: falling back would answer a typo with a run that silently asks
@@ -1402,10 +1423,35 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
   // Before the Inspector too: a repository `plan` cannot read whole is refused,
   // and refused before a model round-trip is spent on it.
   const contents = await readContents(root, snapshot)
+  if (opened !== undefined) {
+    // And the one check a submission adds, on the same side of the line: the
+    // gates will judge the working tree and the branch is cut from HEAD, and a
+    // repository where the two differ cannot take this branch. Finding that
+    // out after the Inspector, the Architect and the Reviewer were paid is the
+    // waste this line exists to prevent.
+    const refused = await refuseDivergence(
+      opened,
+      { files: contents, scope: 'catalogue' },
+      { json: options.json === true },
+    )
+    if (refused !== undefined) return refused
+  }
   const contexts = contextsOf(root, snapshot, contents, graph, {
     config,
     witnessed: tools.witnessed,
   })
+  // Built once, from the very contexts and bytes every round's gates judge,
+  // and handed to each way out of the loop. The provenance is not in it: the
+  // clearance takes the one the plan was signed with (D1).
+  const submission: Submission | undefined =
+    opened === undefined
+      ? undefined
+      : {
+          opened,
+          clear: { policy: contexts.policy, snapshot, contents },
+          ...(options.submit?.confirm !== undefined ? { confirm: options.submit.confirm } : {}),
+        }
+  const ending = { ...options, ...(submission !== undefined ? { submission } : {}) }
   const summary = formatSummary(contexts.summary, contexts.vocabulary)
 
   // No repository, no Inspector: the Architect is told that nothing was
@@ -1522,12 +1568,12 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
     spent.rejections += outcome.rejections
     spent.attempts.push(...outcome.attempts)
 
-    if (outcome.outcome !== 'questions') return renderOutcome({ ...outcome, ...spent }, options)
+    if (outcome.outcome !== 'questions') return await renderOutcome({ ...outcome, ...spent }, ending)
     // Nobody to ask, or out of rounds. Both end on the questions, and they end
     // on the SAME sentence: a bound that produced a different answer from an
     // unattended run would be a third outcome nobody designed.
     if (options.ask === undefined || round >= ASK_LIMITS.maxRounds) {
-      return renderOutcome({ ...outcome, ...spent }, options)
+      return await renderOutcome({ ...outcome, ...spent }, ending)
     }
 
     const filled = await fillAnswers(outcome.plan, outcome.questions, options.ask)
@@ -1536,7 +1582,7 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
     // ones still open. Reusing it is what keeps a decline rendering — in both
     // `--json` and prose — exactly as an unattended run does.
     if (filled.outcome === 'declined') {
-      return renderOutcome({ ...outcome, ...spent, questions: filled.unanswered }, options)
+      return await renderOutcome({ ...outcome, ...spent, questions: filled.unanswered }, ending)
     }
 
     answers.push(...recordAnswers(filled.plan, filled.answers, contexts.policy.over))
@@ -1554,37 +1600,74 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
  * A `planned` outcome needs no policy list and no question list: `repair`
  * returns it only after both gates passed, so the report carries two empty
  * arrays as the statement that they ran and found nothing.
+ *
+ * With `submission`, a `planned` outcome goes on to the forge, and only that
+ * one: `repair` returns it after all five gates, the Reviewer last, so the
+ * branch is cut from a plan every gate of this road judged — and cleared
+ * again by the free ones against the provenance it was signed with (D1). A
+ * question and a stop answer as they do without `--submit`.
  */
-function renderOutcome(
+async function renderOutcome(
   outcome: RepairOutcome,
-  options: { readonly repo: string; readonly json?: boolean; readonly colour?: boolean },
-): CommandResult {
+  options: {
+    readonly repo: string
+    readonly json?: boolean
+    readonly colour?: boolean
+    readonly submission?: Submission
+  },
+): Promise<CommandResult> {
   if (outcome.outcome === 'planned') {
     const changed = outcome.edits.filter((edit) => edit.before !== edit.after)
+    const submission = options.submission
+    // Nothing to submit is the same answer with or without --submit: no
+    // branch, and #83's exit 3 when nothing accounts for an empty change.
+    const cleared =
+      submission === undefined || changed.length === 0
+        ? undefined
+        : clearPlan(outcome.signed, submission.clear)
+    const render = (status: PreviewStatus): CommandResult =>
+      renderPreview({
+        signed: outcome.signed,
+        edits: outcome.edits,
+        dropped: outcome.dropped,
+        recheck: outcome.recheck,
+        repo: options.repo,
+        status,
+        ...(options.colour !== undefined ? { colour: options.colour } : {}),
+      })
+
     if (options.json === true) {
-      return {
-        text: asJson({
-          outcome: 'planned',
-          ...reportOf(outcome.signed, [], [], outcome.recheck, changed, outcome.dropped),
-          // Carried out of the loop, never dropped: a plan drafted on a partial
-          // view of the catalogue is byte-identical to one drafted on all of
-          // it, and this seam is where that signal died once already.
-          truncated: outcome.truncated,
-          rejections: outcome.rejections,
-          attempts: outcome.attempts,
-        }),
-        found: true,
-        ...(didNothing(outcome.signed, changed, outcome.recheck) ? { unsupported: true } : {}),
+      const report = {
+        outcome: 'planned',
+        ...reportOf(outcome.signed, [], [], outcome.recheck, changed, outcome.dropped),
+        // Carried out of the loop, never dropped: a plan drafted on a partial
+        // view of the catalogue is byte-identical to one drafted on all of
+        // it, and this seam is where that signal died once already.
+        truncated: outcome.truncated,
+        rejections: outcome.rejections,
+        attempts: outcome.attempts,
       }
+      const nothing = didNothing(outcome.signed, changed, outcome.recheck)
+      if (submission !== undefined && cleared !== undefined) {
+        // A program reads --json, and a program is never asked.
+        const { report: submitted } = await submit({ opened: submission.opened, cleared, render })
+        return { text: asJson({ ...report, submission: submitted }), found: submitted.outcome !== 'refused' }
+      }
+      if (submission !== undefined && !nothing) {
+        // The repository already says it: the same key `--from` answers with.
+        return { text: asJson({ ...report, submission: { outcome: 'unchanged' } }), found: true }
+      }
+      return { text: asJson(report), found: true, ...(nothing ? { unsupported: true } : {}) }
     }
-    return renderPreview({
-      signed: outcome.signed,
-      edits: outcome.edits,
-      dropped: outcome.dropped,
-      recheck: outcome.recheck,
-      repo: options.repo,
-      ...(options.colour !== undefined ? { colour: options.colour } : {}),
+
+    if (submission === undefined || cleared === undefined) return render({ kind: 'preview' })
+    const { result } = await submit({
+      opened: submission.opened,
+      cleared,
+      render,
+      ...(submission.confirm !== undefined ? { confirm: submission.confirm } : {}),
     })
+    return result
   }
 
   if (outcome.outcome === 'questions') {

@@ -48,7 +48,11 @@ export interface SubmitOptions {
    * and nobody can perform it from this terminal (§4.2).
    */
   readonly confirm?: Confirm
-  /** Injected so a test can hand in a forge that fails where it chooses. */
+  /**
+   * Injected so a test can hand in a forge that fails where it chooses — and
+   * so `main` can hand `plan "<intent>"` the forge it opened before the model
+   * was configured, rather than open a second one.
+   */
   readonly open?: (root: string, repository: Repository) => Promise<ForgeProvider>
 }
 
@@ -72,6 +76,21 @@ export async function openForSubmission(
   const forge = await (options.open ?? openLocalForge)(root, repository)
   return { root, forge, base: await forge.base() }
 }
+
+/**
+ * A forge already opened, handed on as the `open` a later `openForSubmission`
+ * calls — for the repository it was opened on and no other. `main` opens the
+ * intent road's forge before the model is configured, and `runIntent` resolves
+ * its root on its own: were the two ever to disagree, the confirmation would
+ * name one directory while the branch was cut in another, so a mismatch is an
+ * error, never a forge quietly reused.
+ */
+export const reopening =
+  (forge: ForgeProvider, root: string, repository: Repository) =>
+  (asked: string, which: Repository): Promise<ForgeProvider> =>
+    asked === root && which === repository
+      ? Promise.resolve(forge)
+      : Promise.reject(new Error('a forge opened for one repository was asked for another repository'))
 
 /**
  * A reason that quotes the repository — a path, a branch — or a value a file

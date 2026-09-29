@@ -4499,7 +4499,7 @@ refused at stage 5 (D8, task 5).
   `ClearInput` (task 1).
 - Produces: `IntentOptions.submit?: SubmitOptions`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/unit/plan-intent.test.ts`, reusing `scaffoldedRepository`, `application`,
 `converging`, `answering`, `collect`, `INTENT`, `CREATE_DATABASE` and `CREATE_ACCESS`, and
@@ -4602,12 +4602,12 @@ describe('plan "<intent>" --submit', () => {
 })
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `pnpm vitest run tests/unit/plan-intent.test.ts`
 Expected: FAIL — `submit` is not an `IntentOptions` field; no branch is cut.
 
-- [ ] **Step 3: Wire `runIntent`**
+- [x] **Step 3: Wire `runIntent`**
 
 - In `src/cli/index.ts`, delete task 5's `plan "<intent>" --submit is not wired yet`
   refusal and its test, and pass `...(submit !== undefined ? { submit } : {})` to
@@ -4708,16 +4708,42 @@ level at its path and confirms an environment nobody pointed at (`confirmingEnvi
 the path-keyed answers the provenance now reads. The `eee67d6` tests passed `answering('read')`
 for the level alone; each is re-read against today's helper.
 
-- [ ] **Step 4: Traceability**
+- [x] **Step 4: Traceability**
 
 - `CHANGELOG.md`, Unreleased → Added: one line with the link.
 - `docs/roadmap.md`: stage 5's queue item says task 6 is on `main`.
 
+*As built:* four departures from the steps above, each for the plan's own reason.
+**The forge is also opened in `cli/index.ts`, before `agentBacked`.** `runIntent` opens it
+where step 3 says, but through `main` the model's configuration is read first — a missing
+key is refused up front — so a clone-less `--repo` answered "no key for …" and someone would
+set a key only to be refused for the directory next. `main` already refuses a directory
+before the configuration (`applicationRoot`), so `--submit`'s repository is opened there
+too and the forge handed to `runIntent` through `SubmitOptions.open`: not a clone's root, no
+identity and a detached `HEAD` are exit 2 with no model configured, which `pnpm smoke` checks
+on the built binary. **The environment test names every value but the environment**: the
+intent above names no owner and no database, so its run ended on questions; it now records
+that `metadata.env` was asked. **`renderOutcome` keeps `repo`** (the standing-violations
+line names a command) **and `--from`'s `--json` answers** — `submission: { outcome:
+'unchanged' }` for a plan the repository already says, and #83's exit 3 without `--submit`.
+**The divergence check runs with `{ json }`**, so `--json` gets the `submission` key alone.
+Documents made false by this task are corrected in it: `AGENTS.md` (exit 2, the state line,
+the commands block, the trust boundary, the `forge/` row), `SECURITY.md` (the route wording
+and one row), `README.md`, `HELP` (both roads, five gates and four), `src/cli/README.md`
+(Submitting) and `src/forge/README.md`. **After review**, the forge `main` opens reaches
+`runIntent` through `submit.ts`'s `reopening`, which serves that forge for its own root and
+repository and rejects any other, so a root resolved differently on the two sides is an error
+rather than a branch cut beside the directory the confirmation named; the through-main test
+covers a folder of a clone as well; and three cases pin the `--json` `unchanged` answer and
+`HEAD` moving or detaching while a question is open. Divergence stays judged in `runIntent`,
+after the configuration, since it is the repository's state rather than an argument — the
+comment in `main`, `README.md` and `src/cli/README.md` say so; neither order pays a model.
+
 - [ ] **Step 5: Run everything and commit** *(after the owner's go-ahead)*
 
 ```bash
-pnpm typecheck && pnpm test   # the full run only with 2 GiB free on /
-git add src/cli tests/unit/plan-intent.test.ts tests/unit/cli-args.test.ts CHANGELOG.md docs/roadmap.md
+pnpm typecheck && pnpm test && pnpm build && pnpm smoke   # the full run only with 2 GiB free on /
+git add src/cli src/forge/README.md tests/unit/plan-intent.test.ts tests/unit/cli-args.test.ts scripts/smoke.mjs AGENTS.md SECURITY.md README.md CHANGELOG.md docs/roadmap.md docs/plans/stage-5-write.md
 git commit -m "feat(cli): submit a drafted plan, and refuse an unsubmittable repository before paying a model"
 ```
 

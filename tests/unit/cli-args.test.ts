@@ -147,24 +147,29 @@ describe('parseArguments: --submit', () => {
     expect(parseArguments(['plan', '--from', 'plan.json'])).not.toHaveProperty('submit')
   })
 
-  it('is refused on plan "<intent>" until that road submits, rather than dropped', () => {
-    // Removed by the next change, which teaches the intent road to submit.
+  it('is a flag of plan "<intent>" too, where it is refused before any model is paid', () => {
     expect(parseArguments(['plan', 'give billing-api read access', '--submit'])).toStrictEqual({
-      name: 'error',
-      message: 'plan "<intent>" --submit is not wired yet; use --from <plan.json> --submit',
+      name: 'plan',
+      source: { intent: 'give billing-api read access' },
+      json: false,
+      submit: true,
     })
+    expect(parseArguments(['plan', 'give billing-api read access'])).not.toHaveProperty('submit')
   })
 
-  it('is refused on a phrase, pointing at the one road that submits today (D8)', () => {
-    // Only plan --from: plan "<intent>" --submit is refused too until the next
-    // change, and a refusal that points at another refusal is a dead end.
+  it('is refused on a phrase, pointing at both roads that submit (D8)', () => {
+    // The entry reaches the Supervisor before it knows a phrase is a change,
+    // and a submission refuses a repository that cannot take it before any
+    // model is paid: at stage 5, a change is submitted by plan.
     for (const argv of [
       ['give billing-api read access to orders-db', '--submit'],
       ['give billing-api read access to orders-db', '--submit', '--demo'],
     ]) {
       expect(parseArguments(argv)).toStrictEqual({
         name: 'error',
-        message: 'idpa "<phrase>" does not submit; a change is submitted with plan --from <plan.json> --submit',
+        message:
+          'idpa "<phrase>" does not submit; a change is submitted with plan "<intent>" --submit, ' +
+          'or plan --from <plan.json> --submit',
       })
     }
   })
@@ -192,5 +197,12 @@ describe('HELP: --submit', () => {
     expect(HELP.replace(/\s+/g, ' ')).toContain('None of them writes, and neither does plan without --submit.')
     expect(HELP).toContain('four gates')
     expect(HELP).toContain('the merge authorises')
+  })
+
+  it('names --submit on the intent road, and the five gates that road crosses', () => {
+    expect(usageOf('plan')).toContain(
+      'idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json] [--submit]',
+    )
+    expect(HELP.replace(/\s+/g, ' ')).toContain('plan "<intent>" --submit crosses five gates, the Reviewer last')
   })
 })
