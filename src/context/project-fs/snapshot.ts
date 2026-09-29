@@ -1,10 +1,9 @@
 import { isUtf8 } from 'node:buffer'
-import { execFile } from 'node:child_process'
 import { constants } from 'node:fs'
 import { lstat, open, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
 import { assertInsideRepo, PathEscapeError } from '../../core/paths/entity-path.js'
-import { spawnedEnvironment } from '../spawned-environment.js'
+import { GitError, gitIn } from '../../process/git.js'
 import { secretIn, type SecretClass } from './secrets.js'
 import type { Declaration, ProjectFile, ProjectRead, Selection, SkippedFile } from './types.js'
 
@@ -369,87 +368,27 @@ type Tracking =
   | { readonly selection: 'walk' }
   | { readonly selection: 'none' }
 
-/**
- * Bounds on the two git calls. A listing is about 60 bytes a file, so the
- * output cap reads a repository of half a million files; past it, or past the
- * timeout, nothing is read rather than something unlisted.
- */
-const GIT_LIMITS = { timeoutMs: 15_000, maxOutputBytes: 32 * 1024 * 1024 } as const
-
-/**
- * Configuration no repository gets to choose, on every call. `git ls-files`
- * runs `core.fsmonitor` — a command line, and a repository's `.git/config` is
- * whatever its author left in it — so inspecting a repository would otherwise
- * execute it. A command-line `-c` outranks every configuration file.
- */
-const GIT_OVERRIDES = ['--no-pager', '-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false']
-
-/**
- * The environment git runs in: a spawned one — the process's, without the
- * Backstage token and without any provider key, which git in an inspected
- * repository has no use for and its hooks no right to — minus every `GIT_`
- * variable. `GIT_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE` would each make
- * git answer about another repository than the one on disk — a pre-commit
- * hook sets all three — and `GIT_CONFIG_PARAMETERS` would undo the overrides
- * above. The C locale makes the one message read below the same on every
- * machine; optional locks off means a read never writes the index.
- */
-function gitEnvironment(): NodeJS.ProcessEnv {
-  const environment: NodeJS.ProcessEnv = {}
-  for (const [name, value] of Object.entries(spawnedEnvironment())) {
-    if (!name.startsWith('GIT_')) environment[name] = value
-  }
-  return {
-    ...environment,
-    LC_ALL: 'C',
-    LANGUAGE: 'C',
-    GIT_OPTIONAL_LOCKS: '0',
-    GIT_TERMINAL_PROMPT: '0',
-  }
-}
-
 type GitOutcome =
   | { readonly ok: true; readonly stdout: string }
   | { readonly ok: false; readonly missing: boolean; readonly stderr: string }
 
 /**
- * Where git is started from: the directory of the running Node binary, never
- * the inspected repository. Windows looks a program up in the working
- * directory before the PATH, so a `git.exe` at the root of a repository ran
- * as soon as the repository was inspected (review); a relative PATH entry
- * does the same anywhere. The repository is named with `-C` instead.
+ * One git call, through the one launcher every process `src/` starts goes
+ * through (`process/git.ts`): no shell, bounded in time and in output,
+ * started outside the repository, which it reaches by `-C` and an absolute
+ * path, with no hook, no fsmonitor, no `GIT_*` variable, no catalogue token
+ * and no provider key. Past a bound nothing is read rather than something
+ * unlisted. Its answer keeps the shape `tracking` reads: the listing as
+ * UTF-8, or whether git is missing and what it said.
  */
-const NEUTRAL_DIRECTORY = path.dirname(process.execPath)
-
-/**
- * One git call: `execFile`, so no shell ever parses an argument; bounded in
- * time and in output; started outside the repository, which it reaches by
- * `-C` and an absolute path — a path that starts with a separator or a drive
- * cannot be read as an option.
- */
-const git = (root: string, args: readonly string[]): Promise<GitOutcome> =>
-  new Promise((resolve) => {
-    execFile(
-      'git',
-      [...GIT_OVERRIDES, '-C', root, ...args],
-      {
-        cwd: NEUTRAL_DIRECTORY,
-        env: gitEnvironment(),
-        encoding: 'utf8',
-        timeout: GIT_LIMITS.timeoutMs,
-        maxBuffer: GIT_LIMITS.maxOutputBytes,
-        windowsHide: true,
-      },
-      (error, stdout, stderr) => {
-        if (error === null) {
-          resolve({ ok: true, stdout })
-          return
-        }
-        const code = (error as NodeJS.ErrnoException).code
-        resolve({ ok: false, missing: code === 'ENOENT', stderr: String(stderr) })
-      },
-    )
-  })
+const git = async (root: string, args: readonly string[]): Promise<GitOutcome> => {
+  try {
+    return { ok: true, stdout: (await gitIn(root)(args)).toString('utf8') }
+  } catch (error) {
+    if (!(error instanceof GitError)) throw error
+    return { ok: false, missing: error.code === 'ENOENT', stderr: error.stderr }
+  }
+}
 
 /** Whether a `.git` entry — a directory, or the file a worktree writes — sits at `from` or above it. */
 async function gitMarkerAbove(from: string): Promise<boolean> {

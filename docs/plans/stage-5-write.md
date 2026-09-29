@@ -2075,8 +2075,8 @@ spawner, and "only one starts a process" stays true.
 - Create: `tests/support/git.ts`, `tests/unit/process-git.test.ts`
 - Modify: `tests/support/tree.ts` (add `hashWorktree`), `tests/unit/spawned-environment.test.ts` (the import path)
 - Modify: `tests/architecture/dependencies.test.ts`
-- Modify: `AGENTS.md` (the rule count, the spawner sentence, the layering diagram, the folder table), `docs/design.md` §5.5, `SECURITY.md` (the rows that name the spawner)
-- Modify: `CHANGELOG.md`, `docs/roadmap.md`
+- Modify: `AGENTS.md` (the rule count, the spawner sentence, the layering diagram, the folder table), `docs/design.md` §5.5, `SECURITY.md` (the rows that name the spawner), `src/core/README.md` (the bans its rules now hold)
+- Modify: `CHANGELOG.md`, `docs/roadmap.md`, `docs/reviews/2026-09-23-deep-review.md` (architecture-11)
 
 **Interfaces:**
 - Consumes: `Cleared`, `Expectation`, `Repository` (task 1) — as types.
@@ -2092,7 +2092,7 @@ spawner, and "only one starts a process" stays true.
   - `class ForgeInputError extends Error`
   - tests: `git(repo, ...args)`, `show(repo, revision, file)`, `committed(repo)`, `observable(repo)`, `hashWorktree(root)`
 
-- [ ] **Step 1: Write the failing architecture rules**
+- [x] **Step 1: Write the failing architecture rules**
 
 In `tests/architecture/dependencies.test.ts`, strengthen two rules, move the spawner, and add
 three. Re-count from **19**.
@@ -2184,7 +2184,7 @@ neither list. Add:
 `process`: a rule over a folder that is not there fails (#88), which is why these rules land
 in the same commit as the folders.
 
-- [ ] **Step 2: Prove each rule bites**
+- [x] **Step 2: Prove each rule bites**
 
 Each probe is a throwaway file. Add it, run
 `pnpm vitest run tests/architecture --reporter=verbose`, watch the named rule fail, then
@@ -2201,7 +2201,7 @@ delete it. A rule that has never failed has not been tested.
 | `src/process/probe.ts`: `import { CONFIG_FILE } from '../cli/config.js'` | `process/ imports nothing of ours…` |
 | `src/cli/probe.ts`: `import { execFile } from 'node:child_process'` | `only the named modules write, and only one starts a process` |
 
-- [ ] **Step 3: Write the failing launcher tests**
+- [x] **Step 3: Write the failing launcher tests**
 
 `tests/support/git.ts`:
 
@@ -2420,7 +2420,7 @@ environment; if that proves platform-dependent, assert on `gitEnvironment(env)` 
 keep `tests/unit/spawned-environment.test.ts`'s existing "is what git runs in" case as the
 wired proof.
 
-- [ ] **Step 4: Write the launcher, and move `project-fs` onto it**
+- [x] **Step 4: Write the launcher, and move `project-fs` onto it**
 
 `src/process/environment.ts` is `src/context/spawned-environment.ts` moved unchanged, with
 `BACKSTAGE_TOKEN_VARIABLE` moved beside it — a leaf imports nothing of ours, and
@@ -2554,6 +2554,12 @@ export function gitIn(
 }
 ```
 
+*As built:* `SPAWNS`' own rule refuses two lines above — a module that starts a process may
+not name `process.env`, and its call must pass `env: gitEnvironment(…)` — so `gitEnvironment`
+takes `env?` and hands it to `spawnedEnvironment` (whose default is the process's), and the
+call is `env: gitEnvironment(options.env)`; the rule now accepts an argument there, since
+whatever is passed still goes through `spawnedEnvironment`.
+
 `GitError`'s message no longer carries git's stderr: a repository's content can reach it (a
 ref name, a path), and `cli/` prints it through `inertLine` when it prints it at all.
 
@@ -2642,13 +2648,34 @@ READMEs, what lives there, what may not, which rules hold the line, that `proces
 the only process `src/` starts, and that nothing in `forge/` checks out, stages or touches a
 working tree.
 
-- [ ] **Step 5: Run the rules and the launcher tests**
+- [x] **Step 5: Run the rules and the launcher tests**
 
 Run: `pnpm vitest run tests/architecture tests/unit/process-git.test.ts tests/unit/spawned-environment.test.ts tests/unit/project-tracked.test.ts --reporter=verbose`
 Expected: PASS, and the architecture file reports **22** rules — 19, and three new. Count
 them from the output; the number is the one that drifts first.
 
-- [ ] **Step 6: Correct what this makes false, in this commit**
+*As built, after review:* **23**. Four holes the review measured, each probe passing all 22:
+a module of `context/backstage/` or `llm/` importing `gitIn` and running
+`show HEAD:.env` past project-fs's secret exclusions; a `context/` module importing a
+`cli/` module that imports the forge; `forge/` importing `node:http` and
+`node:fs/promises`; and `gitEnvironment(env)` handing `{ ...env }` on after a call to
+`spawnedEnvironment(env)` whose result it dropped. So: a fourth rule, *only
+context/project-fs and forge/ load the git launcher* (a type may be named anywhere, and
+neither of the two may hand it on with `export … from`); *only cli/ reaches forge/ at
+runtime* walks the value-import closure from every module outside `cli/` and `forge/`, into
+`cli/` included; the forge rule became *forge/ imports core/, process/, node:crypto and
+node:path, and nothing else* — a list of what may be imported, since a list of what may not
+is the one nobody finished; and the `SPAWNS` rule holds a spawner's environment function to
+naming its parameters (and `arguments`) only inside `spawnedEnvironment(…)`. A run-time load
+no source spells is refused by each of these rules with one message, *no rule can tell what
+it names*, and a type written as `import('…')` counts as a load — `import type` says the
+same and is read as erased. Each has a self-test case, seen failing before the code. In
+`tests/unit/process-git.test.ts`, the planted-`git` case now stands in the repository, as
+`plan "<intent>"` does, so deleting the launcher's `cwd` fails it (it did not, before), and
+the identity case asserts git's own refusal — exit 128, *auto-detection is disabled* —
+rather than any `GitError`, on a system configuration holding neither or half an identity.
+
+- [x] **Step 6: Correct what this makes false, in this commit**
 
 - `AGENTS.md`:
   - "**Nineteen** architecture rules" → the number measured;
@@ -2663,7 +2690,7 @@ them from the output; the number is the one that drifts first.
 - `SECURITY.md`: the row *No child process is handed a provider key or the Backstage token*
   names the launcher; the row *only named modules write, and one starts a process* names it.
 
-- [ ] **Step 7: Traceability**
+- [x] **Step 7: Traceability**
 
 - `CHANGELOG.md`, Unreleased → Changed: one line (the launcher shared, the rules), with the link.
 - `docs/roadmap.md`: stage 5's queue item says task 3 is on `main`.
@@ -2672,7 +2699,7 @@ them from the output; the number is the one that drifts first.
 
 ```bash
 pnpm typecheck && pnpm test   # the full run only with 2 GiB free on /
-git add src/process src/forge src/context tests AGENTS.md docs/design.md SECURITY.md CHANGELOG.md docs/roadmap.md
+git add src/process src/forge src/context src/core/README.md tests AGENTS.md docs/design.md SECURITY.md CHANGELOG.md docs/roadmap.md docs/plans/stage-5-write.md docs/reviews/2026-09-23-deep-review.md
 git commit -m "feat(forge): one hardened git launcher for every process, and the rules that fence the layer that writes"
 ```
 

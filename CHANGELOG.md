@@ -136,6 +136,18 @@ Each pull request adds its line here.
 
 ### Changed
 
+- Every process `src/` starts goes through one hardened git launcher, `src/process/git.ts`,
+  which the Inspector's `git ls-files` now uses and stage 5's forge will: the environment
+  `spawnedEnvironment` builds — moved beside it to `src/process/environment.ts` — minus every
+  `GIT_*` variable, so no provider key, no `IDP_BACKSTAGE_*` variable and no
+  `GIT_AUTHOR_*`/`GIT_COMMITTER_*` reaches git or what it runs; hooks and fsmonitor off;
+  `user.useConfigOnly`, so git refuses rather than guesses a committer identity; started
+  from Node's own directory, never a repository's; bounded in time and output. `src/forge/`
+  holds the forge's types — `ForgeProvider` with no merge, no delete and no caller-chosen
+  branch — and `ForgeInputError`; four architecture rules fence the two new folders
+  (twenty-three in all) and `core/`'s disk rule now walks the transitive closure. The
+  Inspector reads what it read before, and nothing writes yet
+  ([#107](https://github.com/pcaboor/idp-agent/pull/107)).
 - `pnpm demo:backstage:docker`, `backstage:up`, `backstage:down` and `backstage:clean` print
   one line per compose call instead of compose's progress bar, which printed each redraw as a
   line once piped: compose runs with `--progress plain`, its output held, and a call that

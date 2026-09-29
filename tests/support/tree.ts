@@ -54,6 +54,23 @@ export async function hashTree(root: string): Promise<string> {
 }
 
 /**
+ * `hashTree` minus the repository's own `.git/`: the working tree a person
+ * sees. A submission legitimately writes objects and one ref there, and
+ * nothing anywhere else.
+ */
+export async function hashWorktree(root: string): Promise<string> {
+  const entries = (await entriesUnder(root)).filter((entry) => !/^\.git(\/|$)/.test(entry)).sort()
+  const digest = createHash('sha256')
+  for (const entry of entries) {
+    digest.update(entry)
+    digest.update('\x00')
+    if (!entry.endsWith('/')) digest.update(await readFile(path.join(root, ...entry.split('/'))))
+    digest.update('\x00')
+  }
+  return digest.digest('hex')
+}
+
+/**
  * Both repositories at once, for a command that reads one and previews changes
  * to the other.
  *
