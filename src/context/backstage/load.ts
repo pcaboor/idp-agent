@@ -1,18 +1,17 @@
 import { z } from 'zod'
 import { ORGANISATION_KINDS, type OrganisationKind } from '../../core/schemas/entity.js'
-import type { Census } from '../provider.js'
+import type { Census, PartialRead, ReadScope } from '../provider.js'
 import { BACKSTAGE_LIMITS, type BackstageLimits } from './limits.js'
-import {
-  CatalogueReadError,
-  type CatalogueFailure,
-  type CatalogueTransport,
-  type ReadScope,
-} from './transport.js'
+import { CatalogueReadError, type CatalogueFailure, type CatalogueTransport } from './transport.js'
 
 /**
- * The load (docs/backstage-http-brief.md § 6): a whole catalogue, or a
- * `CatalogueReadError` and nothing. A partial read is refused, never answered
- * from — a reference left unloaded would read as declared nowhere.
+ * The load (docs/backstage-http-brief.md § 6): a whole catalogue, or one read
+ * up to a stated bound and said to be (`Served.bounded`, ADR-0013), or a
+ * `CatalogueReadError` and nothing. A count ceiling is a fact about the
+ * catalogue's size, so a read that reaches one stops there and says how far
+ * it got; every other bound — bytes, time, the cursor, an item the read
+ * cannot count — is what a broken or hostile server does, cut wherever the
+ * server chose, and is refused.
  *
  *   1. `entity-facets?facet=kind` names every kind the token sees. A kind is
  *      a filter's value only when the kind grammar allows it: `,` and `=` are
@@ -41,9 +40,15 @@ import {
  *      `entity_id`, which an update does not change, so a legitimate read
  *      never repeats one, and a read that repeats one and misses another
  *      would otherwise pass (the plan's Choices; it amends the note's table).
- *      Each read's ceiling is checked as items arrive, and against
- *      `totalItems` on a read's first page.
- *   5. The load's own time is the transport's: `BackstageProvider` hands it
+ *   5. Each read's ceiling is a bound, counted in distinct uids as items
+ *      arrive. A first page whose `totalItems` passes it only records the
+ *      total; the read stops when a new uid would pass the ceiling, or when
+ *      it reaches it at the end of a page and `totalItems` says there is
+ *      more. The items of that page past the ceiling are not kept, no next
+ *      page is asked for, and the read is `bounded`: the part kept is the
+ *      first in the server's order, and nothing else. Fewer uids than
+ *      announced is judged only on a read that did not stop.
+ *   6. The load's own time is the transport's: `BackstageProvider` hands it
  *      one `AbortSignal.timeout(loadMs)`.
  */
 
@@ -55,10 +60,13 @@ export interface Served {
   readonly refs: unknown[]
   /**
    * The organisation kinds the facets named, as `ORGANISATION_KINDS` spells
-   * them: each was read to the end, or the load failed. What a reference to
-   * one of them is judged against (`EntityGraph`), and nothing else is.
+   * them, when the organisation read was whole: none when it stopped at its
+   * bound. What a reference to one of them is judged against
+   * (`EntityGraph`), and nothing else is.
    */
   readonly judged: OrganisationKind[]
+  /** The reads that stopped at their ceiling, in the order they were sent; empty when every read was whole. */
+  readonly bounded: readonly PartialRead[]
   readonly census: Census
 }
 
@@ -135,7 +143,12 @@ export async function loadCatalogue(transport: CatalogueTransport, limits: Parti
   const organisation = [...ORGANISATION.keys()].filter((kind) => others.includes(kind))
   const rest = others.filter((kind) => !ORGANISATION.has(kind))
 
-  /** Every item of one read, each uid once, or the failure that ends the load. */
+  const bounded: PartialRead[] = []
+
+  /**
+   * Every item of one read, each uid once, up to `ceiling` distinct uids —
+   * the read then recorded in `bounded` — or the failure that ends the load.
+   */
   async function read(filters: readonly string[], fields: string | undefined, ceiling: number, scope: ReadScope): Promise<unknown[]> {
     const pageQuery = (first: URLSearchParams): URLSearchParams => {
       if (fields !== undefined) first.append('fields', fields)
@@ -149,22 +162,24 @@ export async function loadCatalogue(transport: CatalogueTransport, limits: Parti
     const seen = new Set<string>()
     const items: unknown[] = []
     let expected: number | undefined
+    let stopped = false
 
-    for (;;) {
+    pages: for (;;) {
       const page = pageSchema.safeParse(await transport.request('GET', 'entities/by-query', query))
       if (!page.success) throw fail({ kind: 'not-envelope', route: 'entities/by-query' })
       pages += 1
-      if (expected === undefined) {
-        expected = page.data.totalItems
-        if (expected > ceiling) throw fail({ kind: 'too-many', scope, limit: ceiling })
-      }
+      expected ??= page.data.totalItems
       for (const item of page.data.items) {
         const uid = uidOf(item)
         if (uid === undefined) throw fail({ kind: 'no-uid' })
         const kind = kindOf(item)
         if (kind === undefined || !asked.has(kind)) throw fail({ kind: 'unasked-kind', scope })
+        if (!seen.has(uid) && seen.size >= ceiling) {
+          // One more distinct uid would pass the bound: this one and the rest are not loaded.
+          stopped = true
+          break pages
+        }
         seen.add(uid)
-        if (seen.size > ceiling) throw fail({ kind: 'too-many', scope, limit: ceiling })
         if (kept.has(uid)) {
           repeated += 1
           continue
@@ -174,12 +189,30 @@ export async function loadCatalogue(transport: CatalogueTransport, limits: Parti
       }
       const next = page.data.pageInfo.nextCursor
       if (next === undefined) break
+      if (seen.size >= ceiling && expected > ceiling) {
+        // At the bound with more announced: the next page would only be left out.
+        stopped = true
+        break
+      }
       if (cursors.has(next)) throw fail({ kind: 'same-page' })
       cursors.add(next)
       query = pageQuery(new URLSearchParams([['cursor', next]]))
     }
 
-    if (seen.size < expected) throw fail({ kind: 'changed', expected, read: seen.size })
+    if (stopped) {
+      bounded.push({
+        scope,
+        kinds: [...filters],
+        read: seen.size,
+        // Announced past the bound, it is how many there are; announced
+        // within it, the server served more than it said, and how many is
+        // not known.
+        total: expected !== undefined && expected > ceiling ? expected : undefined,
+        limit: ceiling,
+      })
+      return items
+    }
+    if (seen.size < (expected ?? 0)) throw fail({ kind: 'changed', expected: expected ?? 0, read: seen.size })
     return items
   }
 
@@ -194,7 +227,12 @@ export async function loadCatalogue(transport: CatalogueTransport, limits: Parti
     whole,
     organisation: organised,
     refs,
-    judged: organisation.flatMap((kind) => ORGANISATION.get(kind) ?? []),
+    // A bounded organisation read is not judged: a reference naming nothing
+    // it read is a name, which says nothing about what is declared.
+    judged: bounded.some(({ scope }) => scope === 'organisation')
+      ? []
+      : organisation.flatMap((kind) => ORGANISATION.get(kind) ?? []),
+    bounded,
     census: { served: kept.size, pages, bytes, ms: Math.round(performance.now() - started), repeated },
   }
 }

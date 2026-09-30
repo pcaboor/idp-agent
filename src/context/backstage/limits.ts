@@ -1,9 +1,10 @@
 /**
  * Every bound of a catalogue read (docs/backstage-http-brief.md § 6), in one
- * place. Each is stated in the line that reports reaching it, and a bound that
- * would leave the graph incomplete ends the run: a partial read is refused,
- * never answered from, because a reference left unloaded would read as
- * declared nowhere.
+ * place. Each is stated in the line that reports reaching it. The three count
+ * ceilings are bounds a read stops at: what it read is answered from, every
+ * answer says the graph is partial, and a reference into what was left out is
+ * not loaded, never declared nowhere (ADR-0013). Every other bound ends the
+ * run: a read cut there is cut wherever a broken or hostile server chose.
  *
  * The transport (`transport.ts`) keeps the bounds of one request and of the
  * bytes and retries of a run; the load (1.4) keeps the counts, the load's own
@@ -12,16 +13,16 @@
 export const BACKSTAGE_LIMITS = {
   /** Sent as `limit` on every page, never left to the server: the docs say 20, the code 200. */
   pageSize: 250,
-  /** Components, Resources and APIs read whole; past it the read is refused, not answered from. */
+  /** Components, Resources and APIs read whole; the read stops there, and what is past it is not loaded. */
   modelledEntities: 20_000,
   /**
    * Groups, Users, Systems and Domains, read for the fields the read model
-   * reads of them; past it, refused the same way. Its own, since Users are
+   * reads of them; the read stops there, and is then not judged. Its own, since Users are
    * most of a company catalogue: at those fields a User is about 260 bytes of
    * JSON, so 200,000 of them are about 50 MiB, under `bytesPerRun`.
    */
   organisationEntities: 200_000,
-  /** References of every other kind, read as refs only; past it, refused the same way. */
+  /** References of every other kind, read as refs only; the read stops there, and what is past it is not loaded. */
   otherRefs: 200_000,
   /** One response's body, counted while it streams, before any of it is parsed. */
   bytesPerResponse: 32 * 1024 * 1024,

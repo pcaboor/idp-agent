@@ -14,7 +14,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 3999, no API key" src="https://img.shields.io/badge/tests-3999%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 4042, no API key" src="https://img.shields.io/badge/tests-4042%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -511,7 +511,7 @@ directory, is a declarations repository, is the `--repo` directory or one of its
 
 **Exit codes:** `0` success · `1` negative answer (nothing matched, the repository doesn't
 conform, or a gate refused the plan), a model call that failed, a Backstage catalogue that
-could not be read whole, or a submission the repository refused (a catalogue file that
+could not be read, or a submission the repository refused (a catalogue file that
 differs from `HEAD`, or a branch of that name holding something else) · `2` bad arguments
 or configuration, a `--submit` into a directory that cannot take a branch, or no
 model, no key or no usable `IDP_TIMEOUT` or `IDP_SUPERVISOR_MODEL` configured · `3`
@@ -580,9 +580,13 @@ file. The directory you stand in, when it is a declarations repository, beats th
 It is read over HTTP once per run, **before any model is called**, through the reader a YAML
 file goes through, and a change is still decided against the declarations repository alone.
 The token is sent to that catalogue alone, on two read routes, and nowhere else
-([`SECURITY.md`](SECURITY.md)). A catalogue read in part is never answered from: a server
-that refuses the token, cannot be reached or serves less than it announced is exit 1, one
-line naming the host and what named it; a URL or a token refused before any request is
+([`SECURITY.md`](SECURITY.md)). A catalogue larger than a run reads — 20,000 Components,
+Resources and APIs; 200,000 Groups, Users, Systems and Domains; 200,000 references of other
+kinds — is read up to that bound and answered in part: a `past the bound:` line on stderr
+counts what was left out, every answer says the graph is partial, and a reference past the
+bound is marked `not loaded`, never declared nowhere. A server that refuses the token,
+cannot be reached, serves less than it announced or more bytes than a run reads is exit 1,
+one line naming the host and what named it; a URL or a token refused before any request is
 exit 2.
 
 What a question reads from the catalogue — names, descriptions, owners, links, from every

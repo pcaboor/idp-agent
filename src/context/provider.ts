@@ -88,6 +88,53 @@ export interface LoadResult {
    * never sets it. Absent is none.
    */
   judged?: readonly OrganisationKind[]
+  /**
+   * The reads that stopped at a bound, in the load's order. Absent is a whole
+   * read, and the file road never sets it: a folder is read to its end.
+   */
+  partial?: readonly PartialRead[]
+}
+
+/**
+ * Which of a load's three reads (`context/backstage/load.ts`): the kinds this
+ * tool models, read whole; the organisation, read for the fields the read
+ * model reads; every other kind, read as refs. Here, beside `LoadResult`, so
+ * the graph can name a read that stopped at a bound without importing
+ * `context/backstage/`, which nothing an agent reaches may do.
+ */
+export type ReadScope = 'modelled' | 'organisation' | 'refs'
+
+/** What a read's entities are called in the sentences that say it stopped at a bound. */
+export function scopeWords(scope: ReadScope): string {
+  switch (scope) {
+    case 'modelled':
+      return 'Components, Resources and APIs'
+    case 'organisation':
+      return 'Groups, Users, Systems and Domains'
+    case 'refs':
+      return 'entities of other kinds'
+    default: {
+      const exhaustive: never = scope
+      return exhaustive
+    }
+  }
+}
+
+/**
+ * A read that reached its ceiling (`BACKSTAGE_LIMITS`): what it read, what
+ * the catalogue announced, and the bound. A count ceiling is a fact about the
+ * catalogue's size, so the read stops there and says so, and what it left out
+ * is not loaded — never declared nowhere (ADR-0013).
+ */
+export interface PartialRead {
+  readonly scope: ReadScope
+  /** Lower case, as a reference names them: the kinds this read asked for. */
+  readonly kinds: readonly string[]
+  /** How many distinct entities it read: the bound. */
+  readonly read: number
+  /** The first page's `totalItems`; undefined when the server served more than it announced. */
+  readonly total: number | undefined
+  readonly limit: number
 }
 
 export interface ContextProvider {

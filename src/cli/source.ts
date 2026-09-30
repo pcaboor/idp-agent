@@ -646,7 +646,9 @@ function namedBy(origin: Origin): string | undefined {
 /**
  * What a load read, for a catalogue's notice (brief § 10): the distinct uids
  * served (`census`), the entities read, the documents of a kind not modelled,
- * those the catalogue read set aside, and those the reader skipped.
+ * those the catalogue read set aside, those the reader skipped, and — only
+ * when a read stopped at its bound — how many the bounds left out
+ * (`pastBoundOf`), exact or at least.
  */
 export interface ReadCounts {
   readonly census?: Census
@@ -654,6 +656,7 @@ export interface ReadCounts {
   readonly notModelled: number
   readonly setAside: number
   readonly skipped: number
+  readonly pastBound?: { readonly count: number; readonly exact: boolean }
 }
 
 /** A count as the note writes one: `8,412`. */
@@ -677,9 +680,11 @@ const countOf = (count: number): string => count.toLocaleString('en-US')
  * never previewed against the demo SI.
  *
  * A catalogue's line names its host, never its path or a token, and counts
- * what it served — N entities: M read, K not modelled, then S set aside and
- * R skipped when there are any, so the terms add up to N — and says when a
- * uid came twice in a read that was still whole. A repository the working
+ * what it served — N entities: M read, K not modelled, then S set aside,
+ * R skipped and P past the bound when there are any, so the terms add up to
+ * N — and says when a uid came twice in a read that was still whole. What a
+ * bound left out was announced, not served, so it is added to the uids
+ * served; "at least" both, when a server announced fewer than it served. A repository the working
  * directory answered while a catalogue is configured (`catalogue`) names
  * `--backstage` among its alternatives.
  */
@@ -709,13 +714,16 @@ export function sourceNotice(
     }
     case 'backstage': {
       const counts = read.counts
+      const past = counts?.pastBound
+      const atLeast = past !== undefined && !past.exact ? 'at least ' : ''
       const served =
         counts === undefined
           ? ''
-          : `: ${countOf(counts.census?.served ?? counts.entities + counts.notModelled + counts.setAside + counts.skipped)} entities: ` +
+          : `: ${atLeast}${countOf((counts.census?.served ?? counts.entities + counts.notModelled + counts.setAside + counts.skipped) + (past?.count ?? 0))} entities: ` +
             `${countOf(counts.entities)} read, ${countOf(counts.notModelled)} not modelled` +
             (counts.setAside > 0 ? `, ${countOf(counts.setAside)} set aside` : '') +
             (counts.skipped > 0 ? `, ${countOf(counts.skipped)} skipped` : '') +
+            (past !== undefined && past.count > 0 ? `, ${atLeast}${countOf(past.count)} past the bound` : '') +
             ((counts.census?.repeated ?? 0) > 0
               ? `; the catalogue changed while it was read (${countOf(counts.census?.repeated ?? 0)} served twice)`
               : '')
@@ -826,14 +834,6 @@ function whatFailed(failure: CatalogueFailure, source: BackstageSource, token: b
       return 'served an entity of a kind the read did not ask for, so it does not filter as Backstage does'
     case 'changed':
       return `changed while it was read (${countOf(failure.expected)} expected, ${countOf(failure.read)} read)`
-    case 'too-many': {
-      const what = failure.scope === 'modelled' ? 'Components, Resources and APIs' : 'entities of other kinds'
-      const limit = countOf(failure.limit)
-      return (
-        `holds more than ${limit} ${what} as this token reads it; ` +
-        `this version reads at most ${limit} and does not answer from part of a catalogue`
-      )
-    }
     default: {
       const exhaustive: never = failure
       return exhaustive

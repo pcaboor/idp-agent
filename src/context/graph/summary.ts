@@ -1,3 +1,4 @@
+import type { ReadScope } from '../provider.js'
 import { type EntityGraph } from './entity-graph.js'
 import { ENV_ANNOTATION, type Vocabulary } from '../../core/schemas/vocabulary.js'
 
@@ -22,6 +23,14 @@ export interface SiSummary {
    * those are the write model's (`EntityGraph.all()`).
    */
   organisation?: { groups: Bucket; users: Bucket; systems: Bucket; domains: Bucket }
+  /**
+   * The reads of a catalogue that stopped at a bound, by scope and bound —
+   * never their counts, which would move the prompt with every entity a
+   * catalogue gains: that it was read in part is the health fact, as the
+   * dangling references are. Present only on a partial graph, so a whole
+   * one is summarised as every recording was made against.
+   */
+  partial?: Array<{ scope: ReadScope; limit: number }>
 }
 
 export type { Vocabulary } from '../../core/schemas/vocabulary.js'
@@ -81,6 +90,9 @@ export function summariseGraph(graph: EntityGraph): {
             },
           }
         : {}),
+      ...(graph.partial.length === 0
+        ? {}
+        : { partial: graph.partial.map(({ scope, limit }) => ({ scope, limit })) }),
     },
     // Deliberately no `levels`. A level is not vocabulary: `sign.ts` reads this
     // list to decide that a proposed value was already in use rather than

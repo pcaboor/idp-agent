@@ -135,7 +135,25 @@ describe('BackstageProvider', () => {
     ])
   })
 
-  it('never returns part of a catalogue: a failure on the last page throws, with nothing returned', async () => {
+  it('reads a catalogue past a bound up to it, as a whole read of what it read, and says how far it got', async () => {
+    const items = catalogueOf(DEMO)
+    const bounded = await new BackstageProvider({ ...over(items), limits: { modelledEntities: 30 } }).load()
+    expect(bounded.entities).toHaveLength(30)
+    expect(bounded.partial).toEqual([{ scope: 'modelled', kinds: ['component', 'resource', 'api'], read: 30, total: 33, limit: 30 }])
+    // The fake serves in uid order: the first 30 of them, read whole, give what the bounded read gave.
+    const uid = (item: Item): string => String(metadataOf(item)['uid'])
+    const first = [...items].sort((left, right) => (uid(left) < uid(right) ? -1 : 1)).slice(0, 30)
+    const whole = await new BackstageProvider(over(first)).load()
+    expect(bounded.entities).toEqual(whole.entities)
+    expect(bounded.rejected).toEqual(whole.rejected)
+    expect(bounded.ignored).toEqual(whole.ignored)
+    expect(bounded.unread).toEqual(whole.unread)
+    // A whole read has no `partial` key at all, so every LoadResult elsewhere is unchanged.
+    expect(whole).not.toHaveProperty('partial')
+    expect(await new BackstageProvider(fromFolder(DEMO)).load()).not.toHaveProperty('partial')
+  })
+
+  it('never returns part of a catalogue on a failure: a failure on the last page throws, with nothing returned', async () => {
     // Requests: the facets, the modelled read, then three pages of refs; the last one fails.
     const provider = new BackstageProvider(over(catalogueOf(DEMO, { groups: Array.from({ length: 600 }, (_, at) => `team-${String(at)}`) }), {
       status: { at: 4, status: 500 },

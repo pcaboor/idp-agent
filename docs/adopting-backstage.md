@@ -176,7 +176,8 @@ Registering the repository serves Backstage's users. Reading the living catalogu
 `idpa` is a separate provider, `backstage-http` ([the design note](backstage-http-brief.md),
 slice 1), **built**: set `IDP_BACKSTAGE_URL` — or `backstage:` in the personal `config.yml` —
 to the catalogue API's base, `https://<backend host>/api/catalog`, and `graph`, `show`,
-`relations`, `ask` and a question read the catalogue, once per run, whole or not at all; a
+`relations`, `ask` and a question read the catalogue, once per run, whole, or up to a stated
+bound and said to be partial ([ADR-0013](adr/0013-a-catalogue-read-in-part-says-so.md)); a
 change is still decided against the declarations repository. It reads one bearer token from
 `IDP_BACKSTAGE_TOKEN` and nowhere else, required for any host but this machine, and sends it
 to that catalogue alone; a token is visible ASCII with no space, and one holding anything else

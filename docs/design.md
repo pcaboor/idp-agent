@@ -970,8 +970,9 @@ command line would send the token to whatever was typed; with none configured it
 but a loopback one: `config.yml` holds no credential, whatever other files — the
 `credentials.json` above — come to sit beside it in the same directory, and there is
 deliberately no field in it that could carry one. The catalogue is read once per run,
-before any model, whole or not at all: a read that could not be completed is exit 1,
-naming the host and what named it, and never falls back to a repository or the demo.
+before any model, whole, or up to a stated bound and said to be partial (ADR-0013): a read
+that could not be completed is exit 1, naming the host and what named it, and never falls
+back to a repository or the demo.
 
 ### 7.1 First contact — no configuration
 

@@ -7,12 +7,15 @@
  * socket. Run as a program, it listens with node:http on 127.0.0.1, which is
  * how the demo reads a catalogue with no Backstage installed:
  *
- *     node tools/fake-backstage.ts [--port <n>] [--token <t>] [--root <folder>] [--no-org]
+ *     node tools/fake-backstage.ts [--port <n>] [--token <t>] [--root <folder>] [--no-org] [--scale <n>]
  *
  * It serves the folder (the demo SI by default) and the demo's organisation,
  * `tools/backstage/org.yaml` — the documents the Docker Backstage ingests, so
  * the two hold one organisation; `--no-org` (or `--no-groups`, its older
  * name) serves the folder alone, as for a folder that holds its own.
+ * `--scale <n>`, 1 to 99,999, adds n generated Components after the folder's
+ * (`catalogueOf`'s `scale`): a catalogue past a bound of this version, with
+ * no company's data in it.
  *
  * It runs under Node's type stripping (22.18 or later), so it holds no syntax
  * stripping cannot erase — no enum, no parameter property, no namespace — and
@@ -46,6 +49,12 @@ const MANAGED_BY_ORIGIN = 'backstage.io/managed-by-origin-location'
 
 /** Backstage's default page size, when a request sends no `limit`. */
 const DEFAULT_LIMIT = 200
+
+/** The most Components `--scale` generates: five digits of a name. */
+const MAX_SCALE = 99_999
+
+/** What `--scale` is refused with, and `catalogueOf` too. */
+const SCALE_RANGE = '--scale takes a whole number from 1 to 99,999'
 
 const isMapping = (value: unknown): value is Item =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -137,12 +146,17 @@ function servedFile(file: string, location: string, seed: string): Item[] {
  * the documents of that YAML file too, located at `org/org.yaml` — the
  * demo's organisation, as the Docker Backstage reads it from a location of
  * its own. With `groups`, one `kind: Group` per name: the tests that need
- * hundreds of teams.
+ * hundreds of teams. With `scale`, that many generated Components
+ * (`scaled`).
  */
 export function catalogueOf(
   root: string,
-  options: { org?: string; groups?: readonly string[]; location?: string } = {},
+  options: { org?: string; groups?: readonly string[]; location?: string; scale?: number } = {},
 ): Item[] {
+  const { scale } = options
+  if (scale !== undefined && !(Number.isInteger(scale) && scale >= 1 && scale <= MAX_SCALE)) {
+    throw new RangeError(SCALE_RANGE)
+  }
   const prefix = options.location ?? DEMO_LOCATION
   const items: Item[] = []
   for (const file of yamlFiles(root)) {
@@ -154,7 +168,49 @@ export function catalogueOf(
     const group = { apiVersion: 'backstage.io/v1alpha1', kind: 'Group', metadata: { name }, spec: { type: 'team', children: [] } }
     items.push(served(group, `${prefix}org/groups.yaml`, `group:${name}`))
   }
+  if (scale !== undefined) items.push(...scaled(scale, prefix))
   return items
+}
+
+/**
+ * `count` Components, `scale-00001` onward, each owned by the demo's
+ * `common`, a production service, located in a `scale/` folder of its own,
+ * and each but the last depending on the next — so what a bound leaves out is
+ * named by the last one read. Their uids are `ffffffff-ffff-4fff-8fff-` and
+ * the index in 12 digits: after every uid `uidOf` derives from a sha256, so
+ * the fake's uid order serves the folder's entities first and these in order.
+ */
+function scaled(count: number, prefix: string): Item[] {
+  const name = (index: number): string => `scale-${String(index).padStart(5, '0')}`
+  return Array.from({ length: count }, (_, at) => {
+    const index = at + 1
+    const document: Item = {
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Component',
+      metadata: { name: name(index) },
+      spec: {
+        type: 'service',
+        lifecycle: 'production',
+        owner: 'group:default/common',
+        ...(index < count ? { dependsOn: [`component:default/${name(index + 1)}`] } : {}),
+      },
+    }
+    const item = served(document, `${prefix}scale/${name(index)}.yml`, `scale/${name(index)}`)
+    ;(item['metadata'] as Item)['uid'] = `ffffffff-ffff-4fff-8fff-${String(index).padStart(12, '0')}`
+    return item
+  })
+}
+
+/**
+ * `--scale`'s value: absent, or a whole number from 1 to 99,999 written in
+ * digits, or a `RangeError` saying so — never a number the text only looks
+ * like (`1e3`, `0x10`).
+ */
+export function scaleOf(text: string | undefined): number | undefined {
+  if (text === undefined) return undefined
+  const scale = /^[0-9]+$/.test(text) ? Number(text) : Number.NaN
+  if (!(Number.isInteger(scale) && scale >= 1 && scale <= MAX_SCALE)) throw new RangeError(SCALE_RANGE)
+  return scale
 }
 
 /** A value at a dot path of `item`, or undefined. */
@@ -346,7 +402,15 @@ function main(argv: readonly string[]): void {
   const root = path.resolve(value('--root') ?? path.join(here, '..', 'fixtures', 'si-demo'))
   const alone = argv.includes('--no-org') || argv.includes('--no-groups')
   const org = alone ? {} : { org: path.join(here, 'backstage', 'org.yaml') }
-  const serve = handler({ entities: catalogueOf(root, org), ...(token === undefined ? {} : { token }) })
+  let scale: number | undefined
+  try {
+    scale = scaleOf(argv.includes('--scale') ? (value('--scale') ?? '') : undefined)
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+    process.exit(2)
+  }
+  const entities = catalogueOf(root, { ...org, ...(scale === undefined ? {} : { scale }) })
+  const serve = handler({ entities, ...(token === undefined ? {} : { token }) })
 
   const server = createServer((incoming, outgoing) => {
     answerOf(serve, incoming)

@@ -33,6 +33,11 @@ dangling. `organisation`, absent when there is none, is the Groups, Users, Syste
 read — beside the entities, never among them — and `judged`, which only `BackstageProvider`
 sets, the organisation kinds a catalogue read whole: a reference to one of them is judged
 against what was read, and a folder's Group files are never the whole organisation.
+`partial`, which only `BackstageProvider` sets and only when a read stopped at a count
+ceiling, is each such read (`PartialRead`: its scope, kinds, how many it read, how many were
+announced, the bound; ADR-0013): the part read is answered from, and said to be partial.
+`PartialRead` and `ReadScope` live in `provider.ts`, so the graph names them without
+importing `backstage/`, which nothing an agent reaches may do.
 Both readers go through `core/`'s `parseDocuments`, the one reader of entity documents
 (`readDocuments` for the YAML, then `readValue` for each value, the half a catalogue's items
 will meet too), and `iac-fs` also rejects a file it cannot open — no permission, a link —
@@ -58,6 +63,13 @@ list flattened, so the summary, `graph`, the overview, `show`'s card and the Ana
 share one definition. No edge is added and no query answers differently: a
 `component:default/payments-api` beside a `resource:default/payments-api` is named, not
 corrected.
+Beside it, and never in it, the **not-loaded** list: on a graph built with a partial read,
+a reference into one of that read's kinds that resolves to nothing is a `NotLoaded` — whether
+it is declared is not known — read by `notLoadedOf(ref, field?)`, `notLoadedReferences()` (in
+the order `danglingReferences()` keeps) and `notLoadedConsumersOf(ref)`. A reference into a
+kind read whole is still declared nowhere, and a graph built with no partial read — every
+repository's, every whole catalogue's — has none, so `validate` and every reader of the
+dangling list are unchanged; the places that must say "not loaded" read it on purpose.
 
 `graph/overview.ts`'s `overviewOf(graph, unread)` is the data behind `ask`'s `overview` answer,
 computed here and rendered in `cli/`: exact counts by kind, type, environment (undeclared, or
@@ -78,7 +90,7 @@ and the Analyst's summary is handed the counts, and past 30 values a list shows 
 frequent and how many more (`shownVocabulary` in `agents/summary.ts`), since a company
 catalogue's owners are unbounded; the Architect's is handed none, and shows every value.
 
-`EntityGraph.from(entities, aside, organisation)` indexes them by `refOf(entity)`
+`EntityGraph.from(entities, aside, organisation, partial)` indexes them by `refOf(entity)`
 (`kind:default/name`) and answers read-only questions: `get`, `search` over `SearchCriteria`
 (env read from `ENV_ANNOTATION`), and three dependency queries. The organisation is an index
 of its own beside them — never in `all()`, `get()` or `search()`, so nothing built from those

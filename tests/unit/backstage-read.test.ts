@@ -19,7 +19,9 @@ import { memorySink, onlyTrace } from '../support/trace.js'
  * the load, and answered from — `graph`, `show`, `relations`, `ask` and a
  * phrase's question; a change is still decided against the declarations
  * repository, and nothing the catalogue holds vouches for a plan. A read
- * that fails is one line and exit 1, never an answer from part of it.
+ * that fails is one line and exit 1, never an answer from part of it; one
+ * past a count bound is answered in part and says so
+ * (backstage-partial.test.ts).
  */
 
 const DEMO = path.resolve(import.meta.dirname, '../../fixtures/si-demo')
@@ -445,7 +447,6 @@ describe('a read that fails', () => {
     ['non-JSON', { faults: { notJson: { at: 1 } } }, 'answered with a body that is not UTF-8 JSON'],
     ['a cursor loop', { faults: { nextCursor: 'again' } }, 'returned the same page twice'],
     ['fewer than totalItems', { faults: { totalItemsAbove: 1 } }, 'changed while it was read (34 expected, 33 read)'],
-    ['more modelled entities than a run reads', lowered({ modelledEntities: 20 }), 'holds more than 20 Components, Resources and APIs as this token reads it; this version reads at most 20 and does not answer from part of a catalogue'],
     ['unreachable', { catalogueFetch: refused }, 'could not be reached (ECONNREFUSED)'],
   ]
 
@@ -520,6 +521,8 @@ describe('the trace of a run that read a catalogue', () => {
       'idp.source.entities': 40,
       'idp.source.set_aside': 0,
       'idp.source.pages': 2,
+      // Read whole: nothing past a bound (backstage-partial.test.ts reads one that is not).
+      'idp.source.not_loaded': 0,
     })
     expect(root['idp.source.bytes']).toBeGreaterThan(0)
     expect(typeof root['idp.source.ms']).toBe('number')

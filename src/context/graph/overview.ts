@@ -1,7 +1,7 @@
 import type { CatalogueEntity } from '../../core/schemas/entity.js'
 import { levelledOf, natureOf } from '../../core/schemas/resource-types.js'
 import { ENV_ANNOTATION } from '../../core/schemas/vocabulary.js'
-import type { Ignored } from '../provider.js'
+import type { Ignored, PartialRead } from '../provider.js'
 import { refOf, type EntityGraph } from './entity-graph.js'
 
 /**
@@ -78,6 +78,14 @@ export interface Overview {
   reached: Array<{ ref: string; services: number; rights: number }>
   /** Every dangling reference, sorted. Reported, never pruned (design 4.4). */
   dangling: Array<{ from: string; to: string }>
+  /**
+   * The reads that stopped at a bound (`EntityGraph.partial`): every count
+   * above is of what was read. Absent for a whole graph, so its overview is
+   * what it always was, and then the renderer says nothing of it.
+   */
+  partial?: readonly PartialRead[]
+  /** Every reference into what a bound left out, sorted as `dangling` is; beside `partial`, and only with it. */
+  notLoaded?: Array<{ from: string; to: string }>
   /**
    * The documents set aside as kinds this tool does not model, and apart from
    * them — never counted twice — what a catalogue read's pre-pass set aside
@@ -222,6 +230,15 @@ export function overviewOf(graph: EntityGraph, unread: Unread): Overview {
     dangling: graph
       .danglingReferences()
       .sort((left, right) => compare(left.from, right.from) || compare(left.to, right.to)),
+    ...(graph.partial.length === 0
+      ? {}
+      : {
+          partial: graph.partial,
+          notLoaded: graph
+            .notLoadedReferences()
+            .map(({ from, to }) => ({ from, to }))
+            .sort((left, right) => compare(left.from, right.from) || compare(left.to, right.to)),
+        }),
     setAside: {
       total: notModelled.length,
       kinds: tally(kinded),

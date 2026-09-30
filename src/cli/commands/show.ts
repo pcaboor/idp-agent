@@ -5,6 +5,7 @@ import {
   type GraphNode,
   type OrganisationEntity,
 } from '../../core/schemas/entity.js'
+import { missIn, partialClosing } from '../render/catalogue-read.js'
 import { NOWHERE, renderEntityDetail } from '../render/entity.js'
 import { ORGANISATION_LIMITS, renderOrganisationDetail } from '../render/organisation.js'
 import type { CommandResult } from './result.js'
@@ -18,17 +19,25 @@ import type { CommandResult } from './result.js'
 export function runShow(graph: EntityGraph, query: string, said: string = NOWHERE): CommandResult {
   const found = resolveNode(graph, query)
   if ('text' in found) return found
-  const { node } = found
+  // A card's sections are what was read: on a partial graph they cannot count
+  // a dependant past the bound, and stdout says so under them.
+  const closing = partialClosing(graph.partial, 'these sections')
+  const card = cardOf(graph, found.node, said)
+  return { text: closing === undefined ? card : `${card}\n\n${closing}`, found: true }
+}
+
+/** A node's card: an entity's, or a Group's, a User's, a System's or a Domain's. */
+function cardOf(graph: EntityGraph, node: GraphNode, said: string): string {
   switch (node.kind) {
     case 'Component':
     case 'Resource':
     case 'API':
-      return { text: renderEntityDetail(graph, node, said), found: true }
+      return renderEntityDetail(graph, node, said)
     case 'Group':
     case 'User':
     case 'System':
     case 'Domain':
-      return { text: renderOrganisationDetail(graph, node, said), found: true }
+      return renderOrganisationDetail(graph, node, said)
     default: {
       const exhaustive: never = node
       return exhaustive
@@ -121,7 +130,9 @@ export function resolveEntity(
     named.length > 1
       ? [...named].sort((left, right) => refOf(left).localeCompare(refOf(right), 'en'))
       : graph.search({ nameContains: query })
-  if (candidates.length === 0) return { text: `No entity named "${query}".`, found: false }
+  // On a partial graph, said with the part it looked in: a miss there is not
+  // a fact about the catalogue.
+  if (candidates.length === 0) return { text: missIn(graph.partial, `No entity named "${query}"`), found: false }
 
   // Ambiguous is not found: the query resolved no entity, and a caller that
   // treated this as success would be picking the first candidate by accident.

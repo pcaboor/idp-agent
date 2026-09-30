@@ -1,10 +1,12 @@
-import type {
-  CatalogueEntity,
-  GraphNode,
-  OrganisationEntity,
-  OrganisationKind,
+import {
+  entityRefSchema,
+  type CatalogueEntity,
+  type GraphNode,
+  type OrganisationEntity,
+  type OrganisationKind,
 } from '../../core/schemas/entity.js'
 import { ENV_ANNOTATION } from '../../core/schemas/vocabulary.js'
+import type { PartialRead } from '../provider.js'
 
 export interface SearchCriteria {
   kind?: CatalogueEntity['kind']
@@ -59,6 +61,27 @@ export interface Unresolved {
    */
   readonly sameName: readonly string[]
 }
+
+/**
+ * A reference an entity declares, into a kind whose read stopped at a bound
+ * (`PartialRead`), that resolves to nothing read: not loaded, which says
+ * nothing about whether it is declared. Never among `Unresolved`: a whole
+ * read's answer, declared nowhere, is not known of it (ADR-0013).
+ */
+export interface NotLoaded {
+  readonly from: string
+  readonly field: DeclaredField
+  readonly to: string
+}
+
+/**
+ * The kind a reference states, as the reader wrote it in full; undefined when
+ * the whole reference is not in full form. A `providesApis` the grammar could
+ * not split is kept as written (`qualifiedSpec`) and can name no served
+ * entity, so its prefix — `api:Bad Name!` — states no kind a bound left out.
+ */
+const statedKind = (ref: string): string | undefined =>
+  entityRefSchema.safeParse(ref).success ? ref.slice(0, ref.indexOf(':')) : undefined
 
 /**
  * The fields a reference to the organisation is declared in: an owner and a
@@ -224,11 +247,20 @@ export class EntityGraph {
   private readonly dangling: Unresolved[]
   /** Entity reference → its own entries of `dangling`, the entity `get` returns. */
   private readonly unresolved: Map<string, Unresolved[]>
+  /**
+   * Every reference declared into a kind a bounded read left out, that
+   * resolves to nothing read, in the order `dangling` keeps: what would have
+   * been dangling had the read been whole. `notLoaded` indexes it.
+   */
+  private readonly notLoadedList: NotLoaded[]
+  /** Entity reference → its own entries of `notLoadedList`. */
+  private readonly notLoaded: Map<string, NotLoaded[]>
 
   private constructor(
     private readonly entities: CatalogueEntity[],
     private readonly aside: ReadonlySet<string>,
     organisation: OrganisationRead,
+    private readonly bounded: readonly PartialRead[],
   ) {
     // A reference two documents declare is the FIRST of them, whole: its
     // fields and the references it declares. That is how the catalogue
@@ -252,6 +284,10 @@ export class EntityGraph {
     this.providers = new Map()
     this.dangling = []
     this.unresolved = new Map()
+    this.notLoadedList = []
+    this.notLoaded = new Map()
+    // The kinds a read stopped short of, as a reference names them.
+    const unfinished = new Set(bounded.flatMap(({ kinds }) => kinds.map((kind) => kind.toLowerCase())))
 
     // A dependency is declared from either side: `dependsOn` on the consumer, or
     // `dependencyOf` on the access. Which side wrote the edge down decides which
@@ -290,18 +326,29 @@ export class EntityGraph {
         ['providesApis', providesOf(entity)],
       ]
       const found: Unresolved[] = []
+      const unloaded: NotLoaded[] = []
       for (const [field, targets] of declared) {
         for (const to of targets) {
           // The organisation read resolves a reference as a document set aside
           // did: it exists, and is no entity of this graph.
           if (this.byRef.has(to) || this.organisationByRef.has(to) || this.aside.has(to)) continue
+          // Into a kind a read stopped short of: not loaded, never declared
+          // nowhere. A kind read whole still answers, and one the grammar
+          // cannot split is what it always was.
+          const kind = statedKind(to)
+          if (kind !== undefined && unfinished.has(kind)) {
+            unloaded.push({ from, field, to })
+            continue
+          }
           const sameName = [...(byName.get(nameOf(to)) ?? [])].sort()
           found.push({ from, field, to, sameName })
         }
       }
       this.dangling.push(...found)
+      this.notLoadedList.push(...unloaded)
       // Keyed as `byRef` is, so a duplicate is read as `get` reads it: the first.
       this.unresolved.set(from, found)
+      this.notLoaded.set(from, unloaded)
     }
 
     // The organisation, read from both ends as a dependency is: a Group's
@@ -409,13 +456,24 @@ export class EntityGraph {
    * `all()`, `get()` or `search()`, so nothing built from them — a table, a
    * summary, a vocabulary, a tool's row — sees a Group. `node()` and
    * `nodes()` read both, and the organisation's own queries below.
+   *
+   * `partial` is the reads of a catalogue that stopped at a bound
+   * (`LoadResult.partial`): a reference into one of their kinds that resolves
+   * to nothing is not loaded (`notLoadedOf`), never dangling. None, as a
+   * repository's graph always is, is a whole graph.
    */
   static from(
     entities: readonly CatalogueEntity[],
     aside: Iterable<string> = [],
     organisation: OrganisationRead = { nodes: [], judged: new Set() },
+    partial: readonly PartialRead[] = [],
   ): EntityGraph {
-    return new EntityGraph([...entities], new Set(aside), organisation)
+    return new EntityGraph([...entities], new Set(aside), organisation, [...partial])
+  }
+
+  /** The reads that stopped at a bound; empty for a whole graph. */
+  get partial(): readonly PartialRead[] {
+    return this.bounded
   }
 
   get size(): number {
@@ -641,6 +699,33 @@ export class EntityGraph {
   }
 
   /**
+   * What an entity declares, into a kind a bounded read left out, that
+   * resolves to nothing read — all of it, or one field's, in file order.
+   * Shown where `unresolvedOf` is, marked not loaded: never declared nowhere,
+   * and never resolved.
+   */
+  notLoadedOf(ref: string, field?: DeclaredField): NotLoaded[] {
+    const all = this.notLoaded.get(ref) ?? []
+    return field === undefined ? [...all] : all.filter((found) => found.field === field)
+  }
+
+  /** Every reference not loaded, in the order `danglingReferences()` keeps; empty for a whole graph. */
+  notLoadedReferences(): NotLoaded[] {
+    return [...this.notLoadedList]
+  }
+
+  /**
+   * The services along the walk `consumersOf` takes that a bound left out:
+   * `unresolvedConsumersOf`'s walk, reading `notLoadedOf` where it reads
+   * `unresolvedOf`. Empty for a whole graph.
+   */
+  notLoadedConsumersOf(ref: string): NotLoaded[] {
+    return this.alongConsumers(ref, (at) =>
+      this.notLoadedOf(at, 'dependencyOf').filter(({ to }) => to.startsWith('component:')),
+    )
+  }
+
+  /**
    * The services declared along the walk `consumersOf` takes that nothing
    * declares: the `dependencyOf` of the target and of every right or object
    * reached through it, in the order met. A service named by a right and
@@ -651,19 +736,22 @@ export class EntityGraph {
    * makes; it is shown where its right's own `dependencyOf` is.
    */
   unresolvedConsumersOf(ref: string): Unresolved[] {
+    return this.alongConsumers(ref, (at) =>
+      this.unresolvedOf(at, 'dependencyOf').filter(({ to }) => to.startsWith('component:')),
+    )
+  }
+
+  /** What `at` names, gathered at every entity `consumersOf`'s walk goes through, in the order met. */
+  private alongConsumers<T>(ref: string, at: (current: string) => T[]): T[] {
     if (!this.byRef.has(ref)) return []
     const seen = new Set<string>([ref])
     const queue = [ref]
-    const found: Unresolved[] = []
+    const found: T[] = []
 
     while (queue.length > 0) {
       const current = queue.shift()
       if (current === undefined) break
-      found.push(
-        ...this.unresolvedOf(current, 'dependencyOf').filter(({ to }) =>
-          to.startsWith('component:'),
-        ),
-      )
+      found.push(...at(current))
       for (const dependant of this.dependantsOf(current)) {
         const dependantRef = refOf(dependant)
         if (seen.has(dependantRef)) continue

@@ -198,6 +198,17 @@ Each pull request adds its line here.
 
 ### Changed
 
+- A Backstage catalogue larger than a run reads — 20,000 Components, Resources and APIs,
+  200,000 Groups, Users, Systems and Domains, or 200,000 references of other kinds — is no
+  longer refused: it is read up to that bound and answered in part. A stderr line,
+  `past the bound:`, counts what was left out, a reference past the bound is marked
+  `not loaded` and never declared nowhere, and `graph`, `show`, `relations`, the overview and
+  a question's answer each say the graph is partial, an owner or a membership an
+  organisation read past its bound left a name giving the bound as the reason; a catalogue
+  read whole prints and sends
+  exactly what it did. `tools/fake-backstage.ts --scale <n>` serves such a catalogue with no
+  company's data in it, and ADR-0013 records the decision
+  ([#119](https://github.com/pcaboor/idp-agent/pull/119)).
 - Every process `src/` starts goes through one hardened git launcher, `src/process/git.ts`,
   which the Inspector's `git ls-files` now uses and stage 5's forge will: the environment
   `spawnedEnvironment` builds — moved beside it to `src/process/environment.ts` — minus every

@@ -9,7 +9,7 @@ import { catalogueTransport, type CatalogueFetch } from './transport.js'
 
 /**
  * A Backstage catalogue as a `ContextProvider` (docs/backstage-http-brief.md
- * § 5, § 6): read whole, once, into the same `LoadResult` a folder of YAML
+ * § 5, § 6): read once, into the same `LoadResult` a folder of YAML
  * fills, through the same reader. Every item of every read goes through the
  * pre-pass (`translate.ts`) and then `readValue`, the file road's per-value
  * reader, so a catalogue meets the very decisions a file does and the same
@@ -19,8 +19,10 @@ import { catalogueTransport, type CatalogueFetch } from './transport.js'
  * whole, which a reference to is then judged against.
  *
  * `load()` throws a `CatalogueReadError` for every failure and returns
- * nothing partial. It names no `fetch`: `catalogueFetch` is handed to the
- * transport as it came, and cli/ constructs this (`providerOf`).
+ * nothing then. A read that stopped at a count ceiling is no failure: what it
+ * read is returned, the reads that stopped in `partial` (ADR-0013). It names
+ * no `fetch`: `catalogueFetch` is handed to the transport as it came, and
+ * cli/ constructs this (`providerOf`).
  */
 export class BackstageProvider implements ContextProvider {
   readonly name = 'backstage-http'
@@ -115,6 +117,8 @@ export class BackstageProvider implements ContextProvider {
       census: served.census,
       ...(organisation.length > 0 && { organisation: organisation.map(({ node }) => node) }),
       ...(served.judged.length > 0 && { judged: served.judged }),
+      // Only when a read stopped at its bound: a whole read's result is what it always was.
+      ...(served.bounded.length > 0 && { partial: served.bounded }),
     }
   }
 }

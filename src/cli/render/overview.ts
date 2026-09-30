@@ -1,4 +1,5 @@
 import type { Overview, Tally } from '../../context/graph/overview.js'
+import { scopeWords } from '../../context/provider.js'
 import { TAG_LENGTH } from './entity.js'
 import { oneLine } from './plain.js'
 
@@ -102,6 +103,9 @@ function rows(entries: readonly Entry[], pinned?: Entry): string[] {
 export function renderOverview(overview: Overview, source: OverviewSource): string {
   const blocks: string[][] = [
     [`Overview of ${fromOf(source)}: ${plural(overview.entities, 'entity', 'entities')}`],
+    // First under the headline, and only on a partial graph: every count
+    // below it is of what was read.
+    ...partial(overview.partial ?? []),
   ]
 
   if (overview.entities === 0) {
@@ -127,6 +131,7 @@ export function renderOverview(overview: Overview, source: OverviewSource): stri
       ...organisation(overview.organisation),
       reached(overview.reached),
       dangling(overview.dangling),
+      ...pastTheBound(overview.notLoaded ?? []),
     )
   }
 
@@ -280,3 +285,35 @@ function dangling(references: Overview['dangling']): string[] {
   if (hidden > 0) lines.push(`${INDENT}+${String(hidden)} more`)
   return [`dangling references  ${String(references.length)}`, ...lines]
 }
+
+/**
+ * The block that opens a partial overview, one line per read that stopped:
+ * "partial  40 of 45 Components, Resources and APIs read, this version's
+ * bound; every count below is of what was read". Never headed `not loaded`,
+ * which is the row of the kinds this tool does not model.
+ */
+function partial(reads: NonNullable<Overview['partial']>): string[][] {
+  if (reads.length === 0) return []
+  const clauses = reads.map(
+    ({ scope, read, total }) =>
+      `${countOf(read)} of ${total === undefined ? `at least ${countOf(read + 1)}` : countOf(total)} ${scopeWords(scope)} read`,
+  )
+  return [[`partial  ${clauses.join('; ')}, this version's bound; every count below is of what was read`]]
+}
+
+/**
+ * The references into what a bound left out, as the dangling ones are listed
+ * and apart from them: whether they are declared is not known. Only on a
+ * partial graph.
+ */
+function pastTheBound(references: NonNullable<Overview['notLoaded']>): string[][] {
+  if (references.length === 0) return []
+  const shown = references.slice(0, OVERVIEW_LIMITS.rows)
+  const lines = shown.map(({ from, to }) => `${INDENT}${cell(from)} → ${cell(to)}`)
+  const hidden = references.length - shown.length
+  if (hidden > 0) lines.push(`${INDENT}+${String(hidden)} more`)
+  return [[`past the bound  ${String(references.length)}`, ...lines]]
+}
+
+/** A count as the note writes one: `20,000`. */
+const countOf = (count: number): string => count.toLocaleString('en-US')

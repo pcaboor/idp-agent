@@ -16,7 +16,8 @@ import {
   type OwnRelation,
   type Relation,
 } from '../../core/schemas/query.js'
-import { ENTITY_LIMITS, NOWHERE, nowhere } from './entity.js'
+import { boundOf } from './catalogue-read.js'
+import { ENTITY_LIMITS, NOT_LOADED, NOWHERE, nowhere } from './entity.js'
 import { oneLine } from './plain.js'
 import { renderTable } from './table.js'
 
@@ -134,12 +135,14 @@ const stepText = (step: Step): string =>
 
 /**
  * A path, and what its last step is called when it names nothing (`said`,
- * `NOWHERE` by default) or names a document set aside (`SET_ASIDE`).
+ * `NOWHERE` by default), names a document set aside (`SET_ASIDE`), or names
+ * what a bound left out (`NOT_LOADED`).
  */
 function pathText(row: RelationRow, separator: string, said: string): string {
   const last = reachedBy(row)
   const path = row.steps.map(stepText).join(separator)
   if (last.nowhere !== undefined) return `${path} — ${nowhere(last.nowhere, said)}`
+  if (last.notLoaded === true) return `${path} — ${NOT_LOADED}`
   return last.setAside === true ? `${path} — ${SET_ASIDE}` : path
 }
 
@@ -331,12 +334,13 @@ function betweenSections(result: RelationResult, road: Road, said: string): stri
 
 /**
  * Why a reference the subject declares is read as a name and not judged: the
- * source holds no node of its kind, or holds some that are not the whole
- * organisation — a declarations repository keeps the Group files it happens
- * to keep.
+ * catalogue's read of its kind stopped at a bound, the source holds no node
+ * of its kind, or holds some that are not the whole organisation — a
+ * declarations repository keeps the Group files it happens to keep.
  */
 function whyNamed(name: Named): string {
   if (name.kind === undefined) return 'this source holds nothing of that name'
+  if (name.bound !== undefined) return `${name.kind}s past ${boundOf(name.bound)} were not loaded`
   return name.held
     ? `a declarations repository's ${name.kind} files are not read as the whole organisation`
     : `this source holds no ${name.kind}`

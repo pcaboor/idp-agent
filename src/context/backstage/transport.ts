@@ -1,4 +1,5 @@
 import { BACKSTAGE_TOKEN_VARIABLE } from '../../process/environment.js'
+import type { ReadScope } from '../provider.js'
 import { BACKSTAGE_LIMITS, type BackstageLimits } from './limits.js'
 
 /**
@@ -51,12 +52,8 @@ export function isLoopback(url: URL): boolean {
   return LOOPBACK.has(url.hostname)
 }
 
-/**
- * Which of a load's three reads a failure is about (`load.ts`): the kinds this
- * tool models, read whole; the organisation, read for the fields the read
- * model reads; every other kind, read as refs.
- */
-export type ReadScope = 'modelled' | 'organisation' | 'refs'
+/** Which of a load's three reads a failure is about: declared beside `LoadResult`, and re-exported for this layer's importers. */
+export type { ReadScope }
 
 /**
  * Why a read ended. Each case carries what a person needs to act on it, and
@@ -78,7 +75,7 @@ export type CatalogueFailure =
   | { readonly kind: 'too-large'; readonly scope: 'response' | 'run'; readonly limit: number }
   /** A body that is not UTF-8, or not JSON. */
   | { readonly kind: 'not-json' }
-  // The load's own (load.ts): what it reads is whole, or it is not answered from.
+  // The load's own (load.ts): what a server that does not page as Backstage does serves is not answered from.
   /** JSON that is not what the route serves: the facets, or the page envelope `{ items, totalItems, pageInfo }`. */
   | { readonly kind: 'not-envelope'; readonly route: CatalogueRoute }
   /** A kind the facets name that the kind grammar refuses: a filter is never built from it. */
@@ -91,8 +88,6 @@ export type CatalogueFailure =
   | { readonly kind: 'unasked-kind'; readonly scope: ReadScope }
   /** Fewer distinct uids than the first page's `totalItems`, repeats or not. */
   | { readonly kind: 'changed'; readonly expected: number; readonly read: number }
-  /** More entities than a run reads: the modelled kinds, read whole, the organisation, or the references of the others. */
-  | { readonly kind: 'too-many'; readonly scope: ReadScope; readonly limit: number }
 
 /** A size in the unit it was set in: MiB when it is a whole number of them, bytes otherwise. */
 const sizeOf = (bytes: number): string =>
@@ -110,22 +105,6 @@ const statusClass = (status: number): string => {
   if (status === 404) return 'no catalogue API at this address'
   if (status >= 500) return 'the server failed'
   return 'the request was refused'
-}
-
-/** What a read's entities are called in the sentence that refuses too many of them. */
-function scopeWords(scope: ReadScope): string {
-  switch (scope) {
-    case 'modelled':
-      return 'Components, Resources and APIs'
-    case 'organisation':
-      return 'Groups, Users, Systems and Domains'
-    case 'refs':
-      return 'entities of other kinds'
-    default: {
-      const exhaustive: never = scope
-      return exhaustive
-    }
-  }
 }
 
 /** The sentence a failure is, naming the origin and nothing a server wrote. */
@@ -166,13 +145,6 @@ function sentenceOf(failure: CatalogueFailure, origin: string): string {
       return `${at} served an entity of a kind the read did not ask for, so it does not filter as Backstage does`
     case 'changed':
       return `${at} changed while it was read (${countOf(failure.expected)} expected, ${countOf(failure.read)} read)`
-    case 'too-many': {
-      const what = scopeWords(failure.scope)
-      return (
-        `${at}, as this token reads it, holds more than ${countOf(failure.limit)} ${what}; ` +
-        `this version reads at most ${countOf(failure.limit)} and does not answer from part of a catalogue`
-      )
-    }
     default: {
       const exhaustive: never = failure
       return exhaustive
