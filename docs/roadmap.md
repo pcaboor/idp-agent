@@ -9,7 +9,7 @@ What has already shipped is in [`CHANGELOG.md`](../CHANGELOG.md). What the 2026-
 found, and which of its findings are closed, is in its
 [Status section](reviews/2026-09-23-deep-review.md#status).
 
-*Updated 2026-09-30, `main` at `389fe3a`.*
+*Updated 2026-09-30, `main` at `63d53e6`.*
 
 ## Where the project stands
 
@@ -51,7 +51,9 @@ Each line says what the item is for. The sweep of the review is done
 here, one pull request each, each naming the check run together at the end.
 
 1. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
-   catalogue is plugged in.
+   catalogue is plugged in. Planned ([the plan](plans/backstage-http-slice-2.md),
+   [117](https://github.com/pcaboor/idp-agent/pull/117)): 2.1 the partial graph, 2.2 the
+   store, 2.3 the command line.
 2. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
    authorisation (ADR-0006).
 3. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
@@ -259,6 +261,14 @@ The owner's decisions, dated, each with where it is recorded.
   pruned; no digest was rewritten, because no tape holds the tools or the tool choice it was
   sent, and its transcript was stored as the agent grew it after the call. The question
   tapes stale today are still reported stale ([#116](https://github.com/pcaboor/idp-agent/pull/116)).
+- `backstage-http` slice 2, the owner's five answers, each as recommended: a kept copy of a
+  catalogue read is removed after 7 days by the next run that writes one; `IDP_BACKSTAGE_CACHE=off`
+  keeps nothing, `off` its only value and anything else refused with exit 2; all three read
+  ceilings become stated bounds with one semantics, so no catalogue is refused for its size;
+  three pull requests, the store and its proofs reviewed before any command writes; and new
+  words for what a bound left out (`past the bound:`, `partial:`), `not loaded` kept for the
+  marker a reference carries, so every whole read stays byte-identical
+  ([117](https://github.com/pcaboor/idp-agent/pull/117)).
 
 ## Known debts and open items
 

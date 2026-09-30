@@ -396,6 +396,11 @@ Each pull request adds its line here.
 
 ### Documentation
 
+- `backstage-http` slice 2 is planned ([the plan](docs/plans/backstage-http-slice-2.md)): a
+  catalogue past a bound answered in part and saying so, a disk cache sealed by a MAC and read
+  back through the same checks as the network, `--refresh` and `--cached`; three stacked pull
+  requests, with the owner's five answers of 2026-09-30
+  ([117](https://github.com/pcaboor/idp-agent/pull/117)).
 - The README describes the tool after stage 5 and `backstage-http` slices 1 and 3: `--submit`
   and its local branch in the tagline, the diagram, the commands, the exit codes, the roadmap
   and the FAQ; a keyless submission to a git copy of the demo SI; the organisation's
