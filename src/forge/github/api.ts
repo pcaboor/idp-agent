@@ -1,5 +1,8 @@
 import {
   branchAnswer,
+  commitAnswer,
+  pullAnswer,
+  pullsAnswer,
   refAnswer,
   repositoryAnswer,
   rulesAnswer,
@@ -10,7 +13,7 @@ import {
   type RulesAnswer,
   type RulesetAnswer,
 } from '../../core/github/answers.js'
-import { printedRepository, type GitHubRepository } from '../../core/github/remote.js'
+import { isBranch, printedRepository, type GitHubRepository } from '../../core/github/remote.js'
 import { GH_LIMITS, GhError, ghIn, type GhAnswer, type GhClient, type GhProcess, type GhRoute } from '../../process/gh.js'
 import { GITHUB_LIMITS } from './limits.js'
 
@@ -20,8 +23,9 @@ import { GITHUB_LIMITS } from './limits.js'
  * and its body parsed against the schema of the fields a decision needs
  * (`core/github/answers.ts`). What goes wrong is said in this build's words
  * (`GitHubAnswerError`), never GitHub's or gh's, which a repository or a
- * server can reach. The routes of a commit, the pull requests and the one
- * write arrive with the forge that reads them (stage 6 plan, Task 6.2.1).
+ * server can reach. The routes of a commit and of the pull requests, and the
+ * one write, are the GitHub forge's (`forge.ts`): the write at most once per
+ * run, whatever the first one answered.
  */
 
 /**
@@ -128,6 +132,37 @@ export const statusOf = (error: GhError): AnswerStatus => {
   }
 }
 
+/** A commit on GitHub, as recognition compares it (§ 14): its tree, its parents and its message. */
+export interface GitHubCommit {
+  readonly sha: string
+  readonly tree: string
+  readonly parents: readonly string[]
+  readonly message: string
+}
+
+/**
+ * A pull request from a branch, as § 14's table reads it: `merged` from
+ * `merged_at`, and, on a closed one, `at` the day it was merged or closed,
+ * `YYYY-MM-DD`, read from the start of GitHub's date and nothing else of it;
+ * `base` held to the grammar of a branch, since a sentence names it.
+ */
+export type PullRequestFrom = {
+  readonly number: number
+  readonly base: string
+  readonly head: string
+} & (
+  | { readonly state: 'open'; readonly merged: false; readonly at: undefined }
+  | { readonly state: 'closed'; readonly merged: boolean; readonly at: string }
+)
+
+/** The pull request a submission opens: the engine's title and body, from `head` into `base`. */
+export interface PullRequestAsked {
+  readonly title: string
+  readonly head: string
+  readonly base: string
+  readonly body: string
+}
+
 /** The account gh acts as, as `/user` names it: the two fields a decision reads, and nothing else kept. */
 export interface GitHubUser {
   readonly login: string
@@ -147,6 +182,17 @@ export interface GitHubApi {
   branch(base: string): Promise<BranchAnswer>
   /** `GET repos/<o>/<r>/git/ref/heads/<branch>`: the commit the branch is at on GitHub. */
   ref(branch: string): Promise<string>
+  /** `GET repos/<o>/<r>/git/commits/<sha>`: a commit's tree, parents and message (§ 14). */
+  commit(sha: string): Promise<GitHubCommit>
+  /** `GET repos/<o>/<r>/pulls?head=…&state=all`: every pull request from the branch, one page of 100. */
+  pulls(branch: string): Promise<readonly PullRequestFrom[]>
+  /**
+   * `POST repos/<o>/<r>/pulls`, the one write, its body on stdin: the number
+   * GitHub gave it, from a 201. At most once per API: a second call throws
+   * before any process starts, whatever the first answered — a timed-out or
+   * lost one included.
+   */
+  openPullRequest(input: PullRequestAsked): Promise<{ readonly number: number }>
   /** How many gh processes this run has started, the version's included: `idp.forge.gh_calls`. */
   calls(): number
 }
@@ -158,10 +204,13 @@ export interface GitHubApi {
  * holds the answer to its route.
  */
 export function githubApi(gh: GhClient, repository: GitHubRepository): GitHubApi {
-  const ask = async (route: GhRoute): Promise<GhAnswer> => {
+  const spend = (): void => {
     if (gh.calls() >= GITHUB_LIMITS.ghCalls) {
       throw new Error(`idp-agent made more than ${String(GITHUB_LIMITS.ghCalls)} gh calls in one run`)
     }
+  }
+  const ask = async (route: GhRoute): Promise<GhAnswer> => {
+    spend()
     try {
       return await gh.get(route)
     } catch (error) {
@@ -205,6 +254,8 @@ export function githubApi(gh: GhClient, repository: GitHubRepository): GitHubApi
 
   const { owner, name } = repository
   const where = printedRepository(repository)
+  /** Set before the one POST starts, so a POST whose answer was lost still counts. */
+  let asked = false
 
   return {
     user: async () => {
@@ -231,6 +282,71 @@ export function githubApi(gh: GhClient, repository: GitHubRepository): GitHubApi
       })
       if (parsed.ref !== `refs/heads/${branch}`) throw new GitHubAnswerError('ref', 'unreadable', repository)
       return parsed.object.sha
+    },
+    commit: async (sha) => {
+      const parsed = await read({ route: 'commit', owner, name, sha }, commitAnswer)
+      // An answer about another commit is not an answer about this one.
+      if (parsed.sha !== sha) throw new GitHubAnswerError('commit', 'unreadable', repository)
+      return {
+        sha: parsed.sha,
+        tree: parsed.tree.sha,
+        parents: parsed.parents.map((parent) => parent.sha),
+        message: parsed.message,
+      }
+    },
+    pulls: async (branch) => {
+      const parsed = await read({ route: 'pulls', owner, name, head: branch }, pullsAnswer, {
+        paginated: `${where} has more than ${String(GITHUB_LIMITS.pullsPage)} pull requests from ${branch}, more than this build reads. ${NOTHING}`,
+      })
+      // Each from this branch, into a branch a sentence may name: or none of it is read.
+      if (parsed.some((one) => one.head.ref !== branch || !isBranch(one.base.ref))) {
+        throw new GitHubAnswerError('pulls', 'unreadable', repository)
+      }
+      return parsed.map((one): PullRequestFrom => {
+        const fields = { number: one.number, base: one.base.ref, head: one.head.ref }
+        if (one.state === 'open') return { ...fields, state: 'open', merged: false, at: undefined }
+        // GitHub dates every closed pull request: one it gives no day for is
+        // not read, rather than a day put in its place.
+        const at = /^\d{4}-\d{2}-\d{2}/.exec(one.merged_at ?? one.closed_at ?? '')?.[0]
+        if (at === undefined) throw new GitHubAnswerError('pulls', 'unreadable', repository)
+        return { ...fields, state: 'closed', merged: one.merged_at !== null, at }
+      })
+    },
+    openPullRequest: async (input) => {
+      if (asked) throw new Error('idp-agent asked to open a second pull request in one run')
+      if (Buffer.byteLength(input.body, 'utf8') > GITHUB_LIMITS.bodyBytes) {
+        throw new GitHubAnswerError(
+          'open-pull-request',
+          'too-large',
+          repository,
+          `the pull request's body is over 1 MiB, more than this build sends. ${NOTHING}`,
+        )
+      }
+      spend()
+      // The one form the launcher admits: these six keys, in this order, no white space.
+      const body = JSON.stringify({
+        title: input.title,
+        head: input.head,
+        base: input.base,
+        body: input.body,
+        draft: false,
+        maintainer_can_modify: false,
+      })
+      asked = true
+      let answer: GhAnswer
+      try {
+        answer = await gh.openPullRequest(owner, name, body)
+      } catch (error) {
+        if (error instanceof GhError) throw new GitHubAnswerError('open-pull-request', statusOf(error), repository)
+        throw error
+      }
+      if (answer.status !== 201) throw new GitHubAnswerError('open-pull-request', answer.status, repository)
+      const parsed = pullAnswer.safeParse(json('open-pull-request', answer))
+      // What GitHub says it opened must be what was asked.
+      if (!parsed.success || parsed.data.head.ref !== input.head || parsed.data.base.ref !== input.base) {
+        throw new GitHubAnswerError('open-pull-request', 'unreadable', repository)
+      }
+      return { number: parsed.data.number }
     },
     calls: () => gh.calls(),
   }

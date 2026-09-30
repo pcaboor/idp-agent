@@ -1,7 +1,10 @@
 import type { GhProcess } from '../../src/process/gh.js'
+import type { GhRoute } from '../../src/process/gh.js'
 import {
   answer,
+  approve,
   initialState,
+  pushed,
   type FakeRepository,
   type FakeRuleset,
   type FakeState,
@@ -45,6 +48,19 @@ export interface FakeGitHub {
   readonly state: FakeState
   /** Every call received: the vector, stdin, and the environment gh would have run in. */
   readonly sent: readonly Sent[]
+  /** A review approving pull request `number` by `login`, at its head's current commit. */
+  approve(number: number, login: string): void
+  /**
+   * A git push of `commit` to `ref` by `actor`, judged by the model's rules,
+   * its objects already in the bare repository: 200, or 409 refused.
+   */
+  pushAs(actor: { readonly type: 'User'; readonly login: string } | { readonly type: 'DeployKey'; readonly id: number }, ref: string, commit: string): number
+  /**
+   * The next `times` calls of `route` answered `status`, or `lost` (exit 1,
+   * nothing on stdout); `made`, the call carried out first and its answer
+   * replaced — by default for `lost`, never for a status.
+   */
+  fault(fault: { readonly route: GhRoute['route'] | 'open-pull-request'; readonly status: number | 'lost'; readonly times: number; readonly made?: boolean }): void
 }
 
 export function fakeGitHub(model: FakeModel = {}): FakeGitHub {
@@ -66,6 +82,11 @@ export function fakeGitHub(model: FakeModel = {}): FakeGitHub {
     },
     state,
     sent,
+    approve: (number, login) => approve(state, number, login),
+    pushAs: (actor, ref, commit) => pushed(state, actor, ref, commit),
+    fault: (fault) => {
+      state.faults = [...(state.faults ?? []), { ...fault }]
+    },
   }
 }
 
@@ -399,6 +420,31 @@ export const DOORS: readonly Door[] = [
     stdin: pullBody({}).replaceAll(',"', ', "'),
   },
 ]
+
+/** The merge of pull request #1 through the API, as the author would try it: the door § 10 names 405. */
+export const MERGE_DOOR: Door = (() => {
+  const found = DOORS.find((door) => door.argv[4] === 'PUT' && door.argv[6] === `${PULLS}/1/merge`)
+  if (found === undefined) throw new Error('DOORS holds no merge of pull request #1')
+  return found
+})()
+
+/**
+ * The doors the fake's model answers — a merge, an approval, a write to a
+ * base — by name; every other door is a vector idp-agent never sends.
+ */
+export const MODELLED_DOORS: ReadonlySet<string> = new Set([
+  'gh pr merge --merge',
+  'gh pr merge --squash',
+  'gh pr merge --rebase',
+  'gh pr merge --admin',
+  'gh pr review --approve',
+  'gh api PUT …/pulls/1/merge',
+  'gh api PUT …/pulls/1/merge-async',
+  'gh api POST …/merges',
+  'gh api PUT …/contents/catalog/x.yml',
+  'gh api PATCH …/git/refs/heads/main',
+  'gh api POST …/pulls/1/reviews',
+])
 
 /**
  * § 6's words for the source: the direct doors (a merge, a bypass, a write

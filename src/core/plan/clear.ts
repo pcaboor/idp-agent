@@ -94,6 +94,13 @@ export interface Cleared {
    */
   readonly branch: string
   readonly message: string
+  /**
+   * The request as `message` records it — cleaned, on one line, cut at 500
+   * code points — and the very string it writes there: what a pull request's
+   * body fences (stage 6 brief § 12), without parsing a commit message. No
+   * gate reads it.
+   */
+  readonly request: string
   readonly repository: Repository
   readonly [cleared]: true
 }
@@ -279,6 +286,7 @@ function mint(
     }),
     branch: branchFor(edits, label),
     message: messageFor(plan, edits),
+    request: recordedRequest(plan.intent),
     repository,
   })
   minted.add(value)
@@ -467,6 +475,9 @@ const cut = (text: string, max: number): string => {
   return points.length > max ? `${points.slice(0, max - 1).join('')}…` : points.join('')
 }
 
+/** The request as a commit records it: `messageFor` writes it, and a `Cleared` carries it for a pull request. */
+const recordedRequest = (intent: string): string => cut(intent, 500)
+
 /** The name a reference ends on: what a person reads in a subject line. */
 const nameOf = (ref: string): string => ref.slice(ref.lastIndexOf('/') + 1)
 
@@ -512,7 +523,7 @@ export function messageFor(plan: Plan, edits: readonly FileEdit[]): string {
     ...edits.map((edit) => `  ${edit.before === undefined ? '+' : '~'} ${visible(edit.path)}`),
     '',
     'Requested, as recorded with the plan (no gate reads it):',
-    `  ${cut(plan.intent, 500)}`,
+    `  ${recordedRequest(plan.intent)}`,
     '',
   ].join('\n')
 }

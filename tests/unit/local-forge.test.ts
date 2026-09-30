@@ -825,3 +825,95 @@ describe('recognising a submission, before anyone is asked', () => {
     })
   })
 })
+
+describe('an older base, which only the GitHub forge accepts (stage 6 brief § 14)', () => {
+  /**
+   * Our branch cut on `main`, then an unrelated commit on `main`: the branch
+   * is now on an older `main`. Returns the old and the new commit of `main`.
+   */
+  const aged = async (repo: string, change: Cleared): Promise<{ old: string; now: string; commit: string }> => {
+    const writer = await openLocalForge(repo, 'declarations')
+    const first = await writer.submit(change, await writer.base())
+    if (first.outcome !== 'created') throw new Error(first.outcome)
+    const old = await git(repo, 'rev-parse', 'main')
+    await writeFile(path.join(repo, 'README.md'), '# an unrelated change, merged since\n')
+    await git(repo, 'add', '-A')
+    await git(repo, 'commit', '-q', '-m', 'merged since')
+    return { old, now: await git(repo, 'rev-parse', 'main'), commit: first.commit }
+  }
+
+  it('with acceptOlderBase, calls our one commit on an ancestor of the base already submitted, and names that base', async () => {
+    const repo = await clone()
+    const change = await clearedFor(repo)
+    const { old, commit } = await aged(repo, change)
+    const [seen, objects] = [await observable(repo), await stored(repo)]
+
+    // Stage 5's local road keeps D7 unchanged.
+    const strict = await openLocalForge(repo, 'declarations')
+    expect(await strict.recognise(change, await strict.base())).toMatchObject({ outcome: 'refused' })
+
+    const forge = await openLocalForge(repo, 'declarations', undefined, { acceptOlderBase: true })
+    const base = await forge.base()
+    const known = { outcome: 'already-submitted', branch: change.branch, commit, olderBase: old }
+    expect(await forge.recognise(change, base)).toEqual(known)
+    expect(await forge.submit(change, base)).toEqual(known)
+    expect(await observable(repo)).toBe(seen)
+    expect(await stored(repo)).toBe(objects)
+  })
+
+  it('with acceptOlderBase, still refuses our files on a parent that is not an ancestor of the base', async () => {
+    const repo = await clone()
+    const change = await clearedFor(repo)
+    const forge = await openLocalForge(repo, 'declarations', undefined, { acceptOlderBase: true })
+    const base = await forge.base()
+    await git(repo, 'checkout', '-q', '-b', 'elsewhere')
+    await writeFile(path.join(repo, 'README.md'), '# an unrelated change\n')
+    await git(repo, 'add', '-A')
+    await git(repo, 'commit', '-q', '-m', 'unrelated')
+    await land(repo, change, 'ours, on another parent')
+    await git(repo, 'update-ref', `refs/heads/${change.branch}`, 'HEAD')
+    await git(repo, 'checkout', '-q', 'main')
+    const before = await observable(repo)
+
+    const submitted = await forge.submit(change, base)
+
+    expect(submitted.outcome).toBe('refused')
+    if (submitted.outcome === 'refused') {
+      expect(submitted.reason).toContain(`not on main@${base.commit.slice(0, 7)}`)
+    }
+    expect(await observable(repo)).toBe(before)
+  })
+
+  it('with acceptOlderBase, still refuses a second commit, other bytes or another message on an older base', async () => {
+    const variants: Record<string, (repo: string, change: Cleared, old: string, commit: string) => Promise<string>> = {
+      'a second commit on top of ours': async (repo, change, _old, commit) =>
+        git(repo, 'commit-tree', `${commit}^{tree}`, '-p', commit, '-m', change.message),
+      'other bytes at our paths': async (repo, change, old) => {
+        await git(repo, 'checkout', '-q', '--detach', old)
+        for (const edit of change.edits) {
+          await mkdir(path.dirname(path.join(repo, edit.path)), { recursive: true })
+          await writeFile(path.join(repo, edit.path), `${edit.after}# and one more line\n`)
+        }
+        await git(repo, 'add', '-A')
+        await git(repo, 'commit', '-q', '-m', change.message)
+        const made = await git(repo, 'rev-parse', 'HEAD')
+        await git(repo, 'checkout', '-q', 'main')
+        return made
+      },
+      'our tree under another message': async (repo, _change, old, commit) =>
+        git(repo, 'commit-tree', `${commit}^{tree}`, '-p', old, '-m', 'somebody else wrote this'),
+    }
+    for (const [name, make] of Object.entries(variants)) {
+      const repo = await clone()
+      const change = await clearedFor(repo)
+      const { old, commit } = await aged(repo, change)
+      await git(repo, 'update-ref', `refs/heads/${change.branch}`, await make(repo, change, old, commit))
+      const forge = await openLocalForge(repo, 'declarations', undefined, { acceptOlderBase: true })
+      const before = await observable(repo)
+
+      expect(await forge.recognise(change, await forge.base()), name).toMatchObject({ outcome: 'refused' })
+      expect(await forge.submit(change, await forge.base()), name).toMatchObject({ outcome: 'refused' })
+      expect(await observable(repo), name).toBe(before)
+    }
+  })
+})
