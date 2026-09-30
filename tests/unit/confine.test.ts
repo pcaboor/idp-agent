@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, readdir, readFile, rename, symlink, writeFile } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
+import { lstat, mkdir, mkdtemp, readdir, readFile, rename, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -66,6 +67,31 @@ describe.skipIf(process.platform === 'win32')('confine', () => {
       const root = await realRootOf(await temp())
       await writeFile(path.join(root, 'a.yml'), 'kind: Resource\n')
       const handle = await openToRead(root, path.join(root, 'a.yml'))
+      try {
+        expect(await handle.readFile('utf8')).toBe('kind: Resource\n')
+      } finally {
+        await handle.close()
+      }
+    })
+
+    it('opens a pipe at once with nonBlocking, a descriptor its caller asks and refuses, and reads a file the same', async () => {
+      const root = await realRootOf(await temp())
+      execFileSync('mkfifo', [path.join(root, 'pipe')])
+      const opened = await Promise.race([
+        openToRead(root, path.join(root, 'pipe'), { nonBlocking: true }),
+        new Promise<'waiting'>((resolve) => setTimeout(() => resolve('waiting'), 1000)),
+      ])
+      if (opened === 'waiting') throw new Error('the open waited for a writer')
+      try {
+        const stats = await opened.stat()
+        expect(stats.isFIFO()).toBe(true)
+        expect(stats.isFile()).toBe(false)
+      } finally {
+        await opened.close()
+      }
+
+      await writeFile(path.join(root, 'a.yml'), 'kind: Resource\n')
+      const handle = await openToRead(root, path.join(root, 'a.yml'), { nonBlocking: true })
       try {
         expect(await handle.readFile('utf8')).toBe('kind: Resource\n')
       } finally {
@@ -186,6 +212,41 @@ describe.skipIf(process.platform === 'win32')('confine', () => {
         expect(await readdir(led, { recursive: true })).toEqual(['databases'])
       },
     )
+  })
+
+  describe('the modes it makes', () => {
+    /** Under a umask of 022, the one a person's shell usually has: the mode asked is the mode made. */
+    const underUmask = async <T>(run: () => Promise<T>): Promise<T> => {
+      const before = process.umask(0o022)
+      try {
+        return await run()
+      } finally {
+        process.umask(before)
+      }
+    }
+
+    it('makes folders 0700 and a new file 0600 when asked, under a umask of 022', async () => {
+      const root = await realRootOf(await temp())
+      await underUmask(async () => {
+        await makeFolders(root, 'a/b', { mode: 0o700 })
+        const handle = await openNew(root, 'a/b/f', { mode: 0o600 })
+        await handle?.close()
+      })
+      expect((await lstat(path.join(root, 'a'))).mode & 0o777).toBe(0o700)
+      expect((await lstat(path.join(root, 'a/b'))).mode & 0o777).toBe(0o700)
+      expect((await lstat(path.join(root, 'a/b/f'))).mode & 0o777).toBe(0o600)
+    })
+
+    it('keeps what makeFolders and openNew make with no option, as init platform relies on', async () => {
+      const root = await realRootOf(await temp())
+      await underUmask(async () => {
+        await makeFolders(root, 'a/b')
+        const handle = await openNew(root, 'a/b/f')
+        await handle?.close()
+      })
+      expect((await lstat(path.join(root, 'a'))).mode & 0o777).toBe(0o755)
+      expect((await lstat(path.join(root, 'a/b/f'))).mode & 0o777).toBe(0o644)
+    })
   })
 
   describe('createNew', () => {

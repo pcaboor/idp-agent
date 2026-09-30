@@ -93,6 +93,66 @@ export interface LoadResult {
    * read, and the file road never sets it: a folder is read to its end.
    */
   partial?: readonly PartialRead[]
+  /**
+   * What the catalogue cache did this run: set by `BackstageProvider` only,
+   * and only when it was given a cache. Absent is no cache asked for.
+   */
+  cache?: CacheReport
+}
+
+/**
+ * Why a kept catalogue read (`context/backstage/cache.ts`) was not used or not
+ * written. A path is relative to the cache root, `/`-separated, and names the
+ * name that was refused — never where a link leads. Declared here, beside
+ * `LoadResult`, so a report names no type of `context/backstage/`.
+ */
+export type CacheRefusal =
+  /** A link where a folder or a file of the store goes: never followed. */
+  | { readonly kind: 'link'; readonly path: string }
+  /** Owned by another account. */
+  | { readonly kind: 'foreign'; readonly path: string }
+  /** Open to another account: a group or other bit, or on `idp-agent/` a write bit. The mode, its permission bits. */
+  | { readonly kind: 'open'; readonly path: string; readonly mode: number }
+  | { readonly kind: 'not-a-folder' | 'not-a-file' | 'linked'; readonly path: string }
+  /** Replaced by another run under three opens in a row. */
+  | { readonly kind: 'busy'; readonly path: string }
+  /** A copy that did not verify, and the first check it failed. */
+  | { readonly kind: 'unverified'; readonly reason: UnverifiedReason }
+  /** The disk said no: the error's code, never its message. */
+  | { readonly kind: 'io'; readonly code: string }
+  /**
+   * A run as root keeps and reads nothing: `sudo` can keep the caller's home,
+   * and one run would leave a tree of company data there that every later run
+   * of theirs refuses as foreign and cannot remove.
+   */
+  | { readonly kind: 'root' }
+
+/** The check a kept copy failed, in the order they are made. */
+export type UnverifiedReason =
+  | 'size'
+  | 'header'
+  | 'format'
+  | 'origin'
+  | 'length'
+  | 'mac'
+  | 'envelope'
+  | 'account'
+  | 'items'
+
+/**
+ * What the catalogue cache did in one load: two facts, because one run can
+ * have both — what was read, and, when the catalogue was read, what was written.
+ */
+export interface CacheReport {
+  readonly read:
+    /** Answered from a copy; `ageMs` undefined when the copy is dated after this clock's now. */
+    | { readonly state: 'fresh' | 'kept'; readonly fetchedAt: number; readonly ageMs: number | undefined }
+    /** A copy past its time or dated ahead, none, or none asked for (a refresh). */
+    | { readonly state: 'stale' | 'absent' | 'skipped' }
+    /** The store could not be used, or its copy did not verify. */
+    | { readonly state: 'not-used'; readonly refusal: CacheRefusal }
+  /** Absent when the catalogue was not read: a copy answered. */
+  readonly written?: { readonly state: 'written' } | { readonly state: 'not-written'; readonly refusal: CacheRefusal }
 }
 
 /**

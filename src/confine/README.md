@@ -11,7 +11,7 @@ a name leads to is a fact about the disk, and this module is where the disk is a
 
 | file | what it is |
 |---|---|
-| `confine.ts` | `realRootOf`, the root every path is judged against; `followInside`, where a link leads — nowhere, outside, or a real path inside; `openToRead`, a descriptor that is never a link (`O_NOFOLLOW`) and still names the file inside the root once open; `makeFolders`, one name at a time, never through a link; `openNew` and `createNew`, `O_CREAT \| O_EXCL \| O_NOFOLLOW` with the same check once open; `LinkRefused`, the refusal naming the link, never its target; `isInside` |
+| `confine.ts` | `realRootOf`, the root every path is judged against; `followInside`, where a link leads — nowhere, outside, or a real path inside; `openToRead`, a descriptor that is never a link (`O_NOFOLLOW`) and still names the file inside the root once open; `makeFolders`, one name at a time, never through a link, with the mode a caller asks; `openNew` and `createNew`, `O_CREAT \| O_EXCL \| O_NOFOLLOW` with the same check once open, `openNew` with the mode a caller asks; `LinkRefused`, the refusal naming the link, never its target; `isInside` |
 
 ## Who calls it, and what each follows
 
@@ -25,6 +25,14 @@ a name leads to is a fact about the disk, and this module is where the disk is a
 - `scaffold/write.ts` writes through none: `makeFolders` and `createNew`. A link where a
   file goes is kept, as a file there is — `O_EXCL` neither follows it nor creates what it
   names.
+- `context/backstage/cache.ts` follows none below the person's cache root, and makes what it
+  makes closed to every other account: folders `makeFolders(…, { mode: 0o700 })`, a copy or
+  the secret `openNew(…, { mode: 0o600 })` under a temporary name it then renames into
+  place, and `openToRead(…, { nonBlocking: true })` to read one back, so a named pipe at
+  the name is opened at once and refused as not a file rather than waited on for a writer
+  that never comes. The `mode` and `nonBlocking` options are the cache's alone; with none,
+  `makeFolders`, `openNew` and `openToRead` do what they always did, which `init platform`,
+  `iac-fs` and `project-fs` rely on.
 
 The directory a user named is theirs, by whatever path they named it: a temporary directory
 on macOS is reached through `/var`, itself a link. Below it, nothing is taken on trust.
@@ -46,12 +54,13 @@ around the open are the whole guard.
 
 Nothing here imports anything of ours, nor any package: `node:` built-ins only, because
 `scaffold/` may import `core/` and this leaf and nothing else of ours, and anything this
-leaf imported would be reachable from all three of its importers.
+leaf imported would be reachable from all four of its importers.
 `tests/architecture/dependencies.test.ts` holds that (*confine/ imports nothing of ours, and
-only node: built-ins*), holds its importers to the three above (*only scaffold/write.ts,
-context/iac-fs and context/project-fs load confine/*) — `createNew` writes and `openToRead`
-reads with no fs function in the caller's source, so a fourth importer would be a writer
-and a reader no other rule sees — and names the two writing calls it makes, `mkdir` and
-`open` (*only the named modules write, and only one starts a process*). `core/` may not
+only node: built-ins*), holds its importers to the four above (*only scaffold/write.ts,
+context/iac-fs, context/project-fs and context/backstage/cache.ts load confine/*) —
+`createNew` writes and `openToRead` reads with no fs function in the caller's source, so a
+fifth importer would be a writer and a reader no other rule sees — and names the two
+writing calls it makes, `mkdir` and `open` (*only the named modules write, and only one
+starts a process*). `core/` may not
 import this folder, directly or through anything else. `tests/unit/confine.test.ts` stages
 what only the primitive can: a link planted between the check and the open.

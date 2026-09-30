@@ -45,3 +45,18 @@ export const BACKSTAGE_LIMITS = {
  * not `number` — and a test that lowers a bound to reach it needs another value.
  */
 export type BackstageLimits = { readonly [K in keyof typeof BACKSTAGE_LIMITS]: number }
+
+/**
+ * The bounds of a catalogue read kept on disk (`cache.ts`): how long a copy
+ * answers without asking the catalogue, how long a copy nobody writes again
+ * is kept, and the longest header a copy may have. Not a bound of the read,
+ * so no part of a copy's key.
+ */
+export const CATALOGUE_CACHE = {
+  /** A copy younger than this is read instead of the catalogue: of the order of the catalogue's own lag. */
+  ttlMs: 5 * 60_000,
+  /** A copy older than this is removed by the next run that writes one (the owner's answer to question 1). */
+  keepMs: 7 * 24 * 60 * 60_000,
+  /** The longest header line a copy may have. */
+  headerBytes: 4096,
+} as const

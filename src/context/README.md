@@ -249,6 +249,31 @@ ref, which is the file road's order wherever a location holds one entity, and a 
 demo SI served by the fake (`tools/fake-backstage.ts`) reads as its files do, and
 `pnpm demo:backstage` runs the built binary against that fake on a loopback port.
 
+`backstage/cache.ts` is the store a catalogue read is kept in (slice 2 of the note; plan
+Task 2.2), and the one module of `context/` that writes: company data at rest, and an input.
+Under the person's cache root — handed down by `cli/`, never read from the environment here —
+`idp-agent/backstage/` holds a per-machine `secret` and one folder per key, the first 32 hex
+characters of an HMAC under that secret of the catalogue's base, the token and the read shape
+of the effective limits (`readShapeOf`), so the token is never at rest, not even hashed. From
+`idp-agent/` down, every name is judged by one function, `acceptable`: a folder or a file of
+the running account, never a link, `idp-agent/` writable by no one else and everything in
+`backstage/` closed to group and other, a file linked once; a name that fails is never
+repaired, and the store is not used. Folders and files are made through `confine/`, `0o700`
+and `0o600`; a copy, `served.json`, is written under a temporary name by exclusive creation
+and renamed into place, sealed by a MAC over its format, its key, its header and every byte of
+its body, and a run that writes one prunes copies older than seven days. A read makes
+nothing — a `kept` read's store is read-only — and goes through `confine/`'s `openToRead`,
+non-blocking so a pipe at the name is refused rather than waited on — a copy renamed over
+between its open and its check is opened again, three opens in all, then `busy` — and then,
+on the descriptor, the size, the header,
+the age (a stale copy is skipped unverified), the length, the MAC, each line, the copy's
+account of its own reads (`accountHolds`: what a live load could have derived), and every
+item through the load's own check (`admitted`). Only then is it a `Served`, and
+`BackstageProvider`, given a `cache` (`fresh`, `refresh` or `kept`), runs the pre-pass and
+`readValue` on every item of it as on a page; `LoadResult.cache` reports what was read and
+what was written. Only the provider loads the store — a rule of
+`tests/architecture/dependencies.test.ts` — and no command gives it a cache yet.
+
 Nothing in `context/` names `fetch` or a
 global way out or imports a network module, only the transport calls the `catalogueFetch` it is handed, and nothing reachable
 from `agents/` is in `backstage/` — three rules of `tests/architecture/dependencies.test.ts`, which

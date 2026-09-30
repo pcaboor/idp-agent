@@ -11,7 +11,7 @@ import path from 'node:path'
  * an entity from wherever a linked `.yml` pointed. What a name leads to is a
  * fact about the disk, and only a module that asks the disk can know it.
  *
- * Three callers, three stances, one set of calls:
+ * Four callers, four stances, one set of calls:
  *
  *   - `context/project-fs` follows a link that stays inside the application
  *     repository — a monorepo links a shared config into a package — and
@@ -20,6 +20,10 @@ import path from 'node:path'
  *     and a reviewer reads the file a link names, not the file it leads to.
  *     `openToRead` refuses one by name.
  *   - `scaffold/write.ts` writes through none: `makeFolders` and `createNew`.
+ *   - `context/backstage/cache.ts` follows none below the person's cache
+ *     root, and makes what it makes closed to everyone else: `makeFolders`
+ *     with `0o700`, `openNew` with `0o600`, `openToRead` with `nonBlocking`
+ *     for a copy or the secret.
  *
  * Every path is judged against a root that is already real (`realRootOf`):
  * the directory the user named is theirs, by whatever path they named it —
@@ -45,6 +49,9 @@ import path from 'node:path'
 
 /** Absent on Windows, where the checks around the open are the whole guard. */
 const NO_FOLLOW = constants.O_NOFOLLOW ?? 0
+
+/** Absent on Windows, which has no pipe a name can hold. */
+const NON_BLOCK = constants.O_NONBLOCK ?? 0
 
 /**
  * A symbolic link met where a path was to be read or written — the link
@@ -172,11 +179,19 @@ async function holdsInside(realRoot: string, absolute: string, handle: FileHandl
  * the descriptor, which names an inode rather than a path.
  *
  * Whether it is a regular file is the caller's to ask of the descriptor.
+ * An open of a named pipe waits for a writer, forever if none comes, before
+ * there is a descriptor to ask: `nonBlocking` opens it at once, so the caller
+ * refuses it as not a file. A regular file reads the same either way.
  */
-export async function openToRead(realRoot: string, absolute: string): Promise<FileHandle> {
+export async function openToRead(
+  realRoot: string,
+  absolute: string,
+  /** `O_NONBLOCK` on the open: the cache's, whose files are never a pipe and never waited on. */
+  options: { readonly nonBlocking?: boolean } = {},
+): Promise<FileHandle> {
   let handle: FileHandle
   try {
-    handle = await open(absolute, constants.O_RDONLY | NO_FOLLOW)
+    handle = await open(absolute, constants.O_RDONLY | NO_FOLLOW | (options.nonBlocking === true ? NON_BLOCK : 0))
   } catch (error) {
     // ELOOP on Linux and macOS; EMLINK is what FreeBSD answers.
     if (code(error) === 'ELOOP' || code(error) === 'EMLINK') {
@@ -209,7 +224,12 @@ export async function openToRead(realRoot: string, absolute: string): Promise<Fi
  * the new name alone saw a folder, through the link. Now the one folder made
  * in that instant is all that lands there, and the refusal names the link.
  */
-export async function makeFolders(realRoot: string, relative: string): Promise<void> {
+export async function makeFolders(
+  realRoot: string,
+  relative: string,
+  /** The mode each folder is made with, which a umask can only narrow; `mkdir`'s default otherwise. */
+  options: { readonly mode?: number } = {},
+): Promise<void> {
   const names = namesOf(relative)
   for (let depth = 1; depth <= names.length; depth += 1) {
     const current = path.join(realRoot, ...names.slice(0, depth))
@@ -221,7 +241,7 @@ export async function makeFolders(realRoot: string, relative: string): Promise<v
       // Not recursive, so the one folder is made where it is named. A link
       // planted there since the lstat makes this EEXIST, and the walk below
       // refuses it.
-      await mkdir(current).catch((error: unknown) => {
+      await mkdir(current, options.mode).catch((error: unknown) => {
         if (code(error) !== 'EEXIST') throw error
       })
     }
@@ -242,7 +262,12 @@ export async function makeFolders(realRoot: string, relative: string): Promise<v
  * not a regular file. `O_NOFOLLOW` beside it says the same where a platform
  * would answer ELOOP instead.
  */
-export async function openNew(realRoot: string, relative: string): Promise<FileHandle | undefined> {
+export async function openNew(
+  realRoot: string,
+  relative: string,
+  /** The mode the file is created with, which a umask can only narrow; `0o666` otherwise. */
+  options: { readonly mode?: number } = {},
+): Promise<FileHandle | undefined> {
   const absolute = path.join(realRoot, ...namesOf(relative))
   const name = posix(realRoot, absolute)
   let handle: FileHandle
@@ -250,7 +275,7 @@ export async function openNew(realRoot: string, relative: string): Promise<FileH
     handle = await open(
       absolute,
       constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NO_FOLLOW,
-      0o666,
+      options.mode ?? 0o666,
     )
   } catch (error) {
     if (code(error) === 'EEXIST') return undefined
