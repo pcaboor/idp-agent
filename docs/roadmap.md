@@ -24,7 +24,7 @@ each:
 | 3 | `init platform` and `validate` | done |
 | 4 | Preview only: nothing is written | done |
 | 5 | Write + local branch | done ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)): task 1, `Cleared` for the declarations repository ([#105](https://github.com/pcaboor/idp-agent/pull/105)); task 2, `Cleared` for the service repository ([#106](https://github.com/pcaboor/idp-agent/pull/106)); task 3, the shared git launcher and the `forge/` types ([#107](https://github.com/pcaboor/idp-agent/pull/107)); task 4, the local forge — create-only, idempotent, atomic ([#108](https://github.com/pcaboor/idp-agent/pull/108)); task 5, `plan --from … --submit` ([#109](https://github.com/pcaboor/idp-agent/pull/109)); task 6, `plan "<intent>" --submit`, refused before a model is paid ([#110](https://github.com/pcaboor/idp-agent/pull/110)); task 7, `init --submit` and `.idp-agent.yml`, and a branch already there answered before the confirmation ([#111](https://github.com/pcaboor/idp-agent/pull/111)) |
-| 6 | GitHub pull request | in progress ([the plan](plans/stage-6-github.md)): 6.1.1, the allow-list ([#123](https://github.com/pcaboor/idp-agent/pull/123)) |
+| 6 | GitHub pull request | in progress ([the plan](plans/stage-6-github.md)): 6.1.1, the allow-list ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2, the remote and who gh is ([#124](https://github.com/pcaboor/idp-agent/pull/124)) |
 | 7 | Polish: Ink TUI, asciinema, npm publish | not started |
 | 8 | Discovery | designed ([the design note](stage-8-brief.md), [#76](https://github.com/pcaboor/idp-agent/pull/76)); not started |
 
@@ -66,8 +66,10 @@ here, one pull request each, each naming the check run together at the end.
    [#121](https://github.com/pcaboor/idp-agent/pull/121)): eleven pull requests, 6.1.1 to
    6.4.3, the last the owner's re-recording of the tapes. 6.1.1, the allow-list — two
    launchers, a grammar each, and a floor under every child process the suite starts — is on
-   `main` ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2, the remote and
-   who gh is, is next.
+   `main` ([#123](https://github.com/pcaboor/idp-agent/pull/123)); so is 6.1.2, the remote
+   the checked-out branch tracks, the clone's own configuration refused by key and scope, and
+   who gh is ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3, the preflight
+   and `idpa protection`, is next.
 2. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence.

@@ -229,6 +229,18 @@ Each pull request adds its line here.
   Node's `NODE_USE_ENV_PROXY`, so no Node `fetch`, a recording's included, is sent there,
   moves `HOME` into its run directory and puts a `gh` and an `ssh` that fail first on its
   `PATH` ([#123](https://github.com/pcaboor/idp-agent/pull/123)).
+- The road a submission will take is read from the branch the clone tracks, before anything
+  is read on GitHub: its remote's fetch and push URLs, as the person's own git prints them,
+  parsed as one of GitHub's five URL forms or another host; a URL carrying a credential, a
+  fork set-up, or a key in the clone's own configuration that could redirect the push or run
+  a program during it is refused, naming the key and its scope and never its value — a remote
+  section named after the push URL among them, which git would push to instead — and the push
+  is pinned off the transport that reaches this machine; and gh's presence, version and
+  identity are read, a bot or a logged-out gh refused. The engine's copy
+  of each launcher grammar is held to the launcher's by a property test, which found the push
+  grammar refusing a repository name of 97 to 100 characters written with `.git`, now read;
+  and only the forge's GitHub half may load the gh launcher (thirty architecture rules now).
+  No command takes this road yet ([#124](https://github.com/pcaboor/idp-agent/pull/124)).
 
 ### Changed
 

@@ -488,7 +488,7 @@ the model's to write (§ 5.3).
 
 ### 5.5 Dependency rules, enforced in CI
 
-Two rules were written here first; **twenty-nine** are enforced today, in
+Two rules were written here first; **thirty** are enforced today, in
 `tests/architecture/dependencies.test.ts`. The two founding ones:
 
 1. `core/` never imports `agents/` or `llm/`.
@@ -504,7 +504,7 @@ agent imports it, so a runtime import there would put `ai` inside the agent clos
 the filesystem implementation of the recording store lives in `cli/`, not in `llm/`, for
 the same reason.
 
-The other twenty-seven extend the same idea to the layers added since: `core/` reaches neither
+The other twenty-eight extend the same idea to the layers added since: `core/` reaches neither
 the network, nor the model SDK, nor `context/`, `cli/`, `scaffold/`, `forge/` or `process/`,
 and nothing reachable from it touches the disk — that rule walks the closure too, since a
 `core/` module importing one that started a process passed it while it read direct imports
@@ -517,7 +517,7 @@ disk; across `src/`, only named modules write, and only `process/git.ts` and
 `process/gh.ts` start a process, each from a grammar of the command shapes it may run,
 checked on the finished vector before the process starts — git for the Inspector, the forge
 and the one push form, gh for GitHub's answers — and only `context/project-fs` and `forge/`
-load the git launcher; no source names a door those grammars refuse, or reads a GitHub
+load the git launcher, and only `forge/github/` the gh launcher; no source names a door those grammars refuse, or reads a GitHub
 credential from the environment, and in `tests/` only `tests/live/` and
 `tests/support/fake-gh.ts` name a door; `process/` imports nothing of ours; `forge/` imports `core/`, `process/` and two
 `node:` built-ins that neither read, write nor open a socket, and only `cli/` reaches it at

@@ -85,13 +85,17 @@ export const HARDENING: readonly string[] = [
 
 /**
  * What the push pins beyond `HARDENING` (brief § 4), each outranking every
- * configuration file: no transport that runs a command line, no redirect
- * carrying the push to a renamed repository's new home, no tags, no
- * submodules, no signature (`push.gpgSign` would run `gpg.program`).
+ * configuration file: no transport that runs a command line, none that
+ * reaches this machine (a push to GitHub never needs it, and git starts a
+ * local `git-receive-pack` without these pins, so the target's hooks would
+ * run), no redirect carrying the push to a renamed repository's new home, no
+ * tags, no submodules, no signature (`push.gpgSign` would run `gpg.program`).
  */
 export const PUSH_PINS: readonly string[] = [
   '-c',
   'protocol.ext.allow=never',
+  '-c',
+  'protocol.file.allow=never',
   '-c',
   'http.followRedirects=false',
   '-c',
@@ -125,11 +129,14 @@ export const PUSH_VARIABLES: readonly string[] = ['GIT_SSH_COMMAND', 'GIT_SSH', 
  * and the `org-<id>@` form of an organisation's SSH certificate authority. An
  * owner of letters, digits and hyphens up to 39, not starting with a hyphen; a
  * repository of letters, digits, `.`, `_` and `-` up to 100, never `.` or
- * `..`. No userinfo but the SSH forms' own user, no port but 443 on
- * `ssh.github.com`, nothing after the repository.
+ * `..`, and `.git` after it or not. No userinfo but the SSH forms' own user,
+ * no port but 443 on `ssh.github.com`, nothing after the repository. The
+ * engine's copy is `core/github/remote.ts`'s `parseRemoteUrl`, held to the
+ * same verdict by `tests/unit/grammar-agreement.test.ts`, which found that a
+ * name of 97 to 100 characters written with `.git` was refused here.
  */
 export const GITHUB_PUSH_URL =
-  /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/|ssh:\/\/git@ssh\.github\.com:443\/|org-[0-9]{1,20}@github\.com:)[A-Za-z0-9][A-Za-z0-9-]{0,38}\/(?!\.\.?(?:\.git)?$)[A-Za-z0-9._-]{1,100}$/
+  /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/|ssh:\/\/git@ssh\.github\.com:443\/|org-[0-9]{1,20}@github\.com:)[A-Za-z0-9][A-Za-z0-9-]{0,38}\/(?!\.\.?(?:\.git)?$)(?:(?![A-Za-z0-9._-]*\.git$)[A-Za-z0-9._-]{1,100}|[A-Za-z0-9._-]{1,100}\.git)$/
 
 /** Where git is started from: the directory of the running Node binary, never a repository. */
 const NEUTRAL_DIRECTORY = path.dirname(process.execPath)

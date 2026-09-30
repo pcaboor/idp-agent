@@ -90,6 +90,8 @@ const PINS = [
   '-c',
   'protocol.ext.allow=never',
   '-c',
+  'protocol.file.allow=never',
+  '-c',
   'http.followRedirects=false',
   '-c',
   'push.followTags=false',

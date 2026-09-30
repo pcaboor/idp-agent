@@ -643,6 +643,20 @@ async function loaderOffences(
  */
 const launcherOffences = (root: string): Promise<string[]> => loaderOffences(root, LAUNCHER, RUNS_GIT)
 
+/** The gh launcher, and the one folder that may load it: the forge's GitHub half. */
+const RUNS_GH = (name: string): boolean => name.startsWith('forge/github/')
+
+/**
+ * What the gh launcher's rule refuses under `root`: a module outside
+ * forge/github/ that loads `process/gh.ts`, a run-time load no source can
+ * spell, and one of forge/github/ handing the launcher on with an
+ * `export … from`. `ghIn` runs gh with the person's own login, so a module of
+ * cli/ or context/ loading it would be a way to GitHub no road, no identity
+ * check and no budget stands in front of. A type is erased and may be named
+ * anywhere: cli/ names `GhProcess` to hand the fake in.
+ */
+const ghLauncherOffences = (root: string): Promise<string[]> => loaderOffences(root, GH_LAUNCHER, RUNS_GH)
+
 /** The confinement primitive, and the modules that may load it. */
 const CONFINE = 'confine/confine.ts'
 const CONFINES = new Set([
@@ -1075,6 +1089,14 @@ describe('architecture', () => {
     expect(await launcherOffences(SOURCE_ROOT)).toEqual([])
   })
 
+  it('only forge/github/ loads the gh launcher', async () => {
+    // `ghIn` runs gh with the person's own login. cli/ names `GhProcess` with
+    // `import type`, which is erased; `githubClient` is the one caller of
+    // `ghIn`, and its default process is `spawnGh`, so no other module needs
+    // the launcher at run time.
+    expect(await ghLauncherOffences(SOURCE_ROOT)).toEqual([])
+  })
+
   it('only cli/ reaches forge/ at runtime', async () => {
     // `import type` names the interface without being able to call it — the
     // shape `llm/client.ts` has for agents/. Anything else, from anywhere but
@@ -1493,6 +1515,36 @@ describe('the architecture rules themselves', () => {
         'cli/named.ts loads name at run time: no rule can tell what it names',
         'process/index.ts → ./git.js',
         'forge/local/passed.ts hands on ../../process/git.js',
+      ].sort(),
+    )
+  })
+
+  it('refuses every module but forge/github/ that loads the gh launcher', async () => {
+    const root = await tree({
+      // A command, the local forge and a catalogue module reaching gh around
+      // the road, the identity check and the budget.
+      'cli/commands/probe.ts': "import { ghIn } from '../../process/gh.js'\n",
+      'forge/local/probe.ts': "import { spawnGh } from '../../process/gh.js'\n",
+      'context/backstage/probe.ts': "import { ghIn } from '../../process/gh.js'\n",
+      'cli/late.ts': "const { ghIn } = await import('../process/gh.js')\n",
+      'cli/named.ts': 'const m = await import(name)\n',
+      // A second door inside process/, or forge/github/ handing it on.
+      'process/index.ts': "export { ghIn } from './gh.js'\n",
+      'forge/github/passed.ts': "export { ghIn } from '../../process/gh.js'\n",
+      // A type is erased, and these may.
+      'cli/typed.ts': "import type { GhProcess } from '../process/gh.js'\n",
+      'forge/github/api.ts': "import { ghIn } from '../../process/gh.js'\n",
+      'process/gh.ts': "import { spawnedEnvironment } from './environment.js'\n",
+    })
+    expect((await ghLauncherOffences(root)).sort()).toEqual(
+      [
+        'cli/commands/probe.ts → ../../process/gh.js',
+        'forge/local/probe.ts → ../../process/gh.js',
+        'context/backstage/probe.ts → ../../process/gh.js',
+        "cli/late.ts → '../process/gh.js' at run time",
+        'cli/named.ts loads name at run time: no rule can tell what it names',
+        'process/index.ts → ./gh.js',
+        'forge/github/passed.ts hands on ../../process/gh.js',
       ].sort(),
     )
   })
