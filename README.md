@@ -3,10 +3,11 @@
 <p align="center">
   <strong>An AI agent for platform teams whose infrastructure is declared as Backstage
   catalogue entities — the <code>catalog-info</code> YAML in a Git repository.</strong><br>
-  Ask it a question in plain words and the engine answers from those declarations; ask it
-  for a change and it returns a checked plan, rendered as a unified diff of the YAML it
-  would add. Nothing is written yet: the branch and the pull request, whose merge is the
-  approval, are stages 5 and 6.
+  Ask it a question in plain words and the engine answers from those declarations, or from
+  a running Backstage's catalogue; ask it for a change and it returns a checked plan,
+  rendered as a unified diff of the YAML it would add. With <code>--submit</code> the diff
+  becomes a local git branch for review. Nothing is pushed yet: the pull request, whose
+  merge is the approval, is stage 6.
 </p>
 
 <p align="center">
@@ -21,10 +22,12 @@
 
 ## Try it in 60 seconds, without a key
 
+Node 22 or later and pnpm 10. `pnpm demo` runs the steps below, end to end.
+
 ```bash
 git clone https://github.com/pcaboor/idp-agent && cd idp-agent
-pnpm install && pnpm build     # Node 22 or later, pnpm 10
-pnpm demo                      # the steps below, end to end
+pnpm install && pnpm build
+pnpm demo
 ```
 
 Each command reads a fictional company, the demo SI in `fixtures/si-demo/` (33
@@ -103,6 +106,35 @@ $ node dist/cli/bin.js plan --from examples/needs-an-owner.json --repo fixtures/
 Fill them in and run this again. Nothing was previewed, and nothing was written.
 ```
 
+One step `pnpm demo` leaves out, because it writes: submitting the first plan for review.
+`--submit` needs a git clone with a committer identity, so make one from a copy of the demo
+SI:
+
+```bash
+cp -R fixtures/si-demo /tmp/demo-iac
+git -C /tmp/demo-iac init -q -b main
+git -C /tmp/demo-iac add -A
+git -C /tmp/demo-iac commit -qm demo
+node dist/cli/bin.js plan --from examples/open-network.json --repo /tmp/demo-iac --submit
+```
+
+At a terminal it shows the diff above, then asks before it writes:
+
+```console
+1 file · not yet submitted — it would become idp-agent/orders-api-to-payments-e9e6183f
+Nothing is provisioned yet. The merge is what authorises it.
+Submit this for review as idp-agent/orders-api-to-payments-e9e6183f in /tmp/demo-iac? Nothing is provisioned until someone else merges it. [y/N] y
+1 file · submitted as idp-agent/orders-api-to-payments-e9e6183f on top of main@<commit> · main untouched
+Nothing is pushed. No merge request is opened: this build has no forge (stage 6).
+Nothing is provisioned yet. The merge is what authorises it.
+```
+
+One new branch, and nothing else: `main`, the index and the working tree are as they were.
+The branch is named after the bytes it holds, so running the same command again says
+`already submitted as idp-agent/orders-api-to-payments-e9e6183f · nothing written`, without
+asking. With no committer identity it writes nothing, says to set `user.name` and
+`user.email`, and exits 2.
+
 ## With your own key
 
 `idpa "<phrase>"` takes a question or a change, and the model decides which. It needs one
@@ -110,15 +142,20 @@ provider, which you choose; none is the default.
 
 | `IDP_PROVIDER` | key variable | recorded with (`tests/recordings/`) |
 |---|---|---|
-| `openai` | `OPENAI_API_KEY` | `gpt-6-luna` — the plan tapes |
-| `mistral` | `MISTRAL_API_KEY` | `mistral-small-2603` — the question tapes |
+| `openai` | `OPENAI_API_KEY` | `gpt-6-luna` — the plan tapes, and the Backstage and organisation questions |
+| `mistral` | `MISTRAL_API_KEY` | `mistral-small-2603` — the first question tapes and a classification |
 | `anthropic` | `ANTHROPIC_API_KEY` | no tape yet; what it is sent is checked by `tests/contract/providers.test.ts` |
 
+From the clone, `pnpm link --global` puts `idpa` on your PATH (pnpm may ask for
+`pnpm setup` first; then open a new terminal). `IDP_PROVIDER` is `openai`, `mistral` or
+`anthropic`; set `IDP_MODEL` to one of that provider's model ids, and the key in its
+variable:
+
 ```bash
-pnpm link --global              # from the clone: idpa on your PATH (pnpm may ask for `pnpm setup` first; then open a new terminal)
-export IDP_PROVIDER=openai      # or mistral, anthropic
-export IDP_MODEL=<model id>
-export OPENAI_API_KEY=<your key>
+pnpm link --global
+export IDP_PROVIDER=openai
+export IDP_MODEL=gpt-6-luna
+export OPENAI_API_KEY=sk-...
 
 idpa "which databases are in prod?" --demo
 
@@ -131,8 +168,13 @@ change is decided against the declarations repository you stand in — a copy of
 SI here, because a change is never previewed against the demo itself. What nobody can
 vouch for is asked at a prompt — the level of a grant always, and the environment unless the
 phrase names what the access is over by its reference in full — and the diff follows.
-Neither writes anything. The CLI reads its environment and never loads a `.env` file:
-[`.env.example`](.env.example) lists every variable it reads, for
+Neither writes anything. To submit a change for review, make the copy a git clone
+(`git init`, `git add -A`, `git commit`) and run `idpa plan "<change>" --submit`: after the
+five gates and a `[y/N]`, it cuts one local branch, `idp-agent/…`, from `HEAD`, and moves
+nothing else. Nothing is pushed and no pull request is opened (stage 6); a directory that
+cannot take the branch is refused before any model is paid ([details](#commands)).
+`idpa "<phrase>"` itself never submits. The CLI reads its environment and never loads a
+`.env` file: [`.env.example`](.env.example) lists every variable it reads, for
 `node --env-file=.env dist/cli/bin.js "<question>" --demo` from the clone. For a change,
 stand in the declarations repository and name the clone by path —
 `cd ~/demo-iac && node --env-file=<clone>/.env <clone>/dist/cli/bin.js "<change>"` — or
@@ -154,8 +196,11 @@ idp-agent sits between the two:
 
 - 🗣️ **Natural language in, YAML out.** "Give billing-api read access to orders-db" becomes
   the exact entities to add, in your repository's own layout.
-- 🔒 **The merge is the approval.** The agent proposes and a human reviews. Nothing is
-  provisioned until a pull request is merged.
+- 🔒 **The merge is the approval.** The agent proposes, as a diff or with `--submit` a
+  local branch, and a human reviews. Nothing is provisioned until someone else merges it.
+- 🕸️ **Every relation, without a key.** What breaks if a server fails, who reaches a
+  database and with which right, what a team owns: read from your files or from a running
+  Backstage.
 - 🧭 **Asks, never guesses.** Every owner must trace back to your request or to what your
   repository already holds, and every environment to a declaration you point at or to your
   answer; an access level is always yours to answer. Anything else becomes a question.
@@ -221,9 +266,9 @@ printed. The organisation has six of its own, over the Groups, Users, Systems an
 repository's files or a catalogue declare: `--owns` (what a team or a person owns, down its
 child teams), `--owned-by` (the owner, and the groups above), `--member-of`,
 `--has-member`, `--part-of` (a service's System, then its Domain) and `--has-part`.
-`--depth <n>` follows more hops (`--consumes` stops at what each right is over), and every
-bound the walk reaches is said under the table, never left for you to assume the list
-complete.
+`--depth <n>` follows more hops (by default `--consumes` stops at what each right is over),
+and every bound the walk reaches is said under the table, never left for you to assume the
+list complete.
 
 The same answer is one question away. Asked in words, the model only **chooses** the
 entity and the relation, from references a tool returned; the engine computes the paths
@@ -244,25 +289,48 @@ consumed by (2)
 › Only billing-api may write to it.
 ```
 
+The demo SI declares no organisation. The fake Backstage serves one beside it, five Groups
+and two Users and no System ([below](#read-a-backstage-catalogue)): start it in another
+terminal with `node tools/fake-backstage.ts` (Node 22.18 or later). `relations`, `show`,
+`graph` and a question read a running catalogue the same way (`--backstage`, or
+`IDP_BACKSTAGE_URL`):
+
+```console
+$ env -u IDP_BACKSTAGE_TOKEN IDP_BACKSTAGE_URL=http://127.0.0.1:7007/api/catalog node dist/cli/bin.js relations billing-api --owned-by
+reading the Backstage catalogue at 127.0.0.1:7007 (IDP_BACKSTAGE_URL): 40 entities: 40 read, 0 not modelled; it may lag the declarations repository by minutes; --repo <directory> reads a repository
+component:default/billing-api
+
+owned by (2)
+  NODE                       TYPE        ENV  DEPTH  PATH
+  group:default/tiger        team        -    1      billing-api → tiger
+  group:default/engineering  department  -    2      billing-api → tiger → engineering
+```
+
 ## How it works
 
 ```mermaid
 flowchart LR
-    I["Intent<br/><i>plain English</i>"] --> INS["Inspector<br/>reads the repository"]
+    I["Intent<br/><i>any language</i>"] --> INS["Inspector<br/>reads the service's repository"]
     INS --> A["Architect<br/>drafts a typed Plan"]
     A --> G["Five gates<br/>shape · provenance · policy<br/>re-check · blind Reviewer"]
     G -- pass --> D["Unified diff"]
-    D --> PR["Pull request<br/><i>stage 6</i>"]
+    D -->|"with --submit"| B["Local branch<br/>idp-agent/…"]
+    B --> PR["Pull request<br/><i>stage 6</i>"]
     G -. refused, up to 3 attempts .-> A
-    G -. value nobody vouches for .-> Q["Question to you<br/>exit 3"]
+    G -. value nobody vouches for .-> Q["Question to you<br/>a prompt, or exit 3"]
 ```
 
-1. The **Inspector** reads the repository you're standing in, or the one `--project` names.
+1. The **Inspector** reads the service's repository: the one `--project` names, or the
+   directory you stand in when it is one. Anywhere else it is skipped, and the plan is
+   drafted from the catalogue alone.
 2. The **Architect** proposes a `Plan` into a typed buffer, never free text.
 3. **Five gates** judge it: schema shape, provenance (can each value be traced to a
    source?), policy, a re-check against the repository as it is now, and an independent
    Reviewer that never sees the Architect's reasoning.
 4. After three failed attempts it stops cleanly.
+5. With `--submit`, the engine, not the model, commits the diff to one new local branch,
+   `idp-agent/…`, cut from `HEAD`. Nothing is pushed, and the merge is what authorises it;
+   opening the pull request is stage 6.
 
 The model decides *what to ask*. The deterministic engine answers, validates and renders.
 A reference the tools never returned is refused, not printed.
@@ -295,11 +363,12 @@ orders-db-prod      Resource  database  prod  group:default/tiger
 ```bash
 git clone https://github.com/pcaboor/idp-agent && cd idp-agent
 pnpm install && pnpm build
-pnpm link --global          # exposes `idp-agent` and the short alias `idpa`
+pnpm link --global
 ```
 
-`pnpm link --global` needs a global bin directory on your PATH; pnpm says so and names
-`pnpm setup`, which makes one, when there is none.
+`pnpm link --global` exposes `idp-agent` and its short alias `idpa`. It needs a global bin
+directory on your PATH; pnpm says so and names `pnpm setup`, which makes one, when there is
+none.
 
 <!-- TODO: once published
 ```bash
@@ -332,7 +401,7 @@ provider reported for them.
 ## Commands
 
 ```bash
-idpa "<phrase>" [--repo <dir> | --demo] [--project <dir>] [--json] [--quiet]
+idpa "<phrase>" [--repo <dir> | --demo | --backstage] [--project <dir>] [--json] [--quiet]
 ```
 
 The daily gesture, typed from anywhere. The Supervisor reads the phrase and decides: a
@@ -346,14 +415,15 @@ for the typo it is and never sent to a model, and options go after a command
 (`idpa show billing-api --repo IaC`), never before it. `--project` and `--json` apply to a
 change only; a question with `--json` is answered as text, and stderr says so. `--quiet`
 applies to a question only: the verified answer, without the model's sentences around it.
-`ask` and `plan` below force a road: `plan` previews without classifying, and `ask`
+`idpa "<phrase>"` never submits: `--submit` belongs to `plan`, and is refused here with
+exit 2. `ask` and `plan` below force a road: `plan` previews without classifying, and `ask`
 classifies and only answers, declining a change.
 
-```bash
-idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource|API] [--repo <dir> | --demo]
-idp-agent show <name-or-reference> [--repo <dir> | --demo]
-idp-agent relations <name-or-reference> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-reference>] [--depth <n>] [--repo <dir> | --demo]
-idp-agent ask "<question>" [--repo <dir> | --demo] [--quiet]  # needs IDP_PROVIDER, IDP_MODEL and its key
+```text
+idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource|API] [--repo <dir> | --demo | --backstage]
+idp-agent show <name-or-reference> [--repo <dir> | --demo | --backstage]
+idp-agent relations <name-or-reference> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-reference>] [--depth <n>] [--repo <dir> | --demo | --backstage]
+idp-agent ask "<question>" [--repo <dir> | --demo | --backstage] [--quiet]  # needs IDP_PROVIDER, IDP_MODEL and its key
 idp-agent validate <directory>                     # what the generated CI runs
 idp-agent init platform <dir> --owner @org/team    # writes the directory it is handed
 idp-agent plan --from <plan.json> [--repo <dir>]   # no model, and none is possible
@@ -361,8 +431,9 @@ idp-agent plan --from <plan.json> [--repo <dir>]   # no model, and none is possi
 idp-agent plan "<intent>" [--repo <dir>] [--json]  # needs IDP_PROVIDER, IDP_MODEL and its key
     [--project <dir>]                              # the service's repository, if not where you stand
     [--submit]                                     # a local branch, after all five gates
-idp-agent init [--repo <dir>]                      # the catalog-info.yaml it would write
-    [--name <name>] [--lifecycle <lifecycle>]      # what its files do not state; asked at a terminal
+idp-agent init [--repo <dir>]                      # needs IDP_PROVIDER, IDP_MODEL and its key
+    [--name <name>]                                # what its files do not state; asked at a terminal
+    [--lifecycle experimental|production|deprecated]
     [--owner group:<namespace>/<name>]
     [--iac-repo <locator>] [--environment <name>]… # its .idp-agent.yml, from what you type
     [--submit]                                     # both on a local branch of the service's repository
@@ -376,30 +447,42 @@ service's repository — `idpa init > catalog-info.diff`, then `git apply catalo
 Piping `idpa init` straight into `git apply` runs the models again, and applies bytes nobody
 read. `--iac-repo` and `--environment` add the service's `.idp-agent.yml` to that diff, from
 what you typed, or answered when one of them is missing — never from what the inspection
-read, and never over a committed one that says otherwise. With `--submit`, both go on one
+read, and never over a committed one that says otherwise. `.idp-agent.yml` is the
+service's committed configuration: `iacRepo`, the declarations repository its declarations
+live in (for example `github.com/acme/iac`, never with a user, a query or a fragment, where
+a credential would sit), and the `environments` it runs in. With `--submit`, both go on one
 branch `idp-agent/init-<name>-<8 hex>` cut from `HEAD` in the service's own repository, as
-`plan --submit` cuts one; a service in a subfolder of its repository is not submitted yet.
+`plan --submit` cuts one; a service in a subfolder of its repository is not submitted yet. A
+service repository that cannot take the branch (not a clone's root, no committer identity)
+is refused with exit 2 before the model is even configured.
 
 | Command | What it does |
 |---|---|
-| `relations` | Trace one entity's relations, several hops deep, each with its path, the rights on it and their levels: `--consumes`, `--consumed-by`, `--depends-on`, `--impacts`, `--provides`, `--provided-by`, or `--to <entity>` for every path between two; and the organisation's: `--owns`, `--owned-by`, `--member-of`, `--has-member`, `--part-of`, `--has-part`. No model. |
+| `relations` | Trace one entity's relations, several hops deep, each with its path, the rights on it and their levels: `--consumes`, `--consumed-by`, `--depends-on`, `--impacts`, `--provides`, `--provided-by`, or `--to <entity>` for every path between two; and the organisation's: `--owns`, `--owned-by`, `--member-of`, `--has-member`, `--part-of`, `--has-part`, which need a source that holds Groups, such as a Backstage catalogue; the demo SI holds none. No model. |
 | `graph`, `show` | Walk the dependency graph: who depends on what, which services reach a database. `show` also says what an entity is — its description, system, tags and links, when its file declares them. A Backstage `kind: API` is read too — `graph --kind API`, and on `show` who provides it (`spec.providesApis`) and the rights that reach it — though no plan ever declares one. No model. |
 | `idpa "<phrase>"` | A question is answered, a change is previewed; the classification is said on stderr (`· question`, `· mutation`). Needs a model. |
 | `ask` | Answers a question about your platform. The model picks the queries; the engine answers them, and prints the model's short introduction and conclusion around the answer, checked and marked `›`. Asked about the catalogue as a whole — *talk about this project* — it prints an overview the engine writes: counts by kind, type, environment, owner, system and tag, a few entities in their own descriptions, rights and their levels, the most-reached resources, dangling references, and what it could not read. |
 | `init platform` | Scaffolds the declarations repository, its CI, its Backstage registration and a branch-protection checklist. |
+| `init` | Drafts the `catalog-info.yaml` of the service you stand in, or adds to the one it keeps, and its `.idp-agent.yml` from `--iac-repo` and `--environment`. It previews a diff; with `--submit` it cuts a local branch in the service's repository. Needs a model. |
 | `validate` | Checks a repository against the schemas. This is what the scaffolded CI runs. |
 | `plan` | Turns an intent, or a `Plan` file, into a checked and previewed diff. With `--submit`, either form makes it a local branch `idp-agent/…`, for review. |
 
-`plan --from … --submit` writes one new branch, `idp-agent/<name>-<8 hex>`, cut from `HEAD`
-in the declarations repository — which must be the root of a git clone, with a committer
-identity configured — and nothing else: not the branch you are on, not the index, not the
-working tree. At a terminal it shows the diff and asks `[y/N]`; a script or `--json` has
-`--submit` as its answer. Submitting the same plan again names the branch it already cut
-before asking to confirm — any question that decides the bytes, such as a level, is still
-asked.
+`plan --from … --submit` writes one new branch, `idp-agent/<file>-<8 hex>`, cut from `HEAD`
+in the declarations repository, and nothing else: not the branch you are on, not the index,
+not the working tree. The repository must be the root of a git clone, with a committer
+identity configured. The name is the first file the plan changes, in path order, and a hash
+of the bytes, so the same plan always names the same branch. At a terminal it shows the
+diff and asks `[y/N]`; a script or `--json` has `--submit` as its answer. Submitting the
+same plan again names the branch it already cut before asking to confirm — any question
+that decides the bytes, such as a level, is still asked.
 Nothing is pushed and no merge request is opened (stage 6): the plan crossed four gates and
 no Reviewer, and the merge is what authorises it. A catalogue file that differs from `HEAD`
-— uncommitted, untracked or ignored — refuses the submission, naming the files.
+— uncommitted, untracked or ignored — refuses the submission, naming the files, with exit 1
+and before anything is previewed. A directory that cannot take a branch (not a clone's
+root, no committer identity, a detached `HEAD`) is exit 2, and answering N is exit 0 with
+nothing written. With `--json`, the report carries a `submission` key: `created` or
+`already-submitted` with the branch, its commit and its base, `declined`, `unchanged`, or
+`refused` with its reasons.
 
 `plan "<intent>" --submit` cuts the same branch from a drafted plan, once all five gates
 have passed, the Reviewer last. Everything that would refuse the submission is found before
@@ -427,11 +510,14 @@ directory, is a declarations repository, is the `--repo` directory or one of its
 `plan --from` inspects nothing and takes no `--project`.
 
 **Exit codes:** `0` success · `1` negative answer (nothing matched, the repository doesn't
-conform, or a gate refused the plan), a model call that failed, or a Backstage catalogue that
-could not be read whole · `2` bad arguments or configuration, or no
+conform, or a gate refused the plan), a model call that failed, a Backstage catalogue that
+could not be read whole, or a submission the repository refused (a catalogue file that
+differs from `HEAD`, or a branch of that name holding something else) · `2` bad arguments
+or configuration, a `--submit` into a directory that cannot take a branch, or no
 model, no key or no usable `IDP_TIMEOUT` or `IDP_SUPERVISOR_MODEL` configured · `3`
 understood but not acted on: a change request put to `ask`, a question the model refused,
-or a value nobody can vouch for · `130` Ctrl-C at a question. An ambiguous name resolves
+or a value nobody can vouch for · `130` Ctrl-C at a question or at the `[y/N]`
+confirmation. An ambiguous name resolves
 to nothing rather than to the first candidate.
 
 ### Use it from anywhere
@@ -450,14 +536,15 @@ repo: ~/work/IaC    # ~ is expanded; a relative path is relative to this file
 repository in every directory, and is refused. In the file, a bare `~` is YAML's null —
 write `repo: "~"` for the home directory itself.
 
-Every command takes the first of: `--repo` (or `--demo`) · the directory you stand in,
-when it is a declarations repository · `IDP_REPO` · `repo` in that file — and a question
-and the read commands take a [Backstage catalogue](#read-a-backstage-catalogue) ahead of
-each of the last two, when one is configured. With none of them, `graph`, `show`,
-`relations` and a question read the fictional demo SI; a change is refused, naming those
-four ways, because a write preview is decided against your repository, never a demo or a
-catalogue. So `cd IaC && idpa "<intent>"` decides against IaC. Whatever was not typed is said
-in one line on stderr, naming the folder and where it came from:
+Every command but `init` and `validate` takes the first of: `--repo` (or `--demo`) · the
+directory you stand in, when it is a declarations repository · `IDP_REPO` · `repo` in that
+file — and a question and the read commands take a
+[Backstage catalogue](#read-a-backstage-catalogue) ahead of each of the last two, when one
+is configured. With none of them, `graph`, `show`, `relations` and a question read the
+fictional demo SI; a change is refused, naming those four ways, because a write preview is
+decided against your repository, never a demo or a catalogue. So
+`cd IaC && idpa "<intent>"` decides against IaC. Whatever was not typed is said in one line
+on stderr, naming the folder and where it came from:
 
 ```
 reading the declarations repository IaC (~/.config/idp-agent/config.yml); --repo <directory> reads another, --demo the fictional SI
@@ -471,7 +558,8 @@ exit 2, naming the variable or the file — never a quiet fall back to the demo 
 With a Backstage, `graph`, `show`, `relations`, `ask` and a question answer from the
 company's catalogue rather than from one repository: every service's `catalog-info`, the
 real owners, the APIs. Point the same file at the catalogue API's base — not the app's URL
-— or set `IDP_BACKSTAGE_URL`, which beats the file, and export the read token
+— or set `IDP_BACKSTAGE_URL`, which beats the file, and export the read token, from the
+environment only: no file and no flag holds it
 ([which one to issue](docs/adopting-backstage.md#the-read-token-for-idpa)):
 
 ```yaml
@@ -480,7 +568,7 @@ backstage: https://backstage.acme.example/api/catalog
 ```
 
 ```console
-$ export IDP_BACKSTAGE_TOKEN=…     # from the environment only: no file and no flag holds it
+$ export IDP_BACKSTAGE_TOKEN=…
 $ idpa relations mysql-prod-01 --impacts
 reading the Backstage catalogue at backstage.acme.example (~/.config/idp-agent/config.yml): 40 entities: 40 read, 0 not modelled; it may lag the declarations repository by minutes; --repo <directory> reads a repository
 ```
@@ -510,10 +598,11 @@ annotation: `idpa show tiger` prints a team, what it owns and who is in it, and 
 naming no Group the catalogue serves is marked `declared nowhere in the catalogue this token
 reads`. A question reads them too: `idpa "what does team tiger own?"`, `idpa "who is in
 tiger?"` or `idpa "which system is billing-api in?"` is answered with the block `idpa
-relations` prints, the model choosing only the team or the service and the relation. So a
-person's name and groups reach your model provider — nothing else of them, and nothing of
-the kind from a source that holds no organisation ([`SECURITY.md`](SECURITY.md)). None of
-them is ever proposed, and a change is decided as before.
+relations` or `idpa show` prints, the model choosing only the team or the service and the
+relation. So a person's name and groups reach your model provider — nothing else of them,
+and nothing of the kind from a source that holds no organisation
+([`SECURITY.md`](SECURITY.md)). None of them is ever proposed, and a change is decided as
+before.
 
 What the catalogue cannot report: an entity Backstage refused never reaches its API, and a
 duplicate is resolved "first location wins" in silence. A catalogue read reports only what
@@ -521,10 +610,11 @@ this tool's reader refuses; `validate` in the declarations repository reports th
 
 No Backstage to hand? A fake one serves the demo SI, with the demo's organisation
 ([`tools/backstage/org.yaml`](tools/backstage/org.yaml)), on loopback — Node
-22.18 or later, which runs its TypeScript as it is:
+22.18 or later, which runs its TypeScript as it is. `pnpm demo:backstage` starts it on a
+free port, runs `relations`, `show` and `plan --from` against it, and stops it:
 
-```console
-$ pnpm demo:backstage            # starts it on a free port, runs relations, show and plan --from against it, stops it
+```bash
+pnpm demo:backstage
 ```
 
 or by hand, the fake in one terminal (`node tools/fake-backstage.ts`, on 127.0.0.1:7007)
@@ -551,8 +641,8 @@ the Location `init platform` writes and configured as
 [`docs/adopting-backstage.md`](docs/adopting-backstage.md) says — runs `idpa` against it, and
 stops it:
 
-```console
-$ pnpm build && pnpm demo:backstage:docker
+```bash
+pnpm build && pnpm demo:backstage:docker
 ```
 
 Or keep it running with `pnpm backstage:up`, browse the catalogue at `http://127.0.0.1:7007`
@@ -577,12 +667,19 @@ token reads and can do nothing else. Guest sign-in means anything on this machin
 user of this demo catalogue, writes included: the 401 shows `idpa`'s refusal, not a closed
 catalogue, so stop it when you are done.
 
+The first build takes about three minutes and leaves a 539 MB image, which
+`pnpm backstage:down` keeps so the next start takes seconds; `pnpm backstage:clean` removes
+it ([`tools/backstage/README.md`](tools/backstage/README.md#removing-it)).
+
 ## Design principles
 
 The full doctrine is in [`docs/design.md`](docs/design.md) §4, and it isn't negotiable:
 
-- **The merge is the act of authorisation.** The CLI will open a pull request (stage 6)
-  and never write to the main branch.
+- **The merge is the act of authorisation.** Today `--submit` commits a change on a new
+  local branch, `idp-agent/…`, cut from `HEAD`, and never moves the main branch
+  ([ADR-0010](docs/adr/0010-a-submission-is-a-create-only-ref.md)); stage 6 pushes it and
+  opens the pull request. A merged declaration is authorised, not provisioned
+  ([ADR-0012](docs/adr/0012-declared-is-not-provisioned.md), proposed).
 - **Textual surgery, never a reparse.** A reviewer must see an added line, not a
   reformatted file.
 - **Declare, never infer.** What is unknown is reported as unknown. An automaton reports;
@@ -601,19 +698,26 @@ firewall automation and ticketing) and adds the multi-agent layer that system ne
 | 2 | Question mode: Supervisor, recordings | ✅ |
 | 3 | `init platform` + `validate` | ✅ |
 | 4 | Preview only: Inspector, Architect, `Plan`, diff; writes nothing | ✅ |
-| 5 | Write + local branch: atomicity, idempotence | 🚧 |
+| 5 | Write + local branch: `--submit` cuts one create-only branch, idempotent and atomic ([the check](docs/stage-5-check.md)) | ✅ |
 | 6 | GitHub pull request: real forge, negative token test | |
-| 6b | [Read the live catalogue](docs/backstage-http-brief.md): questions and relations against a running Backstage (`backstage-http`); no Backstage needed to use the tool | 🚧 |
+| 6b | [Read the live catalogue](docs/backstage-http-brief.md) (`backstage-http`): questions and relations against a running Backstage, the organisation included (slices 1 and 3, done); large catalogues and a cache (slice 2) next; both sources side by side and namespaces (slices 4–5) with stage 8. No Backstage needed to use the tool | 🚧 |
 | 7 | Polish: Ink TUI, asciinema, npm publish | |
-| 8 | [Discovery](docs/stage-8-brief.md): catalogue an existing service and its dependencies; preview-only until 5–6 land, submission after 6 | |
+| 8 | [Discovery](docs/stage-8-brief.md): catalogue an existing service and its dependencies; designed, not started; preview-only until stage 6 lands, submission after it | |
 
 The order follows the doctrine: read first, validate before the first write, preview
 before the pull request. Today **no preview writes anything** — the test suite and
 `pnpm smoke` hash every byte around a full run to prove it — `init platform` writes
 only into the directory it is handed, and `plan … --submit` and `init --submit` write one
-local branch and nothing else, which both of them check too.
+local branch and nothing else, which the suite checks for both and `pnpm smoke` checks for
+`plan --from … --submit`.
+
+Next, in order: three batches from the review, `backstage-http` slice 2, stage 6, stage 8,
+and stage 7 last, the Claude-Code-like chat in the terminal that is the project's end goal.
+After stage 7, a discussion rather than a stage: what a company needs around the tool,
+starting with ticket handling through MCP servers such as Jira's.
 
 No Backstage is needed, and adopting one later is one registration: [`docs/adopting-backstage.md`](docs/adopting-backstage.md).
+To see one, [a demo Backstage](#see-it-in-a-real-backstage) runs in Docker.
 
 What comes next and the owner's decisions: [`docs/roadmap.md`](docs/roadmap.md). What each pull request changed: [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -621,7 +725,8 @@ What comes next and the owner's decisions: [`docs/roadmap.md`](docs/roadmap.md).
 
 **Is this a Backstage plugin?**
 No. It's a standalone CLI that reads Backstage-compatible `catalog-info` YAML in a Git
-repository, and previews what it would add; writing it is stage 5. It doesn't need a
+repository, previews what it would add and, with `--submit`, commits that on a new local
+branch for review; pushing it and opening the pull request are stage 6. It doesn't need a
 running Backstage instance, and reads one's catalogue when you configure it
 ([above](#read-a-backstage-catalogue)); it never writes to it.
 
@@ -630,12 +735,17 @@ Anthropic, Mistral and OpenAI, chosen with `IDP_PROVIDER` and `IDP_MODEL`. None 
 default.
 
 **Can the AI change my infrastructure on its own?**
-No. At most it proposes a diff. Once stage 6 opens the pull request, a human merges it,
-and the merge is what triggers provisioning.
+No. It drafts a structure, and the engine signs, gates and serialises it; at most the
+result is a diff. Asked with `--submit`, and confirmed at a terminal, the engine commits
+that diff on a new local branch: never on the main branch, never pushed. Once stage 6 opens
+the pull request, a human merges it, and the merge authorises the change; provisioning it
+stays a downstream system's job ([ADR-0012](docs/adr/0012-declared-is-not-provisioned.md)).
 
 **Do I need an API key to try it?**
-No. `pnpm demo`, the tests, `graph`, `show`, `relations`, `validate`, `init platform` and
-`plan --from` all run without a model. A question or a change in words needs one.
+No. `pnpm demo`, `pnpm demo:backstage`, the tests, `graph`, `show`, `relations`,
+`validate`, `init platform`, `plan --from` and `plan --from … --submit` all run without a
+model, and so does [the demo Backstage](tools/backstage/README.md), which needs Docker, not
+a key. A question, a change in words and `init`, which inspects a service, need one.
 
 ## Documentation
 
@@ -643,15 +753,22 @@ No. `pnpm demo`, the tests, `graph`, `show`, `relations`, `validate`, `init plat
 |---|---|
 | [`AGENTS.md`](AGENTS.md) | a coding agent, or anyone, opening the repository cold |
 | [`docs/design.md`](docs/design.md) | the full specification: doctrine, architecture, journeys |
-| [`docs/plans/`](docs/plans) | the per-stage implementation plans, task by task |
+| [`docs/roadmap.md`](docs/roadmap.md) | where the project stands, the queue, the owner's dated decisions, known debts |
+| [`CHANGELOG.md`](CHANGELOG.md) | what each pull request changed |
+| [`docs/adr/`](docs/adr) | the twelve architecture decisions, each dated with its status; start with [0002](docs/adr/0002-plan-as-trust-boundary.md), [0010](docs/adr/0010-a-submission-is-a-create-only-ref.md) and [0012](docs/adr/0012-declared-is-not-provisioned.md) |
+| [`docs/plans/`](docs/plans) | the implementation plans, per stage, per `backstage-http` slice and for tracing, task by task |
+| [`docs/stage-5-check.md`](docs/stage-5-check.md) | how writing was checked and decided before it was built |
+| [`docs/backstage-http-brief.md`](docs/backstage-http-brief.md) · [`docs/stage-8-brief.md`](docs/stage-8-brief.md) | the design notes for reading a Backstage and for discovery |
+| [`docs/adopting-backstage.md`](docs/adopting-backstage.md) | registering a declarations repository in a Backstage, and the read token |
+| [`tools/backstage/README.md`](tools/backstage/README.md) | the demo Backstage in Docker |
 | [`docs/reviews/`](docs/reviews) | dated code reviews: what was found, at which commit |
 | [`examples/`](examples) | ready-made `Plan` files, one per outcome |
 | [`SECURITY.md`](SECURITY.md) | the threat model, and what is *not* guaranteed |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | three commands and the rules the CI enforces |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | the setup, the four commands CI runs, and the rules it enforces |
 
 ## Licence
 
-Apache-2.0, the licence of Backstage, Kubernetes and Terraform. Its explicit patent grant
+Apache-2.0, the licence of Backstage, Kubernetes and Argo CD. Its explicit patent grant
 lets a company's legal team adopt the project without friction.
 
 <!-- Keywords: AI agent, platform engineering, internal developer platform, IDP, Backstage,
