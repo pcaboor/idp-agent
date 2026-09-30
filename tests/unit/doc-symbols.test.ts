@@ -49,6 +49,10 @@ const NOT_OURS = new Map([
   ['OPENAI_BASE_URL', "the OpenAI SDK's own variable"],
   ['ExportTraceServiceRequest', "OTLP's message, which the MLflow sink sends"],
   ['WebSocket', "Node's global, which the suite's offline setup blocks"],
+  ['NODE_USE_ENV_PROXY', "Node's own proxy switch, which the suite's forge setup removes"],
+  ['NO_PROXY', "curl's and gh's proxy exemption, which the suite's forge setup removes"],
+  ['GH_CONFIG_DIR', "gh's own configuration folder, which passes to gh unread"],
+  ['GH_TOKEN', "gh's own login variable, which passes to gh unread and no source may name"],
 ])
 
 const IDENTIFIER =

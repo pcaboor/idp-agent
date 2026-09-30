@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 4215 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 4376 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -298,8 +298,9 @@ cli/  ──→  context/   ──→  core/
   └──→  scaffold/ ──→  core/, confine/
 ```
 
-`process/` is a leaf: it imports nothing of ours, and it holds the one launcher every process
-`src/` starts goes through — the Inspector's `git ls-files`, and the forge's git. `confine/`
+`process/` is a leaf: it imports nothing of ours, and it holds the two launchers every process
+`src/` starts goes through — `git.ts` for the Inspector's `git ls-files`, the forge's git and
+the one push form, `gh.ts` for gh — each running only the command shapes of its grammar. `confine/`
 is a leaf too, and holds the one primitive a user's repository is read and written through
 below its root — `init platform`'s writer, `iac-fs` and `project-fs` — so that a symbolic
 link is judged by where it leads, never by its name alone.
@@ -319,7 +320,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 | `scaffold/` | the `init platform` layout, the packaged templates, and `write.ts`, the writer for a repository being created |
 | `forge/` | where a submission becomes a branch: `provider.ts` — `ForgeProvider`, `Base`, `Submitted`, types only, with no merge, no delete and no caller-chosen name — `ForgeInputError`, a refusal that is the user's arguments — and `local/`, the local forge: `openLocalForge` for one repository, which writes git objects and one create-only ref, through the launcher, and never the working tree, the index or `HEAD` (ADR-0010). `plan … --submit`, on either road, and `init --submit`, for the service's repository, reach it, through `cli/commands/submit.ts` |
 | `confine/` | physical confinement: `confine.ts`'s `followInside`, `openToRead` (`O_NOFOLLOW`, checked once open), `makeFolders` and `createNew` (`O_CREAT \| O_EXCL \| O_NOFOLLOW`) — what `assertInsideRepo`, lexical, cannot see; `iac-fs` follows no link, `project-fs` follows one that stays inside, `init platform` writes through none |
-| `process/` | the one place a process is started: `git.ts`'s `gitIn` — hooks and fsmonitor off, `user.useConfigOnly`, every `GIT_*` scrubbed, started outside the repository, bounded — and `environment.ts`'s `spawnedEnvironment`, the one builder of a child process's environment |
+| `process/` | the one place a process is started: `git.ts`'s `gitIn` — hooks and fsmonitor off, `user.useConfigOnly`, every `GIT_*` scrubbed, started outside the repository, bounded — and `pushIn`, the one push form; `gh.ts`'s `ghIn`, gh in the same shape; each checks the finished vector against its grammar (`checkGitArgv`, `checkGhArgv`) before anything starts, and throws `LauncherRefusal` otherwise; and `environment.ts`'s `spawnedEnvironment`, the one builder of a child process's environment |
 
 Each folder carries its own README stating what lives there, what may not, and which
 architecture test holds the line. Read the one for the folder you are about to change.
@@ -586,7 +587,7 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   checklist; tick its boxes as you go — Stage 1 shipped with all 36 unticked, which is
   how a plan stops being a status signal.
 - No `switch` on a closed union without `const _exhaustive: never = value` in `default`.
-- **Twenty-six** architecture rules are enforced by `tests/architecture/`. `core/` imports
+- **Twenty-nine** architecture rules are enforced by `tests/architecture/`. `core/` imports
   neither `agents/`, `llm/`, `context/`, `cli/`, `scaffold/`, `forge/`, `process/`,
   `confine/`, the network nor the model SDK, and nothing reachable from it reads or writes — its disk rule
   walks the transitive closure too. `agents/` imports neither `fs`, `child_process` nor a git client — **and
@@ -609,10 +610,16 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   `context/iac-fs`, `context/project-fs` and `context/backstage/cache.ts` load it; only
   `context/backstage/provider.ts` loads the cache, so a catalogue kept on disk reaches
   nothing but the provider's loop, which runs the pre-pass and the reader on every item of
-  it as on a page. Only `process/git.ts` starts a process, for the Inspector's
-  `git ls-files` and the forge, from one call, given the
-  environment `spawnedEnvironment` builds: without any `IDP_BACKSTAGE_*` variable and without
-  any provider key; only `context/project-fs/snapshot.ts` and `forge/` load that launcher.
+  it as on a page. Only `process/git.ts` and `process/gh.ts` start a process, each from a
+  grammar of the command shapes it may run, checked on the finished vector before the process
+  starts (stage 6 brief § 6): git for the Inspector's `git ls-files`, the forge and the one
+  push form, from two calls, and gh from one, each given an environment `spawnedEnvironment`
+  builds: without any `IDP_BACKSTAGE_*` variable and without any provider key; only
+  `context/project-fs/snapshot.ts` and `forge/` load the git launcher. No source in `src/`
+  names a door the grammars refuse (*nothing in src/ names a door the allow-list refuses*) or
+  reads a GitHub credential from the environment (*nothing in src/ reads a GitHub credential
+  from the environment*), and in `tests/` only `tests/live/` and `tests/support/fake-gh.ts`
+  name a door (*in tests/, only tests/live/ and tests/support/fake-gh.ts name a door*).
   `process/` imports nothing of ours, only `node:` built-ins; `forge/` imports `core/`,
   `process/`, `node:crypto` and `node:path` and nothing else — no package, no disk, no
   network; and only `cli/` reaches `forge/` at run time, however many hops away — another
@@ -632,6 +639,12 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   is being recorded (`IDP_RECORDING=record`, in `tests/scenarios/` only) — and
   `IDP_BACKSTAGE_URL` and `IDP_BACKSTAGE_TOKEN` even then, so no tape holds what a real
   catalogue serves: `backstage-mode.test.ts` names its own URL and reads the in-process fake.
+  A child process opens its own sockets, so `tests/setup/forge.ts` owns every variable that
+  could carry one to GitHub, a recording included: it removes the ssh and askpass variables,
+  gh's tokens and hosts, `NO_PROXY` and Node's `NODE_USE_ENV_PROXY`, points the proxy
+  variables at a closed port, moves `HOME` and `GH_CONFIG_DIR` into the run directory, and
+  puts a `gh` and an `ssh` that fail first on `PATH`; a test reaches gh through the fake
+  (`tests/support/fake-gh.ts`) and a push through a fake ssh serving a bare repository.
   A forgotten
   recording fails loudly instead of quietly spending whoever's key is in the shell, and the
   suite passes the same with the README's variables exported. What stales a tape, and how

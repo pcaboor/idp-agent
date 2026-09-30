@@ -1,6 +1,6 @@
 # Stage 6 — a GitHub pull request, with the person's own git and gh
 
-**Status: planned, nothing built.** The owner's answers to the note's § 18 (22 decisions) and
+**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
 § 19 (Q1–Q4) were settled on 2026-09-30, each as recommended, and this plan takes them as
 given; so were the four questions the plan itself asked, the same day ([Questions for the
 owner](#questions-for-the-owner)). Eleven stacked pull requests: ten, 6.1.1 to 6.4.2, then 6.4.3, the owner's step: every tape
@@ -615,7 +615,7 @@ themselves, so they import them from the one file of `tests/` allowed to name a 
 `FakeGitHub.sent` records each call the fake received (argv, stdin, environment): the key-reach
 leg of 6.1.3 reads it.
 
-- [ ] **Step 1: The floor's legs, failing first** (`tests/unit/offline.test.ts`)
+- [x] **Step 1: The floor's legs, failing first** (`tests/unit/offline.test.ts`)
 
 `vitest.config.ts`'s `env` gains `GIT_SSH_COMMAND: 'set-aside-by-vitest-config'` and
 `GH_TOKEN: 'set-aside-by-vitest-config'`, as it already sets one `IDP_` name and one key: real
@@ -670,7 +670,7 @@ shell keeps nothing of them either. A new `describe("the child processes' floor"
    still see them. *Fails today:* there is no setup to run again, and a switch the shell
    exported reaches every Node process the suite starts.
 
-- [ ] **Step 2: `tests/setup/forge.ts`, and `HOME` moved**
+- [x] **Step 2: `tests/setup/forge.ts`, and `HOME` moved**
 
 ```typescript
 /**
@@ -761,7 +761,7 @@ identity, its own `HOME`), never by leaving `HOME` alone.
 see the launcher (which drops `GIT_*`) succeed on a machine whose system file holds one. Its
 `system()` helper now calls git with every `GIT_*` removed, as the launcher does.
 
-- [ ] **Step 3: The git grammar and the push, failing first** (`tests/unit/process-git.test.ts`)
+- [x] **Step 3: The git grammar and the push, failing first** (`tests/unit/process-git.test.ts`)
 
 The existing cases move onto shapes the grammar admits, each keeping the hardening it proves:
 
@@ -890,7 +890,7 @@ porcelain line names the ref — nothing reached the remote: authentication, hos
 `parsePorcelain` switches on the flag character with `const _exhaustive: never` over `PushFlag`
 where it maps back (Constraint 15).
 
-- [ ] **Step 4: The gh launcher, failing first** (`tests/unit/process-gh.test.ts`)
+- [x] **Step 4: The gh launcher, failing first** (`tests/unit/process-gh.test.ts`)
 
 `tests/support/stub-gh.ts` writes a `gh` (and, for `stubGit`, a `git`) into a scratch directory:
 a `#!/bin/sh` script that appends `{ argv, cwd, names, env }` as one JSON line to `calls.jsonl`
@@ -1009,7 +1009,7 @@ stdin }`, so an injected fake never sees a vector the grammar refused. `ghEnviro
 `spawnedEnvironment(env)` minus every name `GH_REMOVED` lists (an entry ending `*` is a prefix,
 `GIT_*`), compared by upper-cased name and never indexed, plus `GH_SET`.
 
-- [ ] **Step 5: The doors and the fake, failing first**
+- [x] **Step 5: The doors and the fake, failing first**
 
 `tests/support/fake-gh.ts` holds three lists, the only file of `tests/` besides `tests/live/`
 the door rule lets name one:
@@ -1085,7 +1085,7 @@ under `tests/live/` exists, extends it with `vitest list --filesOnly --json`, wh
 importing, and requires nothing listed under `tests/live/`: before then the listing would be
 vacuous.
 
-- [ ] **Step 6: The architecture rules, failing first** (`tests/architecture/dependencies.test.ts`)
+- [x] **Step 6: The architecture rules, failing first** (`tests/architecture/dependencies.test.ts`)
 
 Re-count from **25** (`pnpm vitest run tests/architecture --reporter=verbose`, the `architecture`
 block).
@@ -1200,7 +1200,7 @@ never spells one. Self-tests, in *the architecture rules themselves*:
 `'reads every layer it has a rule about'` is unchanged in 6.1.1 (no new top-level folder).
 Count after: **28** (25, three added, one renamed).
 
-- [ ] **Step 7: The code**
+- [x] **Step 7: The code**
 
 `src/process/refusal.ts`:
 
@@ -1228,7 +1228,7 @@ Edits to existing tests: Step 3's table in `process-git.test.ts`;
 `'symbolic-ref', '-d', …` — a test's own git setup is not a door idp-agent runs, and the short
 form keeps the door list one list.
 
-- [ ] **Step 8: Run what changed, and count**
+- [x] **Step 8: Run what changed, and count**
 
 ```bash
 df -h "$TMPDIR"
@@ -1242,7 +1242,7 @@ vector stage 5 builds. `tests/unit/doc-symbols.test.ts` runs too: an identifier 
 name in backticks that `src/` holds only in a comment (`GH_TOKEN`) is added to its list of names
 that are not ours, with the reason (gh's own variable).
 
-- [ ] **Step 9: The documents this makes true**
+- [x] **Step 9: The documents this makes true**
 
 - `AGENTS.md`: "**Twenty-five**" → "**Twenty-eight**", naming the three rules; "Only
   `process/git.ts` starts a process…" → "Only `process/git.ts` and `process/gh.ts` start a
@@ -1263,7 +1263,7 @@ that are not ours, with the reason (gh's own variable).
   the stub and the fake in the support table.
 - README's badge: the test count.
 
-- [ ] **Step 10: Traceability**
+- [x] **Step 10: Traceability**
 
 `CHANGELOG.md`, Unreleased → **Added**:
 
@@ -1281,6 +1281,37 @@ that are not ours, with the reason (gh's own variable).
 
 `docs/roadmap.md`: the stage 6 row → "in progress ([the plan](plans/stage-6-github.md)): 6.1.1,
 the allow-list ([#PRNUM](…))"; the queue item 2 says 6.1.1 is on `main` once merged.
+
+**As built** (against `faf10f0`, where `main` had moved since this plan was written; the
+plan's intent kept):
+
+- The architecture rules were **26** before this task (backstage-http slice 2 added one), so
+  **29** after it, not 28; `AGENTS.md` and design §5.5 say twenty-nine. `SECURITY.md`'s rows
+  are at `:217` and `:218`, not `:164` and `:165`.
+- `src/process/grammar.ts` is added: `isHex`, `isBranch`, `SUBMISSION_BRANCH` and
+  `SUBMISSION_REF`, which both launchers check and neither may import from the other
+  (`gh.ts` cannot load `git.ts`). `git.ts` re-exports `SUBMISSION_REF`. 6.1.2's agreement
+  test holds `grammar.ts` and `gh.ts` to `core/github/remote.ts`.
+- `isBranch` refuses every white-space character (`\s`), not only the space git refuses.
+- The one POST's stdin must be exactly the JSON the engine writes: the six keys in the order
+  `title`, `head`, `base`, `body`, `draft`, `maintainer_can_modify`, as `JSON.stringify`
+  writes them, so no key is repeated or added on the way; 6.2.1 builds the body that way.
+- The stub `exec`s Node on a `record.mjs` beside it rather than `node -e`, to the same end (no
+  shell quoting); `Stub` also has `stdin()`, the bytes the last call read.
+- Measured on git 2.46: pushing the same commit again answers `=` `[up to date]`; another
+  commit to the same name answers `!` `[rejected] (stale info)`.
+- `doc-symbols.test.ts`'s `NOT_OURS` gains `GH_TOKEN`, `GH_CONFIG_DIR`, `NO_PROXY` and
+  `NODE_USE_ENV_PROXY`, each with its reason.
+- After review: `checkGhArgv` refuses `:` in a path as well as the braces, since gh also fills
+  `:owner`, `:repo` and `:branch` (no value of the grammar holds a literal `:`); `DOORS` gains
+  those three paths and three POST bodies — `base` given twice, the keys in another order,
+  white space between them — and `tools/fake-gh.ts` holds the body to the same written form.
+  `forge.ts` gives each worker its own HOME and GH_CONFIG_DIR (`home-<pid>`,
+  `gh-config-<pid>`) and takes `--use-env-proxy` out of NODE_OPTIONS as well; the stub finds
+  its directory with `fileURLToPath` and quotes its paths for the shell. The real push test
+  also reads the git configuration, as the launcher's git would, for a `core.sshCommand` or an
+  `insteadOf`, before pushing; 6.2.1's `githubClone` keeps the check the plan gives it.
+- Step 11's commit is left to the owner's go-ahead; its checks were run.
 
 - [ ] **Step 11: Checks, then the pull request** *(after the owner's go-ahead)*
 
@@ -2620,7 +2651,11 @@ chosen bytes:
   the stub records the vector (no `-f`, no `-F`, `--input -`) and a stdin whose JSON has
   exactly `title`, `head` (the bare branch), `base`, `body`, `draft: false`,
   `maintainer_can_modify: false`; a 201 answers the number; a 422 is `GitHubAnswerError` status
-  `422`; a body past 1 MiB throws before any process starts.
+  `422`; a body past 1 MiB throws before any process starts. The body is built as
+  `JSON.stringify({ title, head, base, body, draft: false, maintainer_can_modify: false })`,
+  the keys in exactly that order and with no replacer or indentation: it is the only form
+  `checkGhArgv` admits (6.1.1, as built), and any other would be refused as a
+  `LauncherRefusal` on every pull request — a programming error, not a GitHub answer.
 - *opens at most one pull request per run, whatever the first answered* — a second
   `api.openPullRequest(…)` on the same `api`, after a 201, after a 422 and after a stub that
   timed out, throws `Error('idp-agent asked to open a second pull request in one run')` before
@@ -6472,7 +6507,10 @@ ADR-0010, ADR-0011, ADR-0012. Sections:
   Each system stays atomic on its own; the two together are not, and each intermediate state is
   completed by running the same command again (ADR-0015). On the GitHub road only, our one
   commit on an older base, with its open pull request, is recognised as already submitted; the
-  local road keeps D7."
+  local road keeps D7." The same paragraph says that the *Decision*'s "the one launcher every
+  process `src/` starts goes through" (line 55, left as the record it is) now means the git
+  launcher, `process/git.ts`: since 6.1.1 gh has a launcher of its own, `process/gh.ts`
+  (`src/context/project-fs/snapshot.ts`'s comment saying the same was reworded in 6.1.1).
 - **ADR-0012** (decision 12): the status line becomes "proposed — stage 6 reads the required
   status check and prints it; the check is the downstream system's"; *Consequences*' "Until stage
   6 …" paragraph becomes: stage 6 reads the base's `required_status_checks` and prints the

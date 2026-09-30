@@ -8,10 +8,13 @@
  *
  * IDP_REPO is removed, and XDG_CONFIG_HOME points into the run directory,
  * where no file is. XDG_CONFIG_HOME is the first place `cli/personal.ts`
- * looks, on every platform, so HOME and APPDATA are never reached and are left
- * alone: git, and whatever else a test starts, may need them. A test that
- * wants a configuration writes one in its own scratch directory and injects
- * the environment that names it.
+ * looks, on every platform, so HOME and APPDATA are never reached from here.
+ * HOME is moved all the same, by `forge.ts`, which runs after this file: the
+ * git launcher removes every GIT_* and so reads `$HOME/.gitconfig`, where a
+ * developer's global core.sshCommand or insteadOf would carry a push test to
+ * GitHub, and gh would find its login under HOME. A test that wants a
+ * configuration writes one in its own scratch directory and injects the
+ * environment that names it.
  *
  * IDP_MLFLOW_TRACKING_URI and IDP_MLFLOW_EXPERIMENT_ID are removed too, for
  * the same reason and a worse outcome: the scenarios hand `process.env` to

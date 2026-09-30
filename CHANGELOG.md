@@ -218,6 +218,17 @@ Each pull request adds its line here.
   demos and the smoke test keep theirs in a scratch folder. ADR-0014 records the decision,
   and closes `backstage-http` slice 2
   ([#122](https://github.com/pcaboor/idp-agent/pull/122)).
+- Every git and gh command idp-agent can start is checked, before the process starts,
+  against an explicit list of shapes: stage 5's git plumbing, reads of the clone's
+  configuration and remote, `merge-base --is-ancestor` and one create-only push form; and, in
+  a second launcher no command uses yet, `gh --version`, eight read-only `gh api` routes and
+  the one call that will open a pull request. Anything else is refused and nothing starts.
+  Architecture rules keep every door and every GitHub credential's name out of the source
+  (twenty-nine rules now), and the test suite removes every variable that could carry a child
+  process to GitHub, points git's and gh's proxy variables at a closed port and removes
+  Node's `NODE_USE_ENV_PROXY`, so no Node `fetch`, a recording's included, is sent there,
+  moves `HOME` into its run directory and puts a `gh` and an `ssh` that fail first on its
+  `PATH` ([#123](https://github.com/pcaboor/idp-agent/pull/123)).
 
 ### Changed
 
