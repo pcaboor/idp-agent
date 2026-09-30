@@ -23,9 +23,10 @@ export class RepositoryArgumentError extends Error {
 /**
  * The commands whose `--repo` names the declarations repository, as their
  * refusals name them: `idpa` is the phrase, `idpa "<phrase>"`, which is typed
- * with no command word and is told so in none.
+ * with no command word and is told so in none. `protection` checks the branch
+ * that repository's clone tracks on github.com.
  */
-export type DeclarationsCommand = 'plan' | 'graph' | 'show' | 'relations' | 'ask' | 'idpa'
+export type DeclarationsCommand = 'plan' | 'protection' | 'graph' | 'show' | 'relations' | 'ask' | 'idpa'
 
 /**
  * The declarations repository a `--repo` names, as an absolute directory — the

@@ -1,15 +1,24 @@
-import { describe, expect, it } from 'vitest'
+import { spawnSync } from 'node:child_process'
+import { writeFile } from 'node:fs/promises'
+import path from 'node:path'
+import { afterAll, describe, expect, it } from 'vitest'
+import { strippingRefusal } from '../../scripts/type-stripping.mjs'
 import { GH_LIMITS, ghArgv, ghIn, parseIncluded, type GhRequest } from '../../src/process/gh.js'
-import { DOORS, FAKE_GH_VERSION, fakeGitHub } from '../support/fake-gh.js'
+import { answer } from '../../tools/fake-gh.js'
+import { removeClones, scratch } from '../support/forge-fixture.js'
+import { DOORS, FAKE_GH_VERSION, fakeGitHub, protectedMain } from '../support/fake-gh.js'
+
+afterAll(removeClones)
 
 /**
  * The fake gh every test that reaches gh is handed (stage 6 brief § 10): it
  * reads the argument vector with its own patterns, independently of the
  * launcher's grammar, so a drift between the two fails here, and it answers
- * as gh prints an `--include` answer. In 6.1.1 it models the accounts and the
- * session: `--version` and `GET user`. Every other route the launcher builds
- * is recognised and answered "not modelled" by name, and every door is not a
- * vector idp-agent sends.
+ * as gh prints an `--include` answer. It models the accounts and the session
+ * (`--version`, `GET user`) and, from 6.1.3, the repositories § 8 reads: the
+ * repository, the rules for a branch, a ruleset, a branch and a ref. The
+ * other routes the launcher builds are recognised and answered "not
+ * modelled" by name, and every door is not a vector idp-agent sends.
  */
 
 const text = (bytes: Buffer): string => bytes.toString('utf8')
@@ -105,15 +114,74 @@ describe("the fake's own grammar", () => {
     ],
   ]
 
+  /** The five reads of § 8, which the fake answers from its model: 404 for a repository it does not hold. */
+  const MODELLED = new Set(['repository', 'branch', 'rules', 'ruleset', 'ref'])
+
   it('recognises every vector the launcher builds, and names what it does not model yet', async () => {
     const fake = fakeGitHub()
     for (const [route, request] of SAMPLES) {
       const stdin = request.kind === 'open-pull-request' ? Buffer.from(request.body) : undefined
       const exit = await fake.process(ghArgv(request), { ...(stdin === undefined ? {} : { stdin }), env: {}, limits: GH_LIMITS })
-      expect(exit.code, route).toBe(97)
-      expect(exit.stderr, route).toBe(`fake gh: ${route} is not modelled\n`)
+      if (MODELLED.has(route)) {
+        expect(parseIncluded(exit.stdout)?.status, route).toBe(404)
+      } else {
+        expect(exit.code, route).toBe(97)
+        expect(exit.stderr, route).toBe(`fake gh: ${route} is not modelled\n`)
+      }
     }
   })
+
+  it('answers the five reads of § 8 from its model, and asks a login for each', async () => {
+    const fake = fakeGitHub({ repositories: [protectedMain()] })
+    const gh = ghIn({ run: fake.process })
+    const repo = { owner: 'acme', name: 'iac' }
+    const read = await gh.get({ route: 'repository', ...repo })
+    expect(read.status).toBe(200)
+    expect(JSON.parse(read.body)).toMatchObject({ full_name: 'acme/iac', archived: false, permissions: { admin: true, push: true } })
+    const rules = JSON.parse((await gh.get({ route: 'rules', ...repo, branch: 'main' })).body) as { type: string }[]
+    expect(rules.map((rule) => rule.type)).toEqual(['pull_request', 'non_fast_forward', 'deletion'])
+    expect(JSON.parse((await gh.get({ route: 'ruleset', ...repo, id: 1 })).body)).toMatchObject({
+      id: 1,
+      current_user_can_bypass: 'never',
+      bypass_actors: [],
+    })
+    expect(JSON.parse((await gh.get({ route: 'branch', ...repo, branch: 'main' })).body)).toMatchObject({ protected: false })
+    expect((await gh.get({ route: 'ruleset', ...repo, id: 2 })).status).toBe(404)
+    // No bare repository: GitHub has no ref to give.
+    expect((await gh.get({ route: 'ref', ...repo, branch: 'main' })).status).toBe(404)
+    fake.logout()
+    await expect(gh.get({ route: 'repository', ...repo })).rejects.toMatchObject({ kind: 'auth' })
+  })
+
+  // Four Node starts that strip types: well inside a minute, but past
+  // vitest's five seconds on a loaded machine, so the bound is the test's own.
+  it(
+    'runs as a program, reading its world from FAKE_GH_STATE, with the in-process answer’s bytes',
+    async (context) => {
+      const refusal = strippingRefusal()
+      if (refusal !== undefined) context.skip(`the fake gh runs as a program only where Node strips types: ${refusal}`)
+      const state = { ...fakeGitHub({ repositories: [protectedMain()] }).state }
+      const file = path.join(await scratch('idp-fake-gh-'), 'state.json')
+      await writeFile(file, JSON.stringify(state), 'utf8')
+      for (const request of [
+        { kind: 'version' },
+        { kind: 'get', route: { route: 'user' } },
+        { kind: 'get', route: { route: 'rules', owner: 'acme', name: 'iac', branch: 'main' } },
+        { kind: 'get', route: { route: 'repository', owner: 'acme', name: 'elsewhere' } },
+      ] satisfies GhRequest[]) {
+        const argv = ghArgv(request)
+        const run = spawnSync(
+          process.execPath,
+          ['--disable-warning=ExperimentalWarning', path.resolve(import.meta.dirname, '../../tools/fake-gh.ts'), ...argv],
+          { env: { PATH: process.env['PATH'] ?? '', FAKE_GH_STATE: file }, stdio: ['ignore', 'pipe', 'pipe'] },
+        )
+        const expected = answer(state, argv, undefined)
+        expect(run.stdout.toString('utf8'), argv.join(' ')).toBe(expected.stdout.toString('utf8'))
+        expect(run.status, argv.join(' ')).toBe(expected.code)
+      }
+    },
+    60_000,
+  )
 
   it('answers every door as a vector idp-agent never sends', async () => {
     const fake = fakeGitHub()

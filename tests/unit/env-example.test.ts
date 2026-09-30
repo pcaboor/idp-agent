@@ -31,6 +31,7 @@ const THE_SYSTEMS = new Map([
   ['XDG_CACHE_HOME', 'where a catalogue read is kept, first looked for'],
   ['NO_COLOR', 'whether a diff is painted'],
   ['FORCE_COLOR', 'whether a diff is painted'],
+  ['PATH', "where pnpm smoke and pnpm demo:github put their guard gh and ssh, and the demo's fake gh, first"],
 ])
 
 const sources = (dir: string): string[] =>

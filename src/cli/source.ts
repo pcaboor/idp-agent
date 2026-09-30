@@ -110,7 +110,10 @@ export interface BackstageSource {
 
 export type Source = RepositorySource | DemoSource | BackstageSource
 
-type ReadCommand = Exclude<DeclarationsCommand, 'plan'>
+type ReadCommand = Exclude<DeclarationsCommand, 'plan' | 'protection'>
+
+/** The commands that act on a declarations repository, never on the demo SI or a catalogue. */
+type RepositoryCommand = Extract<DeclarationsCommand, 'plan' | 'protection'>
 
 /** What the command line said. `demo` and `backstage` exist only for the read commands. */
 export type SourceRequest =
@@ -121,6 +124,7 @@ export type SourceRequest =
       backstage?: boolean | undefined
     }
   | { command: 'plan'; repo?: string | undefined }
+  | { command: 'protection'; repo?: string | undefined }
 
 export interface SourceContext {
   /**
@@ -178,7 +182,7 @@ const standingIn = (context: SourceContext): string | undefined => {
  * — and is refused when none is: it takes no value, because a URL typed on a
  * command line would send the configured token to whatever was typed.
  *
- * `plan`: the same, bar `--demo` and the demo SI — `--repo` → the working
+ * `plan` and `protection`: the same, bar `--demo` and the demo SI — `--repo` → the working
  * directory when its markers say it is a declarations repository → `IDP_REPO`
  * → the file's `repo` — and `undefined` when none names one: a write preview
  * is decided against a repository, never the demo SI or a catalogue (§4.4).
@@ -199,7 +203,7 @@ const standingIn = (context: SourceContext): string | undefined => {
  * and a host that is not this machine is refused without a token.
  */
 export async function sourceOf(
-  request: { command: 'plan'; repo?: string | undefined },
+  request: { command: RepositoryCommand; repo?: string | undefined },
   context: SourceContext,
 ): Promise<RepositorySource | undefined>
 export async function sourceOf(
@@ -216,6 +220,7 @@ export async function sourceOf(
   context: SourceContext,
 ): Promise<Source | undefined> {
   if (request.command === 'plan') return repositoryChain('plan', request.repo, context, false)
+  if (request.command === 'protection') return repositoryChain('protection', request.repo, context, false)
   // `--repo` first, as the chain takes it: the command line refuses two of
   // the three together, and a caller that passes both reads the repository.
   if (request.repo === undefined && request.demo === true) {
@@ -779,11 +784,16 @@ export function sourceNotice(
       const alternatives =
         command === 'plan'
           ? '--repo <directory> decides against another'
-          : command === 'idpa'
-            ? '--repo <directory> reads another, --demo the fictional SI for a question'
-            : '--repo <directory> reads another, --demo the fictional SI'
+          : command === 'protection'
+            ? '--repo <directory> checks another'
+            : command === 'idpa'
+              ? '--repo <directory> reads another, --demo the fictional SI for a question'
+              : '--repo <directory> reads another, --demo the fictional SI'
       const catalogue =
-        command !== 'plan' && source.origin.by === 'working-directory' && read.catalogue === true
+        command !== 'plan' &&
+        command !== 'protection' &&
+        source.origin.by === 'working-directory' &&
+        read.catalogue === true
           ? ', --backstage the catalogue'
           : ''
       return (
@@ -851,6 +861,20 @@ export function planNeedsRepository(
     `${who} needs a declarations repository: --repo <directory>, the current directory ` +
     `when it is one, or ${REPO_VARIABLE} or repo in ${file} set once; ` +
     'a write preview is decided against the repository, never against the catalogue'
+  )
+}
+
+/**
+ * Why `idpa protection` is refused when nothing names a declarations
+ * repository: every way of naming one, in the order they are tried. Never the
+ * demo SI, whose clone tracks nothing, and never a catalogue, which has no
+ * branch to protect.
+ */
+export function protectionNeedsRepository(context: Pick<SourceContext, 'env' | 'platform'>): string {
+  const file = flat(personalFileHint(context.env, context.platform))
+  return (
+    'idpa protection needs a declarations repository: --repo <directory>, the current directory when it is one, ' +
+    `or ${REPO_VARIABLE} or repo in ${file} set once`
   )
 }
 

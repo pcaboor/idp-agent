@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 4471 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 4562 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -98,7 +98,10 @@ request was understood and this build will not act on it: a change request put t
 refused, a plan holding values nobody can vouch for, **asked rather than guessed**, or a
 plan that produces no bytes while the repository does not already declare what it states —
 in prose and in `--json` alike · `130` Ctrl-C at a question or at `--submit`'s
-confirmation: the person stopped the run, which is not a declined question (Ctrl-D is one). A command returns
+confirmation: the person stopped the run, which is not a declined question (Ctrl-D is one).
+`idpa protection` has three of its own: `0` the rules hold, `1` they do not or GitHub
+answered a failure, `2` the arguments, the clone's configuration, its upstream or gh
+refused. A command returns
 `{ text, found, unsupported? }`; only `cli/index.ts` turns that into a code.
 
 The one that is not obvious is a **stop**: three attempts, still refused, exit `1`. Not
@@ -161,7 +164,12 @@ model (`context/graph/relations.ts`, rendered by `cli/render/relations.ts`); `as
 answered by the Supervisor and the Analyst against recordings with no API key, a relation
 question included: the model chooses the entity and the relation, and the engine writes
 `relations`' block; `validate`, nine rules over an IaC repository; `init platform`, which
-writes thirteen files — the Backstage registration among them — and clobbers nothing; the
+writes thirteen files — the Backstage registration among them — clobbers nothing, and prints
+the ruleset `idpa protection` checks; `idpa protection` (stage 6, slice 6.1), which reads,
+through the person's own gh and with `GET` only, whether the branch a clone tracks on
+github.com keeps a pull request from merging until someone other than its opener approves
+its latest commit — no model, nothing written, and `pnpm demo:github` shows its three
+answers against a fake gh; the
 read commands and a question over a Backstage catalogue (`backstage-http` slice 1,
 ADR-0011; `pnpm demo:backstage` runs them against a fake on loopback), past its bounds
 answered in part (slice 2, ADR-0013) and kept five minutes for a second run, with
@@ -182,6 +190,7 @@ idp-agent relations <name-or-ref> [--consumes | --consumed-by | --depends-on | -
 idp-agent plan --from <plan.json> --repo <dir> [--submit]  # no model, and none is possible
 idp-agent plan "<intent>" --repo <dir> [--json] [--submit]  # Inspector, Architect, five gates
 idp-agent init [--repo <dir>] [--name <n>] [--lifecycle <l>] [--owner <ref>] [--submit] [--iac-repo <locator>] [--environment <name>]...  # the catalog-info.yaml, and .idp-agent.yml when a flag states it
+idp-agent protection [--repo <dir>]  # through the person's gh, reads only; no model, no write
 ```
 
 **`init platform` writes into the directory it was handed, and through no symbolic link
@@ -319,7 +328,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 | `agents/` | the five agents, the bounded turn, the repair loop, the tool registries — reaches no disk, transitively |
 | `trace/` | the trace of one run: `createTraceBuilder` over the event stream and the model calls, the `traced` client decorator, and `toOtlpJson` — pure; `cli/trace-sink.ts` is how a trace leaves |
 | `scaffold/` | the `init platform` layout, the packaged templates, and `write.ts`, the writer for a repository being created |
-| `forge/` | where a submission becomes a branch: `provider.ts` — `ForgeProvider`, `Base`, `Submitted`, types only, with no merge, no delete and no caller-chosen name — `ForgeInputError`, a refusal that is the user's arguments — and `local/`, the local forge: `openLocalForge` for one repository, which writes git objects and one create-only ref, through the launcher, and never the working tree, the index or `HEAD` (ADR-0010) — and `github/`, which reads through both launchers and judges with `core/github/`: `readRoad`, the road a submission takes, `readIdentity`, who gh is, and `githubApi`, GitHub through gh, which no command reaches yet. `plan … --submit`, on either road, and `init --submit`, for the service's repository, reach it, through `cli/commands/submit.ts` |
+| `forge/` | where a submission becomes a branch: `provider.ts` — `ForgeProvider`, `Base`, `Submitted`, types only, with no merge, no delete and no caller-chosen name — `ForgeInputError`, a refusal that is the user's arguments — and `local/`, the local forge: `openLocalForge` for one repository, which writes git objects and one create-only ref, through the launcher, and never the working tree, the index or `HEAD` (ADR-0010) — and `github/`, which reads through both launchers and judges with `core/github/`: `readRoad`, the road a submission takes, `readIdentity`, who gh is, `githubApi`, GitHub through gh, `preflight.ts`'s `readProtection` and `preflight` (§ 8's reads), and `openGitHub`, the road then gh's identity, which `idpa protection` reaches. `plan … --submit`, on either road, and `init --submit`, for the service's repository, reach it, through `cli/commands/submit.ts` |
 | `confine/` | physical confinement: `confine.ts`'s `followInside`, `openToRead` (`O_NOFOLLOW`, checked once open), `makeFolders` and `createNew` (`O_CREAT \| O_EXCL \| O_NOFOLLOW`) — what `assertInsideRepo`, lexical, cannot see; `iac-fs` follows no link, `project-fs` follows one that stays inside, `init platform` writes through none |
 | `process/` | the one place a process is started: `git.ts`'s `gitIn` — hooks and fsmonitor off, `user.useConfigOnly`, every `GIT_*` scrubbed, started outside the repository, bounded — and `pushIn`, the one push form; `gh.ts`'s `ghIn`, gh in the same shape; each checks the finished vector against its grammar (`checkGitArgv`, `checkGhArgv`) before anything starts, and throws `LauncherRefusal` otherwise; and `environment.ts`'s `spawnedEnvironment`, the one builder of a child process's environment |
 
@@ -694,7 +703,7 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   merge request instead, where CI runs.
 - **Declared is not provisioned.** A merged declaration can still be refused or fail
   downstream, and nothing detects it yet (ADR-0012, proposed). `init platform` names the
-  status check stage 6 will require; the reconciler that reports a failure after the merge
+  status check, among the ruleset `idpa protection` checks; the reconciler that reports a failure after the merge
   arrives with the real integrations.
 - **`init --submit` is not offered for a service in a subfolder of its repository** (D12):
   the forge cuts a branch at a clone's root, and the service's paths would need the

@@ -1,5 +1,11 @@
 import type { GhProcess } from '../../src/process/gh.js'
-import { answer, initialState, type FakeState } from '../../tools/fake-gh.js'
+import {
+  answer,
+  initialState,
+  type FakeRepository,
+  type FakeRuleset,
+  type FakeState,
+} from '../../tools/fake-gh.js'
 
 /**
  * The fake gh of `tools/fake-gh.ts` as the process a test hands the launcher
@@ -61,6 +67,66 @@ export function fakeGitHub(model: FakeModel = {}): FakeGitHub {
     state,
     sent,
   }
+}
+
+// ---------------------------------------------------------------- the model
+
+/**
+ * `acme/iac` as `change` leaves it: not archived, `ada` holding push and no
+ * more, `main` there and not protected, no ruleset, no bare repository.
+ */
+export function repository(change: Partial<FakeRepository> = {}): FakeRepository {
+  return {
+    owner: 'acme',
+    name: 'iac',
+    archived: false,
+    permissions: { ada: { admin: false, maintain: false, push: true } },
+    branches: { main: { protected: false } },
+    rulesets: [],
+    ...change,
+  }
+}
+
+/**
+ * The ruleset `docs/submitting.md` asks for, on `branches`: a pull request
+ * of 1 approval with the most recent push's approval, force pushes blocked,
+ * deletions restricted, nobody in the bypass list, active.
+ */
+export function protectingRuleset(id = 1, change: Partial<FakeRuleset> = {}): FakeRuleset {
+  return {
+    id,
+    enforcement: 'active',
+    branches: ['main'],
+    rules: [
+      {
+        type: 'pull_request',
+        parameters: {
+          required_approving_review_count: 1,
+          dismiss_stale_reviews_on_push: false,
+          require_code_owner_review: false,
+          require_last_push_approval: true,
+          required_review_thread_resolution: false,
+        },
+      },
+      { type: 'non_fast_forward' },
+      { type: 'deletion' },
+    ],
+    bypass: [],
+    ...change,
+  }
+}
+
+/**
+ * `acme/iac` with its `main` protected as `docs/submitting.md` says, and
+ * `ada` its administrator — as the owner is of the throwaway repository —
+ * so the bypass list is hers to read.
+ */
+export function protectedMain(change: Partial<FakeRepository> = {}): FakeRepository {
+  return repository({
+    permissions: { ada: { admin: true, maintain: false, push: true } },
+    rulesets: [protectingRuleset()],
+    ...change,
+  })
 }
 
 /** A vector a launcher must refuse before a process starts. */

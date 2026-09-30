@@ -117,13 +117,36 @@ const BIN = path.join(PACKAGE, MANIFEST.bin['idp-agent'])
  * keeps HOME's out of reach.
  */
 const CONFIG_HOME = path.join(ELSEWHERE, 'config')
+
+/**
+ * The binary reaches neither the contributor's GitHub nor their model key
+ * (stage 6 plan, Constraint 6): no `*_API_KEY`, no `GH_*` or `GITHUB_*`, no
+ * ssh agent or askpass; a HOME and a gh configuration folder of the run's
+ * own, beside the package rather than in ELSEWHERE, whose bytes the checks
+ * below hash; and a `gh` and an `ssh` that refuse to run, first on PATH, so a
+ * check that reached either fails loudly instead of using the contributor's.
+ */
+const GUARD = path.join(INSTALLED, 'guard-bin')
+mkdirSync(GUARD, { recursive: true })
+for (const program of ['gh', 'ssh']) {
+  writeFileSync(
+    path.join(GUARD, program),
+    `#!/bin/sh\necho "pnpm smoke started ${program}: no check may reach the contributor's" >&2\nexit 97\n`,
+    { mode: 0o755 },
+  )
+}
+mkdirSync(path.join(INSTALLED, 'home'), { recursive: true })
+const REACHES_OUT = /^(?:IDP_|GH_|GITHUB_)|_API_KEY$|^SSH_AUTH_SOCK$|^SSH_ASKPASS$/i
 const CLEAN_ENV = {
-  ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('IDP_'))),
+  ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !REACHES_OUT.test(name))),
   XDG_CONFIG_HOME: CONFIG_HOME,
   // Where the binary keeps a catalogue read: a folder no one makes, which the
   // store makes one name deep, so no smoke run writes under the contributor's
   // ~/.cache. `pnpm demo:backstage` sets its own.
   XDG_CACHE_HOME: path.join(ELSEWHERE, 'cache'),
+  HOME: path.join(INSTALLED, 'home'),
+  GH_CONFIG_DIR: path.join(INSTALLED, 'gh-config'),
+  PATH: `${GUARD}${path.delimiter}${process.env['PATH'] ?? ''}`,
 }
 
 const failures = []
@@ -455,6 +478,13 @@ check({
   absentFromStderr: /no model configured/,
 })
 check({ args: ['plan', INTENT, '--repo', 'submitted', '--submit'], code: 2, stderr: /no model configured/ })
+// Stage 6: idpa protection over a clone whose main tracks no remote. It has
+// no branch on github.com to check, and says so before gh could start.
+check({
+  args: ['protection', '--repo', 'submitted'],
+  code: 2,
+  stderr: /^main tracks no remote: idpa protection checks a branch on github\.com/,
+})
 assert(
   'plan "<intent>" --submit with no model cut nothing',
   fixtureGit('for-each-ref', '--format=%(refname)', 'refs/heads/idp-agent/').split('\n').filter(Boolean).length === 1 &&
@@ -693,6 +723,43 @@ check({
       if (!shown.test(out)) failures.push(`pnpm demo:backstage: stdout ${shown}`)
     }
     console.log(`  ${failures.length === before ? 'ok  ' : 'FAIL'} pnpm demo:backstage`)
+  }
+}
+
+// `pnpm demo:github`: idpa protection's three answers against the fake gh,
+// put first on PATH by the demo itself, over a clone whose upstream is on
+// github.com. The fake is TypeScript Node runs as it is, and a shell script
+// on PATH: where this Node or this system cannot, it is skipped and said to
+// be, and the smoke goes on.
+{
+  const refusal =
+    strippingRefusal() ??
+    (process.platform === 'win32' ? 'it puts its fake gh on PATH as a shell script, which needs a POSIX system' : undefined)
+  if (refusal !== undefined) {
+    console.log(`  skipped pnpm demo:github: ${refusal}`)
+  } else {
+    checks += 1
+    const run = spawnSync(process.execPath, [path.join(ROOT, 'scripts/demo-github.mjs')], {
+      cwd: ELSEWHERE,
+      env: CLEAN_ENV,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 120_000,
+    })
+    const out = run.stdout ?? ''
+    const before = failures.length
+    if (run.status !== 0) failures.push(`pnpm demo:github: expected exit 0, got ${run.status}\n${run.stderr}`)
+    for (const shown of [
+      /^\$ node dist\/cli\/bin\.js protection --repo iac$/m,
+      /^checking github\.com\/acme\/iac's main \(origin, main's upstream\), as ada \(gh\)$/m,
+      /^\(exit 1\)$/m,
+      /^\(exit 0\)$/m,
+      /^\(exit 2\)$/m,
+      /^Done\. No model was called, nothing was pushed, and the only gh this ran was the fake\.$/m,
+    ]) {
+      if (!shown.test(out)) failures.push(`pnpm demo:github: stdout ${shown}`)
+    }
+    console.log(`  ${failures.length === before ? 'ok  ' : 'FAIL'} pnpm demo:github`)
   }
 }
 

@@ -1,5 +1,16 @@
-import { userAnswer } from '../../core/github/answers.js'
-import type { GitHubRepository } from '../../core/github/remote.js'
+import {
+  branchAnswer,
+  refAnswer,
+  repositoryAnswer,
+  rulesAnswer,
+  rulesetAnswer,
+  userAnswer,
+  type BranchAnswer,
+  type RepositoryAnswer,
+  type RulesAnswer,
+  type RulesetAnswer,
+} from '../../core/github/answers.js'
+import { printedRepository, type GitHubRepository } from '../../core/github/remote.js'
 import { GH_LIMITS, GhError, ghIn, type GhAnswer, type GhClient, type GhProcess, type GhRoute } from '../../process/gh.js'
 import { GITHUB_LIMITS } from './limits.js'
 
@@ -9,8 +20,8 @@ import { GITHUB_LIMITS } from './limits.js'
  * and its body parsed against the schema of the fields a decision needs
  * (`core/github/answers.ts`). What goes wrong is said in this build's words
  * (`GitHubAnswerError`), never GitHub's or gh's, which a repository or a
- * server can reach. The route's methods beyond `user()` arrive with the
- * checks that read them (stage 6 plan, Tasks 6.1.3 and 6.2.1).
+ * server can reach. The routes of a commit, the pull requests and the one
+ * write arrive with the forge that reads them (stage 6 plan, Task 6.2.1).
  */
 
 /**
@@ -33,6 +44,9 @@ export type AnswerStatus = number | 'timeout' | 'too-large' | 'unreadable' | 'pa
 export type AnswerRoute = GhRoute['route'] | 'open-pull-request' | 'version'
 
 const NOTHING = 'Nothing was written.'
+
+/** How many rules the one page of the rules route holds: `per_page=100`, as the launcher writes the path. */
+const RULES_PAGE = 100
 
 /** One sentence per class of failure (§ 15), naming the route and the status, never an answer's words. */
 const said = (route: AnswerRoute, status: AnswerStatus, repository: GitHubRepository): string => {
@@ -78,15 +92,18 @@ const said = (route: AnswerRoute, status: AnswerStatus, repository: GitHubReposi
  * GitHub's answer, at run time, was not one this build can act on: exit 1
  * when a command reaches it. Not the person's arguments — those are
  * `ForgeInputError`s, which `readIdentity` makes of the answers that mean gh
- * is not logged in as a person.
+ * is not logged in as a person. `sentence`, when a route has more to say than
+ * its class — which branch has no ref, how many rules were too many — is
+ * written by this build too, and names only what passed a grammar.
  */
 export class GitHubAnswerError extends Error {
   constructor(
     readonly route: AnswerRoute,
     readonly status: AnswerStatus,
     repository: GitHubRepository,
+    sentence?: string,
   ) {
-    super(said(route, status, repository))
+    super(sentence ?? said(route, status, repository))
     this.name = 'GitHubAnswerError'
   }
 }
@@ -120,6 +137,16 @@ export interface GitHubUser {
 export interface GitHubApi {
   /** `GET user`: whom gh is logged in as. */
   user(): Promise<GitHubUser>
+  /** `GET repos/<o>/<r>`: its name as GitHub answers it, whether it is archived, what gh's account may do (§ 8, item 1). */
+  repository(): Promise<RepositoryAnswer>
+  /** `GET repos/<o>/<r>/rules/branches/<base>`: every active rule for the base, one page, never followed to a second (item 2). */
+  rules(base: string): Promise<RulesAnswer>
+  /** `GET repos/<o>/<r>/rulesets/<id>`: whether gh's account can bypass it, and who can (item 3). */
+  ruleset(id: number): Promise<RulesetAnswer>
+  /** `GET repos/<o>/<r>/branches/<base>`: whether classic branch protection covers it (item 4). */
+  branch(base: string): Promise<BranchAnswer>
+  /** `GET repos/<o>/<r>/git/ref/heads/<branch>`: the commit the branch is at on GitHub. */
+  ref(branch: string): Promise<string>
   /** How many gh processes this run has started, the version's included: `idp.forge.gh_calls`. */
   calls(): number
 }
@@ -155,13 +182,55 @@ export function githubApi(gh: GhClient, repository: GitHubRepository): GitHubApi
     }
   }
 
+  /**
+   * One read: a 200, one page — a `Link` to a next one is refused, never
+   * followed — and a body that parses against `schema`, else a
+   * `GitHubAnswerError` for the route; `sentences` says more than the class
+   * for the statuses a route has more to say about.
+   */
+  const read = async <T>(
+    route: GhRoute,
+    schema: { safeParse(value: unknown): { success: true; data: T } | { success: false } },
+    sentences: { readonly paginated?: string; readonly 404?: string } = {},
+  ): Promise<T> => {
+    const answer = await ask(route)
+    if (answer.status !== 200) {
+      throw new GitHubAnswerError(route.route, answer.status, repository, answer.status === 404 ? sentences[404] : undefined)
+    }
+    if (answer.hasNext) throw new GitHubAnswerError(route.route, 'paginated', repository, sentences.paginated)
+    const parsed = schema.safeParse(json(route.route, answer))
+    if (!parsed.success) throw new GitHubAnswerError(route.route, 'unreadable', repository)
+    return parsed.data
+  }
+
+  const { owner, name } = repository
+  const where = printedRepository(repository)
+
   return {
     user: async () => {
-      const answer = await ask({ route: 'user' })
-      if (answer.status !== 200) throw new GitHubAnswerError('user', answer.status, repository)
-      const parsed = userAnswer.safeParse(json('user', answer))
-      if (!parsed.success) throw new GitHubAnswerError('user', 'unreadable', repository)
-      return { login: parsed.data.login, type: parsed.data.type }
+      const parsed = await read({ route: 'user' }, userAnswer)
+      return { login: parsed.login, type: parsed.type }
+    },
+    repository: () => read({ route: 'repository', owner, name }, repositoryAnswer),
+    rules: (base) =>
+      read({ route: 'rules', owner, name, branch: base }, rulesAnswer, {
+        paginated: `${where}'s ${base} has more than ${String(RULES_PAGE)} rules, more than this build reasons about. ${NOTHING}`,
+      }),
+    ruleset: async (id) => {
+      const parsed = await read({ route: 'ruleset', owner, name, id }, rulesetAnswer)
+      // An answer about another ruleset is not an answer about this one.
+      if (parsed.id !== id) throw new GitHubAnswerError('ruleset', 'unreadable', repository)
+      return parsed
+    },
+    branch: (base) => read({ route: 'branch', owner, name, branch: base }, branchAnswer),
+    ref: async (branch) => {
+      const parsed = await read({ route: 'ref', owner, name, branch }, refAnswer, {
+        404:
+          `github.com answered 404 through gh on ref: ${where} has no branch ${branch}, or your account cannot see it; ` +
+          `GitHub does not say which. ${NOTHING}`,
+      })
+      if (parsed.ref !== `refs/heads/${branch}`) throw new GitHubAnswerError('ref', 'unreadable', repository)
+      return parsed.object.sha
     },
     calls: () => gh.calls(),
   }

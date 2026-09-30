@@ -3,7 +3,8 @@
 The layer that writes into a user's repository: one new ref under `refs/heads/idp-agent/`,
 cut through git's plumbing, and nothing else (ADR-0010). It holds its shapes, its refusals and
 the local forge; `plan … --submit`, on either road, and `init --submit`, for the service's own
-repository, reach it, through `cli/commands/submit.ts`.
+repository, reach it, through `cli/commands/submit.ts`; `idpa protection` reaches its GitHub
+half, which only reads, through `cli/commands/protection.ts`.
 
 ## What lives here
 
@@ -13,7 +14,7 @@ repository, reach it, through `cli/commands/submit.ts`.
 | `errors.ts` | `ForgeInputError` — the refusals that are the user's arguments, exit 2 |
 | `local/objects.ts` | `blobId`, `treeOf`, `writeTree` — reading and writing git objects, never a ref |
 | `local/forge.ts` | `openLocalForge(repo, repository)` — `base`, `diverges`, `recognise`, `submit`, over a clone on this machine |
-| `github/` | stage 6's GitHub half, which reads so far and no command reaches: `readRoad`, `readIdentity`, `githubApi` — [its README](github/README.md) |
+| `github/` | stage 6's GitHub half, which reads so far and which `idpa protection` reaches: `readRoad`, `readIdentity`, `githubApi`, `readProtection`, `openGitHub` — [its README](github/README.md) |
 
 ## How a submission is atomic
 

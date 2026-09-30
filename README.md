@@ -14,7 +14,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 4471, no API key" src="https://img.shields.io/badge/tests-4471%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 4562, no API key" src="https://img.shields.io/badge/tests-4562%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -431,6 +431,7 @@ idp-agent plan --from <plan.json> [--repo <dir>]   # no model, and none is possi
 idp-agent plan "<intent>" [--repo <dir>] [--json]  # needs IDP_PROVIDER, IDP_MODEL and its key
     [--project <dir>]                              # the service's repository, if not where you stand
     [--submit]                                     # a local branch, after all five gates
+idp-agent protection [--repo <dir>]                # through your gh, reads only; no model
 idp-agent init [--repo <dir>]                      # needs IDP_PROVIDER, IDP_MODEL and its key
     [--name <name>]                                # what its files do not state; asked at a terminal
     [--lifecycle experimental|production|deprecated]
@@ -462,8 +463,9 @@ is refused with exit 2 before the model is even configured.
 | `graph`, `show` | Walk the dependency graph: who depends on what, which services reach a database. `show` also says what an entity is — its description, system, tags and links, when its file declares them. A Backstage `kind: API` is read too — `graph --kind API`, and on `show` who provides it (`spec.providesApis`) and the rights that reach it — though no plan ever declares one. No model. |
 | `idpa "<phrase>"` | A question is answered, a change is previewed; the classification is said on stderr (`· question`, `· mutation`). Needs a model. |
 | `ask` | Answers a question about your platform. The model picks the queries; the engine answers them, and prints the model's short introduction and conclusion around the answer, checked and marked `›`. Asked about the catalogue as a whole — *talk about this project* — it prints an overview the engine writes: counts by kind, type, environment, owner, system and tag, a few entities in their own descriptions, rights and their levels, the most-reached resources, dangling references, and what it could not read. |
-| `init platform` | Scaffolds the declarations repository, its CI, its Backstage registration and a branch-protection checklist. |
+| `init platform` | Scaffolds the declarations repository, its CI, its Backstage registration, and prints the ruleset `idpa protection` checks. |
 | `init` | Drafts the `catalog-info.yaml` of the service you stand in, or adds to the one it keeps, and its `.idp-agent.yml` from `--iac-repo` and `--environment`. It previews a diff; with `--submit` it cuts a local branch in the service's repository. Needs a model. |
+| `protection` | Checks, through your own gh and with reads only, that the branch your clone tracks on github.com keeps a pull request from merging until someone other than its opener approves its latest commit; prints the ruleset to add when it does not ([`docs/submitting.md`](docs/submitting.md)). Exit 0 when the rules hold, 1 when they do not, 2 when gh or the clone is refused. No model, nothing written. |
 | `validate` | Checks a repository against the schemas. This is what the scaffolded CI runs. |
 | `plan` | Turns an intent, or a `Plan` file, into a checked and previewed diff. With `--submit`, either form makes it a local branch `idp-agent/…`, for review. |
 

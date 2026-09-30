@@ -414,6 +414,25 @@ and before the Inspector — no model is paid for either refusal — then crosse
 the Reviewer last, and submits only a `planned` outcome: a question and a stop answer as
 they do without `--submit`. `plan-intent.test.ts` counts zero model calls on each refusal.
 
+**`idpa protection`.** `commands/protection.ts`'s `runProtection` checks, through the
+person's own gh and with `GET` only, whether the branch a clone tracks on github.com keeps a
+pull request from merging until someone other than its opener approves its latest commit
+(stage 6 brief § 8). `main` finds the clone as `plan` finds its declarations repository —
+`sourceOf({ command: 'protection' })`, never the demo SI or a catalogue, said on stderr when
+it was not typed, and `protectionNeedsRepository` when nothing names one — and hands it the
+environment and `MainDeps.gh`: the fake GitHub a test injects (`tests/support/fake-gh.ts`),
+named here by `import type` alone, since only `forge/github/` loads the gh launcher and a real
+run's is its own `spawnGh`. `runProtection` opens the GitHub side (`forge/github/open.ts`'s
+`openGitHub`: the clone's root, the road, gh's identity), says the `checking …` line on stderr,
+reads (`readProtection`) and renders (`render/protection.ts`'s `renderProtection`); `found`
+is whether the rules hold, so exit 0 or 1. A clone on no GitHub road, a refused configuration
+key or a gh that is missing, logged out, too old or not a person is a `ForgeInputError`, exit
+2, before anything is read on GitHub; what GitHub fails to answer is a `GitHubAnswerError`,
+which `failed()` prints in its own sentence, exit 1, as it does a `GhError` that escaped the
+forge (matched by name, as `isGitError` is). No model is chosen, so none can be called, and
+nothing is written. `renderUnprotected` is the same `missing:` lines as a submission's
+refusal, for stage 6's next step.
+
 **Tracing.** `trace-sink.ts` is the only way a trace leaves the process: `mlflowSink` posts
 OTLP/JSON to `IDP_MLFLOW_TRACKING_URI`'s `/v1/traces` — never `MLFLOW_TRACKING_URI`'s, which
 other tools set — and reads the answer, so spans an OTLP server rejects are not reported as

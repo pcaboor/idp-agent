@@ -20,6 +20,7 @@ import {
   targetOf,
   type Identity,
 } from '../../core/plan/catalog-info.js'
+import { protectionText } from '../../core/github/protection.js'
 import { clearService } from '../../core/plan/clear.js'
 import { questionsOf, type Question } from '../../core/plan/clarify.js'
 import type { Provenance } from '../../core/plan/provenance.js'
@@ -75,18 +76,16 @@ import {
 /**
  * Printed on every run, including the one that writes nothing. The second
  * reader of a repository is as entitled to it as the first, and a tool that
- * only admits its limits once has not admitted them.
+ * only admits its limits once has not admitted them. The list is
+ * `PROTECTION_SETTINGS`, the one `idpa protection` checks and a refused
+ * submission prints, so the three cannot drift; a directory with no remote
+ * yet has nothing to check, so this says what will.
  */
-const BRANCH_PROTECTION = `Branch protection is set in the forge, not here. Required on the default branch:
-  · require a pull request before merging — 1 approval
-  · require review from Code Owners
-  · dismiss stale approvals on a new push
-  · no force push, no branch deletion
-  · include administrators
-  · require the downstream decision (Tufin, AlgoSec, a DBA's queue) as a status
-    check, once one reports — a refused request must never merge (stage 6, ADR-0012)
-This build cannot verify these. The live check — that the token which opens a
-request cannot merge it — arrives at stage 6.`
+const RULESET_NOTICE = [
+  'Branch protection is set in the forge, not here. Add a ruleset on the default branch (Settings → Rules → Rulesets):',
+  ...protectionText(),
+  'idpa protection checks them once the repository is on GitHub.',
+].join('\n')
 
 export interface InitPlatformOptions {
   /** Absolute, already through assertInsideRepo. */
@@ -175,7 +174,7 @@ export async function runInitPlatform(
 
   return {
     ...(notice !== undefined ? { notice } : {}),
-    text: [...listing(report), '', BRANCH_PROTECTION].join('\n'),
+    text: [...listing(report), '', RULESET_NOTICE].join('\n'),
     found: true,
   }
 }

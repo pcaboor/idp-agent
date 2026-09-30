@@ -117,7 +117,12 @@ and nothing here can be steered by what it validates. Hence the property tests r
   the `local` and `worktree` scopes (`refusedConfigKeys`), and `configRefusal`, the sentence,
   which prints a key's subsection only in a shape that cannot carry a credential.
   `gh-version.ts`: `GH_MINIMUM_VERSION` and the reading of `gh --version`. `answers.ts`: the
-  fields read of each GitHub answer, as Zod schemas.
+  fields read of each GitHub answer, as Zod schemas. `protection.ts`: `judgeProtection`,
+  whether a base keeps a pull request from merging until someone other than its opener
+  approves its latest commit, from the repository, its rules and each supplying ruleset (§ 8,
+  items 1 to 5), a rule counting only when its ruleset answers `current_user_can_bypass:
+  never`; and `PROTECTION_SETTINGS`, the one list of settings `idpa protection`, a refused
+  submission and `init platform` print (`protectionText`).
 
 **The rule: nothing in `core/` may read, write, fetch or ask.** Work that needs a disk belongs
 in `context/` or `cli/`, work that needs a model in `agents/` or `llm/` — carve out the pure

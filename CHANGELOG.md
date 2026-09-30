@@ -241,6 +241,17 @@ Each pull request adds its line here.
   grammar refusing a repository name of 97 to 100 characters written with `.git`, now read;
   and only the forge's GitHub half may load the gh launcher (thirty architecture rules now).
   No command takes this road yet ([#124](https://github.com/pcaboor/idp-agent/pull/124)).
+- `idpa protection [--repo <clone>]` says whether the branch the clone tracks on github.com
+  keeps a pull request from merging until someone other than its opener approves its latest
+  commit: through the person's own gh, with reads only, it checks a pull request rule of at
+  least one approval, approval of the most recent push (or stale approvals dismissed), no force
+  push, no deletion, and that gh's account cannot bypass them, refuses a base protected only by
+  classic branch protection or a deploy key in a bypass list, and states what no read can see.
+  Exit 0 when the rules hold, 1 when they do not, with the ruleset to add, 2 when gh or the
+  clone is refused; no model, nothing written. `init platform` prints the same list of settings
+  and names the command, `docs/submitting.md` says how to add the ruleset, and
+  `pnpm demo:github` shows the three answers against a fake gh
+  ([#125](https://github.com/pcaboor/idp-agent/pull/125)).
 
 ### Changed
 
