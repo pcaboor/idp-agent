@@ -24,6 +24,7 @@ import {
 import { QUERY_LIMITS, type Answer } from '../../core/schemas/query.js'
 import type { EventSink } from '../../agents/events.js'
 import type { LlmClient } from '../../llm/client.js'
+import { missIn, partialClosing } from '../render/catalogue-read.js'
 import { NOWHERE, renderEntityDetail } from '../render/entity.js'
 import { renderOrganisationDetail } from '../render/organisation.js'
 import { renderOverview, type OverviewSource } from '../render/overview.js'
@@ -178,7 +179,8 @@ function block(options: AskOptions, answer: Answer, truncated: number): CommandR
       err(`cannot answer: ${oneLine(answer.reason, QUERY_LIMITS.maxReason)}\n`)
       return { text: '', found: false, unsupported: true }
     case 'nothing':
-      return { text: 'No entity matches that question.', found: false }
+      // On a partial graph, said with the part it looked in.
+      return { text: missIn(graph.partial, 'No entity matches that question'), found: false }
     case 'overview':
       // Chosen by the model, written by the engine: every figure comes from
       // the graph and the reader, and nothing from the conversation. Whatever
@@ -224,13 +226,13 @@ function renderEntities(
     .map((ref) => graph.node(ref))
     .filter((node): node is GraphNode => node !== undefined)
 
-  if (found.length === 0) return { text: 'No entity matches that question.', found: false }
+  if (found.length === 0) return { text: missIn(graph.partial, 'No entity matches that question'), found: false }
   if (found.length === 1) {
     const [only] = found as [GraphNode]
     const card = isOrganisation(only)
       ? renderOrganisationDetail(graph, only, said)
       : renderEntityDetail(graph, only, said)
-    return { text: withTruncation(card, truncated), found: true }
+    return { text: closed(withTruncation(card, truncated), partialClosing(graph.partial, 'these sections')), found: true }
   }
 
   // What a node of the organisation does not state is `-`, as an absent
@@ -246,11 +248,16 @@ function renderEntities(
           node.spec.owner,
         ],
   )
+  const table = renderTable(['NAME', 'KIND', 'TYPE', 'ENV', 'OWNER'], rows)
   return {
-    text: withTruncation(renderTable(['NAME', 'KIND', 'TYPE', 'ENV', 'OWNER'], rows), truncated),
+    text: closed(withTruncation(table, truncated), partialClosing(graph.partial, 'this table')),
     found: true,
   }
 }
+
+/** A block, and under it the line a partial graph closes it on, as `show` and `graph` do; the block alone when whole. */
+const closed = (block: string, closing: string | undefined): string =>
+  closing === undefined ? block : `${block}\n\n${closing}`
 
 const ORGANISATION: ReadonlySet<string> = new Set(ORGANISATION_KINDS)
 const isOrganisation = (node: GraphNode): node is OrganisationEntity => ORGANISATION.has(node.kind)
@@ -377,6 +384,11 @@ function knownEntity(
       ...(entity.metadata.tags ?? []),
       ...graph
         .unresolvedOf(refOf(entity))
+        .flatMap(({ to }) => (shown.has(to) ? [to] : [])),
+      // What it declares past a catalogue's bound, on the same terms: a
+      // value once a result showed it, and never an entity. None when whole.
+      ...graph
+        .notLoadedOf(refOf(entity))
         .flatMap(({ to }) => (shown.has(to) ? [to] : [])),
     ],
   }

@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3999 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 4042 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -70,7 +70,8 @@ included), a relation holds nothing, two entities are linked by no declared path
 nothing in common (a near miss alone does not count), an entity was asked about its paths
 to itself, **the repository does not conform**, a gate refused a
 plan, the repair loop stopped at three attempts, a Backstage catalogue could not be read
-whole (unreachable, refused, a 3xx, past a bound — never a fall back), a submission
+(unreachable, refused, a 3xx, past a byte or time bound — never a fall back; one past a
+count bound is answered in part, with the answer's own code, and says so), a submission
 refused — a catalogue that differs from `HEAD`, a plan writing into both repositories, a
 refusal at the moment of writing, git failing — or something failed unexpectedly · `2`
 the arguments were refused — a bad flag, a plan file that is not a plan, a `--repo`, a
@@ -215,8 +216,13 @@ broken `IDP_REPO` is exit 2 with nothing sent, on a question too.
 
 **A Backstage catalogue** (`docs/backstage-http-brief.md`) is read over HTTP once per run,
 before any model, into the graph a folder of YAML fills, through the same reader: both GET
-routes, paged and bounded, whole or not at all — a partial read is exit 1, one line naming
-the host and what named it, and never answered from. The URL is checked before any request
+routes, paged and bounded. A read past a count bound — 20,000 Components, Resources and
+APIs, 200,000 of the organisation or of other kinds' references — stops there and is
+answered in part, and says so everywhere (ADR-0013): a `past the bound:` line on stderr,
+a `partial:` line closing each answer, a reference past it `not loaded`, never declared
+nowhere, and one line to the Supervisor and the Analyst; a whole read prints and sends what
+it did. Any other failure is exit 1, one line naming the host and what named it, and never
+answered from. The URL is checked before any request
 and quoted with its userinfo, query and fragment starred; the token comes from
 `IDP_BACKSTAGE_TOKEN` alone and goes to that catalogue alone, in one header
 (`tests/contract/key-reach.test.ts`, every provider, both roads). What it serves reaches the
@@ -228,7 +234,8 @@ does not serve reads "declared nowhere in the catalogue this token reads". The o
 is a third read, sent only when the facets name a Group, a User, a System or a Domain, of the
 fields the read model reads and nothing else (`ORGANISATION_FIELDS`: no annotation, no
 profile), under a ceiling of its own; the kinds it read whole are the ones an owner, a
-membership or a system is judged against (`LoadResult.judged`), which a folder never sets.
+membership or a system is judged against (`LoadResult.judged`), which a folder never sets,
+and one it read only up to its bound judges nothing.
 What the Analyst's tools read of it — a User's name and its groups among them — reaches the
 model provider only over a source that holds an organisation (`SECURITY.md`); over one that
 holds none, what the Supervisor and the Analyst are sent is what every tape recorded.

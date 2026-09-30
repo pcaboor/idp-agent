@@ -52,15 +52,16 @@ here, one pull request each, each naming the check run together at the end.
 
 1. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
    catalogue is plugged in. Planned ([the plan](plans/backstage-http-slice-2.md),
-   [#117](https://github.com/pcaboor/idp-agent/pull/117)): 2.1 the partial graph, 2.2 the
-   store, 2.3 the command line.
+   [#117](https://github.com/pcaboor/idp-agent/pull/117)): 2.1 the partial graph, built
+   ([#119](https://github.com/pcaboor/idp-agent/pull/119)); 2.2 the store, 2.3 the
+   command line.
 2. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
    authorisation (ADR-0006), designed in [the stage 6 note](stage-6-brief.md): the person's own
    git pushes the branch and their own gh opens the pull request, idpa holds no GitHub
    credential, and the base's ruleset is checked before any write and again at the moment of
    acting. Four slices: 6.1 the git/gh allow-list and `idpa protection`; 6.2 push and pull
    request on `plan --from`; 6.3 the intent, `init` and phrase roads; 6.4 the owner's live test,
-   ADR-0013 and the documents.
+   ADR-0015 and the documents.
 3. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence.
@@ -276,7 +277,7 @@ The owner's decisions, dated, each with where it is recorded.
   ([#117](https://github.com/pcaboor/idp-agent/pull/117)).
 - Stage 6's design, settled ([the note's § 18](stage-6-brief.md#18-the-owners-answers-2026-09-30),
   [#118](https://github.com/pcaboor/idp-agent/pull/118)). The invariant, reworded for
-  design §4.2, `AGENTS.md`, `SECURITY.md` and ADR-0013: "the identity that opens a pull request
+  design §4.2, `AGENTS.md`, `SECURITY.md` and ADR-0015: "the identity that opens a pull request
   cannot merge it until someone else has approved the exact commit that would merge, and idpa
   never submits against a base without those rules". The base's ruleset must require at least
   one approval, approval of the most recent push or dismissal of stale approvals, no force

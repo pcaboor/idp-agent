@@ -13,6 +13,7 @@ import {
   renderRelationsOverview,
   type Road,
 } from '../render/relations.js'
+import { missIn, partialClosing } from '../render/catalogue-read.js'
 import { NOWHERE } from '../render/entity.js'
 import type { CommandResult } from './result.js'
 import { resolveEntity, resolveNode } from './show.js'
@@ -70,7 +71,7 @@ export function runRelations(graph: EntityGraph, options: RelationsOptions): Com
         found: false,
       }
     }
-    return answered(relationsOf(graph, ref, 'between', { ...depth, to }), road, said)
+    return answered(graph, relationsOf(graph, ref, 'between', { ...depth, to }), road, said)
   }
 
   const found = resolveNode(graph, options.query)
@@ -78,7 +79,7 @@ export function runRelations(graph: EntityGraph, options: RelationsOptions): Com
   const ref = refOf(found.node)
 
   if (options.relation !== undefined) {
-    return answered(relationsOf(graph, ref, options.relation, depth), road, said)
+    return answered(graph, relationsOf(graph, ref, options.relation, depth), road, said)
   }
 
   // An entity's overview is the one it always was; an organisation node's is
@@ -88,7 +89,7 @@ export function runRelations(graph: EntityGraph, options: RelationsOptions): Com
     : OVERVIEW_ORDER
   const results = order.flatMap((relation) => relationsOf(graph, ref, relation, depth) ?? [])
   return {
-    text: renderRelationsOverview(stepOf(found.node), results, road, said),
+    text: closed(graph, renderRelationsOverview(stepOf(found.node), results, road, said)),
     found: results.some(holds),
   }
 }
@@ -97,7 +98,17 @@ export function runRelations(graph: EntityGraph, options: RelationsOptions): Com
  * A relation of an entity the graph holds is always computed; `undefined`
  * here would be a resolved name the graph no longer answers to.
  */
-function answered(result: RelationResult | undefined, road: Road, said: string): CommandResult {
-  if (result === undefined) return { text: 'No entity matches that question.', found: false }
-  return { text: renderRelation(result, road, said), found: holds(result) }
+function answered(graph: EntityGraph, result: RelationResult | undefined, road: Road, said: string): CommandResult {
+  if (result === undefined) return { text: missIn(graph.partial, 'No entity matches that question'), found: false }
+  return { text: closed(graph, renderRelation(result, road, said)), found: holds(result) }
+}
+
+/**
+ * A block, and on a partial graph the line that says its rows are of part of
+ * the catalogue: a path cannot reach past the bound, and stdout says so under
+ * it. A whole graph's block is what it always was.
+ */
+function closed(graph: EntityGraph, block: string): string {
+  const closing = partialClosing(graph.partial, 'these rows')
+  return closing === undefined ? block : `${block}\n\n${closing}`
 }

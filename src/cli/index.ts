@@ -64,7 +64,7 @@ import { isForgeHandle } from '../scaffold/codeowners.js'
 import { VERSION } from '../core/index.js'
 import type { LlmClient } from '../llm/client.js'
 import type { CommandResult } from './commands/result.js'
-import { setAsideLine, skippedLines } from './render/catalogue-read.js'
+import { partialLine, pastBoundOf, setAsideLine, skippedLines } from './render/catalogue-read.js'
 import { NOWHERE, NOWHERE_IN_CATALOGUE } from './render/entity.js'
 import { inert, inertLine, oneLine, plain } from './render/plain.js'
 import { homeOf } from './personal.js'
@@ -1437,8 +1437,9 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   const { provider, source } = read
 
   // Once per run, before any model is chosen or called. A catalogue that
-  // cannot be read whole ends the run in one line, exit 1, and is never
-  // answered from in part, nor from a repository or the demo SI instead.
+  // cannot be read ends the run in one line, exit 1, and is never answered
+  // from a repository or the demo SI instead. One read up to a stated bound
+  // is answered from, and every answer says it is partial (ADR-0013).
   let loaded: LoadResult
   try {
     loaded = await provider.load()
@@ -1468,6 +1469,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
       notModelled: notModelled.length,
       setAside,
       skipped: rejected.length,
+      ...(loaded.partial === undefined ? {} : { pastBound: pastBoundOf(loaded.partial) }),
     },
     catalogue:
       source.kind === 'repo' && source.origin.by === 'working-directory' && (await catalogueConfigured(context)),
@@ -1488,6 +1490,10 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     }
   }
   if (notModelled.length > 0) err(`${notLoaded(notModelled)}\n`)
+  // After the kinds not modelled, whose `not loaded:` it never begins with:
+  // what a bound left out is counted in words of its own, and said only when
+  // a read stopped at one, so a whole read's stderr is what it always was.
+  if (loaded.partial !== undefined && loaded.partial.length > 0) err(`${partialLine(loaded.partial)}\n`)
   const aside = setAsideLine(ignored)
   if (aside !== undefined) err(`${aside}\n`)
   if (unread.length > 0) err(`${notRead(unread)}\n`)
@@ -1527,6 +1533,8 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     entities,
     ignored.flatMap(({ ref }) => (ref === undefined ? [] : [ref])),
     { nodes: organisation, judged: new Set(loaded.judged ?? []) },
+    // A reference into what a bound left out is not loaded, never declared nowhere.
+    loaded.partial ?? [],
   )
   // A catalogue serves only what its token may read, so a reference it does
   // not serve may be declared all the same; a repository's is declared
@@ -1748,6 +1756,8 @@ function sourceAttributes(source: BackstageSource, loaded: LoadResult): Attribut
     'idp.source.origin': `${url.protocol}//${url.host}${url.pathname}`,
     'idp.source.entities': served,
     'idp.source.set_aside': served - read,
+    // What a bound left out, at least: 0 on a whole read.
+    'idp.source.not_loaded': pastBoundOf(loaded.partial ?? []).count,
     'idp.source.pages': loaded.census?.pages ?? 0,
     'idp.source.bytes': loaded.census?.bytes ?? 0,
     'idp.source.ms': loaded.census?.ms ?? 0,

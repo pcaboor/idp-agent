@@ -118,6 +118,15 @@ grammar cannot split as written) sets no column: it is printed with its marker a
 Beside, never in place of: which entity was meant, if any, is the reader's to decide (design
 §4.1). A card with nothing dangling reads as it did, byte for byte
 (`tests/unit/dangling-shown.test.ts`).
+On a catalogue read in part, a reference into what a bound left out is listed beside the
+dangling ones and marked `not loaded` (`NOT_LOADED`, from `notLoadedOf`), never declared
+nowhere; `graph` lists them after its dangling ones (`N references name what was not
+loaded:`, at most 25), the overview under `past the bound` after its first block, `partial`,
+and a path of `relations` ends on one with `— not loaded`. Every answer from a partial graph
+closes on one `partial:` line (`partialClosing`, `render/catalogue-read.ts`) — `graph`'s
+table, `show`'s card, a relation's block, an answer's card or table — and a miss names the
+part it looked in (`missIn`). None of it is printed from a whole graph
+(`tests/unit/backstage-partial.test.ts`).
 `renderRelation(result, road)` and `renderRelationsOverview(subject, results, road)`
 (`render/relations.ts`) print a relation: the entity's reference, then per relation a title
 with the number of rows found, a table, and under it every bound the walk reached — `n more
@@ -278,8 +287,10 @@ a control character, by its length alone, since it may be the token — never wh
 header cannot carry (`headerCarries`, the transport's own rule), quoting none of it; its
 value is otherwise read in `providerOf` alone and handed to `BackstageProvider` with
 `MainDeps.catalogueFetch` (the global `fetch` in a real run). The notice follows the load and counts what was
-served — `N entities: M read, K not modelled`, the organisation among what was read, then set aside and skipped when there are
-any — then `not loaded:` for the kinds not modelled, `setAsideLine` and `skippedLines`. A
+served — `N entities: M read, K not modelled`, the organisation among what was read, then set aside, skipped and
+past the bound when there are any — then `not loaded:` for the kinds not modelled, then, only
+when a read stopped at a count bound, `past the bound:` (`partialLine`), which never begins
+with the other's words, then `setAsideLine` and `skippedLines`. A
 read that fails is `catalogueFailureLine`, one line naming the host and what named it, exit
 1, never a fall back. A reference the catalogue does not serve reads "declared nowhere in
 the catalogue this token reads" on `show`, `relations` and an answer (`NOWHERE_IN_CATALOGUE`,

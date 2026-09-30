@@ -1,7 +1,8 @@
 # `backstage-http` slice 2 — scale and cache
 
-**Status: planned, nothing built.** Three stacked pull requests, 2.1 to 2.3, after this plan
-merges on its own (`docs/bhttp-slice-2-plan`). The owner's
+**Status: 2.1 built ([#PRNUM](https://github.com/pcaboor/idp-agent/pull/PRNUM)); 2.2 and 2.3
+planned.** Three stacked pull requests, 2.1 to 2.3, after this plan
+merged on its own (`docs/bhttp-slice-2-plan`, #117). The owner's
 answers to the five questions are [at the end](#questions-for-the-owner), settled on
 2026-09-30, each as recommended, so the plan is built as written.
 
@@ -548,7 +549,7 @@ export function partialSentence(partial: readonly PartialRead[]): string
 export function partialLine(partial: readonly PartialRead[]): string
 ```
 
-- [ ] **Step 1: Pin the before (passes now)**
+- [x] **Step 1: Pin the before (passes now)**
 
 On the unchanged tree:
 
@@ -560,7 +561,7 @@ pnpm vitest run tests/scenarios/prompt-digests.test.ts tests/unit/backstage-read
 Expected: green. `prompt-digests.test.ts` is the proof that no prompt moves, and it is not
 edited by any task of this plan.
 
-- [ ] **Step 2: The fake at scale (fails: `catalogueOf` takes no `scale`)**
+- [x] **Step 2: The fake at scale (fails: `catalogueOf` takes no `scale`)**
 
 `tests/unit/fake-backstage.test.ts` gains a local reader beside its `uidOf` (`:42`) — the
 fake's own `at` (`tools/fake-backstage.ts:161`) is not exported, and stays so — and the rows:
@@ -587,7 +588,7 @@ Then `catalogueOf` gains `scale?: number`, each item made by `served()` with its
 after, and `main` reads `--scale`, refusing a value that is not an integer in range with one
 line and exit 2. The file's header lists the flag. Run again: green.
 
-- [ ] **Step 3: The load stops at a bound (fails: `too-many` is thrown)**
+- [x] **Step 3: The load stops at a bound (fails: `too-many` is thrown)**
 
 `tests/unit/backstage-load.test.ts:321-356`, the three `refuses …` tests, become:
 
@@ -635,7 +636,7 @@ not stop. `too-many` leaves `CatalogueFailure`, `sentenceOf` and `whatFailed`; `
 and `scopeWords` move to `provider.ts`, `transport.ts` re-exporting `ReadScope` for its
 importers. Run again: green, and `pnpm typecheck` finds the two switches' removed case.
 
-- [ ] **Step 4: The provider carries it (fails: no `partial`)**
+- [x] **Step 4: The provider carries it (fails: no `partial`)**
 
 `tests/unit/backstage-provider.test.ts` gains a row: the demo SI with `modelledEntities: 30`
 loads 30 entities, `partial` equal to the load's `bounded`, the rejections, set-asides and
@@ -644,7 +645,7 @@ key at all (`expect(result).not.toHaveProperty('partial')`, so every `LoadResult
 snapshot elsewhere is unchanged). Expected: FAIL. Then the provider spreads
 `...(served.bounded.length > 0 && { partial: served.bounded })`. Green.
 
-- [ ] **Step 5: The graph (fails: a reference into a bounded kind is dangling)**
+- [x] **Step 5: The graph (fails: a reference into a bounded kind is dangling)**
 
 `tests/unit/backstage-partial.test.ts`, its first `describe`, over graphs built by hand:
 
@@ -672,7 +673,7 @@ Then `from` takes `partial`, the constructor computes the bounded kinds, and the
 (`:292-301`) sends a reference whose kind is among them to `notLoaded` instead of `found`.
 Green.
 
-- [ ] **Step 6: What a person reads (fails: the run is exit 1 today)**
+- [x] **Step 6: What a person reads (fails: the run is exit 1 today)**
 
 `tests/unit/backstage-partial.test.ts`, a second `describe`, through `main` with the fake
 over the demo SI plus `scale: 12` and `catalogueLimits: { modelledEntities: 40 }` — 45
@@ -704,7 +705,7 @@ which does not move, and adds the attribute; `NOT_LOADED = 'not loaded'` beside 
 `renderEntities`' miss read `graph.partial`; `Step.notLoaded` and the walks' `notLoaded`
 ends; `Overview.partial` and `renderOverview`'s first block. Green.
 
-- [ ] **Step 7: What a model is sent (fails: nothing says partial)**
+- [x] **Step 7: What a model is sent (fails: nothing says partial)**
 
 A third `describe`, with a scripted client that keeps every request (`prompt-digests.test.ts`'s
 pattern), over the same bounded catalogue:
@@ -722,7 +723,7 @@ Expected: FAIL. Then `SiSummary.partial?`, one line in `formatSummary` when pres
 `notLoaded` through `boundedOf` like its `dangling`, and `known` widened. Then run
 `pnpm vitest run tests/scenarios`: green, `prompt-digests.test.ts` unchanged.
 
-- [ ] **Step 8: The documents**
+- [x] **Step 8: The documents**
 
 - `docs/adr/0013-a-catalogue-read-in-part-says-so.md`: *Context* — ADR-0011 refused a
   catalogue past a bound, because a reference left unloaded would read as declared nowhere;
@@ -747,9 +748,10 @@ Expected: FAIL. Then `SiSummary.partial?`, one line in `formatSummary` when pres
   test column naming `tests/unit/backstage-partial.test.ts`.
 - `docs/design.md:973-974`: "whole or not at all" becomes "whole, or up to a stated bound
   and said to be partial".
+- `docs/adopting-backstage.md:179`: the same words, the same change, naming ADR-0013.
 - `src/context/README.md` and `src/cli/README.md`: the not-loaded list beside the dangling one.
 
-- [ ] **Step 9: What changes in tests that exist**
+- [x] **Step 9: What changes in tests that exist**
 
 | File | Asserted on `55fb995` | After 2.1 | Why |
 |---|---|---|---|
@@ -759,10 +761,11 @@ Expected: FAIL. Then `SiSummary.partial?`, one line in `formatSummary` when pres
 | `backstage-read.test.ts:516-522` | the root attributes, `toMatchObject` | unchanged; `idp.source.not_loaded: 0` asserted beside them | a new attribute |
 | everything else | | unchanged | a whole read prints what it printed |
 
-`grep -rn "too-many\|does not answer from part" src tests scripts docs README.md SECURITY.md`
-after the step prints only this plan, slice 1's and 3's, and the note, which are records.
+`grep -rn "too-many\|does not answer from part\|whole or not at all" src tests scripts docs README.md SECURITY.md AGENTS.md`
+after the step prints only this plan, slice 3's and the note, which are records, and
+`render/entity.ts`'s link, which is another subject.
 
-- [ ] **Step 10: Checks**
+- [x] **Step 10: Checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -793,6 +796,8 @@ git add tools/fake-backstage.ts src/context/provider.ts src/context/backstage/lo
   tests/unit/backstage-provider.test.ts tests/unit/backstage-read.test.ts \
   tests/unit/fake-backstage.test.ts \
   docs/adr/0013-a-catalogue-read-in-part-says-so.md docs/adr/0011-backstage-to-explore.md \
+  src/context/backstage/limits.ts docs/adopting-backstage.md docs/roadmap.md \
+  docs/plans/backstage-http-slice-2.md \
   AGENTS.md README.md SECURITY.md docs/design.md CHANGELOG.md
 git commit -m "feat(context): answer a catalogue past a bound in part, and say what was not loaded"
 ```

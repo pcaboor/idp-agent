@@ -1,4 +1,5 @@
 import type { SiSummary, Vocabulary, VocabularyCounts } from '../context/graph/summary.js'
+import { scopeWords } from '../context/provider.js'
 
 /**
  * The most code points of one vocabulary value the prompt carries. Wider than
@@ -135,5 +136,25 @@ export function formatSummary(
     list('types', shown.types),
     list('environments', shown.environments),
     list('owners', shown.owners),
+    // Only when a catalogue was read in part: a whole source's summary is the
+    // one every recording was made against.
+    ...(summary.partial === undefined || summary.partial.length === 0 ? [] : [readInPart(summary.partial)]),
   ].join('\n')
+}
+
+/**
+ * The one line that tells a model the catalogue was read in part: which reads
+ * stopped at which bound, and that a reference past it is not loaded — so a
+ * miss is not taken for a fact about the catalogue, nor a reference past the
+ * bound for one declared nowhere. The bound in the words stderr and stdout
+ * use; never a count.
+ */
+function readInPart(partial: NonNullable<SiSummary['partial']>): string {
+  const reads = partial.map(
+    ({ scope, limit }) => `${scopeWords(scope)} past this version's bound of ${limit.toLocaleString('en-US')}`,
+  )
+  return (
+    `The catalogue was read in part: ${reads.join(' and ')} were not loaded; ` +
+    'a reference to one is not loaded, never declared nowhere.'
+  )
 }

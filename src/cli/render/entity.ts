@@ -4,6 +4,7 @@ import {
   ENV_ANNOTATION,
   refOf,
   type EntityGraph,
+  type NotLoaded,
   type OrganisationField,
   type Unresolved,
 } from '../../context/graph/entity-graph.js'
@@ -70,6 +71,14 @@ export const NOWHERE = 'declared nowhere'
 export const NOWHERE_IN_CATALOGUE = 'declared nowhere in the catalogue this token reads'
 
 /**
+ * What a reference into what a catalogue's bound left out is called, beside
+ * it, where `NOWHERE` would be: not loaded, which says nothing about whether
+ * it is declared (`EntityGraph.notLoadedOf`, ADR-0013). Only a partial graph
+ * holds one.
+ */
+export const NOT_LOADED = 'not loaded'
+
+/**
  * What a reference naming nothing is said to be, beside it: declared nowhere,
  * and the entities that share its name when there are any. Beside, never in
  * place of: which of them the file meant, if any, is the reader's to decide.
@@ -88,9 +97,10 @@ export function nowhere(unresolved: Pick<Unresolved, 'sameName'>, said: string =
  * A section of a card: its title, then one line per node — a Resource's
  * environment beside it, as a right's identity carries one (design 4.1) —
  * then what the card's subject declares of the relation and nothing answers
- * to, marked where an environment would be (`nowhere`), then references read
- * as names, unmarked: declared, and naming nothing this source was read whole
- * for. "none" when all three are empty. With `limit`, the rows past it are
+ * to, marked where an environment would be (`nowhere`), then what it declares
+ * into what a bound left out, marked `NOT_LOADED`, then references read as
+ * names, unmarked: declared, and naming nothing this source was read whole
+ * for. "none" when all four are empty. With `limit`, the rows past it are
  * counted on one line: an all-staff Group has thousands of members, and a
  * list that stops without saying so is read as complete.
  */
@@ -99,14 +109,15 @@ export function sectionLines(
   nodes: readonly GraphNode[],
   options: {
     readonly unresolved?: readonly Pick<Unresolved, 'to' | 'sameName'>[]
+    readonly notLoaded?: readonly string[]
     readonly named?: readonly string[]
     readonly said?: string
     readonly limit?: number
   } = {},
 ): string[] {
-  const { unresolved = [], named = [], said = NOWHERE, limit = Number.POSITIVE_INFINITY } = options
+  const { unresolved = [], notLoaded = [], named = [], said = NOWHERE, limit = Number.POSITIVE_INFINITY } = options
   const lines = ['', title]
-  if (nodes.length === 0 && unresolved.length === 0 && named.length === 0) {
+  if (nodes.length === 0 && unresolved.length === 0 && notLoaded.length === 0 && named.length === 0) {
     lines.push('  none')
     return lines
   }
@@ -117,8 +128,9 @@ export function sectionLines(
       : '',
   ])
   const missing = unresolved.map((ref): [string, string] => [shown(ref.to), nowhere(ref, said)])
+  const unloaded = notLoaded.map((ref): [string, string] => [shown(ref), NOT_LOADED])
   const names = named.map((ref): [string, string] => [shown(ref), ''])
-  const rows = [...resolved, ...missing, ...names]
+  const rows = [...resolved, ...missing, ...unloaded, ...names]
   const kept = rows.slice(0, limit)
   // A reference nothing answers to is as long as its file made it — a
   // `providesApis` the grammar could not split is kept as written — so it
@@ -246,8 +258,10 @@ export function renderEntityDetail(graph: EntityGraph, entity: CatalogueEntity, 
     title: string,
     entities: CatalogueEntity[],
     unresolved: readonly Unresolved[] = [],
+    unloaded: readonly NotLoaded[] = [],
   ): void => {
-    lines.push(...sectionLines(title, entities, { unresolved, said }))
+    const notLoaded = unloaded.map(({ to }) => to)
+    lines.push(...sectionLines(title, entities, { unresolved, notLoaded, said }))
   }
 
   // Who provides an API is always said of one, "none" included: an API no
@@ -260,19 +274,23 @@ export function renderEntityDetail(graph: EntityGraph, entity: CatalogueEntity, 
   if (entity.kind === 'API' || providers.length > 0) section('provided by', providers)
   const provides = graph.providedApisOf(ref)
   const unprovided = graph.unresolvedOf(ref, 'providesApis')
-  if (provides.length > 0 || unprovided.length > 0) section('provides', provides, unprovided)
+  const unloadedApis = graph.notLoadedOf(ref, 'providesApis')
+  if (provides.length > 0 || unprovided.length > 0 || unloadedApis.length > 0) {
+    section('provides', provides, unprovided, unloadedApis)
+  }
 
-  section('depends on', graph.dependenciesOf(ref), graph.unresolvedOf(ref, 'dependsOn'))
-  section('used by', graph.dependantsOf(ref), graph.unresolvedOf(ref, 'dependencyOf'))
+  section('depends on', graph.dependenciesOf(ref), graph.unresolvedOf(ref, 'dependsOn'), graph.notLoadedOf(ref, 'dependsOn'))
+  section('used by', graph.dependantsOf(ref), graph.unresolvedOf(ref, 'dependencyOf'), graph.notLoadedOf(ref, 'dependencyOf'))
 
   // One line per reference: two rights naming the same missing service are
   // one service the walk cannot reach, as `consumersOf` lists one per service.
+  const once = <T extends { to: string }>(found: T, at: number, all: readonly T[]): boolean =>
+    all.findIndex(({ to }) => to === found.to) === at
   const consumers = graph.consumersOf(ref)
-  const unreached = graph
-    .unresolvedConsumersOf(ref)
-    .filter((missing, at, all) => all.findIndex(({ to }) => to === missing.to) === at)
-  if (consumers.length > 0 || unreached.length > 0) {
-    section('reached by services', consumers, unreached)
+  const unreached = graph.unresolvedConsumersOf(ref).filter(once)
+  const unloaded = graph.notLoadedConsumersOf(ref).filter(once)
+  if (consumers.length > 0 || unreached.length > 0 || unloaded.length > 0) {
+    section('reached by services', consumers, unreached, unloaded)
   }
 
   return lines.join('\n')

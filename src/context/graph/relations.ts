@@ -9,6 +9,7 @@ import { levelledOf, natureOf, type AccessLevel } from '../../core/schemas/resou
 import {
   ENV_ANNOTATION,
   refOf,
+  type DeclaredField,
   type EntityGraph,
   type OrganisationField,
   type OrganisationUnread,
@@ -81,6 +82,12 @@ export interface Step {
    * never declared nowhere.
    */
   readonly setAside?: true
+  /**
+   * A reference into what a catalogue's bound left out (`notLoadedOf`): it
+   * ends the path, and is never declared nowhere — whether it is declared is
+   * not known of a partial graph.
+   */
+  readonly notLoaded?: true
 }
 
 export interface RelationRow {
@@ -117,10 +124,13 @@ export interface Bounded<T> {
  * A reference the subject of an organisation relation declares, in a field
  * its first hop reads, that no node carries and whose kind this source was
  * not read whole for: a name, and never a row. `held` says whether the source
- * holds any node of that kind at all, which is why it is only a name.
+ * holds any node of that kind at all, which is why it is only a name — unless
+ * `bound` is there: the catalogue's read of that kind stopped at this bound,
+ * which is the reason, whatever part of it was held (ADR-0013).
  */
 export interface Named extends OrganisationUnread {
   readonly held: boolean
+  readonly bound?: number
 }
 
 export interface RelationResult {
@@ -286,6 +296,8 @@ interface Walk {
   readonly dangling: (ref: string, depth: number) => Array<Unresolved | OrganisationUnresolved>
   /** Judged references naming a document set aside: each ends a row (`Step.setAside`). None when absent. */
   readonly setAside?: (ref: string) => string[]
+  /** References into what a bound left out: each ends a row (`Step.notLoaded`). None when absent, as on a whole graph. */
+  readonly notLoaded?: (ref: string, depth: number) => string[]
 }
 
 /**
@@ -359,6 +371,7 @@ function walked(
       .sort(byRef)
     const dangling = walk.dangling(current, hops)
     const aside = walk.setAside?.(current) ?? []
+    const unloaded = walk.notLoaded?.(current, hops) ?? []
     // Kept at the depth bound too: an edge from there back to an entity the
     // walk listed leaves nothing unlisted, and still closes a cycle.
     edges.set(current, next.filter(walk.through).map(refOf))
@@ -367,6 +380,7 @@ function walked(
       if (
         dangling.length > 0 ||
         aside.length > 0 ||
+        unloaded.length > 0 ||
         next.some((entity) => !onPath.has(refOf(entity)))
       ) {
         stopped = true
@@ -376,6 +390,7 @@ function walked(
 
     for (const unresolved of dangling) rows.push({ steps: [...path, nowhereOf(unresolved)] })
     for (const ref of aside) rows.push({ steps: [...path, { ref, setAside: true }] })
+    for (const ref of unloaded) rows.push({ steps: [...path, { ref, notLoaded: true }] })
     for (const entity of next) {
       const ref = refOf(entity)
       if (onPath.has(ref)) continue
@@ -652,15 +667,24 @@ export function relationsOf(
       },
       depth,
     )
-    const named = unread(ref).flatMap((name): Named[] =>
-      name.judged ? [] : [{ ...name, held: held(name.kind) }],
-    )
+    const named = unread(ref).flatMap((name): Named[] => {
+      if (name.judged) return []
+      const bound = boundOf(name.kind)
+      return [{ ...name, held: held(name.kind), ...(bound === undefined ? {} : { bound }) }]
+    })
     return bounded(found.rows, { ...found, named })
   }
   const held = (kind: OrganisationKind | undefined): boolean =>
     kind !== undefined && graph.holdsKind(kind)
+  /** The bound a catalogue's read of `kind` stopped at; none on a whole graph. */
+  const boundOf = (kind: OrganisationKind | undefined): number | undefined =>
+    kind === undefined
+      ? undefined
+      : graph.partial.find(({ kinds }) => kinds.includes(kind.toLowerCase()))?.limit
   const every = (): boolean => true
   const never = (): boolean => false
+  /** What an entity declares in `field` into what a bound left out: none on a whole graph. */
+  const unloaded = (at: string, field: DeclaredField): string[] => graph.notLoadedOf(at, field).map(({ to }) => to)
 
   /**
    * `between`'s near misses: from one end, a declaration on the way that
@@ -746,6 +770,7 @@ export function relationsOf(
         through: every,
         listed: every,
         dangling: (at) => graph.unresolvedOf(at, 'dependsOn'),
+        notLoaded: (at) => unloaded(at, 'dependsOn'),
       })
     case 'impacts':
       return walkedBy({
@@ -754,6 +779,7 @@ export function relationsOf(
         through: every,
         listed: every,
         dangling: (at) => graph.unresolvedOf(at, 'dependencyOf'),
+        notLoaded: (at) => unloaded(at, 'dependencyOf'),
       })
     case 'consumes':
       // Through the subject's rights only, then onward: the objects a right is
@@ -767,6 +793,7 @@ export function relationsOf(
         // What the subject itself declares and nothing answers to is not
         // known to be a right, so it is `depends-on`'s, not this.
         dangling: (at, hops) => (hops === 0 ? [] : graph.unresolvedOf(at, 'dependsOn')),
+        notLoaded: (at, hops) => (hops === 0 ? [] : unloaded(at, 'dependsOn')),
       })
     case 'consumed-by':
       // `consumersOf`'s walk: through everything that is not a service, to the
@@ -779,6 +806,7 @@ export function relationsOf(
         listed: component,
         dangling: (at) =>
           graph.unresolvedOf(at, 'dependencyOf').filter(({ to }) => to.startsWith('component:')),
+        notLoaded: (at) => unloaded(at, 'dependencyOf').filter((to) => to.startsWith('component:')),
       })
     case 'provides': {
       const start = stepOf(subject)
@@ -787,6 +815,7 @@ export function relationsOf(
         ...graph.unresolvedOf(ref, 'providesApis').map((missing) => ({
           steps: [start, nowhereOf(missing)],
         })),
+        ...unloaded(ref, 'providesApis').map((to) => ({ steps: [start, { ref: to, notLoaded: true as const }] })),
       ]
       return bounded(found, { stopped: false, cycles: [] })
     }

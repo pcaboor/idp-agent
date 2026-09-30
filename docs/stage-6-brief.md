@@ -1302,7 +1302,7 @@ Closed by 6.3.1: from a directory whose `.idp-agent.yml` names the throwaway rep
 3. **`idpa "<phrase>" --submit`** (D8, decision 14): the forge, gh and the preflight before the
    Supervisor, a question with `--submit` refused as today; its key-reach leg.
 
-### Slice 6.4 — the live test, ADR-0013 and the documents
+### Slice 6.4 — the live test, ADR-0015 and the documents
 
 Closed by 6.4.1: the owner runs `pnpm test:live:github` with their own gh session and the
 second account's, and it passes, every door refused and step 5 made, and commits the recorded
@@ -1314,7 +1314,7 @@ refusing to start outside its
    guards (§ 10); the recorded answers with the gh version; the offline test holding the fake
    to them; the minimum gh version pinned from them; the unknowns of § 17 answered in the
    successor documents.
-2. **ADR-0013 and the documents.** ADR-0013, "a submission is a pull request the rules keep
+2. **ADR-0015 and the documents** (0013 and 0014 are `backstage-http` slice 2's). ADR-0015, "a submission is a pull request the rules keep
    from merging until someone else approves it", carrying the owner's invariant word for word,
    the gh/git model, the allow-list, the no-gh refusal and § 20's rejected alternatives;
    ADR-0006's consequences (the check `init platform` "will verify" is `idpa protection`, the
@@ -1421,7 +1421,7 @@ Every decision below is settled. 1, 2, 3, 4, 7 and 21 are the owner's own words 
 the others take this note's recommendation, rewritten where the first draft assumed a
 fine-grained token; 22 was delegated to this revision and confirmed by the owner.
 
-1. **The invariant** (design §4.2, `AGENTS.md`, `SECURITY.md`, ADR-0013): "the identity that
+1. **The invariant** (design §4.2, `AGENTS.md`, `SECURITY.md`, ADR-0015): "the identity that
    opens a pull request cannot merge it until someone else has approved the exact commit that
    would merge, and idpa never submits against a base without those rules". Changed in design
    §4 first, as `AGENTS.md` requires, with ADR-0006's consequence rewritten and design §9.4's

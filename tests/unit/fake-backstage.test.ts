@@ -2,7 +2,7 @@ import path from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { parse } from 'yaml'
 import { describe, expect, it } from 'vitest'
-import { answerOf, catalogueOf, handler } from '../../tools/fake-backstage.js'
+import { answerOf, catalogueOf, handler, scaleOf } from '../../tools/fake-backstage.js'
 import { fakeBackstage } from '../support/fake-backstage.js'
 
 /**
@@ -41,6 +41,15 @@ const next = (cursor: string | undefined, rest: Record<string, string> = {}): st
 
 const uidOf = (item: Record<string, unknown>): unknown => (item['metadata'] as Record<string, unknown>)['uid']
 
+/** A value at a dot path: the fake's own `at` is not exported, and stays so. */
+const at = (item: unknown, dotted: string): unknown =>
+  dotted
+    .split('.')
+    .reduce<unknown>(
+      (value, key) => (typeof value === 'object' && value !== null ? (value as Record<string, unknown>)[key] : undefined),
+      item,
+    )
+
 /** Group names enough to fill more than one page of the default size. */
 const groups = (count: number): string[] => Array.from({ length: count }, (_, at) => `team-${String(at).padStart(4, '0')}`)
 
@@ -73,6 +82,50 @@ describe('catalogueOf', () => {
       'elephant',
       'dodowarriors',
     ])
+  })
+
+  it('generates n Components after the demo SI, each depending on the next, uids after every sha256 one', () => {
+    const items = catalogueOf(DEMO, { scale: 3 })
+    const scale = items.filter((item) => String(at(item, 'metadata.name')).startsWith('scale-'))
+    expect(scale.map((item) => at(item, 'metadata.name'))).toEqual(['scale-00001', 'scale-00002', 'scale-00003'])
+    expect(scale.map((item) => at(item, 'spec.dependsOn'))).toEqual([
+      ['component:default/scale-00002'],
+      ['component:default/scale-00003'],
+      undefined,
+    ])
+    const demoUids = items.filter((item) => !scale.includes(item)).map((item) => String(at(item, 'metadata.uid')))
+    expect(demoUids).toHaveLength(33)
+    expect(demoUids.every((uid) => uid < 'ffffffff')).toBe(true)
+    expect(scale.map((item) => at(item, 'metadata.uid'))).toEqual([
+      'ffffffff-ffff-4fff-8fff-000000000001',
+      'ffffffff-ffff-4fff-8fff-000000000002',
+      'ffffffff-ffff-4fff-8fff-000000000003',
+    ])
+    const [first] = scale
+    expect(first).toMatchObject({
+      apiVersion: 'backstage.io/v1alpha1',
+      kind: 'Component',
+      metadata: {
+        namespace: 'default',
+        annotations: {
+          'backstage.io/managed-by-location': 'url:https://github.com/acme/si-demo/blob/main/scale/scale-00001.yml',
+        },
+      },
+      spec: { type: 'service', lifecycle: 'production', owner: 'group:default/common' },
+      relations: expect.arrayContaining([{ type: 'dependsOn', targetRef: 'component:default/scale-00002' }]),
+    })
+  })
+
+  it('refuses --scale outside 1 to 99,999, as a number it cannot name', () => {
+    expect(scaleOf(undefined)).toBeUndefined()
+    expect(scaleOf('20500')).toBe(20_500)
+    expect(scaleOf('1')).toBe(1)
+    expect(scaleOf('99999')).toBe(99_999)
+    for (const text of ['0', '100000', '-3', '2.5', 'many', '', '1e3', '0x10']) {
+      expect(() => scaleOf(text)).toThrow('--scale takes a whole number from 1 to 99,999')
+    }
+    expect(() => catalogueOf(DEMO, { scale: 100_000 })).toThrow(RangeError)
+    expect(() => catalogueOf(DEMO, { scale: 0 })).toThrow(RangeError)
   })
 })
 

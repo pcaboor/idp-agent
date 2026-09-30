@@ -1,4 +1,4 @@
-import type { Ignored, PrePassRule, Rejection } from '../../context/provider.js'
+import { scopeWords, type Ignored, type PartialRead, type PrePassRule, type Rejection } from '../../context/provider.js'
 import { inertLine } from './plain.js'
 
 /**
@@ -118,4 +118,90 @@ export function skippedLines(rejected: readonly Rejection[]): string[] {
     lines.push(`skipped ${String(count)} more, for ${String(rest.length)} ${other}`)
   }
   return lines
+}
+
+/** A count as the note writes one: `20,000`. */
+const countOf = (count: number): string => count.toLocaleString('en-US')
+
+/**
+ * How many a catalogue's bounds left out, over every read that stopped at one:
+ * exact when each announced its total, else at least one more for each that
+ * did not — the server served more than it announced, and how many is not
+ * known. Zero, and exact, for a whole read.
+ */
+export function pastBoundOf(partial: readonly PartialRead[]): { count: number; exact: boolean } {
+  return {
+    count: partial.reduce((sum, { read, total }) => sum + (total === undefined ? 1 : total - read), 0),
+    exact: partial.every(({ total }) => total !== undefined),
+  }
+}
+
+/** `this version's bound of 20,000`: one wording for the bound, on stderr, stdout and in a prompt. */
+export const boundOf = (limit: number): string => `this version's bound of ${countOf(limit)}`
+
+/**
+ * How many of a read's kinds a bound left out, with the verb that agrees:
+ * "533 Components, Resources and APIs were", "1 of the Components, Resources
+ * and APIs was". `between` goes between the two, as the stderr line's
+ * ", beyond this version's bound of 40," does.
+ */
+const leftOut = (count: number, scope: PartialRead['scope'], between = ''): string =>
+  count === 1
+    ? `1 of the ${scopeWords(scope)}${between} was not loaded`
+    : `${countOf(count)} ${scopeWords(scope)}${between} were not loaded`
+
+/**
+ * What the bounds left out, as a sentence of an answer:
+ * "533 Components, Resources and APIs were not loaded, past this version's
+ * bound of 20,000", or, when the server announced fewer than it served,
+ * "… past this version's bound of 40 were not loaded, how many is not known";
+ * one clause per read that stopped, joined by "; ". Counts, never names:
+ * the part kept is the first in the server's order, and nothing else.
+ */
+export function partialSentence(partial: readonly PartialRead[]): string {
+  return partial
+    .map(({ scope, read, total, limit }) =>
+      total === undefined
+        ? `${scopeWords(scope)} past ${boundOf(limit)} were not loaded, how many is not known`
+        : `${leftOut(total - read, scope)}, past ${boundOf(limit)}`,
+    )
+    .join('; ')
+}
+
+/**
+ * The stderr line of a catalogue read in part, after the notice and after
+ * `not loaded:` — the kinds not modelled, whose words it never begins with
+ * (row 17 of the plan): "past the bound: 533 Components, Resources and APIs,
+ * beyond this version's bound of 20,000, were not loaded; …".
+ */
+export function partialLine(partial: readonly PartialRead[]): string {
+  const reads = partial.map(({ scope, read, total, limit }) =>
+    total === undefined
+      ? `${scopeWords(scope)} beyond ${boundOf(limit)} were not loaded, how many is not known`
+      : leftOut(total - read, scope, `, beyond ${boundOf(limit)},`),
+  )
+  return (
+    `past the bound: ${reads.join('; ')}; ` +
+    'the graph is partial, and a reference to one of them is not loaded, never declared nowhere'
+  )
+}
+
+/**
+ * The closing line of an answer from a partial graph — `graph`'s table,
+ * `show`'s card, a relation's block — naming what it holds (`in`): stdout is
+ * what a person pipes or pastes, and a partial answer is never silent there.
+ * Undefined for a whole graph, whose answer is what it always was.
+ */
+export function partialClosing(partial: readonly PartialRead[], held: string): string | undefined {
+  return partial.length === 0 ? undefined : `partial: ${partialSentence(partial)}; what they declare is not in ${held}`
+}
+
+/**
+ * A miss, said with the part it looked in: "No entity named "x"" becomes
+ * "No entity named "x" in the part of the catalogue read: …." on a partial
+ * graph, and is what it always was on a whole one. `miss` is the sentence
+ * without its full stop.
+ */
+export function missIn(partial: readonly PartialRead[], miss: string): string {
+  return partial.length === 0 ? `${miss}.` : `${miss} in the part of the catalogue read: ${partialSentence(partial)}.`
 }

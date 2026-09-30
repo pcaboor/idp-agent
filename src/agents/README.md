@@ -97,7 +97,13 @@ Plain data, handed in. Never a graph, never a provider, never a path.
   once shown — a declarer witnessed as a provider or as another reference's `declaredBy`
   had none of its own read, and a reference quoted by its bare name names its homonym.
   A turn whose results held only such references read something, and is not barren
-  (`ToolOutcome.dangling`), though the stream still counts its rows, none. The Analyst's
+  (`ToolOutcome.dangling`), though the stream still counts its rows, none. Over a
+  catalogue read in part, what a bound left out is said the same way under a key of its
+  own, `notLoaded` — the references alone on a row, beside `rows` on `get_dependencies`
+  and `get_apis`, and with its path on `get_relations` — bounded and cut as the dangling
+  ones, joined to `declaredNowhere` and never witnessed; the summary then ends on one line
+  saying the catalogue was read in part (`formatSummary`). A whole graph has neither, so
+  what a whole read sends is what every tape recorded. The Analyst's
   system prompt says, in one sentence, to say so and never to take it for the entity of
   its name. The Architect's registry has none of it:
   it proposes neither an API nor what provides one, and its specs — part of every

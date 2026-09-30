@@ -27,6 +27,7 @@ import {
   refOf,
   type DeclaredField,
   type EntityGraph,
+  type NotLoaded,
   type OrganisationField,
   type OrganisationUnresolved,
   type Unresolved,
@@ -126,6 +127,9 @@ interface ApiRow extends Row {
   providedBy?: string[]
   danglingReferences?: Dangling[]
   danglingTruncated?: string
+  /** Only over a catalogue read in part: what it declares into what a bound left out (`unloadedOf`). */
+  notLoaded?: string[]
+  notLoadedTruncated?: string
 }
 
 /**
@@ -210,6 +214,28 @@ const boundedOf = (
     fields: {
       ...(shown.length === 0 ? {} : { danglingReferences: shown }),
       ...(cut > 0 ? { danglingTruncated: `${cut} more not shown` } : {}),
+    },
+  }
+}
+
+/**
+ * What an entity declares into what a catalogue's bound left out, as the
+ * Analyst reads it: the references alone, under `notLoaded` — never among
+ * `danglingReferences`, since whether they are declared is not known of a
+ * partial graph, and never rows, since none was read. Bounded as the rows
+ * are, the cut said beside them. None, and no key, on a whole graph.
+ */
+const unloadedOf = (
+  unloaded: readonly NotLoaded[],
+): { shown: string[]; fields: Pick<ApiRow, 'notLoaded' | 'notLoadedTruncated'> } => {
+  const shown = [...new Set(unloaded.map(({ to }) => to))]
+  const kept = shown.slice(0, QUERY_LIMITS.maxRows)
+  const cut = shown.length - kept.length
+  return {
+    shown: kept,
+    fields: {
+      ...(kept.length === 0 ? {} : { notLoaded: kept }),
+      ...(cut > 0 ? { notLoadedTruncated: `${cut} more not shown` } : {}),
     },
   }
 }
@@ -540,7 +566,9 @@ const nameReadOf = (name: Named): NameRead => ({
   why:
     name.kind === undefined
       ? 'this source holds nothing of that name'
-      : name.held
+      : name.bound !== undefined
+        ? `read as a name: ${name.kind}s past this version's bound of ${name.bound.toLocaleString('en-US')} were not loaded`
+        : name.held
         ? `read as a name: the ${name.kind} files this source holds are not the whole organisation`
         : `read as a name: this source holds no ${name.kind}`,
 })
@@ -647,8 +675,11 @@ export function buildTools(
     const provides = graph.providedApisOf(row.ref).map(refOf)
     const dangling = boundedOf(graph.unresolvedOf(row.ref))
     for (const { ref } of dangling.shown) declaredNowhere.add(ref)
+    // Read as a reference declared nowhere is: shown, and never witnessed.
+    const unloaded = unloadedOf(graph.notLoadedOf(row.ref))
+    for (const ref of unloaded.shown) declaredNowhere.add(ref)
     return {
-      row: { ...row, ...(provides.length === 0 ? {} : { provides }), ...dangling.fields },
+      row: { ...row, ...(provides.length === 0 ? {} : { provides }), ...dangling.fields, ...unloaded.fields },
       refs: [row.ref, ...provides, ...dangling.shown.flatMap(({ sameName }) => sameName)],
     }
   }
@@ -766,6 +797,7 @@ export function buildTools(
     entities: GraphNode[],
     unresolved: Unresolved[] = [],
     start?: string,
+    notLoaded: readonly NotLoaded[] = [],
   ): ToolOutcome => {
     const shown = entities.slice(0, QUERY_LIMITS.maxRows)
     const truncated = entities.length - shown.length
@@ -778,6 +810,8 @@ export function buildTools(
       declaredNowhere.add(ref)
       for (const entity of [declaredBy, ...sameName]) returned.add(entity)
     }
+    const unloaded = unloadedOf(apis ? notLoaded : [])
+    for (const ref of unloaded.shown) declaredNowhere.add(ref)
     for (const ref of returned) witnessed.add(ref)
     return {
       // Truncation is stated, never silent: a model that believed it had seen
@@ -786,11 +820,14 @@ export function buildTools(
         rows: readings.map(({ row }) => row),
         ...(truncated > 0 ? { truncated: `${truncated} more not shown` } : {}),
         ...dangling.fields,
+        ...unloaded.fields,
       },
       rows: shown.length,
       truncated,
       ...(returned.size === 0 ? {} : { returned: [...returned] }),
-      ...(dangling.shown.length === 0 ? {} : { dangling: dangling.shown.length }),
+      ...(dangling.shown.length + unloaded.shown.length === 0
+        ? {}
+        : { dangling: dangling.shown.length + unloaded.shown.length }),
     }
   }
 
@@ -818,14 +855,22 @@ export function buildTools(
     const rows: RelationReading[] = []
     const dangling: Array<Dangling & { path: AnyStep[] }> = []
     const aside: SetAside[] = []
+    const unloaded: Array<{ ref: string; path: AnyStep[] }> = []
     let hidden = 0
     for (const row of [...result.rows, ...(result.nearMisses?.rows ?? [])]) {
       const reached = reachedBy(row)
-      const ends = reached.nowhere !== undefined || reached.setAside === true
+      const ends = reached.nowhere !== undefined || reached.setAside === true || reached.notLoaded === true
       const before = ends ? row.steps.slice(0, -1) : row.steps
       for (const step of before) witness(step.ref)
       if (organisation && ends && !isReference(reached.ref)) {
         hidden += 1
+        continue
+      }
+      // Past a catalogue's bound: no entity was read there, so never witnessed,
+      // and said beside the rows as a reference declared nowhere is.
+      if (reached.notLoaded === true) {
+        declaredNowhere.add(reached.ref)
+        unloaded.push({ ref: reached.ref, path: before.map(pathStepOf) })
         continue
       }
       // An organisation relation only: a reference in the catalogue that was
@@ -877,6 +922,7 @@ export function buildTools(
         ...(cycles.length === 0 ? {} : { cycles: cycles.map((cycle) => [...cycle]) }),
         ...(moreCycles > 0 ? { moreCycles: `${moreCycles} more cycles not shown` } : {}),
         ...(dangling.length === 0 ? {} : { danglingReferences: dangling }),
+        ...(unloaded.length === 0 ? {} : { notLoaded: unloaded }),
         ...(aside.length === 0 ? {} : { setAside: aside }),
         ...(names.length === 0 ? {} : { readAsNames: names.map(nameReadOf) }),
         ...(named.length > names.length
@@ -890,7 +936,9 @@ export function buildTools(
       rows: rows.length,
       truncated,
       ...(returned.size === 0 ? {} : { returned: [...returned] }),
-      ...(dangling.length + aside.length === 0 ? {} : { dangling: dangling.length + aside.length }),
+      ...(dangling.length + aside.length + unloaded.length === 0
+        ? {}
+        : { dangling: dangling.length + aside.length + unloaded.length }),
     }
   }
 
@@ -1069,13 +1117,13 @@ export function buildTools(
         const found = apis ? graph.get(ref) : undefined
         const start = found === undefined ? undefined : refOf(found)
         if (direction === 'dependencies') {
-          return report(graph.dependenciesOf(ref), graph.unresolvedOf(ref, 'dependsOn'), start)
+          return report(graph.dependenciesOf(ref), graph.unresolvedOf(ref, 'dependsOn'), start, graph.notLoadedOf(ref, 'dependsOn'))
         }
         if (direction === 'dependants') {
-          return report(graph.dependantsOf(ref), graph.unresolvedOf(ref, 'dependencyOf'), start)
+          return report(graph.dependantsOf(ref), graph.unresolvedOf(ref, 'dependencyOf'), start, graph.notLoadedOf(ref, 'dependencyOf'))
         }
         if (direction === 'consumers') {
-          return report(graph.consumersOf(ref), graph.unresolvedConsumersOf(ref), start)
+          return report(graph.consumersOf(ref), graph.unresolvedConsumersOf(ref), start, graph.notLoadedConsumersOf(ref))
         }
         const _exhaustive: never = direction
         return _exhaustive
@@ -1115,7 +1163,7 @@ export function buildTools(
         const { ref, direction } = parsed.data
         switch (direction) {
           case 'provides':
-            return report(graph.providedApisOf(ref), graph.unresolvedOf(ref, 'providesApis'))
+            return report(graph.providedApisOf(ref), graph.unresolvedOf(ref, 'providesApis'), undefined, graph.notLoadedOf(ref, 'providesApis'))
           case 'providedBy':
             return report(graph.providersOf(ref))
           default: {

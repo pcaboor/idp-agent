@@ -318,41 +318,69 @@ describe('loadCatalogue', () => {
     )
   })
 
-  it('refuses 20,001 modelled entities, 200,001 organisation entities, and 200,001 refs of other kinds', async () => {
-    // The limits lowered, the words checked with the real ones.
-    const modelled = loaded(demoWithLocations(), {}, { modelledEntities: 32 })
-    expect(await failureOf(modelled.loading)).toEqual({ kind: 'too-many', scope: 'modelled', limit: 32 })
-    expect(modelled.sent).toHaveLength(2) // refused on the first page, the refs never asked for
-    const refs = loaded(demoWithLocations(), {}, { otherRefs: 2 })
-    expect(await failureOf(refs.loading)).toEqual({ kind: 'too-many', scope: 'refs', limit: 2 })
-    const organisation = loaded([...demoWithGroups(), ...locations(3)], {}, { organisationEntities: 2 })
-    expect(await failureOf(organisation.loading)).toEqual({ kind: 'too-many', scope: 'organisation', limit: 2 })
-    expect(organisation.sent).toHaveLength(3) // the refs read never asked for
-    expect(new CatalogueReadError({ kind: 'too-many', scope: 'organisation', limit: 200_000 }, ORIGIN).message).toBe(
-      'the catalogue at https://backstage.canary.example, as this token reads it, holds more than 200,000 ' +
-        'Groups, Users, Systems and Domains; this version reads at most 200,000 and does not answer from part of a catalogue',
-    )
-
-    expect(new CatalogueReadError({ kind: 'too-many', scope: 'modelled', limit: 20_000 }, ORIGIN).message).toBe(
-      'the catalogue at https://backstage.canary.example, as this token reads it, holds more than 20,000 ' +
-        'Components, Resources and APIs; this version reads at most 20,000 and does not answer from part of a catalogue',
-    )
-    expect(new CatalogueReadError({ kind: 'too-many', scope: 'refs', limit: 200_000 }, ORIGIN).message).toBe(
-      'the catalogue at https://backstage.canary.example, as this token reads it, holds more than 200,000 ' +
-        'entities of other kinds; this version reads at most 200,000 and does not answer from part of a catalogue',
-    )
+  it('reads the modelled kinds up to their ceiling and says how far it got, the other reads still sent', async () => {
+    const { loading, sent } = loaded(demoWithLocations(), {}, { modelledEntities: 32 })
+    const served = await loading
+    expect(served.whole).toHaveLength(32)
+    expect(served.bounded).toEqual([{ scope: 'modelled', kinds: ['component', 'resource', 'api'], read: 32, total: 33, limit: 32 }])
+    expect(sent.map(({ url }) => new URL(url).searchParams.getAll('filter'))).toContainEqual(['kind=location'])
+    expect(served.refs).toHaveLength(3)
+    // Counted as kept: the item past the bound was served, and is not read.
+    expect(served.census.served).toBe(35)
   })
 
-  it('refuses on the first page when its totalItems is past the ceiling, before asking for the next', async () => {
-    // 333 announced, 250 on the first page: under the ceiling so far, and past it by the count.
+  it('asks for no page after the one that reaches the ceiling, and keeps that page up to it', async () => {
+    // 333 announced, 250 on the first page: the second reaches 300, and no third is asked for.
     const { loading, sent } = loaded(demoWithResources(300), {}, { modelledEntities: 300 })
-    expect(await failureOf(loading)).toEqual({ kind: 'too-many', scope: 'modelled', limit: 300 })
-    expect(sent).toHaveLength(2)
+    const served = await loading
+    expect(served.whole).toHaveLength(300)
+    expect(served.bounded[0]).toMatchObject({ read: 300, total: 333 })
+    expect(sent.filter(({ url }) => url.includes('entities/by-query'))).toHaveLength(2)
   })
 
-  it('refuses the ceiling as items arrive, whatever totalItems says', async () => {
-    const { loading } = loaded(demo, { totalItemsAbove: -30 }, { modelledEntities: 32 })
-    expect(await failureOf(loading)).toEqual({ kind: 'too-many', scope: 'modelled', limit: 32 })
+  it('stops at the end of a page that reaches the ceiling when totalItems says there is more', async () => {
+    const { loading, sent } = loaded(demoWithResources(300), {}, { modelledEntities: 250 })
+    const served = await loading
+    expect(served.whole).toHaveLength(250)
+    expect(served.bounded).toEqual([{ scope: 'modelled', kinds: ['component', 'resource', 'api'], read: 250, total: 333, limit: 250 }])
+    expect(sent.filter(({ url }) => url.includes('entities/by-query'))).toHaveLength(1)
+  })
+
+  it('stops as items arrive past the ceiling whatever totalItems says, and calls the total unknown', async () => {
+    const served = await loaded(demo, { totalItemsAbove: -30 }, { modelledEntities: 32 }).loading
+    expect(served.whole).toHaveLength(32)
+    expect(served.bounded[0]).toMatchObject({ read: 32, total: undefined })
+  })
+
+  it('judges no organisation kind when the organisation read stopped at its ceiling', async () => {
+    const served = await loaded([...demoWithGroups(), ...locations(3)], {}, { organisationEntities: 2 }).loading
+    expect(served.judged).toEqual([])
+    expect(served.organisation).toHaveLength(2)
+    expect(served.bounded).toEqual([{ scope: 'organisation', kinds: ['group'], read: 2, total: 3, limit: 2 }])
+    // The refs read is still sent, and read whole.
+    expect(served.refs).toHaveLength(3)
+  })
+
+  it('reads the refs up to their ceiling', async () => {
+    const served = await loaded(demoWithLocations(), {}, { otherRefs: 2 }).loading
+    expect(served.whole).toHaveLength(33)
+    expect(served.refs).toHaveLength(2)
+    expect(served.bounded).toEqual([{ scope: 'refs', kinds: ['location'], read: 2, total: 3, limit: 2 }])
+  })
+
+  it('still refuses fewer uids than announced on a read that did not reach its ceiling', async () => {
+    const { loading } = loaded(demo, { totalItemsAbove: 1 }, { modelledEntities: 40 })
+    expect(await failureOf(loading)).toEqual({ kind: 'changed', expected: 34, read: 33 })
+  })
+
+  it('is whole, bounded: [], judged as before, on every catalogue under its ceilings', async () => {
+    // A ceiling met exactly is no bound passed: 33 of 33 is whole.
+    const exact = await loaded(demoWithLocations(), {}, { modelledEntities: 33, otherRefs: 3 }).loading
+    expect(exact.bounded).toEqual([])
+    expect(exact.whole).toHaveLength(33)
+    const organised = await loaded([...demoWithGroups(), user('ada', ['tiger'])], {}, { organisationEntities: 4 }).loading
+    expect(organised.bounded).toEqual([])
+    expect(organised.judged).toEqual(['Group', 'User'])
   })
 
   it('refuses a page that is not the envelope { items, totalItems, pageInfo }', async () => {
