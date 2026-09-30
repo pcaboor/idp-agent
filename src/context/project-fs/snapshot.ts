@@ -364,8 +364,8 @@ type GitOutcome =
   | { readonly ok: false; readonly missing: boolean; readonly stderr: string }
 
 /**
- * One git call, through the one launcher every process `src/` starts goes
- * through (`process/git.ts`): no shell, bounded in time and in output,
+ * One git call, through the git launcher (`process/git.ts`), as every git
+ * process `src/` starts: no shell, bounded in time and in output,
  * started outside the repository, which it reaches by `-C` and an absolute
  * path, with no hook, no fsmonitor, no `GIT_*` variable, no catalogue token
  * and no provider key. Past a bound nothing is read rather than something

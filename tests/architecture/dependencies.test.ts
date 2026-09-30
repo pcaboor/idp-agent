@@ -2,8 +2,11 @@ import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/prom
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { DOOR_WORDS } from '../support/fake-gh.js'
 
 const SOURCE_ROOT = path.resolve(import.meta.dirname, '../../src')
+/** tests/ itself: the door rule reads it too. */
+const TESTS_ROOT = path.resolve(import.meta.dirname, '..')
 
 interface Import {
   file: string
@@ -315,13 +318,16 @@ async function agentsReachOffences(root: string): Promise<string[]> {
 
 /**
  * Every module that may start a process, with how many calls of a
- * child_process function it makes and the function whose result each call is
- * given as `env`. They are the only modules the rule on writers lets import
- * child_process, so a module added there is stated here too.
+ * child_process function it makes and the functions one of whose results each
+ * call is given as `env`. They are the only modules the rule on writers lets
+ * import child_process, so a module added there is stated here too.
  */
-const SPAWNS: Readonly<Record<string, { readonly calls: number; readonly env: string }>> = {
-  // `gitIn`, which every git command of the Inspector and of the forge goes through.
-  'process/git.ts': { calls: 1, env: 'gitEnvironment' },
+type Spawns = Readonly<Record<string, { readonly calls: number; readonly env: readonly string[] }>>
+const SPAWNS: Spawns = {
+  // `gitIn` for every read and write, `pushIn` for the one push form (stage 6 brief § 4).
+  'process/git.ts': { calls: 2, env: ['gitEnvironment', 'pushEnvironment'] },
+  // `spawnGh`, which every gh call goes through.
+  'process/gh.ts': { calls: 1, env: ['ghEnvironment'] },
 }
 
 /**
@@ -337,7 +343,7 @@ const NAMES_A_PROCESS = /(?<![\w$])(?:execFile|execFileSync|spawn|spawnSync|exec
 const IMPORTS_CHILD_PROCESS = /^\s*import\s+([^'";]*?)\s*from\s*['"]((?:node:)?child_process)['"];?/gm
 
 /** From the bracket at `open` to the one that closes it, brackets counted, strings not read. */
-const enclosed = (code: string, open: number, pair: '()' | '{}'): string => {
+const enclosed = (code: string, open: number, pair: '()' | '{}' | '[]'): string => {
   let depth = 0
   for (let at = open; at < code.length; at += 1) {
     if (code[at] === pair[0]) depth += 1
@@ -391,17 +397,14 @@ const argumentsDropped = (code: string, callee: string): string => {
  * what refuses it, and it counts every mention of a child_process function
  * outside its import. So the module takes those functions by their own
  * names — never the whole module, never under another name — and each
- * mention is a call that passes `env: <its function>(…)`; that function starts
- * from `spawnedEnvironment(`, and the module names `process.env` nowhere, so
- * it has no other environment to build one from. The function may be handed
- * one — a test's — and it still goes through `spawnedEnvironment`.
+ * mention is a call that passes `env: <one of its functions>(…)`; each of
+ * them starts from `spawnedEnvironment(`, and the module names `process.env`
+ * nowhere, so it has no other environment to build one from. A function may
+ * be handed one — a test's — and it still goes through `spawnedEnvironment`.
  */
-async function spawnOffences(
-  root: string,
-  spawns: Readonly<Record<string, { readonly calls: number; readonly env: string }>>,
-): Promise<string[]> {
+async function spawnOffences(root: string, spawns: Spawns): Promise<string[]> {
   const offending: string[] = []
-  for (const [name, { calls, env }] of Object.entries(spawns)) {
+  for (const [name, { calls, env: functions }] of Object.entries(spawns)) {
     const file = path.join(root, name)
     const code = stripped(await readFile(file, 'utf8'))
     for (const { specifier, name: imported } of await diskNamesOf(file)) {
@@ -433,25 +436,28 @@ async function spawnOffences(
         continue
       }
       const given = enclosed(used, after + call[0].length - 1, '()')
-      if (!new RegExp(`\\benv\\s*:\\s*${env}\\(`).test(given)) {
-        offending.push(`${name}: ${mention[0]}(…) is not given env: ${env}()`)
+      if (!functions.some((env) => new RegExp(`\\benv\\s*:\\s*${env}\\(`).test(given))) {
+        const named = functions.map((env) => `${env}()`).join(' or ')
+        offending.push(`${name}: ${mention[0]}(…) is not given env: ${named}`)
       }
     }
-    if (env !== 'spawnedEnvironment' && !/\bspawnedEnvironment\s*\(/.test(bodyOf(code, env) ?? '')) {
-      offending.push(`${name}: ${env} does not start from spawnedEnvironment`)
-    }
-    if (env !== 'spawnedEnvironment') {
-      // Handed an environment, the function has a raw one of its own: it may
-      // name it only inside `spawnedEnvironment(…)`, or `return { ...env }`
-      // after a call whose result is dropped would pass every line above. A
-      // property of the same name (`options.env`) is not the parameter; a
-      // spread of it is.
-      const outside = argumentsDropped(bodyOf(code, env) ?? '', 'spawnedEnvironment')
-      const { names, destructured } = parametersOf(code, env)
-      if (destructured) offending.push(`${name}: ${env} destructures a parameter, which no rule can follow`)
-      for (const parameter of [...names, 'arguments']) {
-        if (new RegExp(`(?<![\\w$])(?<![^.]\\.)${parameter.replace(/\$/g, '\\$')}\\b`).test(outside)) {
-          offending.push(`${name}: ${env} names ${parameter} outside spawnedEnvironment(…)`)
+    for (const env of functions) {
+      if (env !== 'spawnedEnvironment' && !/\bspawnedEnvironment\s*\(/.test(bodyOf(code, env) ?? '')) {
+        offending.push(`${name}: ${env} does not start from spawnedEnvironment`)
+      }
+      if (env !== 'spawnedEnvironment') {
+        // Handed an environment, the function has a raw one of its own: it may
+        // name it only inside `spawnedEnvironment(…)`, or `return { ...env }`
+        // after a call whose result is dropped would pass every line above. A
+        // property of the same name (`options.env`) is not the parameter; a
+        // spread of it is.
+        const outside = argumentsDropped(bodyOf(code, env) ?? '', 'spawnedEnvironment')
+        const { names, destructured } = parametersOf(code, env)
+        if (destructured) offending.push(`${name}: ${env} destructures a parameter, which no rule can follow`)
+        for (const parameter of [...names, 'arguments']) {
+          if (new RegExp(`(?<![\\w$])(?<![^.]\\.)${parameter.replace(/\$/g, '\\$')}\\b`).test(outside)) {
+            offending.push(`${name}: ${env} names ${parameter} outside spawnedEnvironment(…)`)
+          }
         }
       }
     }
@@ -671,6 +677,70 @@ const READS_CACHE = (name: string): boolean => name === 'context/backstage/provi
  */
 const cacheOffences = (root: string): Promise<string[]> => loaderOffences(root, CACHE, READS_CACHE)
 
+/** A word's own boundaries: `--force` is not `--force-with-lease=`, `--tags` is not `--no-follow-tags`. */
+const doorPattern = (word: string): RegExp => {
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const before = /^[\w-]/.test(word) ? '(?<![\\w-])' : ''
+  const after = /[\w-]$/.test(word) ? '(?![\\w-])' : ''
+  return new RegExp(`${before}${escaped}${after}`)
+}
+
+/**
+ * What a door rule refuses under `root`: a source file `allowed` does not name
+ * whose code, comments stripped, holds one of § 6's door strings as a word
+ * (stage 6 brief). Textual, as the fetch rules are: a door split across two
+ * strings passes, and the launcher's grammar refuses it at run time.
+ */
+async function doorOffences(root: string, allowed: (name: string) => boolean): Promise<string[]> {
+  const offending: string[] = []
+  for (const file of await sourceFiles(root)) {
+    const name = nameUnder(root, file)
+    if (allowed(name)) continue
+    const code = stripped(await readFile(file, 'utf8'))
+    for (const word of DOOR_WORDS) if (doorPattern(word).test(code)) offending.push(`${name} names ${word}`)
+  }
+  return offending
+}
+
+/** Any name of a GitHub token: `GH_TOKEN`, `GITHUB_TOKEN`, and every `GH_…TOKEN` or `GITHUB_…TOKEN`. */
+const TOKEN_NAME = /(?<![\w$])(?:GH|GITHUB)_\w*TOKEN(?![\w$])/g
+
+/** The gh launcher, and the one list in it that may name the Enterprise tokens: to remove them. */
+const GH_LAUNCHER = 'process/gh.ts'
+const ENTERPRISE_TOKENS = new Set(['GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN'])
+
+/**
+ * What the credential rule refuses under `root`: a source naming a GitHub
+ * token's variable at all — `GH_TOKEN`, `GITHUB_TOKEN`, any `GH_…TOKEN` or
+ * `GITHUB_…TOKEN`, however it would read it: a property, an index, a
+ * destructuring, `Reflect.get`, a comparison — or `hosts.yml`, gh's stored
+ * login. The one exception is `process/gh.ts`'s `GH_REMOVED`, which may name
+ * the two Enterprise tokens, and only them: it drops them by upper-cased
+ * comparison and never reads a value (§ 5). Comments are stripped, so a
+ * comment may say what gh reads.
+ */
+async function credentialOffences(root: string): Promise<string[]> {
+  const offending: string[] = []
+  for (const file of await sourceFiles(root)) {
+    const name = nameUnder(root, file)
+    let code = stripped(await readFile(file, 'utf8'))
+    if (name === GH_LAUNCHER) {
+      const declared = /\bGH_REMOVED\b[^=]*=\s*\[/.exec(code)
+      if (declared !== null) {
+        const open = declared.index + declared[0].length - 1
+        const list = enclosed(code, open, '[]')
+        for (const [token] of list.matchAll(TOKEN_NAME)) {
+          if (!ENTERPRISE_TOKENS.has(token)) offending.push(`${name} names ${token}`)
+        }
+        code = code.slice(0, open) + code.slice(open + list.length)
+      }
+    }
+    for (const [token] of code.matchAll(TOKEN_NAME)) offending.push(`${name} names ${token}`)
+    if (/hosts\.yml/.test(code)) offending.push(`${name} names hosts.yml`)
+  }
+  return offending
+}
+
 describe('architecture', () => {
   it('core/ does not import agents/ or llm/', async () => {
     const offending = (await importsUnder(path.join(SOURCE_ROOT, 'core'))).filter(({ specifier }) =>
@@ -808,7 +878,7 @@ describe('architecture', () => {
     expect(offending).toEqual([])
   })
 
-  it('only the named modules write, and only one starts a process', async () => {
+  it('only the named modules write, and only process/git.ts and process/gh.ts start a process', async () => {
     // Every module in src/, and so every closure: what stage 5 adds as a
     // writer has to be named here, with the functions it writes with. A
     // module taking the whole of fs, by a namespace, a default import or at
@@ -828,8 +898,9 @@ describe('architecture', () => {
       // into place, a pruned copy unlinked and its empty folder removed.
       'context/backstage/cache.ts': ['rename', 'unlink', 'rmdir'],
     }
-    // `process/git.ts`, for the Inspector's `git ls-files` and the forge, and
-    // nothing else starts a process.
+    // `process/git.ts`, for the Inspector's `git ls-files`, the forge and the
+    // push, and `process/gh.ts`, for gh (stage 6 brief § 6): nothing else
+    // starts a process.
     const spawns = new Set(Object.keys(SPAWNS))
     const offending: string[] = []
     for (const file of await sourceFiles(SOURCE_ROOT)) {
@@ -1011,6 +1082,22 @@ describe('architecture', () => {
     // core/ and context/ importing a forge passed every rule at eee67d6.
     expect(await forgeReachOffences(SOURCE_ROOT)).toEqual([])
   })
+
+  it('nothing in src/ names a door the allow-list refuses', async () => {
+    // The launchers refuse every vector outside § 6's grammar at run time;
+    // this keeps the source from holding the words at all.
+    expect(await doorOffences(SOURCE_ROOT, () => false)).toEqual([])
+  })
+
+  it('nothing in src/ reads a GitHub credential from the environment', async () => {
+    // idp-agent holds no GitHub credential (§ 5): gh and git read their own.
+    expect(await credentialOffences(SOURCE_ROOT)).toEqual([])
+  })
+
+  it('in tests/, only tests/live/ and tests/support/fake-gh.ts name a door', async () => {
+    // They try the doors; every other test takes them from DOORS, GIT_DOORS and DOOR_WORDS.
+    expect(await doorOffences(TESTS_ROOT, (name) => name.startsWith('live/') || name === 'support/fake-gh.ts')).toEqual([])
+  })
 })
 
 describe('the architecture rules themselves', () => {
@@ -1175,7 +1262,7 @@ describe('the architecture rules themselves', () => {
   })
 
   it('refuses a process started without spawnedEnvironment', async () => {
-    const spawns = { 'spawns.ts': { calls: 1, env: 'gitEnvironment' } }
+    const spawns = { 'spawns.ts': { calls: 1, env: ['gitEnvironment'] } }
     const good = [
       "import { execFile } from 'node:child_process'",
       "import { spawnedEnvironment } from './spawned-environment.js'",
@@ -1252,6 +1339,132 @@ describe('the architecture rules themselves', () => {
     expect(await spawnOffences(await tree({ 'spawns.ts': unpacked }), spawns)).toEqual([
       'spawns.ts: gitEnvironment destructures a parameter, which no rule can follow',
     ])
+
+    // Two calls, two functions — `gitIn`'s and `pushIn`'s: each call is given
+    // one of them, and each of them starts from spawnedEnvironment.
+    const twice = { 'spawns.ts': { calls: 2, env: ['gitEnvironment', 'pushEnvironment'] } }
+    const both = [
+      handed,
+      'function pushEnvironment(env?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {',
+      '  return { ...spawnedEnvironment(env), GIT_SSH_COMMAND: "kept" }',
+      '}',
+      "const push = () => execFile('git', ['push'], { env: pushEnvironment(given) }, (error) => {})",
+      '',
+    ].join('\n')
+    expect(await spawnOffences(await tree({ 'spawns.ts': both }), twice)).toEqual([])
+    const leakedSecond = both.replace('return { ...spawnedEnvironment(env), GIT_SSH_COMMAND: "kept" }', 'void spawnedEnvironment(env)\n  return { ...env }')
+    expect(await spawnOffences(await tree({ 'spawns.ts': leakedSecond }), twice)).toEqual([
+      'spawns.ts: pushEnvironment names env outside spawnedEnvironment(…)',
+    ])
+    const crossed = both.replace('{ env: pushEnvironment(given) }', '{ env: gitEnvironment(given) }')
+    expect(await spawnOffences(await tree({ 'spawns.ts': crossed }), twice)).toEqual([])
+    const bare = both.replace('{ env: pushEnvironment(given) }', "{ cwd: '/' }")
+    expect(await spawnOffences(await tree({ 'spawns.ts': bare }), twice)).toEqual([
+      'spawns.ts: execFile(…) is not given env: gitEnvironment() or pushEnvironment()',
+    ])
+  })
+
+  it('refuses every way src/ can name a door', async () => {
+    // One probe per word: a string, a template literal, a second array
+    // element. Built from DOOR_WORDS, so this file spells none of them.
+    const probes: Record<string, string> = {}
+    DOOR_WORDS.forEach((word, at) => {
+      probes[`cli/string-${at}.ts`] = `export const x = ${JSON.stringify(word)}\n`
+      probes[`forge/template-${at}.ts`] = `export const x = \`gh ${word} now\`\n`
+      probes[`process/array-${at}.ts`] = `export const x = ['gh', ${JSON.stringify(`${word} 1`)}]\n`
+    })
+    const [put, patch, del] = ['put', 'patch', 'delete'].map((method) => method.toUpperCase())
+    Object.assign(probes, {
+      'cli/single.ts': `export const m = '${put}'\n`,
+      'cli/double.ts': `export const m = "${del}"\n`,
+      'cli/flag.ts': `export const m = '--method=${patch}'\n`,
+      'cli/path.ts': `export const p = \`/repos/acme/iac/pulls/1/${'merge'}\`\n`,
+    })
+    const refused = await tree(probes)
+    const found = await doorOffences(refused, () => false)
+    const expected = [
+      ...DOOR_WORDS.flatMap((word, at) => [
+        `cli/string-${at}.ts names ${word}`,
+        `forge/template-${at}.ts names ${word}`,
+        `process/array-${at}.ts names ${word}`,
+      ]),
+      `cli/single.ts names ${put}`,
+      `cli/double.ts names ${del}`,
+      `cli/flag.ts names ${patch}`,
+      `cli/path.ts names /${'merge'}`,
+    ]
+    // A probe of `/merges` holds no `/merge` as a word, and the others each
+    // hold their own word alone.
+    expect(found.sort()).toEqual([...new Set(expected)].sort())
+
+    // The same words in a comment, and the words the doors' boundaries keep
+    // apart from them, pass.
+    const passing = await tree({
+      'cli/said.ts': `${DOOR_WORDS.map((word) => `// ${word}`).join('\n')}\n/* ${DOOR_WORDS.join(' ')} */\nexport const x = 1\n`,
+      'process/kept.ts': [
+        "export const lease = '--force-with-lease=refs/heads/idp-agent/x-0123abcd:'",
+        "export const flag = '--no-follow-tags'",
+        "export const base = ['merge-base', '--is-ancestor']",
+        "export const key = 'branch.main.merge'",
+        "export const words = ['INPUT', 'DELETED', 'put']",
+        '',
+      ].join('\n'),
+    })
+    expect(await doorOffences(passing, () => false)).toEqual([])
+
+    // The tests-side predicate: the live test and the doors' own file try
+    // them; any other test takes them from there.
+    const tests = await tree({
+      'live/github/doors.ts': `export const d = ${JSON.stringify(DOOR_WORDS[0])}\n`,
+      'support/fake-gh.ts': `export const d = ${JSON.stringify(DOOR_WORDS[0])}\n`,
+      'unit/probe.test.ts': `const d = ${JSON.stringify(DOOR_WORDS[0])}\n`,
+    })
+    const allowed = (name: string): boolean => name.startsWith('live/') || name === 'support/fake-gh.ts'
+    expect(await doorOffences(tests, allowed)).toEqual([`unit/probe.test.ts names ${DOOR_WORDS[0] ?? ''}`])
+  })
+
+  it('refuses every way src/ can read a GitHub credential', async () => {
+    const refused = await tree({
+      'cli/dot.ts': 'export const t = process.env.GH_TOKEN\n',
+      'cli/index.ts': "export const t = process.env['GITHUB_TOKEN']\n",
+      'cli/template.ts': 'export const t = env[`GH_TOKEN`]\n',
+      'cli/destructured.ts': 'export const { GH_TOKEN } = process.env\n',
+      'forge/reflect.ts': "export const t = Reflect.get(env, 'GITHUB_TOKEN')\n",
+      'process/compare.ts': "export const is = (name: string) => name === 'GH_TOKEN'\n",
+      'context/other.ts': 'export const t = env.GH_OTHER_TOKEN\n',
+      'process/gh.ts': [
+        "export const GH_REMOVED: readonly string[] = ['GIT_*', 'GH_HOST', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN', 'GH_TOKEN']",
+        "export const t = env['GITHUB_ENTERPRISE_TOKEN']",
+        '',
+      ].join('\n'),
+      'cli/x.ts': "export const t = 'GH_ENTERPRISE_TOKEN'\n",
+      'forge/github/x.ts': "export const hosts = 'hosts.yml'\n",
+    })
+    expect((await credentialOffences(refused)).sort()).toEqual(
+      [
+        'cli/dot.ts names GH_TOKEN',
+        'cli/index.ts names GITHUB_TOKEN',
+        'cli/template.ts names GH_TOKEN',
+        'cli/destructured.ts names GH_TOKEN',
+        'forge/reflect.ts names GITHUB_TOKEN',
+        'process/compare.ts names GH_TOKEN',
+        'context/other.ts names GH_OTHER_TOKEN',
+        // Inside GH_REMOVED, only the two Enterprise names; outside it, none.
+        'process/gh.ts names GH_TOKEN',
+        'process/gh.ts names GITHUB_ENTERPRISE_TOKEN',
+        'cli/x.ts names GH_ENTERPRISE_TOKEN',
+        'forge/github/x.ts names hosts.yml',
+      ].sort(),
+    )
+    const passing = await tree({
+      'process/gh.ts': [
+        "export const GH_REMOVED: readonly string[] = ['GIT_*', 'GH_HOST', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN']",
+        "export const kept = ['GH_CONFIG_DIR']",
+        '',
+      ].join('\n'),
+      'process/environment.ts': '// A GITHUB_TOKEN is kept: git may need one, and it is not this tool\'s.\nexport const x = 1\n',
+    })
+    expect(await credentialOffences(passing)).toEqual([])
   })
 
   it('refuses every module but project-fs and forge/ that loads the git launcher', async () => {

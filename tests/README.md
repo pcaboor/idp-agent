@@ -14,11 +14,12 @@ one stale, and what to do when your change does.
 | `scenarios/` | the whole chain against a recorded model: `plan-mode.test.ts`, `question-mode.test.ts`, and `backstage-mode.test.ts`, questions over the fake Backstage |
 | `recordings/` | the tapes those three replay, one JSON file per scenario |
 | `setup/` | what runs before every test file, below |
-| `support/` | helpers shared by tests; `fake-backstage.ts`, the fake catalogue as an injected `fetch`, below |
+| `support/` | helpers shared by tests; `fake-backstage.ts`, the fake catalogue as an injected `fetch`, and `fake-gh.ts`, the fake gh and the doors, below; `stub-gh.ts`, a recording `gh` or `git` put first on `PATH` |
+| `live/` | from Task 6.4.1 of the stage 6 plan, not there yet; never collected by `pnpm test` (`vitest.config.ts` already excludes it): stage 6's live test, run by hand with the owner's own gh |
 
 ## Before every test file
 
-`vitest.config.ts` runs three setup files, in this order, and a global one:
+`vitest.config.ts` runs four setup files, in this order, and a global one:
 
 - `setup/shell.ts` removes every `IDP_` variable but `IDP_TRACE_DIR`, and every `*_API_KEY`:
   the README asks you to export `IDP_PROVIDER` and `IDP_MODEL`, and the suite must pass the
@@ -29,9 +30,23 @@ one stale, and what to do when your change does.
   recorded.
 - `setup/personal.ts` hides your `IDP_REPO`, your MLflow variables and your
   `~/.config/idp-agent/config.yml`.
+- `setup/forge.ts` is the floor under every child process, applied a scenario being recorded
+  included: `offline.ts` blocks the network in the test process only, and git, gh and ssh
+  open their own sockets. It removes every variable that could carry one to GitHub —
+  `GIT_SSH`, `GIT_SSH_COMMAND`, `GIT_SSH_VARIANT`, `GIT_ASKPASS`, `SSH_AUTH_SOCK`,
+  `SSH_ASKPASS`, gh's tokens, `GH_HOST`, `GH_REPO`, `NO_PROXY` — and Node's
+  `NODE_USE_ENV_PROXY`, so no Node process the suite starts reads the proxy below and a
+  recording shell has nothing to unset; points `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY` and
+  their lower-case names at a closed port on loopback; moves `HOME` and `GH_CONFIG_DIR` into
+  the run directory, so your `~/.gitconfig` and gh's login are never read; sets
+  `GIT_CONFIG_NOSYSTEM=1` for the tests' own git; and puts a `gh` and an `ssh` that fail
+  loudly (exit 97) first on `PATH`. A test reaches gh through the fake, and a push through a
+  fake ssh named by `GIT_SSH_COMMAND` that serves a bare repository in the run directory.
 - `setup/tmp.ts` points the temp directory at one directory per run, removed at the end.
 
-`unit/offline.test.ts` and `unit/personal-config.test.ts` fail if any of that stops holding.
+`unit/offline.test.ts` and `unit/personal-config.test.ts` fail if any of that stops holding;
+`unit/offline.test.ts` also refuses to run on a machine whose system git configuration sets
+a `core.sshCommand`, a proxy or an `insteadOf`, which the launcher would read.
 
 ## The properties
 
@@ -71,6 +86,20 @@ keeps one `by-query` page recorded from Backstage 1.55.2, the demo Backstage in 
 (`tools/backstage/`), which must load as the demo SI's files read, and which the pre-pass and
 `readValue` must read as they read the fake's page for the same files. `pnpm demo:backstage:docker --record` re-records it; nothing in the
 suite starts Docker.
+
+## The fake gh, the stubs and the doors
+
+No test runs the real gh or ssh. `tools/fake-gh.ts` is a model of what `gh api` answers — the
+accounts, the one gh is logged in as, `--version` and `GET user` so far — and reads each
+argument vector with its own patterns, apart from the launcher's grammar, so a drift between
+the two fails. `support/fake-gh.ts` wraps it as the process a test hands the launcher
+(`ghIn({ run })`), keeps every call in `sent`, and holds the doors: `DOORS` and `GIT_DOORS`,
+every command stage 6 says idp-agent never runs, as vectors, and `DOOR_WORDS`, the strings
+the architecture rules keep out of the source. It is the one file of `tests/` besides `live/`
+allowed to name a door; every other test takes them from it (`unit/launcher-doors.test.ts`
+titles each case with its door's name). `support/stub-gh.ts` writes a `gh` or a `git` that
+records its vector, its environment's names and its working directory, for the launcher
+tests (`unit/process-gh.test.ts`, `unit/process-git.test.ts`).
 
 ## The tapes
 

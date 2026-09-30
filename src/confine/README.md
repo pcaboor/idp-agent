@@ -60,7 +60,7 @@ only node: built-ins*), holds its importers to the four above (*only scaffold/wr
 context/iac-fs, context/project-fs and context/backstage/cache.ts load confine/*) —
 `createNew` writes and `openToRead` reads with no fs function in the caller's source, so a
 fifth importer would be a writer and a reader no other rule sees — and names the two
-writing calls it makes, `mkdir` and `open` (*only the named modules write, and only one
-starts a process*). `core/` may not
-import this folder, directly or through anything else. `tests/unit/confine.test.ts` stages
-what only the primitive can: a link planted between the check and the open.
+writing calls it makes, `mkdir` and `open` (*only the named modules write, and only
+process/git.ts and process/gh.ts start a process*). `core/` may not import this folder,
+directly or through anything else. `tests/unit/confine.test.ts` stages what only the
+primitive can: a link planted between the check and the open.

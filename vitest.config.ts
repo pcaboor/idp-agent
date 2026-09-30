@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 import { enterRunDirectory } from './tests/setup/tmp.ts'
 
 // Here, while the config loads, and not in the global setup: vitest chooses
@@ -11,14 +11,25 @@ export default defineConfig({
     environment: 'node',
     // Removes the run's temp directory, with everything the tests left in it.
     globalSetup: ['tests/setup/tmp.ts'],
+    // The live test runs under its own configuration only (vitest.live.config.ts):
+    // it reaches GitHub on purpose, and nothing here may collect it.
+    exclude: [...configDefaults.exclude, 'tests/live/**'],
     // The contributor's IDP_ variables and keys are set aside, the network is
-    // blocked for the whole suite, a scenario being recorded excepted, and the
-    // developer's own IDP_REPO and personal configuration are out of reach.
-    setupFiles: ['tests/setup/shell.ts', 'tests/setup/offline.ts', 'tests/setup/personal.ts'],
-    // Set before the setup files run, and removed by the first of them: what
+    // blocked for the whole suite, a scenario being recorded excepted, the
+    // developer's own IDP_REPO and personal configuration are out of reach, and
+    // no child process can find its way to GitHub.
+    setupFiles: ['tests/setup/shell.ts', 'tests/setup/offline.ts', 'tests/setup/personal.ts', 'tests/setup/forge.ts'],
+    // Set before the setup files run, and removed by them: what
     // `tests/unit/offline.test.ts` checks is gone, on a shell that exported
-    // nothing too. Names of their own, so that a scenario being recorded —
-    // which keeps the shell whole — keeps the contributor's real ones.
-    env: { IDP_SET_BY_VITEST_CONFIG: 'set-aside', SET_BY_VITEST_CONFIG_API_KEY: 'set-aside' },
+    // nothing too. The first two are names of their own, so that a scenario
+    // being recorded — which keeps the shell whole — keeps the contributor's
+    // real ones; the last two are real names, because `forge.ts` removes them
+    // from a recording shell as well.
+    env: {
+      IDP_SET_BY_VITEST_CONFIG: 'set-aside',
+      SET_BY_VITEST_CONFIG_API_KEY: 'set-aside',
+      GIT_SSH_COMMAND: 'set-aside-by-vitest-config',
+      GH_TOKEN: 'set-aside-by-vitest-config',
+    },
   },
 })

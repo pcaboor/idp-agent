@@ -74,7 +74,7 @@ describe('git objects, and never a ref', () => {
     const repo = await clone()
     const run = gitIn(repo)
     const root = await git(repo, 'rev-parse', 'HEAD^{tree}')
-    const blob = (await run(['hash-object', '-w', '--stdin'], Buffer.from('x\n'))).toString().trim()
+    const blob = (await run(['hash-object', '-w', '--stdin', '--no-filters'], Buffer.from('x\n'))).toString().trim()
     await expect(writeTree(run, root, new Map([['catalog-info.yaml/inner.yml', blob]]))).rejects.toThrow(
       /is a file at the base/,
     )
@@ -84,7 +84,7 @@ describe('git objects, and never a ref', () => {
     const repo = await clone()
     const run = gitIn(repo)
     const root = await git(repo, 'rev-parse', 'HEAD^{tree}')
-    const blob = (await run(['hash-object', '-w', '--stdin'], Buffer.from('x\n'))).toString().trim()
+    const blob = (await run(['hash-object', '-w', '--stdin', '--no-filters'], Buffer.from('x\n'))).toString().trim()
     await expect(writeTree(run, root, new Map([['catalog', blob]]))).rejects.toThrow(/is a folder at the base/)
   })
 })
@@ -498,7 +498,7 @@ describe('submitting', () => {
     expect(await git(repo, 'symbolic-ref', `refs/heads/${change.branch}`)).toBe('refs/heads/release')
 
     // A branch holding exactly this change, reached through a symbolic ref.
-    await git(repo, 'symbolic-ref', '--delete', `refs/heads/${change.branch}`)
+    await git(repo, 'symbolic-ref', '-d', `refs/heads/${change.branch}`)
     const first = await forge.submit(change, base)
     if (first.outcome !== 'created') throw new Error(first.outcome)
     await git(repo, 'update-ref', 'refs/heads/held', first.commit)
