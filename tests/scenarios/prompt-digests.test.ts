@@ -20,7 +20,8 @@ const QUESTIONS: Record<string, string> = {
 
 /**
  * Every request the question-mode tapes are replayed with, as sha256 of
- * JSON.stringify — the digest `digestOf` (src/llm/runtime.ts) takes. Measured
+ * JSON.stringify — the old scheme's digest (`sha256:`, `digestsOf` in
+ * src/llm/runtime.ts), the one these tapes were recorded under. Measured
  * on f8bcb43, before backstage-http slice 3. The Analyst's turns of three tapes
  * already warn "the prompt changed since recording" (docs/roadmap.md), so a
  * warning cannot tell a further change; this can. A change that must move one

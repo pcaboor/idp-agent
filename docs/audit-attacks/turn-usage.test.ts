@@ -14,21 +14,22 @@ vi.mock('../../src/llm/recording.js', async (importOriginal) => {
     openRecording: async (options: Parameters<typeof actual.openRecording>[0]) => {
       const tape = await actual.openRecording(options)
       const existing = await options.store.read(options.scenario)
-      const digests = new Map(
+      const recorded = new Map(
         (existing?.turns ?? []).map((t) => [`${t.agent}#${t.turn}`, t.digest]),
       )
       return {
         ...tape,
-        replay(key: { agent: string; turn: number }, digest: string) {
+        replay(key: { agent: string; turn: number }, digests: readonly string[]) {
           const k = `${key.agent}#${key.turn}`
-          const stored = digests.get(k)
+          const stored = recorded.get(k)
           log.push({
             scenario: options.scenario,
             key: k,
             hit: stored !== undefined,
-            digestMatch: stored === digest,
+            // One digest per scheme; the stored one is matched in its own.
+            digestMatch: stored !== undefined && digests.includes(stored),
           })
-          return tape.replay(key as never, digest)
+          return tape.replay(key as never, digests)
         },
       }
     },

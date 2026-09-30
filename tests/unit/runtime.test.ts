@@ -1,8 +1,10 @@
+import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import { createClient, toMessages, usageOf } from '../../src/llm/runtime.js'
 import { openRecording } from '../../src/llm/recording.js'
 import type { Recording, RecordingStore } from '../../src/llm/recording.js'
-import type { GenerateRequest, Transcript } from '../../src/llm/client.js'
+import type { GenerateRequest, ModelToolSpec, Transcript } from '../../src/llm/client.js'
 
 const turn = (agent: 'supervisor' | 'analyst', index: number, content: unknown[]) => ({
   agent,
@@ -136,13 +138,13 @@ describe('turn numbering', () => {
     let first = true
     const counting = {
       ...tape,
-      replay: (key: { agent: string; turn: number }, digest: string) => {
+      replay: (key: { agent: string; turn: number }, digests: readonly string[]) => {
         attempts.push(key.turn)
         if (first) {
           first = false
           throw new Error('transient')
         }
-        return tape.replay(key as never, digest)
+        return tape.replay(key as never, digests)
       },
     }
     const client = createClient({ tape: counting as never, mode: 'replay' })
@@ -418,5 +420,178 @@ describe('the messages a transcript is sent as', () => {
         ],
       },
     ])
+  })
+})
+
+describe('the digest a turn is recorded and replayed under', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  /** A provider that answers every call, in process: no socket, no host. */
+  const answering = (): void => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-key-not-a-real-one')
+    vi.stubEnv('OPENAI_BASE_URL', 'https://provider.invalid/v1')
+    vi.stubGlobal(
+      'fetch',
+      async (): Promise<Response> =>
+        new Response(
+          JSON.stringify({
+            id: 'resp_01',
+            object: 'response',
+            created_at: 0,
+            status: 'completed',
+            model: 'gpt-6-luna',
+            output: [
+              {
+                type: 'message',
+                id: 'msg_01',
+                status: 'completed',
+                role: 'assistant',
+                content: [{ type: 'output_text', text: 'QUESTION', annotations: [] }],
+              },
+            ],
+            usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    )
+  }
+
+  const tool = (env: z.ZodType): ModelToolSpec => ({
+    name: 'search_entities',
+    description: 'find entities',
+    parameters: z.object({ env }),
+  })
+
+  const request = (spec: ModelToolSpec, toolChoice: GenerateRequest['toolChoice'] = 'auto'): GenerateRequest => ({
+    agent: 'analyst',
+    system: 'system',
+    transcript: [{ role: 'user', text: 'hello' }],
+    tools: [spec],
+    toolChoice,
+  })
+
+  const ENV = z.string().max(8).regex(/^[a-z]+$/).describe('the environment, as the catalogue names it')
+
+  /** Records one turn of `sent`, and hands back the tape it wrote. */
+  const recorded = async (sent: GenerateRequest): Promise<Recording> => {
+    answering()
+    const written: Recording[] = []
+    const tape = await openRecording({
+      scenario: 'demo',
+      store: { read: async () => undefined, write: async (_, taped) => void written.push(taped) },
+      mode: 'record',
+      warn: () => {},
+    })
+    const client = createClient({ tape, mode: 'record', choice: { provider: 'openai', model: 'gpt-6-luna' } })
+    await client.generate(sent)
+    await tape.save()
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+    return written[0]!
+  }
+
+  /** The warnings one replay of `tape` under `sent` produced. */
+  const warnings = async (tape: Recording, sent: GenerateRequest): Promise<string[]> => {
+    const warned: string[] = []
+    const client = createClient({
+      tape: await openRecording({
+        scenario: 'demo',
+        store: { read: async () => tape, write: async () => {} },
+        mode: 'replay',
+        warn: (line) => void warned.push(line),
+      }),
+      mode: 'replay',
+    })
+    await client.generate(sent)
+    return warned
+  }
+
+  it('records a new turn under the digest of what the provider is sent', async () => {
+    const tape = await recorded(request(tool(ENV)))
+    expect(tape.turns[0]?.digest).toMatch(/^sent:sha256:[0-9a-f]{64}$/)
+    expect(await warnings(tape, request(tool(ENV)))).toEqual([])
+  })
+
+  it.each([
+    ['a reworded field description', ENV.describe('the environment')],
+    ['a changed maximum', z.string().max(9).regex(/^[a-z]+$/).describe('the environment, as the catalogue names it')],
+    ['a changed pattern', z.string().max(8).regex(/^[a-z-]+$/).describe('the environment, as the catalogue names it')],
+  ])('reports the turn stale on %s, which the Zod objects never showed', async (_, changed) => {
+    // What a model is shown of a tool is its JSON Schema, and each of these
+    // moves it. The digest of the request's Zod objects moved on none of them:
+    // `.describe` lives in a registry, and a check stringifies as `{}`
+    // (tests-6, wip-diff-12).
+    const tape = await recorded(request(tool(ENV)))
+    expect(await warnings(tape, request(tool(changed)))).toEqual([
+      'recording demo analyst turn 0: the prompt changed since recording; replaying anyway',
+    ])
+  })
+
+  it('reports the turn stale on a changed tool choice', async () => {
+    const tape = await recorded(request(tool(ENV)))
+    expect(await warnings(tape, request(tool(ENV), { tool: 'search_entities' }))).toHaveLength(1)
+  })
+
+  it.each<[string, (sent: GenerateRequest) => GenerateRequest]>([
+    ['a changed system prompt', (sent) => ({ ...sent, system: 'another system' })],
+    [
+      'a transcript one entry longer',
+      (sent) => ({ ...sent, transcript: [...sent.transcript, { role: 'user', text: 'and?' }] }),
+    ],
+    ['a changed transcript entry', (sent) => ({ ...sent, transcript: [{ role: 'user', text: 'hi' }] })],
+    [
+      'a reworded tool description',
+      (sent) => ({ ...sent, tools: sent.tools.map((spec) => ({ ...spec, description: 'find them' })) }),
+    ],
+    [
+      'a renamed tool',
+      (sent) => ({ ...sent, tools: sent.tools.map((spec) => ({ ...spec, name: 'find_entities' })) }),
+    ],
+  ])('reports the turn stale on %s, as the digest it replaced did', async (_, change) => {
+    // What the old digest covered, the new one must too: every turn recorded
+    // from now on is compared under it alone, so a part it drops is a prompt
+    // change no tape would ever report again.
+    const tape = await recorded(request(tool(ENV)))
+    expect(await warnings(tape, change(request(tool(ENV))))).toEqual([
+      'recording demo analyst turn 0: the prompt changed since recording; replaying anyway',
+    ])
+  })
+
+  it('still compares a turn recorded before, under the digest it was recorded with', async () => {
+    // Every tape recorded before 2026-09-30 holds this digest, which a tape
+    // cannot be moved off honestly: it stores neither the tools nor the tool
+    // choice it was sent with. So it is still computed, and such a turn keeps
+    // the verdict it had, stale or fresh.
+    const sent = request(tool(ENV))
+    const old = `sha256:${createHash('sha256').update(JSON.stringify(sent)).digest('hex')}`
+    const tape: Recording = { ...recording, turns: [{ ...turn('analyst', 0, []), digest: old }] }
+    expect(await warnings(tape, sent)).toEqual([])
+    expect(await warnings(tape, { ...sent, system: 'another system' })).toHaveLength(1)
+  })
+
+  it('writes down the transcript as it was sent, not as it grew afterwards', async () => {
+    // Stored by reference, every turn of an agent showed the transcript of its
+    // last: the tape said the model had read what it had not been sent yet.
+    answering()
+    const written: Recording[] = []
+    const tape = await openRecording({
+      scenario: 'demo',
+      store: { read: async () => undefined, write: async (_, taped) => void written.push(taped) },
+      mode: 'record',
+      warn: () => {},
+    })
+    const client = createClient({ tape, mode: 'record', choice: { provider: 'openai', model: 'gpt-6-luna' } })
+    const sent = request(tool(ENV))
+    await client.generate(sent)
+    sent.transcript.push({ role: 'assistant', text: 'QUESTION', toolCalls: [] })
+    await client.generate(sent)
+    await tape.save()
+    const lengths = written[0]?.turns.map(
+      (taped) => (taped.call as { transcript: Transcript[] }).transcript.length,
+    )
+    expect(lengths).toEqual([1, 2])
   })
 })

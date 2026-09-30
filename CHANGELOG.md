@@ -232,6 +232,16 @@ Each pull request adds its line here.
 
 ### Fixed
 
+- The recording harness: a recording starts from an empty tape, so a re-record keeps nothing
+  of the run before it, and a replayed run that succeeds having left a tape turn unplayed
+  fails, naming it; the 16 turns no scenario replayed are pruned from three tapes, with no
+  recorded response or request changed and every replay's verdict and output as before. A
+  turn recorded from now on is digested over what the provider is sent — each tool's
+  advertised JSON Schema and the tool choice among it — so a field's `.describe()`, a
+  `.max()` or a `.regex()` stales it, and stores the transcript as it was sent, not as the
+  agent grew it afterwards. The tapes recorded before keep their digest, compared as before,
+  because none stores the tools it was sent
+  ([#116](https://github.com/pcaboor/idp-agent/pull/116)).
 - A symbolic link is judged by where it leads, through one lstat, realpath and `O_NOFOLLOW`
   primitive, `src/confine/`, which `init platform`'s writer, `iac-fs` and `project-fs` share
   (two new architecture rules, twenty-five in all). `init platform` no longer writes through

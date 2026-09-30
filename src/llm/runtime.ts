@@ -34,7 +34,7 @@ import {
   type ProviderFailure,
 } from './failures.js'
 import { DEFAULT_TIMEOUT_SECONDS, KEY_VARIABLES, modelFor, type ModelChoice } from './providers.js'
-import { objectRooted } from './tool-schema.js'
+import { objectRooted, type JsonSchema } from './tool-schema.js'
 
 /**
  * One of the two files that import the model SDK — `providers.ts` is the other
@@ -43,9 +43,51 @@ import { objectRooted } from './tool-schema.js'
  * the architecture rule walks the closure through it.
  */
 
-/** Compared, never keyed on: keying on it would invalidate every recording on a comma. */
-const digestOf = (value: unknown): string =>
-  `sha256:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`
+const sha256 = (value: unknown): string =>
+  createHash('sha256').update(JSON.stringify(value)).digest('hex')
+
+/**
+ * A request's digest in each scheme a turn may have been recorded under, each
+ * prefixed with its name. Compared, never keyed on: keying on it would
+ * invalidate every recording on a comma. `recording.ts` compares a turn with
+ * the one in its own scheme.
+ *
+ *   sent:sha256:  the request as a provider is shown it — the system prompt,
+ *                 the transcript, the tool choice, and each tool's name,
+ *                 description and advertised JSON Schema. What a turn is
+ *                 recorded under since 2026-09-30.
+ *   sha256:       the request as the agents built it, each tool's parameters
+ *                 as Zod holds them. Blind to what a model reads of a field —
+ *                 `.describe` lives in a registry, a `max` or a `regex`
+ *                 stringifies as `{}` — and moved by a Zod upgrade that sends
+ *                 the same bytes (tests-6, wip-diff-12). Every turn recorded
+ *                 before 2026-09-30 holds it, and it cannot be recomputed in
+ *                 the other scheme from the tape: a turn stores neither its
+ *                 tools nor its tool choice, and its transcript was stored by
+ *                 reference, grown past what was sent. So it is still
+ *                 computed, and such a turn keeps the verdict it had, stale or
+ *                 fresh, until it is recorded again.
+ */
+async function digestsOf(request: GenerateRequest): Promise<readonly [string, string]> {
+  return [`sent:sha256:${sha256(await sentOf(request))}`, `sha256:${sha256(request)}`]
+}
+
+/** What a provider is sent of a request, as far as it is the request's to say. */
+async function sentOf(request: GenerateRequest): Promise<unknown> {
+  return {
+    agent: request.agent,
+    system: request.system,
+    transcript: request.transcript,
+    toolChoice: request.toolChoice,
+    tools: await Promise.all(
+      request.tools.map(async (spec) => ({
+        name: spec.name,
+        description: spec.description,
+        inputSchema: await advertisedSchema(spec),
+      })),
+    ),
+  }
+}
 
 /** The provider-normalised content parts, as the SDK returns and we store them. */
 interface TextPart {
@@ -220,15 +262,21 @@ export function toTools(specs: ModelToolSpec[]): ToolSet {
  * advertisement safe.
  *
  * Here and not in the agents' schemas: `spec.parameters` is part of the request
- * a recording's digest is taken over, and reshaping it would stale every tape
- * that carries the tool. The advertised JSON Schema is not in that digest.
+ * the old scheme's digest is taken over, and reshaping it would stale every tape
+ * recorded under it that carries the tool. The advertised JSON Schema is what
+ * the new scheme digests (`digestsOf`), so a change here stales a turn
+ * recorded since.
  */
 function advertised(spec: ModelToolSpec): Schema<unknown> {
-  const derived = zodSchema(spec.parameters)
-  const { validate } = derived
+  const { validate } = zodSchema(spec.parameters)
   // Always set for a Zod schema. Without it the SDK would accept any call.
   if (validate === undefined) throw new Error(`tool "${spec.name}": no validator for its schema`)
-  return jsonSchema(async () => objectRooted(await derived.jsonSchema, spec.name), { validate })
+  return jsonSchema(() => advertisedSchema(spec), { validate })
+}
+
+/** The JSON Schema a provider is shown for a spec: one function, so the digest reads what is sent. */
+async function advertisedSchema(spec: ModelToolSpec): Promise<JsonSchema> {
+  return objectRooted(await zodSchema(spec.parameters).jsonSchema, spec.name)
 }
 
 export function toToolChoice(
@@ -570,7 +618,7 @@ export function createClient(options: {
         // No adapter is built and no credential is read: a contributor replays
         // a recording made against a model they have no key for.
         if (options.tape === undefined) throw new Error('replay needs a recording')
-        const record = options.tape.replay(key, digestOf(request))
+        const record = options.tape.replay(key, await digestsOf(request))
         spend()
         return usable(fromRecord(record), record)
       }
@@ -582,6 +630,13 @@ export function createClient(options: {
       // records: IDP_MODEL's, unless the agent was given one of its own.
       const choice = options.models?.[request.agent] ?? options.choice
       const providerOptions = providerOptionsOf(choice, AGENT_CALLS[request.agent])
+      // Taken before the call, of the request as it is sent: an agent grows its
+      // transcript once the call returns, and a transcript stored by reference
+      // showed every turn the last one's (agents-llm-9).
+      const taken =
+        options.mode === 'record'
+          ? { digest: (await digestsOf(request))[0], transcript: structuredClone(request.transcript) }
+          : undefined
 
       // No temperature: it is rejected outright by several current models, and
       // determinism here comes from the recording, not from sampling settings.
@@ -636,19 +691,21 @@ export function createClient(options: {
         )
       }
 
-      options.tape?.record(key, {
-        ...key,
-        provider: choice.provider,
-        model: choice.model,
-        digest: digestOf(request),
-        recordedAt: response.response.timestamp.toISOString(),
-        call: { system: request.system, transcript: request.transcript },
-        result: {
-          content: response.content,
-          finishReason: response.finishReason,
-          ...withUsage(usage),
-        },
-      })
+      if (taken !== undefined) {
+        options.tape?.record(key, {
+          ...key,
+          provider: choice.provider,
+          model: choice.model,
+          digest: taken.digest,
+          recordedAt: response.response.timestamp.toISOString(),
+          call: { system: request.system, transcript: taken.transcript },
+          result: {
+            content: response.content,
+            finishReason: response.finishReason,
+            ...withUsage(usage),
+          },
+        })
+      }
       // Recorded, then judged like a live turn. A run that fails here never
       // saves its tape — the command writes it only after a run that succeeded
       // — and replay judges every turn again, so a tape holding one fails too.
