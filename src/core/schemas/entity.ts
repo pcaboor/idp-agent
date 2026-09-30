@@ -437,6 +437,15 @@ const isPlaceholder = (value: unknown): boolean => {
 }
 
 /**
+ * Whether the reader reads `value` as an API's definition: text, or one
+ * placeholder that yields text. What `definitionSchema` applies, exported so
+ * a catalogue read kept on disk keeps such a definition as `declared` — which
+ * reads the same — and never its text (`context/backstage/cache.ts`).
+ */
+export const readsAsDefinition = (value: unknown): boolean =>
+  (typeof value === 'string' && value !== '') || isPlaceholder(value)
+
+/**
  * An API's contract — an OpenAPI document, a protobuf file — as Backstage
  * requires it: text, or one placeholder the catalogue resolves to text.
  *
@@ -447,7 +456,7 @@ const isPlaceholder = (value: unknown): boolean => {
  * beyond its presence. A refusal names the field and never quotes the value.
  */
 const definitionSchema = z
-  .custom<unknown>((value) => (typeof value === 'string' && value !== '') || isPlaceholder(value), {
+  .custom<unknown>(readsAsDefinition, {
     error: ({ input }) =>
       input === undefined
         ? 'required: Backstage refuses an API without its definition'

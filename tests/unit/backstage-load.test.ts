@@ -1,7 +1,14 @@
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { loadCatalogue } from '../../src/context/backstage/load.js'
-import type { BackstageLimits } from '../../src/context/backstage/limits.js'
+import {
+  accountHolds,
+  admitted,
+  judgedOf,
+  loadCatalogue,
+  readShapeOf,
+  type Served,
+} from '../../src/context/backstage/load.js'
+import { BACKSTAGE_LIMITS, type BackstageLimits } from '../../src/context/backstage/limits.js'
 import { BackstageProvider } from '../../src/context/backstage/provider.js'
 import {
   CatalogueReadError,
@@ -402,5 +409,116 @@ describe('loadCatalogue', () => {
     const { fetch } = fakeBackstage({ entities: demo, token: TOKEN, faults: { hang: { at: 1 } } })
     const loading = new BackstageProvider({ base: BASE, token: TOKEN, catalogueFetch: fetch, limits: { loadMs: 50 } }).load()
     expect(await failureOf(loading)).toEqual({ kind: 'timeout', scope: 'load', limit: 50 })
+  })
+})
+
+/**
+ * The checks a page meets, as functions a kept copy meets too (plan 2.2): an
+ * item is admitted by one rule wherever it came from, and what a copy states
+ * of its own reads is held to what a live load could have derived.
+ */
+describe('one check for a page and a copy', () => {
+  const component = (uid: string): Item => ({ kind: 'Component', metadata: { name: `c-${uid}`, uid } })
+  const MODELLED_READ = { asked: new Set(['component', 'resource', 'api']), ceiling: 3, scope: 'modelled' as const }
+
+  it('admits items of an asked kind with a uid, each uid once, counting the one kept already', () => {
+    const kept = new Set(['b'])
+    const seen = new Set<string>()
+    const result = admitted([component('a'), component('b'), component('a')], MODELLED_READ, seen, kept)
+    expect(result).toEqual({ items: [component('a')], repeated: 2, stopped: false })
+    expect([...seen]).toEqual(['a', 'b'])
+    expect([...kept].sort()).toEqual(['a', 'b'])
+  })
+
+  it('refuses an item with no string uid, and one of a kind its read did not ask for', () => {
+    expect(admitted([{ kind: 'Component', metadata: {} }], MODELLED_READ, new Set(), new Set())).toEqual({
+      refused: { kind: 'no-uid' },
+    })
+    expect(
+      admitted([{ kind: 'Location', metadata: { uid: 'x' } }], MODELLED_READ, new Set(), new Set()),
+    ).toEqual({ refused: { kind: 'unasked-kind', scope: 'modelled' } })
+  })
+
+  it('stops at the ceiling, as the read does: the item that would pass it and the rest are left out', () => {
+    const seen = new Set<string>()
+    const result = admitted(['a', 'b', 'c', 'd', 'e'].map(component), MODELLED_READ, seen, new Set())
+    expect(result).toEqual({ items: ['a', 'b', 'c'].map(component), repeated: 0, stopped: true })
+    expect(seen.size).toBe(3)
+  })
+
+  it.each([
+    ['Groups and Users', [...demoWithGroups(), user('ada', ['tiger'])], {}],
+    ['no organisation', demoWithLocations(), {}],
+    ['Groups alone', demoWithGroups(), {}],
+    ['a bounded organisation read', [...demoWithGroups(), ...locations(3)], { organisationEntities: 2 }],
+    ['an organisation read met exactly', [...demoWithGroups(), user('ada', ['tiger'])], { organisationEntities: 4 }],
+  ] as const)('judges what the load judges: %s', async (_, entities, limits) => {
+    const served = await loaded(entities, {}, limits).loading
+    expect(judgedOf(served.asked.organisation, served.bounded)).toEqual(served.judged)
+  })
+
+  it('says what the organisation and refs reads asked for, lower case, and when the load began', async () => {
+    const before = Date.now()
+    const served = await loaded([...demoWithGroups(), user('ada', ['tiger']), ...locations(2)]).loading
+    expect(served.asked).toEqual({ organisation: ['group', 'user'], refs: ['location'] })
+    expect(served.startedAt).toBeGreaterThanOrEqual(before)
+    expect(served.startedAt).toBeLessThanOrEqual(Date.now())
+    expect((await loaded(demo).loading).asked).toEqual({ organisation: [], refs: [] })
+  })
+
+  describe('accountHolds: what a copy states of its reads, held to what a live load could give', () => {
+    const asked: Served['asked'] = { organisation: ['group', 'user'], refs: ['location', 'template'] }
+    const bound = (scope: 'modelled' | 'organisation' | 'refs', kinds: readonly string[], limit: number) => ({
+      scope,
+      kinds,
+      read: limit,
+      total: limit + 10,
+      limit,
+    })
+    const modelled = bound('modelled', ['component', 'resource', 'api'], BACKSTAGE_LIMITS.modelledEntities)
+    const organisation = bound('organisation', ['group', 'user'], BACKSTAGE_LIMITS.organisationEntities)
+    const refs = bound('refs', ['location', 'template'], BACKSTAGE_LIMITS.otherRefs)
+
+    it('holds what a live load gives: none bounded, or each read bounded once at its ceiling', () => {
+      expect(accountHolds(asked, [], BACKSTAGE_LIMITS)).toBe(true)
+      expect(accountHolds(asked, [modelled, organisation, refs], BACKSTAGE_LIMITS)).toBe(true)
+      expect(accountHolds(asked, [{ ...modelled, total: undefined }], BACKSTAGE_LIMITS)).toBe(true)
+      expect(accountHolds({ organisation: [], refs: [] }, [], BACKSTAGE_LIMITS)).toBe(true)
+      const lowered = { ...BACKSTAGE_LIMITS, modelledEntities: 40 }
+      expect(accountHolds(asked, [bound('modelled', ['component', 'resource', 'api'], 40)], lowered)).toBe(true)
+    })
+
+    it.each([
+      ['an organisation kind out of order', { ...asked, organisation: ['user', 'group'] }, []],
+      ['an organisation kind twice', { ...asked, organisation: ['group', 'group'] }, []],
+      ['a kind that is not the organisation’s', { ...asked, organisation: ['template'] }, []],
+      ['refs unsorted', { ...asked, refs: ['template', 'location'] }, []],
+      ['a refs kind the grammar refuses', { ...asked, refs: ['loc=ation'] }, []],
+      ['a refs kind in upper case', { ...asked, refs: ['Location'] }, []],
+      ['a modelled kind among the refs', { ...asked, refs: ['component', 'location'] }, []],
+      ['an organisation kind among the refs', { ...asked, refs: ['group', 'location'] }, []],
+      ['two bounded entries of one scope', asked, [modelled, modelled]],
+      ['a bound other than the ceiling', asked, [{ ...organisation, limit: 5, read: 5 }]],
+      ['a read other than the bound', asked, [{ ...modelled, read: modelled.limit - 1 }]],
+      ['a total at the bound', asked, [{ ...modelled, total: modelled.limit }]],
+      ['a total under it', asked, [{ ...modelled, total: 3 }]],
+      ['kinds other than its read asked', asked, [{ ...refs, kinds: ['location'] }]],
+      ['a bounded read that was never asked', { ...asked, refs: [] }, [refs]],
+      ['bounded reads out of the order they are sent', asked, [refs, modelled]],
+    ] as const)('refuses %s', (_, stated, bounded) => {
+      expect(accountHolds(stated as Served['asked'], bounded, BACKSTAGE_LIMITS)).toBe(false)
+    })
+  })
+
+  it('states the read shape: both field lists, the three ceilings and the two byte bounds, each moving it', () => {
+    const shape = readShapeOf(BACKSTAGE_LIMITS)
+    expect(shape).toContain(ORGANISATION_FIELDS)
+    expect(shape).toContain(REFS)
+    for (const bound of ['modelledEntities', 'organisationEntities', 'otherRefs', 'bytesPerResponse', 'bytesPerRun'] as const) {
+      expect(readShapeOf({ ...BACKSTAGE_LIMITS, [bound]: BACKSTAGE_LIMITS[bound] - 1 })).not.toBe(shape)
+    }
+    expect(readShapeOf({ ...BACKSTAGE_LIMITS, modelledEntities: 40 })).not.toBe(shape)
+    // A bound that changes nothing a copy holds does not move it.
+    expect(readShapeOf({ ...BACKSTAGE_LIMITS, requestMs: 1 })).toBe(shape)
   })
 })

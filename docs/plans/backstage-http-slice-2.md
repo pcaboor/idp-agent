@@ -1,10 +1,10 @@
 # `backstage-http` slice 2 — scale and cache
 
-**Status: 2.1 built ([#PRNUM](https://github.com/pcaboor/idp-agent/pull/PRNUM)); 2.2 and 2.3
-planned.** Three stacked pull requests, 2.1 to 2.3, after this plan
-merged on its own (`docs/bhttp-slice-2-plan`, #117). The owner's
-answers to the five questions are [at the end](#questions-for-the-owner), settled on
-2026-09-30, each as recommended, so the plan is built as written.
+**Status: 2.1 built ([#119](https://github.com/pcaboor/idp-agent/pull/119)); 2.2 built
+([#120](https://github.com/pcaboor/idp-agent/pull/120)); 2.3 planned.** Three stacked pull
+requests, 2.1 to 2.3, after this plan merged on its own (`docs/bhttp-slice-2-plan`, #117).
+The owner's answers to the five questions are [at the end](#questions-for-the-owner), settled
+on 2026-09-30, each as recommended, so the plan is built as written.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking. **Tick them as you go.**
 
@@ -385,8 +385,10 @@ Nothing on the list reopens a decision of § 14.
   whose name is 32 hex characters, owned and closed as above, is looked at without following
   anything; its `served.json` older than `CATALOGUE_CACHE.keepMs` (7 days, question 1) by its
   `mtime` is unlinked, and so is a `*.tmp` older than the TTL; then the folder is removed if
-  empty (`rmdir`, which removes nothing else). Anything else under `backstage/` — a file, a
-  link, a folder of another name or owner — is left alone.
+  empty (`rmdir`, which removes nothing else) — when this pass emptied it, or its own `mtime`
+  is older than the TTL: an empty folder younger than that is another run's, made for a copy
+  it is still sealing, and removing it would fail that run's write. Anything else under
+  `backstage/` — a file, a link, a folder of another name or owner — is left alone.
 - **The root comes from `bin.ts`.** `MainDeps.cacheRoot` is `{ dir }` or `{ none: reason }`,
   and absent means none, as a test's `main(…)` call is. `bin.ts` passes
   `cacheRootOf(process.env, process.platform, process.getuid?.())`. A default inside `main`,
@@ -964,7 +966,7 @@ export class CatalogueReadError extends Error { …; readonly kept?: { readonly 
 `CacheRefusalWords` is the refusal with its path already shown relative to the root, so
 `context/provider.ts` names no type of `context/backstage/`.
 
-- [ ] **Step 1: `confine/` makes what it is told (fails: the mode is the umask's)**
+- [x] **Step 1: `confine/` makes what it is told (fails: the mode is the umask's)**
 
 `tests/unit/confine.test.ts`:
 
@@ -984,7 +986,7 @@ Expected: FAIL, 0755 and 0644. Then `mkdir(current, options?.mode)` and
 `open(…, options?.mode ?? 0o666)`. Green; `tests/unit/init-platform*.test.ts` and
 `scaffold` tests unchanged.
 
-- [ ] **Step 2: One check for a page and a copy (fails: no `admitted`, no `readShapeOf`)**
+- [x] **Step 2: One check for a page and a copy (fails: no `admitted`, no `readShapeOf`)**
 
 `tests/unit/backstage-load.test.ts`: `admitted` refuses an item with no uid (`no-uid`), of a
 kind not asked (`unasked-kind`), keeps a repeated uid once and counts it, and stops at the
@@ -999,7 +1001,7 @@ the load sent and when. Expected: FAIL. Then the per-item loop of `read()` becom
 called per page, the return's `judged` becomes `judgedOf`, and every existing row of the file
 stays green unchanged — the refactor is proven by them.
 
-- [ ] **Step 3: The root, the key and the secret (fails: no `cache.ts`)**
+- [x] **Step 3: The root, the key and the secret (fails: no `cache.ts`)**
 
 `tests/unit/backstage-cache.test.ts`, each row over a root made under the run directory with
 `mkdtemp`, `owner: process.getuid()`, and `now` injected:
@@ -1024,7 +1026,7 @@ Expected: FAIL, the module does not exist. Then `cache.ts`: the root made when m
 (`lstat`, never following), `randomBytes`, `createHmac`, the secret written through `openNew`
 and renamed. Green.
 
-- [ ] **Step 4: A copy written and read back (fails: no `write`, no `read`)**
+- [x] **Step 4: A copy written and read back (fails: no `write`, no `read`)**
 
 - `write(served)` then `read('fresh')` gives a `Served` deep-equal to the one written, but an
   organisation item projected to `ORGANISATION_FIELDS` and an API's text definition as
@@ -1035,11 +1037,14 @@ and renamed. Green.
 - a copy of a bounded read keeps `bounded`, and `judged` comes back as the load gave it,
   recomputed;
 - a server that ignored `fields` (a User with `spec.profile` and `microsoft.com/email` served
-  whole): no byte of the copy holds the email or the picture.
+  whole): no byte of the copy holds the email or the picture;
+- an API served as `kind: Api`, `api` or `aPI`, which the load admits and the reader refuses on
+  its kind: no byte of the copy holds its definition text, as the load and the reader read a
+  kind in any case.
 
 Expected: FAIL. Then `write` and `read`. Green.
 
-- [ ] **Step 5: Every refusal (fails: each is read today)**
+- [x] **Step 5: Every refusal (fails: each is read today)**
 
 First `acceptable`, on synthetic stats, one row each: a folder or a file of another uid
 (`foreign`); a group or other bit on a folder below `idp-agent/` or on a file (`open`); a
@@ -1063,6 +1068,8 @@ where it applies, nothing under the root changed but by the row itself:
 | an item without a uid; of a kind its read did not ask for; more items than the ceiling; `count` one more than the distinct uids | `none: { kind: 'unverified', reason: 'items' }` |
 | a file larger than `bytesPerRun` plus the header (limits lowered) | `none: { kind: 'unverified', reason: 'size' }`, read no further than the header |
 | a folder swapped for a link between the check and the open (the confine test's staging) | refused, as `openToRead` refuses it |
+| a named pipe at `served.json`, or at `secret` | `none`/`unusable` `{ kind: 'not-a-file' }` within a second: the store opens with `O_NONBLOCK` (`openToRead`'s `nonBlocking`), so an open never waits for a writer |
+| the key folder moved away and replaced by a link to it after the temporary file is written, staged through the `openWrite` seam | `{ written: false, refusal: { kind: 'link', path: 'idp-agent/backstage/<key>' } }`: the folders asked again before the rename; nothing renamed through the link, no temporary file left |
 
 `acceptable`'s rows are where the per-file owner check is proved: the disk rows cannot stage a
 file of another uid inside folders the test owns, and an implementation that checked only
@@ -1070,7 +1077,7 @@ folders would fail the synthetic ones.
 
 Expected: FAIL. Then the checks, in the order of the Choices. Green.
 
-- [ ] **Step 6: Races, clock and pruning (fails: no pruning; a replaced copy reads as a link)**
+- [x] **Step 6: Races, clock and pruning (fails: no pruning; a replaced copy reads as a link)**
 
 - a read racing a write, staged exactly through `openRead`: a wrapper whose first call
   renames a second, whole copy over `served.json` and throws `LinkRefused(path, true)` —
@@ -1091,11 +1098,13 @@ Expected: FAIL. Then the checks, in the order of the Choices. Green.
   one kept; a file named otherwise, a link, a folder of another name are untouched;
 - pruning never follows a link: a sibling key folder that is a link to a folder holding an
   old `served.json` leaves that file in place.
+- an empty sibling key folder a second old, another run's between its `mkdir` and its
+  temporary file, is left; one empty for longer than the TTL is removed;
 
 Expected: FAIL. Then the replacement retry in `read`, and the pruning pass after `rename`.
 Green.
 
-- [ ] **Step 7: The provider's three uses (fails: no `cache` option)**
+- [x] **Step 7: The provider's three uses (fails: no `cache` option)**
 
 `tests/unit/backstage-provider-cache.test.ts`, the fake as `catalogueFetch`, its `sent`
 counted. Each row asserts the whole `cache` report, both facts:
@@ -1103,7 +1112,7 @@ counted. Each row asserts the whole `cache` report, both facts:
 | Use | Staged | Result |
 |---|---|---|
 | `fresh` | an empty root | one load; `cache: { read: absent, written }`, the copy on disk |
-| `fresh` | a copy 4 min old | no request; the `LoadResult` equal to the fresh one's but `census` and `cache: { read: { state: 'fresh', ageMs: 240_000 } }`, no `written` |
+| `fresh` | a copy 4 min old | no request; the `LoadResult` equal to the fresh one's but `cache: { read: { state: 'fresh', ageMs: 240_000 } }`, no `written` — `census` included: the envelope keeps the census of the load that made the copy, and a read gives it back as it was (how the trace and the notice say a run that sent no request is 2.3's, Step 5) |
 | `fresh` | a copy 6 min old, or dated ahead of now | a load, the copy replaced; `{ read: stale, written }` |
 | `fresh` | a copy that does not verify | a load, the copy replaced; `{ read: { not-used, unverified }, written }` |
 | `fresh` | `<key>` a file | a load; `{ read: { not-used, not-a-folder }, written: { not-written, not-a-folder } }` |
@@ -1114,7 +1123,7 @@ counted. Each row asserts the whole `cache` report, both facts:
 | `refresh` | a load that fails for reach, a copy 1 min old kept | the `CatalogueReadError` with `kept.ageMs` 60,000; nothing written, the copy kept |
 | `kept` | a copy 3 days old | no request; `{ read: { state: 'kept', … } }`, no `written` |
 | `kept` | a copy dated ahead | read, `ageMs: undefined` |
-| `kept` | no copy, or one that does not verify | `CatalogueReadError` `{ kind: 'not-kept' }`, no request |
+| `kept` | no copy, or one that does not verify | `CatalogueReadError` `{ kind: 'not-kept' }`, no request; on an empty or missing root, or a store with no secret, nothing made — a kept read's store is read-only (`readOnly`), and a store not all there is `absent` |
 | `fresh` | the provider's `limits` lowered to `modelledEntities: 40`, a copy made under the default | a load: another key, the default's copy never read |
 | none | no `cache` option | exactly what `55fb995` does: no `cache` key on the result, no file anywhere |
 
@@ -1125,7 +1134,7 @@ secret reads that item set aside by the pre-pass, as a page would, never as an e
 Expected: FAIL. Then the provider: the store made once per load with the effective limits,
 the use decided before the transport is built, the translation loop unchanged. Green.
 
-- [ ] **Step 8: The architecture rules**
+- [x] **Step 8: The architecture rules**
 
 - *only context/iac-fs and context/project-fs read a user repository* (`:758-772`): its
   allow-list gains `'context/backstage/cache.ts', // the catalogue kept under the person's
@@ -1150,7 +1159,7 @@ pnpm vitest run tests/architecture --reporter=verbose
 Expected: twenty-six rules, green; `AGENTS.md`'s paragraph says twenty-six and what the four
 changed ones now say.
 
-- [ ] **Step 9: Checks**
+- [x] **Step 9: Checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -1326,6 +1335,7 @@ read-command lines the two flags, `readFrom` the refusals, and the source check 
 | `served.json` a symbolic link | exit 0, read from Backstage; from `{ read: not-used, written: not-written }`, one line: `the cache at <path> was not used and this read was not kept: <path> is a symbolic link, never followed; nothing was changed`; the link and its target untouched |
 | `<key>` a file | exit 0; from `{ read: not-used, written: not-written }`, one line, since both say one thing: `the cache at <path> was not used and this read was not kept: <path> is not a folder` |
 | the trace | `idp.source.cache_read` is `fresh`, `kept`, `stale`, `absent`, `skipped`, `not-used` or `off`; `idp.source.cache_written` is `written` or `not-written` when Backstage was read, absent otherwise; `idp.source.cache_age_s` when a copy answered |
+| the trace and the notice, a run answered from a copy | the `LoadResult`'s `census` is the load's that made the copy (2.2 keeps it in the envelope and gives it back): `idp.source.pages`, `bytes` and `ms` are that load's network cost, not this run's, and the notice's served-twice clause is that load's. Decide here, and pin with a row, how a run that sent no request is traced — the three attributes absent or zero, or this run's own read time — and whether the clause is said again; Step 6's second-run time is measured on that decision, not on the census a copy carries |
 | no `cacheRoot` | every line and file exactly as `55fb995`'s: nothing under the run directory, no cache words |
 
 Expected: FAIL. Then `providerOf` hands the provider `cache: { root, owner: process.getuid(),

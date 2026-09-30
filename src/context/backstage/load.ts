@@ -68,6 +68,14 @@ export interface Served {
   /** The reads that stopped at their ceiling, in the order they were sent; empty when every read was whole. */
   readonly bounded: readonly PartialRead[]
   readonly census: Census
+  /**
+   * The kinds the organisation and refs reads asked for, lower case, as their
+   * filters named them: what a kept copy's account of its own reads is held
+   * to (`accountHolds`), and what its `judged` is recomputed from.
+   */
+  readonly asked: { readonly organisation: readonly string[]; readonly refs: readonly string[] }
+  /** When the load began (`Date.now()`): a kept copy's `fetchedAt`, so its age is never understated. */
+  readonly startedAt: number
 }
 
 /** Backstage's kind grammar: nothing a filter's `,` or `=` could hide in. */
@@ -75,6 +83,9 @@ const KIND = /^[A-Za-z][A-Za-z0-9]*$/
 
 /** The kinds read whole: the two this tool models, and the API it reads. */
 const MODELLED = ['component', 'resource', 'api'] as const
+
+/** The kinds the modelled read asks for, lower case: what a kept copy's modelled items are admitted against. */
+export const MODELLED_KINDS: readonly string[] = MODELLED
 
 /** The organisation, by the lower-case kind a filter names. */
 const ORGANISATION: ReadonlyMap<string, OrganisationKind> = new Map(
@@ -89,12 +100,12 @@ const ORGANISATION: ReadonlyMap<string, OrganisationKind> = new Map(
  * the rest, which the reader drops and names as not read, as a file's — but
  * for a User's or a Group's profile, which the pre-pass drops first.
  */
-const ORGANISATION_FIELDS =
+export const ORGANISATION_FIELDS =
   'apiVersion,kind,metadata.name,metadata.namespace,metadata.uid,' +
   'spec.type,spec.parent,spec.children,spec.members,spec.memberOf,spec.owner,spec.domain,spec.subdomainOf'
 
 /** What a refs read asks for: enough for `readValue` to name the document it sets aside, and the uid it is counted by. */
-const REFS_FIELDS = 'kind,metadata.namespace,metadata.name,metadata.uid'
+export const REFS_FIELDS = 'kind,metadata.namespace,metadata.name,metadata.uid'
 
 const facetsSchema = z.object({
   facets: z.object({
@@ -121,9 +132,155 @@ const uidOf = (item: unknown): string | undefined => {
   return typeof uid === 'string' ? uid : undefined
 }
 
+/** One read, as `admitted` judges its items: the kinds its filters named, its ceiling, and which read it is. */
+export interface ReadRule {
+  readonly asked: ReadonlySet<string>
+  readonly ceiling: number
+  readonly scope: ReadScope
+}
+
+/**
+ * What `admitted` made of some items: those kept, how many were kept already
+ * by this read or another, and whether the ceiling stopped it — or the
+ * failure that ends the read.
+ */
+export type Admission =
+  | { readonly refused: Extract<CatalogueFailure, { kind: 'no-uid' | 'unasked-kind' }> }
+  | { readonly items: unknown[]; readonly repeated: number; readonly stopped: boolean }
+
+/**
+ * Every item of one page, or of one read of a kept copy, by one rule: a
+ * string uid, or the read cannot be counted; a kind its read asked for, or
+ * the server ignored `filter`; each uid once across every read (`kept`),
+ * counted when it comes again; and no more distinct uids in this read
+ * (`seen`) than its ceiling — the item that would pass it, and every one
+ * after it, left out. The load reads a stop as a bound reached; a copy, which
+ * never holds more than a read kept, reads it as a copy no load wrote.
+ */
+export function admitted(
+  items: readonly unknown[],
+  rule: ReadRule,
+  seen: Set<string>,
+  kept: Set<string>,
+): Admission {
+  const admitted: unknown[] = []
+  let repeated = 0
+  for (const item of items) {
+    const uid = uidOf(item)
+    if (uid === undefined) return { refused: { kind: 'no-uid' } }
+    const kind = kindOf(item)
+    if (kind === undefined || !rule.asked.has(kind)) return { refused: { kind: 'unasked-kind', scope: rule.scope } }
+    // One more distinct uid would pass the bound: this one and the rest are not loaded.
+    if (!seen.has(uid) && seen.size >= rule.ceiling) return { items: admitted, repeated, stopped: true }
+    seen.add(uid)
+    if (kept.has(uid)) {
+      repeated += 1
+      continue
+    }
+    kept.add(uid)
+    admitted.push(item)
+  }
+  return { items: admitted, repeated, stopped: false }
+}
+
+/**
+ * The organisation kinds a load judges, as `ORGANISATION_KINDS` spells them:
+ * those its organisation read asked for, unless that read stopped at its
+ * bound — a reference naming nothing a bounded read read is a name, which
+ * says nothing about what is declared. The load's rule, and a copy's
+ * recomputation: a copy never states it.
+ */
+export function judgedOf(asked: readonly string[], bounded: readonly PartialRead[]): OrganisationKind[] {
+  if (bounded.some(({ scope }) => scope === 'organisation')) return []
+  return asked.flatMap((kind) => ORGANISATION.get(kind) ?? [])
+}
+
+/** The ceiling of each read under `limits`. */
+const ceilingOf = (scope: ReadScope, limits: BackstageLimits): number => {
+  switch (scope) {
+    case 'modelled':
+      return limits.modelledEntities
+    case 'organisation':
+      return limits.organisationEntities
+    case 'refs':
+      return limits.otherRefs
+    default: {
+      const exhaustive: never = scope
+      return exhaustive
+    }
+  }
+}
+
+const SCOPES: readonly ReadScope[] = ['modelled', 'organisation', 'refs']
+
+/** Strictly increasing by `rank`: in order, and each once. */
+const inOrder = <T>(values: readonly T[], rank: (value: T) => number): boolean =>
+  values.every((value, at) => rank(value) >= 0 && (at === 0 || rank(values[at - 1] as T) < rank(value)))
+
+/**
+ * Whether `asked` and `bounded` are what a live load under `limits` could
+ * have derived. A live read derives them — from the facets, its own filters
+ * and its own count — and a kept copy only states them, so a copy is held to
+ * exactly what a load could give, and can choose nothing a hostile Backstage
+ * cannot: the organisation kinds in `ORGANISATION_KINDS`' order, each once;
+ * the refs sorted, each once, lower case, of the kind grammar, and none the
+ * modelled or organisation reads take; at most one bounded entry per read, in
+ * the order the reads are sent, over the kinds that read asked, at the
+ * effective ceiling, read to it, and announcing more or nothing.
+ */
+export function accountHolds(asked: Served['asked'], bounded: readonly PartialRead[], limits: BackstageLimits): boolean {
+  const organisationOrder = [...ORGANISATION.keys()]
+  if (!inOrder(asked.organisation, (kind) => organisationOrder.indexOf(kind))) return false
+  const refs = asked.refs
+  if (!refs.every((kind, at) => at === 0 || (refs[at - 1] as string) < kind)) return false
+  const refsHold = refs.every(
+    (kind) =>
+      KIND.test(kind) &&
+      kind === kind.toLowerCase() &&
+      !(MODELLED as readonly string[]).includes(kind) &&
+      !ORGANISATION.has(kind),
+  )
+  if (!refsHold) return false
+  if (!inOrder(bounded, ({ scope }) => SCOPES.indexOf(scope))) return false
+  const kindsOf = (scope: ReadScope): readonly string[] =>
+    scope === 'modelled' ? MODELLED : scope === 'organisation' ? asked.organisation : asked.refs
+  return bounded.every(({ scope, kinds, read, total, limit }) => {
+    const expected = kindsOf(scope)
+    const ceiling = ceilingOf(scope, limits)
+    return (
+      expected.length > 0 &&
+      kinds.length === expected.length &&
+      kinds.every((kind, at) => kind === expected[at]) &&
+      limit === ceiling &&
+      read === ceiling &&
+      (total === undefined || total > ceiling)
+    )
+  })
+}
+
+/**
+ * What a read asks for and how much of it it keeps: the fields of the
+ * organisation and refs reads, the three ceilings and the two byte bounds of
+ * `limits`. Part of a kept copy's key, so a version that asks for other
+ * fields, or a run under other bounds — a test's lowered ones included —
+ * never reads a copy made under these.
+ */
+export function readShapeOf(limits: BackstageLimits): string {
+  return JSON.stringify({
+    fields: { modelled: null, organisation: ORGANISATION_FIELDS, refs: REFS_FIELDS },
+    ceilings: {
+      modelled: limits.modelledEntities,
+      organisation: limits.organisationEntities,
+      refs: limits.otherRefs,
+    },
+    bytes: { response: limits.bytesPerResponse, run: limits.bytesPerRun },
+  })
+}
+
 export async function loadCatalogue(transport: CatalogueTransport, limits: Partial<BackstageLimits> = {}): Promise<Served> {
   const bounds: BackstageLimits = { ...BACKSTAGE_LIMITS, ...limits }
   const fail = (failure: CatalogueFailure): CatalogueReadError => new CatalogueReadError(failure, transport.origin)
+  const startedAt = Date.now()
   const started = performance.now()
   let pages = 0
   let repeated = 0
@@ -156,7 +313,7 @@ export async function loadCatalogue(transport: CatalogueTransport, limits: Parti
       return first
     }
     let query = pageQuery(new URLSearchParams(filters.map((kind): [string, string] => ['filter', `kind=${kind}`])))
-    const asked: ReadonlySet<string> = new Set(filters)
+    const rule: ReadRule = { asked: new Set(filters), ceiling, scope }
     const cursors = new Set<string>()
     // This read's distinct uids, which its totalItems and its ceiling count.
     const seen = new Set<string>()
@@ -164,28 +321,18 @@ export async function loadCatalogue(transport: CatalogueTransport, limits: Parti
     let expected: number | undefined
     let stopped = false
 
-    pages: for (;;) {
+    for (;;) {
       const page = pageSchema.safeParse(await transport.request('GET', 'entities/by-query', query))
       if (!page.success) throw fail({ kind: 'not-envelope', route: 'entities/by-query' })
       pages += 1
       expected ??= page.data.totalItems
-      for (const item of page.data.items) {
-        const uid = uidOf(item)
-        if (uid === undefined) throw fail({ kind: 'no-uid' })
-        const kind = kindOf(item)
-        if (kind === undefined || !asked.has(kind)) throw fail({ kind: 'unasked-kind', scope })
-        if (!seen.has(uid) && seen.size >= ceiling) {
-          // One more distinct uid would pass the bound: this one and the rest are not loaded.
-          stopped = true
-          break pages
-        }
-        seen.add(uid)
-        if (kept.has(uid)) {
-          repeated += 1
-          continue
-        }
-        kept.add(uid)
-        items.push(item)
+      const admission = admitted(page.data.items, rule, seen, kept)
+      if ('refused' in admission) throw fail(admission.refused)
+      items.push(...admission.items)
+      repeated += admission.repeated
+      if (admission.stopped) {
+        stopped = true
+        break
       }
       const next = page.data.pageInfo.nextCursor
       if (next === undefined) break
@@ -227,12 +374,10 @@ export async function loadCatalogue(transport: CatalogueTransport, limits: Parti
     whole,
     organisation: organised,
     refs,
-    // A bounded organisation read is not judged: a reference naming nothing
-    // it read is a name, which says nothing about what is declared.
-    judged: bounded.some(({ scope }) => scope === 'organisation')
-      ? []
-      : organisation.flatMap((kind) => ORGANISATION.get(kind) ?? []),
+    judged: judgedOf(organisation, bounded),
     bounded,
     census: { served: kept.size, pages, bytes, ms: Math.round(performance.now() - started), repeated },
+    asked: { organisation, refs: rest },
+    startedAt,
   }
 }

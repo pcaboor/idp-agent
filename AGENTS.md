@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 4042 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 4174 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -296,7 +296,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 | Folder | Responsibility |
 |---|---|
 | `core/` | schemas (Zod), the nine validation rules and the Backstage registration, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — and the engine's check on an answer's commentary (`core/answer/`) |
-| `context/` | `ContextProvider` (`fixtures`, and `iac-fs` behind `--repo`; `backstage/provider.ts`, a whole catalogue through the file reader or nothing, which `cli/` constructs for a configured catalogue), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries, `backstage/transport.ts` — the only code that sends a catalogue token, over a `fetch` it is handed |
+| `context/` | `ContextProvider` (`fixtures`, and `iac-fs` behind `--repo`; `backstage/provider.ts`, a whole catalogue through the file reader or nothing, which `cli/` constructs for a configured catalogue), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries, `backstage/transport.ts` — the only code that sends a catalogue token, over a `fetch` it is handed — and `backstage/cache.ts`, a catalogue read kept under the person's cache folder, which only the provider loads and no command uses yet |
 | `cli/` | argument parsing, commands, rendering, `.idp-agent.yml` and the personal `config.yml`, which source a command reads — the only layer that writes to stdout |
 | `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |
 | `agents/` | the five agents, the bounded turn, the repair loop, the tool registries — reaches no disk, transitively |
@@ -571,7 +571,7 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   checklist; tick its boxes as you go — Stage 1 shipped with all 36 unticked, which is
   how a plan stops being a status signal.
 - No `switch` on a closed union without `const _exhaustive: never = value` in `default`.
-- **Twenty-five** architecture rules are enforced by `tests/architecture/`. `core/` imports
+- **Twenty-six** architecture rules are enforced by `tests/architecture/`. `core/` imports
   neither `agents/`, `llm/`, `context/`, `cli/`, `scaffold/`, `forge/`, `process/`,
   `confine/`, the network nor the model SDK, and nothing reachable from it reads or writes — its disk rule
   walks the transitive closure too. `agents/` imports neither `fs`, `child_process` nor a git client — **and
@@ -579,16 +579,22 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   `llm/` imports the model SDK, and `agents/` imports `llm/client.js` and nothing else from
   it. `scaffold/` imports `core/` and `confine/` and nothing else of ours; only `write.ts` and
   `templates.ts` touch the disk there, and only `write.ts` imports a writing function. In
-  `context/`, only `iac-fs` and `project-fs` read a user's repository; in `cli/`, seven named
+  `context/`, only `iac-fs`, `project-fs`, the fixtures and `backstage/cache.ts` touch the disk,
+  and only the first two read a user's repository; in `cli/`, seven named
   modules touch the disk, among them `config.ts`, which reads `.idp-agent.yml` in either
   repository, and `commands/plan.ts`, which reads the plan file `--from` names — the
   declarations' bytes it reads through `iac-fs`. Across `src/`, only `scaffold/write.ts`
-  (`mkdir`, for the directory it is named), `confine/confine.ts`, `cli/recording-fs.ts` and
-  `cli/trace-sink.ts` import a writing function — `confine/` opens files, read only for
-  `iac-fs` and `project-fs`, create-only for `init platform` — each named with the functions
-  it may use; the forge is the fifth writer, through git and nothing else. `confine/`
+  (`mkdir`, for the directory it is named), `confine/confine.ts`, `cli/recording-fs.ts`,
+  `cli/trace-sink.ts` and `context/backstage/cache.ts` (`rename`, `unlink` and `rmdir`: a copy
+  renamed into place, a pruned one removed) import a writing function — `confine/` opens
+  files, read only for `iac-fs` and `project-fs`, create-only for `init platform` and the
+  cache, whose folders it makes `0o700` and files `0o600` — each named with the functions
+  it may use; the forge is the sixth writer, through git and nothing else. `confine/`
   imports nothing of ours, only `node:` built-ins, and only `scaffold/write.ts`,
-  `context/iac-fs` and `context/project-fs` load it. Only `process/git.ts` starts a process, for the Inspector's
+  `context/iac-fs`, `context/project-fs` and `context/backstage/cache.ts` load it; only
+  `context/backstage/provider.ts` loads the cache, so a catalogue kept on disk reaches
+  nothing but the provider's loop, which runs the pre-pass and the reader on every item of
+  it as on a page. Only `process/git.ts` starts a process, for the Inspector's
   `git ls-files` and the forge, from one call, given the
   environment `spawnedEnvironment` builds: without any `IDP_BACKSTAGE_*` variable and without
   any provider key; only `context/project-fs/snapshot.ts` and `forge/` load that launcher.

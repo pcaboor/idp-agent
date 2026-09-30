@@ -195,6 +195,16 @@ Each pull request adds its line here.
   of that name refused; the level question stays, since it decides the bytes. Without
   `--submit` or a flag, `init` prints what it printed, byte for byte. Stage 5 is done
   ([#111](https://github.com/pcaboor/idp-agent/pull/111)).
+- The store a Backstage catalogue read will be kept in: under
+  `$XDG_CACHE_HOME/idp-agent/backstage/`, in folders only the person's account may open, keyed
+  by an HMAC of the catalogue and the token under a secret of this machine, written by
+  exclusive creation and renamed into place, and read back only after its owner, mode, links,
+  MAC, its account of its own reads and every item are checked again, then through the
+  pre-pass and the reader like any page. A copy keeps no token, no User's or Group's profile
+  or annotation and no API definition's text; a run that writes one removes copies older than
+  seven days. Only the provider may load it, a twenty-sixth architecture rule. No command uses
+  it yet; the next pull request does
+  ([#120](https://github.com/pcaboor/idp-agent/pull/120)).
 
 ### Changed
 

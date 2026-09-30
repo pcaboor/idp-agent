@@ -834,6 +834,8 @@ function whatFailed(failure: CatalogueFailure, source: BackstageSource, token: b
       return 'served an entity of a kind the read did not ask for, so it does not filter as Backstage does'
     case 'changed':
       return `changed while it was read (${countOf(failure.expected)} expected, ${countOf(failure.read)} read)`
+    case 'not-kept':
+      return 'has no copy kept on this machine that verifies, and --cached never asks Backstage'
     default: {
       const exhaustive: never = failure
       return exhaustive

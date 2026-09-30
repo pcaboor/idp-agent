@@ -643,18 +643,33 @@ const CONFINES = new Set([
   'scaffold/write.ts', // `init platform`'s writer
   'context/iac-fs/snapshot.ts', // the declarations repository
   'context/project-fs/snapshot.ts', // the application repository
+  'context/backstage/cache.ts', // the catalogue kept under the person's cache folder, never a repository
 ])
 
 /**
  * What the confinement rule refuses under `root`: a module other than the
- * three that act on a user's repository loading `confine/confine.ts`, and one
- * of them handing it on. `createNew` writes and `openToRead` reads with no fs
- * function in the importer's source, so a fourth module loading it would be a
- * writer the rule naming writers never sees, and a reader of a repository the
- * rule naming readers never sees.
+ * four that act on a user's disk through it loading `confine/confine.ts`, and
+ * one of them handing it on. `createNew` writes and `openToRead` reads with no
+ * fs function in the importer's source, so a fifth module loading it would be
+ * a writer the rule naming writers never sees, and a reader the rule naming
+ * readers never sees.
  */
 const confineOffences = (root: string): Promise<string[]> =>
   loaderOffences(root, CONFINE, (name) => CONFINES.has(name))
+
+/** The catalogue cache, and the one module that may load it. */
+const CACHE = 'context/backstage/cache.ts'
+const READS_CACHE = (name: string): boolean => name === 'context/backstage/provider.ts'
+
+/**
+ * What the cache's rule refuses under `root`: a module other than the
+ * provider loading `context/backstage/cache.ts`, a run-time load no source can
+ * spell, and the provider handing the store on. The provider is the module
+ * whose loop runs the pre-pass and `readValue` on every item, so the one
+ * module that may take a `Served` from a file on disk is the one that reads
+ * it as a page: a copy is never a source that skips the reader.
+ */
+const cacheOffences = (root: string): Promise<string[]> => loaderOffences(root, CACHE, READS_CACHE)
 
 describe('architecture', () => {
   it('core/ does not import agents/ or llm/', async () => {
@@ -755,15 +770,17 @@ describe('architecture', () => {
     expect(offending).toEqual([])
   })
 
-  it('only context/iac-fs and context/project-fs read a user repository', async () => {
-    // Three readers, and the layer's whole disk surface. `project-fs` holds
+  it('in context/, only iac-fs, project-fs, the fixtures and the catalogue cache touch the disk', async () => {
+    // Four modules, and the layer's whole disk surface. `project-fs` holds
     // every confinement rule for the application repository — the exclusion
-    // list, the symlink refusal, the three caps — and a fourth module reading
-    // that repository would be a second, unreviewed copy of them.
+    // list, the symlink refusal, the three caps — and another module reading
+    // that repository would be a second, unreviewed copy of them. The cache
+    // reads and writes under the person's cache folder, never a repository.
     const allowed = new Set([
       'context/iac-fs/snapshot.ts',
       'context/project-fs/snapshot.ts',
       'context/fixtures/index.ts',
+      'context/backstage/cache.ts', // the catalogue kept under the person's cache folder, never a repository
     ])
     const offending = (await importsUnder(path.join(SOURCE_ROOT, 'context'))).filter(
       ({ file, specifier }) => DISK.test(specifier) && !allowed.has(file),
@@ -805,8 +822,11 @@ describe('architecture', () => {
       // `open` is the one call that can do both: the confinement primitive
       // opens a file O_RDONLY | O_NOFOLLOW for iac-fs and project-fs, and
       // O_CREAT | O_EXCL | O_NOFOLLOW for `init platform`, whose folders it
-      // makes one at a time. Only the three named below may load it.
+      // makes one at a time. Only the four named below may load it.
       'confine/confine.ts': ['mkdir', 'open'],
+      // Folders and new files through confine/; a copy or a secret renamed
+      // into place, a pruned copy unlinked and its empty folder removed.
+      'context/backstage/cache.ts': ['rename', 'unlink', 'rmdir'],
     }
     // `process/git.ts`, for the Inspector's `git ls-files` and the forge, and
     // nothing else starts a process.
@@ -952,8 +972,16 @@ describe('architecture', () => {
     expect(offending).toEqual([])
   })
 
-  it('only scaffold/write.ts, context/iac-fs and context/project-fs load confine/', async () => {
+  it('only scaffold/write.ts, context/iac-fs, context/project-fs and context/backstage/cache.ts load confine/', async () => {
     expect(await confineOffences(SOURCE_ROOT)).toEqual([])
+  })
+
+  it('only context/backstage/provider.ts loads context/backstage/cache.ts', async () => {
+    // A catalogue kept on disk is an input: the provider's loop runs the
+    // pre-pass and the reader on every item of a copy, as on a page. Another
+    // module taking a `Served` from the store would answer from a file that
+    // skipped them (docs/plans/backstage-http-slice-2.md, Task 2.2).
+    expect(await cacheOffences(SOURCE_ROOT)).toEqual([])
   })
 
   it('forge/ imports core/, process/, node:crypto and node:path, and nothing else', async () => {
@@ -1256,7 +1284,28 @@ describe('the architecture rules themselves', () => {
     )
   })
 
-  it('refuses every module but the three named that loads the confinement primitive', async () => {
+  it('refuses every module but the provider that loads the catalogue cache', async () => {
+    const root = await tree({
+      // A command that answers from a copy, past the pre-pass and the reader.
+      'cli/cached.ts': "import { catalogueCache } from '../context/backstage/cache.js'\n",
+      'context/backstage/late.ts': 'const store = await import(name)\n',
+      // The provider handing the store on is a second door.
+      'context/backstage/provider.ts':
+        "import { catalogueCache } from './cache.js'\nexport { catalogueCache } from './cache.js'\n",
+      // A type is erased, and names nothing that can read.
+      'cli/typed.ts': "import type { Kept } from '../context/backstage/cache.js'\n",
+      'context/backstage/cache.ts': "import { rename } from 'node:fs/promises'\n",
+    })
+    expect((await cacheOffences(root)).sort()).toEqual(
+      [
+        'cli/cached.ts → ../context/backstage/cache.js',
+        'context/backstage/late.ts loads name at run time: no rule can tell what it names',
+        'context/backstage/provider.ts hands on ./cache.js',
+      ].sort(),
+    )
+  })
+
+  it('refuses every module but the four named that loads the confinement primitive', async () => {
     const root = await tree({
       // A writer and a reader no other rule would see: neither names an fs function.
       'cli/commands/probe-write.ts': "import { createNew } from '../../confine/confine.js'\n",
@@ -1269,6 +1318,7 @@ describe('the architecture rules themselves', () => {
       'cli/typed.ts': "import type { LinkTarget } from '../confine/confine.js'\n",
       'scaffold/write.ts': "import { createNew } from '../confine/confine.js'\n",
       'context/project-fs/snapshot.ts': "import { openToRead } from '../../confine/confine.js'\n",
+      'context/backstage/cache.ts': "import { openNew } from '../../confine/confine.js'\n",
       'confine/confine.ts': "import { open } from 'node:fs/promises'\n",
     })
     expect((await confineOffences(root)).sort()).toEqual(

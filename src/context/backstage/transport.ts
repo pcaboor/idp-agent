@@ -88,6 +88,9 @@ export type CatalogueFailure =
   | { readonly kind: 'unasked-kind'; readonly scope: ReadScope }
   /** Fewer distinct uids than the first page's `totalItems`, repeats or not. */
   | { readonly kind: 'changed'; readonly expected: number; readonly read: number }
+  // The store's (cache.ts): a read that was to answer from a kept copy alone.
+  /** A kept read — which never asks the catalogue — and no copy read with this token verifies. */
+  | { readonly kind: 'not-kept' }
 
 /** A size in the unit it was set in: MiB when it is a whole number of them, bytes otherwise. */
 const sizeOf = (bytes: number): string =>
@@ -145,6 +148,8 @@ function sentenceOf(failure: CatalogueFailure, origin: string): string {
       return `${at} served an entity of a kind the read did not ask for, so it does not filter as Backstage does`
     case 'changed':
       return `${at} changed while it was read (${countOf(failure.expected)} expected, ${countOf(failure.read)} read)`
+    case 'not-kept':
+      return `${at} has no copy kept on this machine that verifies, and a kept read never asks it`
     default: {
       const exhaustive: never = failure
       return exhaustive
@@ -162,6 +167,13 @@ export class CatalogueReadError extends Error {
   constructor(
     readonly failure: CatalogueFailure,
     readonly origin: string,
+    /**
+     * A copy of this catalogue kept on this machine that verifies, said after
+     * a failure of reach (`BackstageProvider`) so the person can be pointed at
+     * it; its age undefined when it is dated after this clock's now. Never set
+     * after a 401 or a 403, which may be a revoked token.
+     */
+    readonly kept?: { readonly ageMs: number | undefined },
   ) {
     super(sentenceOf(failure, origin))
     this.name = 'CatalogueReadError'
