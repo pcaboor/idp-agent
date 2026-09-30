@@ -1,10 +1,12 @@
 import fc from 'fast-check'
 import { parseAllDocuments } from 'yaml'
 import { describe, expect, it } from 'vitest'
+import { PROPERTY_TIMEOUT, freshSeed } from './budget.js'
 import { planEdits } from '../../src/core/plan/edits.js'
 import { signPlan, type SignedPlan } from '../../src/core/plan/sign.js'
 import { planSchema } from '../../src/core/schemas/plan.js'
-import { userSaid } from '../support/provenance.js'
+import { answeredAtEveryPath, userSaid } from '../support/provenance.js'
+import { arbitraryHandWritten, arbitraryStatedResource } from './arbitraries.js'
 
 /**
  * Effectiveness: a plan's bytes carry out the plan, or the plan says they do
@@ -144,6 +146,18 @@ function signed(shape: Shape): SignedPlan {
   return result
 }
 
+const CONTEXT = {
+  witnessed: new Set<string>(),
+  vocabulary: {
+    kinds: ['Component', 'Resource'],
+    types: ['database', 'database-access'],
+    environments: ['dev', 'staging', 'prod'],
+    owners: ['group:default/tiger'],
+  },
+  repoRoot: '/repo',
+  declared: new Map<string, string>(),
+}
+
 /** The file as the parser reads it: every non-empty document, errors thrown. */
 function read(text: string): unknown[] {
   return parseAllDocuments(text).flatMap((document) => {
@@ -164,7 +178,7 @@ function expected(shape: Shape, before: unknown[]): unknown[] {
   })
 }
 
-describe('a plan carries out what it says, or says it could not', () => {
+describe('a plan carries out what it says, or says it could not', { timeout: PROPERTY_TIMEOUT }, () => {
   it('lists the consumer and changes nothing else, or drops the operation with a reason', () => {
     fc.assert(
       fc.property(shape, (one) => {
@@ -209,5 +223,62 @@ describe('a plan carries out what it says, or says it could not', () => {
         if (one.crlf) expect(after).not.toMatch(/(?:^|[^\r])\n/)
       }),
     )
+  })
+})
+
+/**
+ * Effectiveness for a creation, over files written by hand in every shape
+ * `arbitraries.ts` draws: the file's own bytes stay as they were, ahead of
+ * the new document, and the parser reads back the file's documents and then
+ * the entity — the model it was generated from, not `effect.ts`'s reading of
+ * it (core-yaml-6). Checked in one property rather than the two above because
+ * a creation has no shape it is allowed to give up on: it appends.
+ */
+describe('a creation adds its document and nothing else', { timeout: PROPERTY_TIMEOUT }, () => {
+  it('in every shape a file is written by hand, byte for byte ahead of it', () => {
+    let beside = 0
+    const seed = freshSeed()
+    fc.assert(
+      fc.property(arbitraryHandWritten, arbitraryStatedResource, (file, entity) => {
+        // A namesake is another operation's story: the re-check and the
+        // policies judge a declaration the file already holds.
+        fc.pre(!file.documents.some((document) => document.name === entity.metadata.name))
+        const plan = planSchema.parse({
+          intent: `declare ${entity.metadata.name}`,
+          operations: [{ op: 'create-entity', entity }],
+        })
+        const signedPlan = signPlan(plan, CONTEXT, answeredAtEveryPath(plan))
+        if ('outcome' in signedPlan) throw new Error(JSON.stringify(signedPlan.refusals))
+        const path = signedPlan.paths.get(0)
+        expect(path).toBeDefined()
+        const { edits, dropped } = planEdits(signedPlan, new Map([[path ?? '', file.text]]))
+
+        expect(dropped).toEqual([])
+        const after = edits[0]?.after ?? ''
+        expect(after.startsWith(file.text)).toBe(true)
+        expect(read(after)).toEqual([
+          ...read(file.text),
+          {
+            apiVersion: 'backstage.io/v1alpha1',
+            kind: 'Resource',
+            metadata: {
+              name: entity.metadata.name,
+              annotations: { 'company.fr/env': entity.metadata.env },
+            },
+            spec: entity.spec,
+          },
+        ])
+        // What is added ends its lines the way the file does, and leaves the
+        // mark where it was.
+        if (file.text.includes('\r\n')) expect(after).not.toMatch(/(?:^|[^\r])\n/)
+        if (file.text.startsWith('\uFEFF')) expect(after.startsWith('\uFEFF')).toBe(true)
+        if (read(file.text).length > 0) beside += 1
+      }),
+      { numRuns: 300, seed },
+    )
+    // Into a file already holding a document, or the property is about
+    // writing a new file, which nobody wrote by hand: 224 to 249 runs of 300
+    // did, over 25 runs at fast-check's own seeds.
+    expect(beside, `seed ${seed}`).toBeGreaterThan(150)
   })
 })

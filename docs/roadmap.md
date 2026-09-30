@@ -50,34 +50,25 @@ Each line says what the item is for. The sweep of the review is done
 ([its verdicts](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27)); its batches are
 here, one pull request each, each naming the check run together at the end.
 
-1. **Batch B1, the invariant generators.** core-yaml-6, gap-stage5-readiness-11, tests-3:
-   hand-written files in every shape, and `signPlan` properties over plans valid by
-   construction. Stage 5's task 1 put the owner's `arbitraryGrantPlan` and §9.2's
-   idempotence property in `tests/invariants/` ([#105](https://github.com/pcaboor/idp-agent/pull/105)), which closes
-   gap-stage5-readiness-11 in part; B1 builds on that generator rather than writing a second
-   one, and goes on top of stage 5, which is done
-   ([#105](https://github.com/pcaboor/idp-agent/pull/105) to
-   [#111](https://github.com/pcaboor/idp-agent/pull/111); its follow-ups are under
-   *Known debts*).
-2. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
+1. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
    gap-stage5-readiness-4 (its submission half closed by stage 5's task 4): one lstat,
    realpath and `O_NOFOLLOW` primitive shared from
    `project-fs`, used by `scaffold/write.ts` and by the iac-fs walk, which rejects a
    symbolic link by name. Medium, and after stage 5: the forge writes only objects and a
    ref, never the working tree, and refuses a symbolic link tracked in `HEAD`, so B3 is for
    the read side and `scaffold/write.ts` (the stage-5 check, D17).
-3. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
+2. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
    harness half of agents-llm-9: record from an empty tape, fail on a turn never replayed,
    and digest the JSON Schema the provider is sent. It needs no key, but it prunes dead turns
    and rewrites every tape's digest, so it waits for the owner's go-ahead.
-4. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
+3. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
    catalogue is plugged in.
-5. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
+4. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
    authorisation (ADR-0006).
-6. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
+5. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence.
-7. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
+6. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
    the project's end goal (2026-09-23).
 8. **After stage 7, the enterprise needs: a discussion, not a stage.** The owner brings the
    needs and constraints they identified for a company — for example MCP servers such as
@@ -285,6 +276,21 @@ Each was checked against `main` at `3b642fa`.
   inspection read — an owner read there is vouched for though the branch does not carry the
   file. Proving every file read would refuse `init` in any repository with one dirty
   unrelated file.
+
+**Textual surgery, found by batch B1**
+
+- **A file whose last line has no line break gains one.** `insertDocument` ends that line
+  before the document it appends, and `removeDocument` cannot know the break was never
+  there, so §9.2's "insert then remove yields the file byte for byte" holds only for a file
+  that ends in a line break: `# note`, with nothing after it, comes back as `# note` and a
+  line break. A creation still carries out exactly what it says — the parser reads the file's
+  documents and the new one — but the file's last line shows in the diff as changed. Found
+  by B1's generators ([#113](https://github.com/pcaboor/idp-agent/pull/113)), left
+  unfixed on purpose and pinned at the bytes it comes back as in
+  `tests/invariants/core.test.ts`; only the two round trips leave such a file out, and every
+  other property draws it. The fix is a behaviour change — keep the file's missing break at
+  its new end, as `appendSequenceItem` already does, or state the invariant for files that
+  end in one — and is the owner's to choose.
 
 **First contact, left from review id docs-2**
 

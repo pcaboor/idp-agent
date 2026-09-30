@@ -65,3 +65,21 @@ export const environmentsAnswered = (plan: Plan): Record<string, string> =>
 /** The request `plan` carries, with its levels and its environments answered. */
 export const saidInFull = (plan: Plan, level = 'read'): Provenance =>
   userSaid(plan.intent, { ...levelsAnswered(plan, level), ...environmentsAnswered(plan) })
+
+/**
+ * Every string `plan`'s operations state, at the dotted path the signer walks
+ * it by. An `{ unknown }` is a question, not a value, and states nothing.
+ */
+export const statedLeaves = (plan: Plan): [string, string][] => {
+  const leaves = (value: unknown, path: string): [string, string][] =>
+    typeof value === 'string'
+      ? [[path, value]]
+      : typeof value !== 'object' || value === null || 'unknown' in value
+        ? []
+        : Object.entries(value).flatMap(([key, nested]) => leaves(nested, `${path}.${key}`))
+  return leaves(plan.operations, 'operations')
+}
+
+/** The request `plan` carries, with the person confirming every value it states at its field. */
+export const answeredAtEveryPath = (plan: Plan): Provenance =>
+  userSaid(plan.intent, Object.fromEntries(statedLeaves(plan)))
