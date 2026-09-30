@@ -52,10 +52,15 @@ here, one pull request each, each naming the check run together at the end.
 
 1. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
    catalogue is plugged in. Planned ([the plan](plans/backstage-http-slice-2.md),
-   [117](https://github.com/pcaboor/idp-agent/pull/117)): 2.1 the partial graph, 2.2 the
+   [#117](https://github.com/pcaboor/idp-agent/pull/117)): 2.1 the partial graph, 2.2 the
    store, 2.3 the command line.
 2. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
-   authorisation (ADR-0006).
+   authorisation (ADR-0006), designed in [the stage 6 note](stage-6-brief.md): the person's own
+   git pushes the branch and their own gh opens the pull request, idpa holds no GitHub
+   credential, and the base's ruleset is checked before any write and again at the moment of
+   acting. Four slices: 6.1 the git/gh allow-list and `idpa protection`; 6.2 push and pull
+   request on `plan --from`; 6.3 the intent, `init` and phrase roads; 6.4 the owner's live test,
+   ADR-0013 and the documents.
 3. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence.
@@ -268,7 +273,42 @@ The owner's decisions, dated, each with where it is recorded.
   three pull requests, the store and its proofs reviewed before any command writes; and new
   words for what a bound left out (`past the bound:`, `partial:`), `not loaded` kept for the
   marker a reference carries, so every whole read stays byte-identical
-  ([117](https://github.com/pcaboor/idp-agent/pull/117)).
+  ([#117](https://github.com/pcaboor/idp-agent/pull/117)).
+- Stage 6's design, settled ([the note's § 18](stage-6-brief.md#18-the-owners-answers-2026-09-30),
+  [#118](https://github.com/pcaboor/idp-agent/pull/118)). The invariant, reworded for
+  design §4.2, `AGENTS.md`, `SECURITY.md` and ADR-0013: "the identity that opens a pull request
+  cannot merge it until someone else has approved the exact commit that would merge, and idpa
+  never submits against a base without those rules". The base's ruleset must require at least
+  one approval, approval of the most recent push or dismissal of stale approvals, no force
+  push, no deletion, and `current_user_can_bypass` `never` for the person submitting, checked
+  before any write and again at the moment of acting; a base protected only by classic branch
+  protection is refused, naming the ruleset to add. The push and the pull request go "like
+  Claude Code": idpa handles no GitHub token; the person's own git pushes the `idp-agent/`
+  branch, create-only (`--force-with-lease=<ref>:` with an empty expected value, the exact
+  commit, hooks off, one refspec), and the person's own gh reads the rules and opens the pull
+  request, idpa being limited to an explicit list of git and gh commands and arguments by a
+  run-time check and an architecture rule. Without gh, or with gh logged out, nothing is pushed
+  (exit 2, `--local` named), since the rules cannot be read. The note's other decisions take its
+  recommendations, rewritten for gh: gh's own authentication and no GitHub secret read by
+  idpa; the role read through `gh api` reported, never decided on; GitHub Enterprise later,
+  through gh's host configuration; the live test on the owner's own gh session against a public
+  throwaway repository named with `idpa-live`, with a second account for the approval step.
+  The four questions the revision raised (§ 19), each as recommended: gh's identity must be a
+  person, so a bot or an app's token is refused and stage 6 is a laptop tool, not a CI step; a
+  repository key that redirects the push or runs a program during it is refused with exit 2,
+  naming the key and the command that removes it, never overridden; `GIT_SSH_COMMAND`,
+  `GIT_SSH`, `GIT_SSH_VARIANT` and `GIT_ASKPASS` reach the push and no other git call, taken
+  as following from "like Claude Code" and said so; and stage 6 does not prove the push
+  credential is gh's account — a deploy key visible in the bypass list is refused, the limit
+  is stated, and `gh auth setup-git` recommended.
+- The tapes recorded before 2026-09-30 keep the digest that does not see the tools a turn was
+  sent; the owner chose to re-record them with their key during stage 6's live session, rather
+  than warn on every replay of an old turn or store the tools from the next recording on.
+- `init --iac-repo` keeps refusing a locator carrying userinfo, a query or a fragment, the
+  SSH form `git@github.com:acme/iac.git` included: a user name cannot be told from a token by
+  its shape, and `.idp-agent.yml` is committed. `acme/iac`, `github.com/acme/iac` and
+  `https://github.com/acme/iac.git` stay accepted (confirmed by the owner,
+  [#111](https://github.com/pcaboor/idp-agent/pull/111)).
 
 ## Known debts and open items
 
@@ -377,6 +417,8 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
   digest; or say, on every replay of an old turn, that its tool schema was not recorded;
   and, for the next scheme change, store the tools and the tool choice in the tape from the
   next recording on, which makes a digest recomputable offline at the cost of a larger tape.
+  **The owner chose the first on 2026-09-30:** every tape is re-recorded with their key during
+  stage 6's live session (slice 6.4).
 
 - **The question-mode recordings are stale.** `tests/scenarios/question-mode.test.ts`'s
   question tapes (`question-prod-databases.json`, `question-consumers-of-billing-db.json`,

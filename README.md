@@ -699,7 +699,7 @@ firewall automation and ticketing) and adds the multi-agent layer that system ne
 | 3 | `init platform` + `validate` | ✅ |
 | 4 | Preview only: Inspector, Architect, `Plan`, diff; writes nothing | ✅ |
 | 5 | Write + local branch: `--submit` cuts one create-only branch, idempotent and atomic ([the check](docs/stage-5-check.md)) | ✅ |
-| 6 | GitHub pull request: real forge, negative token test | |
+| 6 | [GitHub pull request](docs/stage-6-brief.md): your own git pushes, your own gh opens the pull request, the base's ruleset checked; designed, not started | |
 | 6b | [Read the live catalogue](docs/backstage-http-brief.md) (`backstage-http`): questions and relations against a running Backstage, the organisation included (slices 1 and 3, done); large catalogues and a cache (slice 2) next; both sources side by side and namespaces (slices 4–5) with stage 8. No Backstage needed to use the tool | 🚧 |
 | 7 | Polish: Ink TUI, asciinema, npm publish | |
 | 8 | [Discovery](docs/stage-8-brief.md): catalogue an existing service and its dependencies; designed, not started; preview-only until stage 6 lands, submission after it | |

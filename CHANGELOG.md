@@ -400,7 +400,15 @@ Each pull request adds its line here.
   catalogue past a bound answered in part and saying so, a disk cache sealed by a MAC and read
   back through the same checks as the network, `--refresh` and `--cached`; three stacked pull
   requests, with the owner's five answers of 2026-09-30
-  ([117](https://github.com/pcaboor/idp-agent/pull/117)).
+  ([#117](https://github.com/pcaboor/idp-agent/pull/117)).
+- [The stage 6 design note](docs/stage-6-brief.md): a pull request opened with the person's own
+  git and gh, idpa holding no GitHub credential and running only an explicit list of git and gh
+  commands; the base's ruleset checked before any write and again before the push and the pull
+  request, classic protection refused, and nothing pushed without gh; the offline tests against
+  a fake gh and a bare remote with the suite owning every variable that could reach GitHub, the
+  owner's live test, and what no read can see (a push key or a deploy key in a bypass list, an
+  approval by GitHub Actions). The roadmap records the owner's stage-6 decisions of 2026-09-30
+  ([#118](https://github.com/pcaboor/idp-agent/pull/118)).
 - The README describes the tool after stage 5 and `backstage-http` slices 1 and 3: `--submit`
   and its local branch in the tagline, the diagram, the commands, the exit codes, the roadmap
   and the FAQ; a keyless submission to a git copy of the demo SI; the organisation's
