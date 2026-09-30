@@ -1,5 +1,5 @@
 import { BACKSTAGE_TOKEN_VARIABLE } from '../../process/environment.js'
-import type { ReadScope } from '../provider.js'
+import type { CacheRefusal, ReadScope } from '../provider.js'
 import { BACKSTAGE_LIMITS, type BackstageLimits } from './limits.js'
 
 /**
@@ -174,6 +174,12 @@ export class CatalogueReadError extends Error {
      * after a 401 or a 403, which may be a revoked token.
      */
     readonly kept?: { readonly ageMs: number | undefined },
+    /**
+     * On a `not-kept` failure: why the copy kept was not read — a store that
+     * could not be used, or a copy that did not verify — so the person is told
+     * what to look at. Absent when there was simply none.
+     */
+    readonly notUsed?: CacheRefusal,
   ) {
     super(sentenceOf(failure, origin))
     this.name = 'CatalogueReadError'

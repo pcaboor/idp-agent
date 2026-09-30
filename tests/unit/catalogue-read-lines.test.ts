@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { setAsideLine, skippedLines } from '../../src/cli/render/catalogue-read.js'
+import { cacheLines, setAsideLine, skippedLines } from '../../src/cli/render/catalogue-read.js'
 import type { Ignored, Rejection } from '../../src/context/provider.js'
 
 /**
@@ -143,5 +143,20 @@ describe('the grouped lines, over what a hostile catalogue serves', () => {
     expect(line).not.toMatch(OBEYED)
     // The C1 CSI goes and its parameters stay, as text: `plain` removes what a terminal obeys.
     expect(line).toMatch(/^skipped 1: spec\.owner 31my{186}… \(x\)$/)
+  })
+})
+
+describe('what a cache the disk refused says', () => {
+  const shown = (file: string): string => file
+
+  it('names a missing root and parent only when the store found them missing', () => {
+    const unmade = cacheLines({ read: { state: 'absent' }, written: { state: 'not-written', refusal: { kind: 'no-parent' } } }, '/x/cache', shown)
+    expect(unmade).toEqual(['this read of the catalogue was not kept: /x/cache does not exist, nor does the folder above it'])
+  })
+
+  it('says any other ENOENT as the code the disk answered, never as a missing root', () => {
+    // A key folder or a temporary file another run removed mid-write: the root is there.
+    const vanished = cacheLines({ read: { state: 'absent' }, written: { state: 'not-written', refusal: { kind: 'io', code: 'ENOENT' } } }, '/x/cache', shown)
+    expect(vanished).toEqual(['this read of the catalogue was not kept: the disk answered ENOENT under /x/cache'])
   })
 })

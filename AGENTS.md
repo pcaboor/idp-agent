@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 4174 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 4215 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -71,7 +71,8 @@ nothing in common (a near miss alone does not count), an entity was asked about 
 to itself, **the repository does not conform**, a gate refused a
 plan, the repair loop stopped at three attempts, a Backstage catalogue could not be read
 (unreachable, refused, a 3xx, past a byte or time bound — never a fall back; one past a
-count bound is answered in part, with the answer's own code, and says so), a submission
+count bound is answered in part, with the answer's own code, and says so), `--cached` with
+no copy kept that verifies, a submission
 refused — a catalogue that differs from `HEAD`, a plan writing into both repositories, a
 refusal at the moment of writing, git failing — or something failed unexpectedly · `2`
 the arguments were refused — a bad flag, a plan file that is not a plan, a `--repo`, a
@@ -83,7 +84,9 @@ options, two relation flags or one beside `--to`, a `--depth` that is not a whol
 from 1 to 100, a `.idp-agent.yml` or a personal `config.yml` that does not parse, a
 catalogue URL refused before any request, `IDP_BACKSTAGE_TOKEN` unset for a catalogue that
 is not on this machine or holding a character a header cannot carry, `--backstage` with none
-configured, a declarations repository `--submit` cannot cut a branch in (not a git clone's
+configured, `--refresh` and `--cached` together, beside `--repo` or `--demo`, or against a
+source that is not a catalogue, `--cached` where no copy is kept (`IDP_BACKSTAGE_CACHE=off`,
+no home, Windows, root), an `IDP_BACKSTAGE_CACHE` other than `off`, a declarations repository `--submit` cannot cut a branch in (not a git clone's
 root, no `git`, no committer identity, a detached or unborn `HEAD` — on `plan "<intent>"`
 and `init`, refused before the model is configured), `init --submit` for a service in a
 subfolder of its repository, an `--iac-repo` or `--environment` the configuration's schema
@@ -122,7 +125,7 @@ registration**, which `init platform` writes with the path registry's folders as
 silence, fails on what Backstage would refuse or what reads outside the repository
 (`registration`, an error), and warns when no target reaches one of the registry's folders.
 
-## Current state — 2026-09-29
+## Current state — 2026-09-30
 
 `main` carries stages 0 through 5; history is linear, no merge commits. Each stage lands
 as a stack of branches, one per task of its plan in `docs/plans/`, rebased and merged
@@ -160,7 +163,9 @@ question included: the model chooses the entity and the relation, and the engine
 `relations`' block; `validate`, nine rules over an IaC repository; `init platform`, which
 writes thirteen files — the Backstage registration among them — and clobbers nothing; the
 read commands and a question over a Backstage catalogue (`backstage-http` slice 1,
-ADR-0011; `pnpm demo:backstage` runs them against a fake on loopback); the organisation —
+ADR-0011; `pnpm demo:backstage` runs them against a fake on loopback), past its bounds
+answered in part (slice 2, ADR-0013) and kept five minutes for a second run, with
+`--refresh` and `--cached` (slice 2, ADR-0014); the organisation —
 Groups, Users, Systems and Domains, read-only nodes beside the entities, from files and
 from a catalogue alike, which `show` prints and the overview counts (`backstage-http` slice
 3.1), and which a question reads too, over a source that holds some — "what does team tiger
@@ -172,8 +177,8 @@ stage 5's writes, a local branch for review; a branch already there is named, or
 before anyone is asked to confirm:
 
 ```bash
-idpa "<phrase>" [--repo <dir> | --demo | --backstage] [--project <dir>] [--json] [--quiet]  # question or change
-idp-agent relations <name-or-ref> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-ref>] [--depth <n>] [--repo <dir> | --demo | --backstage]  # no model
+idpa "<phrase>" [--repo <dir> | --demo | --backstage] [--refresh | --cached] [--project <dir>] [--json] [--quiet]  # question or change
+idp-agent relations <name-or-ref> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-ref>] [--depth <n>] [--repo <dir> | --demo | --backstage] [--refresh | --cached]  # no model
 idp-agent plan --from <plan.json> --repo <dir> [--submit]  # no model, and none is possible
 idp-agent plan "<intent>" --repo <dir> [--json] [--submit]  # Inspector, Architect, five gates
 idp-agent init [--repo <dir>] [--name <n>] [--lifecycle <l>] [--owner <ref>] [--submit] [--iac-repo <locator>] [--environment <name>]...  # the catalog-info.yaml, and .idp-agent.yml when a flag states it
@@ -184,7 +189,10 @@ under it. `plan … --submit` and
 `init --submit` write one new ref and the objects it reaches, and nothing else** — never `HEAD`, the index, the
 working tree or a ref that exists; nothing is pushed and no merge request is opened. With
 `IDP_TRACE_DIR` set, `idpa "<phrase>"`, `plan "<intent>"`, `ask` and `init` also write one
-trace file there, and nothing else. The two forms of `plan` and `init` read two repositories
+trace file there, and nothing else. A run that reads a Backstage catalogue keeps the read
+under `$XDG_CACHE_HOME/idp-agent/backstage` (else `~/.cache/…`), for the running account
+alone, and nothing else — a root `bin.ts` hands `main` (`cacheRootOf`) and nothing else does,
+so no test's `main` writes under a real home. The two forms of `plan` and `init` read two repositories
 and produce a unified diff; `plan-command.test.ts` and `plan-intent.test.ts` hash every
 path, every byte and every directory of both repositories either side of a full run —
 `.git/` of a clone included — rather than taking that on trust, `plan-command.test.ts`
@@ -222,7 +230,14 @@ answered in part, and says so everywhere (ADR-0013): a `past the bound:` line on
 a `partial:` line closing each answer, a reference past it `not loaded`, never declared
 nowhere, and one line to the Supervisor and the Analyst; a whole read prints and sends what
 it did. Any other failure is exit 1, one line naming the host and what named it, and never
-answered from. The URL is checked before any request
+answered from. A read is kept five minutes (`context/backstage/cache.ts`, ADR-0014): a run
+within them answers from the copy, sends nothing and says `read from cache, 3 min old;
+--refresh reads Backstage again`; `--refresh` reads Backstage again; `--cached` answers from
+the copy whatever its age and never asks; after a failure of reach the failure line names
+`--cached` and the copy's age, never after a 401 or a 403. A copy is keyed by an HMAC of the
+base, the token and the read's shape under a per-machine secret, sealed by a MAC, and read
+again through the load's checks, the pre-pass and the reader; a run answered from one is
+traced with no page and no byte. The URL is checked before any request
 and quoted with its userinfo, query and fragment starred; the token comes from
 `IDP_BACKSTAGE_TOKEN` alone and goes to that catalogue alone, in one header
 (`tests/contract/key-reach.test.ts`, every provider, both roads). What it serves reaches the

@@ -305,7 +305,7 @@ describe('--quiet', () => {
   })
 
   it('is in the help', () => {
-    expect(HELP).toMatch(/idp-agent ask "<question>" \[--repo <directory> \| --demo \| --backstage\] \[--quiet\]/)
+    expect(HELP).toMatch(/idp-agent ask "<question>" \[--repo <directory> \| --demo \| --backstage\] \[--refresh \| --cached\] \[--quiet\]/)
     expect(HELP).toMatch(/idpa "<phrase>" .*\[--quiet\]/)
   })
 

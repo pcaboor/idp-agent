@@ -148,7 +148,7 @@ describe.skipIf(process.platform === 'win32' || OWNER === 0)('catalogueCache', (
       expect(await modeOf(path.join(parent, 'cache/idp-agent/backstage/secret'))).toBe(0o600)
 
       const empty = await scratch()
-      expect(await storeAt(path.join(empty, 'missing/cache'))).toEqual({ unusable: { kind: 'io', code: 'ENOENT' } })
+      expect(await storeAt(path.join(empty, 'missing/cache'))).toEqual({ unusable: { kind: 'no-parent' } })
       expect(await readdir(empty)).toEqual([])
     })
 

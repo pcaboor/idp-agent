@@ -205,6 +205,19 @@ Each pull request adds its line here.
   seven days. Only the provider may load it, a twenty-sixth architecture rule. No command uses
   it yet; the next pull request does
   ([#120](https://github.com/pcaboor/idp-agent/pull/120)).
+- A Backstage catalogue read is kept five minutes under `~/.cache/idp-agent/backstage`
+  (`$XDG_CACHE_HOME` when set), for your account only, and a second run answers from it
+  and says so: `read from cache, 3 min old; --refresh reads Backstage again`. `--refresh`
+  reads Backstage again; `--cached` answers from the kept copy whatever its age — when
+  Backstage cannot be reached, for example — and only when asked; `IDP_BACKSTAGE_CACHE=off`
+  keeps nothing. A kept copy is read again through the same checks and reader as a page,
+  holds no token, and never reaches a plan. After a failure of reach the failure line names
+  `--cached` and the copy's age, never after a 401 or a 403; a copy that could not be used or
+  kept is said in one line; a run answered from a copy is traced with no page and no byte.
+  The root is handed in by `bin.ts` alone, so no test writes under a real home, and the
+  demos and the smoke test keep theirs in a scratch folder. ADR-0014 records the decision,
+  and closes `backstage-http` slice 2
+  ([#122](https://github.com/pcaboor/idp-agent/pull/122)).
 
 ### Changed
 

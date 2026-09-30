@@ -177,7 +177,8 @@ Registering the repository serves Backstage's users. Reading the living catalogu
 slice 1), **built**: set `IDP_BACKSTAGE_URL` — or `backstage:` in the personal `config.yml` —
 to the catalogue API's base, `https://<backend host>/api/catalog`, and `graph`, `show`,
 `relations`, `ask` and a question read the catalogue, once per run, whole, or up to a stated
-bound and said to be partial ([ADR-0013](adr/0013-a-catalogue-read-in-part-says-so.md)); a
+bound and said to be partial ([ADR-0013](adr/0013-a-catalogue-read-in-part-says-so.md)), and
+keep the read five minutes ([ADR-0014](adr/0014-a-kept-catalogue-is-read-again.md)); a
 change is still decided against the declarations repository. It reads one bearer token from
 `IDP_BACKSTAGE_TOKEN` and nowhere else, required for any host but this machine, and sends it
 to that catalogue alone; a token is visible ASCII with no space, and one holding anything else
@@ -248,7 +249,9 @@ In Backstage, from the registration alone:
 
 With the `backstage-http` provider: `idpa` answering questions and relations about the
 whole catalogue from any directory, not only about the declarations repository — read once
-per run, before any model is called ([ADR-0011](adr/0011-backstage-to-explore.md)).
+per run, before any model is called ([ADR-0011](adr/0011-backstage-to-explore.md)), and kept
+five minutes for your account, so a second run answers at once and says how old its copy is
+([ADR-0014](adr/0014-a-kept-catalogue-is-read-again.md)).
 
 What does not change: a change is still decided in Git. `idpa "<change>"` previews a diff
 against the declarations repository, a person reviews it, and the merge is the act of

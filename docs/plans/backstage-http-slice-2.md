@@ -1,7 +1,8 @@
 # `backstage-http` slice 2 — scale and cache
 
 **Status: 2.1 built ([#119](https://github.com/pcaboor/idp-agent/pull/119)); 2.2 built
-([#120](https://github.com/pcaboor/idp-agent/pull/120)); 2.3 planned.** Three stacked pull
+([#120](https://github.com/pcaboor/idp-agent/pull/120)); 2.3 built
+([#122](https://github.com/pcaboor/idp-agent/pull/122)). The slice is closed.** Three stacked pull
 requests, 2.1 to 2.3, after this plan merged on its own (`docs/bhttp-slice-2-plan`, #117).
 The owner's answers to the five questions are [at the end](#questions-for-the-owner), settled
 on 2026-09-30, each as recommended, so the plan is built as written.
@@ -1009,7 +1010,8 @@ stays green unchanged — the refactor is proven by them.
 - the first store makes `idp-agent/` (`0o700`), `backstage/` (`0o700`) and `secret`
   (`0o600`, 64 hex characters and a line break);
 - a `root` that does not exist, whose parent does: made `0o700`, then the rest as above; a
-  `root` whose parent does not exist either: `unusable: { kind: 'io', code: 'ENOENT' }`, and
+  `root` whose parent does not exist either: `unusable: { kind: 'io', code: 'ENOENT' }` (2.3
+  makes it `{ kind: 'no-parent' }`, so no other ENOENT is said as a missing root), and
   nothing made anywhere; a missing `root` whose parent is a link to a folder: followed, as a
   root is, and the root made in the folder it names;
 - the key is 32 hex characters, the same for one base and token, another for another token,
@@ -1277,11 +1279,12 @@ export interface MainDeps { …; /** Absent: no cache, as in every test but the 
 process.exitCode = await main(process.argv.slice(2), { cacheRoot: cacheRootOf(process.env, process.platform, process.getuid?.()) })
 ```
 
-- [ ] **Step 1: Where the cache lives (fails: no `cacheRootOf`)**
+- [x] **Step 1: Where the cache lives (fails: no `cacheRootOf`)**
 
 `tests/unit/personal-config.test.ts` gains the rows: an absolute `XDG_CACHE_HOME` is used; a
-relative one is ignored, as for the config file; `HOME` gives `$HOME/.cache`; neither is
-`{ none: 'no-home' }`; `win32` is `{ none: 'platform' }`; uid 0 is `{ none: 'root' }`, with
+relative one is ignored, as for the config file; an absolute `HOME` gives `$HOME/.cache`;
+neither, or a relative `HOME` (which would resolve against the working directory and put the
+copy and its secret in a repository), is `{ none: 'no-home' }`; `win32` is `{ none: 'platform' }`; uid 0 is `{ none: 'root' }`, with
 `HOME` or `XDG_CACHE_HOME` set or not; `IDP_BACKSTAGE_CACHE=off` is
 `{ none: 'off' }` whatever else is set, and any other value of it is refused where the source
 is resolved, exit 2 (`off` is the one value, so a typo never keeps what was meant to be
@@ -1291,7 +1294,7 @@ store makes it, one name deep, as 2.2 Step 3 proves; so the row does not make it
 Expected: FAIL. Then `cacheRootOf`,
 and one line in the setup file. Green.
 
-- [ ] **Step 2: The flags (fails: `--refresh` is an unknown option)**
+- [x] **Step 2: The flags (fails: `--refresh` is an unknown option)**
 
 `tests/unit/backstage-source.test.ts`:
 
@@ -1302,14 +1305,14 @@ and one line in the setup file. Green.
 | `graph --cached --repo x`, `show x --refresh --demo` | exit 2: `--cached reads a kept copy of a Backstage catalogue, and --repo names a repository` (and `--demo` likewise) |
 | `plan "x" --refresh`, `validate d --cached` | exit 2, unknown option, as today |
 | `graph --cached` standing in a declarations repository | exit 2: `--cached reads a kept copy of a Backstage catalogue, and this run reads the declarations repository <dir> (the current directory); --backstage reads the catalogue`, before any request |
-| `graph --cached` with `cacheRoot: { none: 'off' }` | exit 2: `--cached reads a copy this tool keeps, and none is kept here: IDP_BACKSTAGE_CACHE is off` (and `'no-home'`: `neither XDG_CACHE_HOME nor HOME is set`; `'platform'`: `this tool keeps none on Windows`; `'root'`: `this tool keeps none for root, so a sudo run never leaves company data owned by root in a home`) |
+| `graph --cached` with `cacheRoot: { none: 'off' }` | exit 2: `--cached reads a copy this tool keeps, and none is kept here: IDP_BACKSTAGE_CACHE is off` (and `'no-home'`: `neither XDG_CACHE_HOME nor HOME names an absolute folder`; `'platform'`: `this tool keeps none on Windows`; `'root'`: `this tool keeps none for root, so a sudo run never leaves company data owned by root in a home`) |
 | `usageOf('graph')`, `'show'`, `'relations'`, `'ask'`, `'entry'` (`cli-args.test.ts`) | each names `[--refresh \| --cached]`; `usageOf('plan')`, `'validate'`, `'init'` name neither |
 
 Expected: FAIL. Then `READ_OPTIONS` and the phrase parser gain the two booleans, `HELP`'s
 read-command lines the two flags, `readFrom` the refusals, and the source check after
 `sourceOf`. Green.
 
-- [ ] **Step 3: A second run, from the copy (fails: every run reads Backstage)**
+- [x] **Step 3: A second run, from the copy (fails: every run reads Backstage)**
 
 `tests/unit/backstage-cache-read.test.ts`, through `main` with the fake as `catalogueFetch`,
 `cacheRoot: { dir: <mkdtemp under the run directory> }`, and `now` driven through
@@ -1330,12 +1333,12 @@ read-command lines the two flags, `readFrom` the refusals, and the source check 
 | unreachable, a copy 2 minutes old, `--refresh` | exit 1: the same line, `; --cached reads the copy kept 2 min ago` |
 | 401, a copy kept | exit 1: the line of `55fb995`, byte for byte, with no `--cached` |
 | a copy dated 10 minutes ahead, no flag | read from Backstage; with `--cached`: `read from cache, of an age this clock cannot tell (dated 10 min ahead of it)` |
-| `backstage/` at `0o755` | exit 0, read from Backstage; one line: `the cache at <dir>/idp-agent/backstage was not used: others may open it (mode 0755); nothing was changed` |
+| `backstage/` at `0o755` | exit 0, read from Backstage; one line: `the cache at <dir>/idp-agent/backstage was not used: others may open it (mode 0755); nothing was changed`; with `--refresh`, which never uses a copy, `read: skipped` and only `… could not keep this read: others may open it (mode 0755); nothing was changed` |
 | a copy that does not verify | exit 0, read from Backstage; one line, from `{ read: not-used, written }`: `the kept copy of this catalogue did not verify (its MAC) and was not used; it is replaced by this read` |
 | `served.json` a symbolic link | exit 0, read from Backstage; from `{ read: not-used, written: not-written }`, one line: `the cache at <path> was not used and this read was not kept: <path> is a symbolic link, never followed; nothing was changed`; the link and its target untouched |
 | `<key>` a file | exit 0; from `{ read: not-used, written: not-written }`, one line, since both say one thing: `the cache at <path> was not used and this read was not kept: <path> is not a folder` |
 | the trace | `idp.source.cache_read` is `fresh`, `kept`, `stale`, `absent`, `skipped`, `not-used` or `off`; `idp.source.cache_written` is `written` or `not-written` when Backstage was read, absent otherwise; `idp.source.cache_age_s` when a copy answered |
-| the trace and the notice, a run answered from a copy | the `LoadResult`'s `census` is the load's that made the copy (2.2 keeps it in the envelope and gives it back): `idp.source.pages`, `bytes` and `ms` are that load's network cost, not this run's, and the notice's served-twice clause is that load's. Decide here, and pin with a row, how a run that sent no request is traced — the three attributes absent or zero, or this run's own read time — and whether the clause is said again; Step 6's second-run time is measured on that decision, not on the census a copy carries |
+| the trace and the notice, a run answered from a copy | the `LoadResult`'s `census` is the load's that made the copy (2.2 keeps it in the envelope and gives it back): `idp.source.pages`, `bytes` and `ms` are that load's network cost, not this run's, and the notice's served-twice clause is that load's. Decide here, and pin with a row, how a run that sent no request is traced — the three attributes absent or zero, or this run's own read time — and whether the clause is said again; Step 6's second-run time is measured on that decision, not on the census a copy carries. **Decided:** `pages` and `bytes` are `0` and `ms` is this run's own time reading the copy (a row makes the first load slow so the two differ); the clause is said again after `read from cache, <age>`, as the earlier read's: `the catalogue changed during the read this copy keeps (U served twice)` |
 | no `cacheRoot` | every line and file exactly as `55fb995`'s: nothing under the run directory, no cache words |
 
 Expected: FAIL. Then `providerOf` hands the provider `cache: { root, owner: process.getuid(),
@@ -1344,7 +1347,7 @@ age; `cacheLines` reads both facts of the report and prints the not-used and not
 lines after the notice, one line when they name one path and one reason;
 `catalogueFailureLine` takes `error.kept`; the trace attributes. Green.
 
-- [ ] **Step 4: Nothing kept reaches a plan, and no token is at rest (fails: the cache is new)**
+- [x] **Step 4: Nothing kept reaches a plan, and no token is at rest (fails: the cache is new)**
 
 - `tests/unit/backstage-read.test.ts`, beside *lets nothing in the catalogue vouch …*
   (`:386`): a first run keeps a copy whose Component names owner `group:default/invented`,
@@ -1361,7 +1364,7 @@ lines after the notice, one line when they name one path and one reason;
 
 Expected: FAIL (the test has no root to read). Green once Step 3 is in.
 
-- [ ] **Step 5: The binary, the demos and the smoke test**
+- [x] **Step 5: The binary, the demos and the smoke test**
 
 - `scripts/smoke.mjs:119-123`: `CLEAN_ENV` gains `XDG_CACHE_HOME: path.join(ELSEWHERE,
   'cache')`, a folder no one makes — the store makes it, one name deep — for smoke's own
@@ -1388,7 +1391,7 @@ Expected: FAIL (the test has no root to read). Green once Step 3 is in.
   step 6, with no token, is a new key and still reaches Backstage and its 401.
 - `tools/backstage/README.md`: both demos' new lines and the Docker demo's numbering.
 
-- [ ] **Step 6: Under a second (measured, not asserted by the suite)**
+- [x] **Step 6: Under a second (measured, not asserted by the suite)**
 
 With the fake at `--scale 20500` on 7011 and a scratch `XDG_CACHE_HOME`, `show billing-api`
 three times, the second and third timed. The target is the note's: under a second, wall
@@ -1399,7 +1402,7 @@ pre-pass, `readValue`, the graph) and bring the numbers to the owner before merg
 reader is never skipped to meet it; the copy is a `Served` because a translated `LoadResult`
 on disk would be a source that passes no schema (the note's § 15).
 
-- [ ] **Step 7: The documents**
+- [x] **Step 7: The documents**
 
 - `docs/adr/0014-a-kept-catalogue-is-read-again.md`: *Context* — ADR-0011 left the cache to
   this slice; every run, `idpa "<change>"` included, paid the whole catalogue read.
@@ -1448,7 +1451,7 @@ on disk would be a source that passes no schema (the note's § 15).
 - `docs/roadmap.md`: slice 2 leaves the queue; the decisions list records the owner's answers
   to this plan's questions.
 
-- [ ] **Step 8: Checks**
+- [x] **Step 8: Checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -1517,7 +1520,7 @@ env -u IDP_BACKSTAGE_TOKEN -u IDP_REPO XDG_CACHE_HOME="$IDPA_DEMO_CACHE" IDP_BAC
 | # | Command | Prints | Exit |
 |---|---|---|---|
 | 1 | first `show billing-api` | the notice of 2.1 (`20,540 entities: 20,007 read, 0 not modelled, 533 past the bound`), the `past the bound:` line; stdout the golden, then the `partial:` line | 0 |
-| 2 | the timed second | the same stdout; the notice ends `…, 533 past the bound; read from cache, less than a minute old; --refresh reads Backstage again; it may lag …`; `real` under 1 s; the fake's terminal logs no request | 0 |
+| 2 | the timed second | the same stdout; the notice ends `…, 533 past the bound; read from cache, less than a minute old; --refresh reads Backstage again; it may lag …`; the time under 1 s (zsh's `total`, bash's `real`: `time` is given the command itself, never a shell function, which zsh times as nothing); the fake's terminal logs no request | 0 |
 | 3 | `ls -la` | `drwx------` for `.`, one folder of 32 hex characters `drwx------`, `secret` `-rw-------`; `$IDPA_DEMO_CACHE` itself was made by `mktemp -d`, and `idp-agent` under it by the first run | 0 |
 | 4 | `--refresh` | the fake logs the facets and 81 pages — 80 of Components, Resources and APIs, stopped at the bound, and one of the organisation; no cache words | 0 |
 | 5 | `show scale-20400` | from the copy, `No entity named "scale-20400" in the part of the catalogue read: …` | 1 |

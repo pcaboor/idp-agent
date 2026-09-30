@@ -297,6 +297,26 @@ the catalogue this token reads" on `show`, `relations` and an answer (`NOWHERE_I
 `render/entity.ts`), and the trace's root carries `idp.source.*`, never the token.
 `tests/unit/backstage-read.test.ts` and `tests/contract/key-reach.test.ts` hold it.
 
+**The kept catalogue.** `MainDeps.cacheRoot` is where a catalogue read is kept, `{ dir }` or
+`{ none }`, and absent is none: `bin.ts` passes `cacheRootOf(process.env, process.platform,
+process.getuid?.())` (`personal.ts`: `$XDG_CACHE_HOME` when absolute, else `$HOME/.cache`;
+none on Windows, for root, or with `IDP_BACKSTAGE_CACHE=off`), and nothing in `main` defaults
+it, so no test's run keeps a copy unless it hands a root in. `providerOf` hands the provider
+`cache: { root, owner, use }`, the use `fresh`, `refresh` (`--refresh`) or `kept`
+(`--cached`). `--refresh` and `--cached` are `READ_OPTIONS`, on the read commands and the
+phrase: both at once, or either beside `--repo` or `--demo`, is refused at parsing; either
+against a source resolved to a repository or the demo SI is refused before any request
+(`cacheFlagRefusal`), and `--cached` with no root (`noCacheRefusal`) names why; an
+`IDP_BACKSTAGE_CACHE` other than `off` is refused where a catalogue is resolved. A copy that
+answered adds its age to the notice (`copyAge`: `read from cache, 3 min old; --refresh reads
+Backstage again`, or `…, as --cached asks: Backstage was not asked`); a copy not used and a
+read not kept are one line each after it, or one when both name one path and one reason
+(`cacheLines`); the failure line names `--cached` and the copy's age after a failure of
+reach, never after a 401 or a 403, and a `--cached` with nothing it could read says why
+before it says so. The trace's root gains `idp.source.cache_read`, `cache_written` and
+`cache_age_s`; a run answered from a copy is traced with no page and no byte and its own
+time. `tests/unit/backstage-cache-read.test.ts` holds it.
+
 **The personal configuration.** `personal.ts` reads `$XDG_CONFIG_HOME/idp-agent/config.yml`,
 else `~/.config/idp-agent/config.yml` (`%APPDATA%\idp-agent\config.yml` on Windows when no
 XDG_CONFIG_HOME is set). It is one person's and never committed, where `.idp-agent.yml`

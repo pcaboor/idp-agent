@@ -40,7 +40,13 @@ slice 3, [#99](https://github.com/pcaboor/idp-agent/pull/99),
 [#101](https://github.com/pcaboor/idp-agent/pull/101)). Slices 1 and 3 are closed: their
 three keyed recordings, a question answered from a catalogue and the two organisation
 questions, were recorded by the owner on 2026-09-29 and replay with no key
-([#103](https://github.com/pcaboor/idp-agent/pull/103)).
+([#103](https://github.com/pcaboor/idp-agent/pull/103)). Slice 2 is closed too
+([the plan](plans/backstage-http-slice-2.md), [#117](https://github.com/pcaboor/idp-agent/pull/117)):
+a catalogue past a bound is answered in part and says so
+([#119](https://github.com/pcaboor/idp-agent/pull/119), ADR-0013), and a read is kept five
+minutes for the person's account, read again through the reader, with `--refresh` and
+`--cached` ([#120](https://github.com/pcaboor/idp-agent/pull/120) and
+[#122](https://github.com/pcaboor/idp-agent/pull/122), ADR-0014).
 
 ## The queue
 
@@ -50,12 +56,7 @@ Each line says what the item is for. The sweep of the review is done
 ([its verdicts](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27)); its batches are
 here, one pull request each, each naming the check run together at the end.
 
-1. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
-   catalogue is plugged in. Planned ([the plan](plans/backstage-http-slice-2.md),
-   [#117](https://github.com/pcaboor/idp-agent/pull/117)): 2.1 the partial graph, built
-   ([#119](https://github.com/pcaboor/idp-agent/pull/119)); 2.2 the store, 2.3 the
-   command line.
-2. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
+1. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
    authorisation (ADR-0006), designed in [the stage 6 note](stage-6-brief.md): the person's own
    git pushes the branch and their own gh opens the pull request, idpa holds no GitHub
    credential, and the base's ruleset is checked before any write and again at the moment of
@@ -64,12 +65,12 @@ here, one pull request each, each naming the check run together at the end.
    ADR-0015 and the documents. Planned ([the plan](plans/stage-6-github.md),
    [#121](https://github.com/pcaboor/idp-agent/pull/121)): eleven pull requests, 6.1.1 to
    6.4.3, the last the owner's re-recording of the tapes.
-3. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
+2. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence.
-4. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
+3. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
    the project's end goal (2026-09-23).
-5. **After stage 7, the enterprise needs: a discussion, not a stage.** The owner brings the
+4. **After stage 7, the enterprise needs: a discussion, not a stage.** The owner brings the
    needs and constraints they identified for a company — for example MCP servers such as
    Jira's, for ticket handling — to be discussed before anything is planned. Nothing is
    scheduled; design §13 keeps real Jira integrations out of v0.1, and an MCP server exposed

@@ -10,19 +10,25 @@
  * `pnpm smoke`, which runs this script, fails with it:
  *   1. `relations mysql-prod-01 --impacts` prints the README's table, the
  *      bytes of `tests/golden/relations-demo/mysql-prod-01-impacts.txt`;
- *   2. `show billing-api` prints what `--demo` prints;
+ *   2. `show billing-api` prints what `--demo` prints, answered from the
+ *      copy step 1 kept: the fake is sent no request, and the notice says the
+ *      copy's age;
  *   3. a change is decided against the declarations repository alone: `plan
  *      --from` sends the catalogue no request, which the fake's log shows.
  *
  * `IDP_BACKSTAGE_TOKEN` is removed from everything it runs. A token is sent to
  * a loopback catalogue too, and one exported for the company's Backstage has
- * no business reaching a fake.
+ * no business reaching a fake. `XDG_CACHE_HOME` points into a scratch folder
+ * of this run, removed when it ends, so the copy step 1 keeps lands nowhere
+ * near the contributor's own `~/.cache`; `IDP_BACKSTAGE_CACHE` is removed, so
+ * a shell that turned the cache off still sees what the demo shows.
  *
  * Run after `pnpm build`. The fake is TypeScript that Node runs as it is,
  * which needs Node 22.18 or later (`scripts/type-stripping.mjs`).
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { strippingRefusal } from './type-stripping.mjs'
@@ -43,10 +49,15 @@ if (!existsSync(BIN)) {
   process.exit(1)
 }
 
-/** The environment of everything this script starts: no catalogue token, ever. */
-const environment = { ...process.env }
+/** Where the binary keeps the catalogue it reads: this run's, removed when it ends. */
+const scratch = mkdtempSync(path.join(tmpdir(), 'idp-demo-backstage-'))
+process.on('exit', () => rmSync(scratch, { recursive: true, force: true }))
+
+/** The environment of everything this script starts: no catalogue token, ever, and a cache of its own. */
+const environment = { ...process.env, XDG_CACHE_HOME: path.join(scratch, 'cache') }
 delete environment['IDP_BACKSTAGE_TOKEN']
 delete environment['IDP_BACKSTAGE_URL']
+delete environment['IDP_BACKSTAGE_CACHE']
 
 // Node 22 warns that type stripping is experimental; the warning is not the demo's.
 const fake = spawn(
@@ -142,6 +153,7 @@ function step(title, args, expected, golden) {
     console.log(`stdout is not ${golden}, byte for byte`)
     failed = true
   }
+  return run
 }
 
 step(
@@ -150,14 +162,26 @@ step(
   0,
   'tests/golden/relations-demo/mysql-prod-01-impacts.txt',
 )
-step(
-  '2. What billing-api is, from the same catalogue',
+const first = await logged()
+console.log(`\nthe fake Backstage answered ${first} requests for the first read`)
+
+const second = step(
+  '2. What billing-api is, from the same catalogue: answered from the copy step 1 kept',
   ['show', 'billing-api'],
   0,
   'tests/golden/demo-read/show-billing-api.txt',
 )
 const read = await logged()
-console.log(`\nthe fake Backstage answered ${read} requests for the two reads`)
+if (read === first) {
+  console.log('the fake Backstage was sent no request for the second read')
+} else {
+  console.log(`the fake Backstage was sent ${read - first} requests for the second read`)
+  failed = true
+}
+if (!/; read from cache, less than a minute old; --refresh reads Backstage again; /.test(second.stderr ?? '')) {
+  console.log('the second read does not say it was read from the copy step 1 kept')
+  failed = true
+}
 
 step(
   '3. A change is decided against the declarations repository, never the catalogue',

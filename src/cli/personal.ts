@@ -76,6 +76,43 @@ export function personalConfigFile(
   return home === undefined ? undefined : p.join(home, '.config', DIRECTORY, FILE)
 }
 
+/** The variable that turns the catalogue cache off: `off` is its one value (`source.ts` refuses any other). */
+export const CACHE_VARIABLE = 'IDP_BACKSTAGE_CACHE'
+
+/**
+ * Where a catalogue read is kept (`context/backstage/cache.ts`), or why none
+ * is: the root the store makes `idp-agent/backstage/` under.
+ */
+export type CacheRoot =
+  | { readonly dir: string }
+  /**
+   * `off`: IDP_BACKSTAGE_CACHE says so. `no-home`: neither XDG_CACHE_HOME nor
+   * HOME names an absolute folder. `platform`: Windows, where `confine/` cannot open a
+   * file without following a link. `root`: a run as root keeps nothing, since
+   * `sudo` can keep the caller's home, and one run would leave company data
+   * owned by root in it that none of their own runs may read or remove.
+   */
+  | { readonly none: 'off' | 'no-home' | 'platform' | 'root' }
+
+/**
+ * `$XDG_CACHE_HOME` when it is absolute, else `$HOME/.cache` when HOME is — resolved as
+ * `personalConfigFile` resolves XDG_CONFIG_HOME, from the environment it is
+ * handed, never `os.homedir()`. Called by `bin.ts` alone: `main` keeps
+ * nothing unless it is handed a root, so no test keeps a copy without asking.
+ */
+export function cacheRootOf(env: Env, platform: Platform = process.platform, uid?: number): CacheRoot {
+  if (env['IDP_BACKSTAGE_CACHE'] === 'off') return { none: 'off' }
+  if (platform === 'win32') return { none: 'platform' }
+  if (uid === 0) return { none: 'root' }
+  const p = pathOf(platform)
+  const xdg = valueOf(env['XDG_CACHE_HOME'])
+  if (xdg !== undefined && p.isAbsolute(xdg)) return { dir: xdg }
+  // A relative HOME would resolve against the working directory, and put the
+  // copy and its secret in the repository a run was started from.
+  const home = homeOf(env, platform)
+  return home === undefined || !p.isAbsolute(home) ? { none: 'no-home' } : { dir: p.join(home, '.cache') }
+}
+
 /**
  * A path as a person reads it: under `~` when it is in their home directory,
  * whole otherwise. Only for what is printed — nothing reads the shown form.

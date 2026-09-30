@@ -1,6 +1,6 @@
 # ADR-0011 — Backstage to explore: one snapshot per run; the model's words never become a request
 
-**Date** 2026-09-28 · **Status** accepted; amended by [0013](0013-a-catalogue-read-in-part-says-so.md)
+**Date** 2026-09-28 · **Status** accepted; amended by [0013](0013-a-catalogue-read-in-part-says-so.md) and [0014](0014-a-kept-catalogue-is-read-again.md)
 
 ## Context
 

@@ -6,6 +6,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ConfigError } from '../../src/cli/config.js'
 import {
+  cacheRootOf,
   personalConfigFile,
   readPersonalConfig,
   shownPath,
@@ -69,6 +70,53 @@ describe('where the personal configuration lives', () => {
     expect(shownPath('/xdg/idp-agent/config.yml', env, 'linux')).toBe('/xdg/idp-agent/config.yml')
     // A prefix of the name is not the directory.
     expect(shownPath('/home/adam/config.yml', env, 'linux')).toBe('/home/adam/config.yml')
+  })
+})
+
+describe('where the kept catalogue lives', () => {
+  // The root `bin.ts` hands `main`, and nothing else does: `main` never reads
+  // XDG_CACHE_HOME, so a test's run keeps nothing unless it asks.
+  it('is XDG_CACHE_HOME when it is absolute', () => {
+    expect(cacheRootOf({ XDG_CACHE_HOME: '/xdg-cache', HOME: '/home/ada' }, 'linux', 501)).toEqual({ dir: '/xdg-cache' })
+  })
+
+  it('ignores an XDG_CACHE_HOME that is empty or relative, as for the configuration', () => {
+    for (const XDG_CACHE_HOME of ['', 'relative/cache']) {
+      expect(cacheRootOf({ XDG_CACHE_HOME, HOME: '/home/ada' }, 'darwin', 501)).toEqual({ dir: '/home/ada/.cache' })
+    }
+  })
+
+  it('is ~/.cache otherwise, from HOME and never the process’s own', () => {
+    expect(cacheRootOf({ HOME: '/home/ada' }, 'linux', 501)).toEqual({ dir: '/home/ada/.cache' })
+    expect(cacheRootOf({}, 'linux', 501)).toEqual({ none: 'no-home' })
+  })
+
+  it('is none for a relative HOME, which would put the copy and its secret in the working directory', () => {
+    for (const HOME of ['.', 'rel', 'relative/home']) {
+      expect(cacheRootOf({ HOME }, 'linux', 501), HOME).toEqual({ none: 'no-home' })
+      expect(cacheRootOf({ HOME, XDG_CACHE_HOME: 'relative/cache' }, 'darwin', 501), HOME).toEqual({ none: 'no-home' })
+    }
+  })
+
+  it('is none on Windows, where confine/ cannot refuse a link', () => {
+    expect(cacheRootOf({ XDG_CACHE_HOME: 'D:\\cache', USERPROFILE: 'C:\\Users\\ada' }, 'win32', undefined)).toEqual({
+      none: 'platform',
+    })
+  })
+
+  it('is none for root, whatever names a folder', () => {
+    for (const env of [{}, { HOME: '/root' }, { XDG_CACHE_HOME: '/xdg-cache' }, { HOME: '/home/ada', XDG_CACHE_HOME: '/x' }]) {
+      expect(cacheRootOf(env, 'linux', 0)).toEqual({ none: 'root' })
+    }
+  })
+
+  it('is none with IDP_BACKSTAGE_CACHE=off, whatever else is set', () => {
+    for (const env of [{}, { HOME: '/home/ada' }, { XDG_CACHE_HOME: '/xdg-cache' }]) {
+      expect(cacheRootOf({ ...env, IDP_BACKSTAGE_CACHE: 'off' }, 'linux', 0)).toEqual({ none: 'off' })
+      expect(cacheRootOf({ ...env, IDP_BACKSTAGE_CACHE: 'off' }, 'win32', undefined)).toEqual({ none: 'off' })
+    }
+    // Any other value is refused where the catalogue is resolved (backstage-source.test.ts), never read as on.
+    expect(cacheRootOf({ HOME: '/home/ada', IDP_BACKSTAGE_CACHE: '' }, 'linux', 501)).toEqual({ dir: '/home/ada/.cache' })
   })
 })
 
@@ -218,6 +266,16 @@ describe('the suite never reads the developer’s own configuration', () => {
     expect(existsSync(file ?? '/')).toBe(false)
   })
 
+  it('points XDG_CACHE_HOME inside the run directory, at a folder no one made', () => {
+    // For a binary a test starts: bin.ts reads it. The store makes it, one
+    // name deep, as backstage-cache.test.ts proves; so this does not either.
+    const root = cacheRootOf(process.env, process.platform, 501)
+    expect(root).toEqual({ dir: process.env['XDG_CACHE_HOME'] })
+    const dir = 'dir' in root ? root.dir : '/'
+    expect(path.relative(tmpdir(), dir).startsWith('..')).toBe(false)
+    expect(existsSync(dir)).toBe(false)
+  })
+
   it('sends no trace anywhere: the MLflow variables are gone, whatever the shell exported', () => {
     // Every `main` that reads `process.env` — the scenarios do — would otherwise
     // post each replayed run's full prompts to the developer's MLflow.
@@ -231,9 +289,9 @@ describe('the suite never reads the developer’s own configuration', () => {
   it('hands the same to a process a test starts, such as the CLI', () => {
     const child = spawnSync(
       process.execPath,
-      ['-p', "JSON.stringify([process.env.XDG_CONFIG_HOME, process.env.IDP_REPO ?? null])"],
+      ['-p', "JSON.stringify([process.env.XDG_CONFIG_HOME, process.env.XDG_CACHE_HOME, process.env.IDP_REPO ?? null])"],
       { encoding: 'utf8' },
     )
-    expect(JSON.parse(child.stdout)).toEqual([process.env['XDG_CONFIG_HOME'], null])
+    expect(JSON.parse(child.stdout)).toEqual([process.env['XDG_CONFIG_HOME'], process.env['XDG_CACHE_HOME'], null])
   })
 })

@@ -15,12 +15,20 @@
  *      the registration's globs, and its rules admitting Resources;
  *   2. `relations mysql-prod-01 --impacts` prints the README's table: stdout
  *      is `--demo`'s, byte for byte, and the golden file's;
- *   3. `show billing-api` prints what `--demo` prints;
+ *   3. `show billing-api` prints what `--demo` prints, answered from the
+ *      copy step 2 kept: its stderr says `read from cache`;
  *   4. `show tiger` prints the team read from the catalogue, as it prints it
  *      read from the same files (the demo SI and org.yaml), which is what the
- *      fake serves;
- *   5. without the token, the catalogue answers 401 and idpa says so, exit 1;
- *   6. the token reads and does nothing else: a refresh is refused (403).
+ *      fake serves — from the same copy;
+ *   5. `show billing-api --refresh` reads Backstage again: the golden, and no
+ *      word of a cache;
+ *   6. without the token, the catalogue answers 401 and idpa says so, exit 1:
+ *      another token is another key, so no copy stands in for the refusal;
+ *   7. the token reads and does nothing else: a refresh is refused (403).
+ *
+ * Every run keeps its catalogue read under a cache folder in this run's
+ * scratch, removed when the demo ends, never under the contributor's own
+ * `~/.cache`.
  *
  *     pnpm build && pnpm demo:backstage:docker            # build, run, stop
  *     pnpm demo:backstage:docker --keep                   # leave it running: http://127.0.0.1:7007
@@ -199,10 +207,16 @@ let failed = false
 const scratch = mkdtempSync(path.join(tmpdir(), 'idpa-docker-demo-'))
 process.on('exit', () => rmSync(scratch, { recursive: true, force: true }))
 
-/** The environment a person's shell would have: no repository, no personal file, this catalogue. */
+/**
+ * The environment a person's shell would have: no repository, no personal
+ * file, this catalogue — and a cache folder of this run's, which the store
+ * makes, so steps 3 and 4 answer from the copy step 2 keeps. IDP_BACKSTAGE_CACHE
+ * is removed, so a shell that turned the cache off still sees what the demo shows.
+ */
 function environmentWith(variables) {
-  const environment = { ...process.env, XDG_CONFIG_HOME: scratch, ...variables }
+  const environment = { ...process.env, XDG_CONFIG_HOME: scratch, XDG_CACHE_HOME: path.join(scratch, 'cache'), ...variables }
   delete environment['IDP_REPO']
+  delete environment['IDP_BACKSTAGE_CACHE']
   if (!('IDP_BACKSTAGE_TOKEN' in variables)) delete environment['IDP_BACKSTAGE_TOKEN']
   if (!('IDP_BACKSTAGE_URL' in variables)) delete environment['IDP_BACKSTAGE_URL']
   return environment
@@ -218,14 +232,28 @@ function idpa(args, variables) {
   })
 }
 
-/** One step against the catalogue, compared with `--demo` and, when given, a golden file. */
-function step(title, args, golden) {
+/** Whether a run's notice says it answered from the kept copy, and whether it should have. */
+function fromCopy(run, expected) {
+  const said = /; read from cache, [^;]+; --refresh reads Backstage again; /.test(run.stderr)
+  if (said === expected) console.log(expected ? 'answered from the kept copy, as the notice says' : 'read from Backstage: no word of a cache')
+  else {
+    console.log(expected ? 'did not answer from the kept copy' : 'said it answered from a kept copy')
+    failed = true
+  }
+}
+
+/**
+ * One step against the catalogue, compared with `--demo` and, when given, a
+ * golden file; `cached` is whether it answers from the copy an earlier step
+ * kept. `--refresh` is not passed to the `--demo` run, which keeps nothing.
+ */
+function step(title, args, golden, cached) {
   console.log(`\n${bold(title)}`)
   console.log(`$ env -u IDP_REPO IDP_BACKSTAGE_URL=${BASE} IDP_BACKSTAGE_TOKEN=${TOKEN} idpa ${args.join(' ')}`)
   const run = idpa(args, { IDP_BACKSTAGE_URL: BASE, IDP_BACKSTAGE_TOKEN: TOKEN })
   process.stdout.write(run.stderr)
   process.stdout.write(run.stdout)
-  const demo = idpa([...args, '--demo'], {})
+  const demo = idpa([...args.filter((arg) => arg !== '--refresh'), '--demo'], {})
   if (run.status !== 0) {
     console.log(`(exit ${run.status}; this step expects 0)`)
     failed = true
@@ -241,16 +269,23 @@ function step(title, args, golden) {
     console.log(`stdout is not ${golden}, byte for byte`)
     failed = true
   }
+  fromCopy(run, cached)
 }
 
 step(
   '2. What breaks if the database server mysql-prod-01 fails, read from a real Backstage?',
   ['relations', 'mysql-prod-01', '--impacts'],
   'tests/golden/relations-demo/mysql-prod-01-impacts.txt',
+  false,
 )
-step('3. What billing-api is, from the same catalogue', ['show', 'billing-api'], 'tests/golden/demo-read/show-billing-api.txt')
+step(
+  '3. What billing-api is, from the same catalogue: answered from the copy step 2 kept',
+  ['show', 'billing-api'],
+  'tests/golden/demo-read/show-billing-api.txt',
+  true,
+)
 
-console.log(`\n${bold('4. A team, read from the same catalogue')}`)
+console.log(`\n${bold('4. A team, read from the same catalogue: the same copy')}`)
 {
   // The same documents as files: the demo SI and org.yaml, in a folder of its own.
   const files = path.join(scratch, 'si-demo-with-org')
@@ -269,9 +304,17 @@ console.log(`\n${bold('4. A team, read from the same catalogue')}`)
     console.log('stdout is not what the same files print')
     failed = true
   }
+  fromCopy(run, true)
 }
 
-console.log(`\n${bold('5. Without the token, the catalogue refuses and idpa says so')}`)
+step(
+  '5. --refresh reads Backstage again',
+  ['show', 'billing-api', '--refresh'],
+  'tests/golden/demo-read/show-billing-api.txt',
+  false,
+)
+
+console.log(`\n${bold('6. Without the token, the catalogue refuses and idpa says so')}`)
 const bare = await get('entities/by-query', 'limit=1', false)
 console.log(`GET ${BASE}/entities/by-query with no token: ${bare.status}`)
 if (bare.status !== 401) failed = true
@@ -281,7 +324,7 @@ process.stdout.write(refused.stderr)
 console.log(`(exit ${refused.status}; stdout ${refused.stdout === '' ? 'empty' : 'NOT empty'})`)
 if (refused.status !== 1 || refused.stdout !== '' || !refused.stderr.includes('(401)')) failed = true
 
-console.log(`\n${bold('6. The token reads, and nothing else')}`)
+console.log(`\n${bold('7. The token reads, and nothing else')}`)
 const refresh = await fetch(`${BASE}/refresh`, {
   method: 'POST',
   headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },

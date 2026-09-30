@@ -14,7 +14,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 4174, no API key" src="https://img.shields.io/badge/tests-4174%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 4215, no API key" src="https://img.shields.io/badge/tests-4215%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -401,7 +401,7 @@ provider reported for them.
 ## Commands
 
 ```bash
-idpa "<phrase>" [--repo <dir> | --demo | --backstage] [--project <dir>] [--json] [--quiet]
+idpa "<phrase>" [--repo <dir> | --demo | --backstage] [--refresh | --cached] [--project <dir>] [--json] [--quiet]
 ```
 
 The daily gesture, typed from anywhere. The Supervisor reads the phrase and decides: a
@@ -420,10 +420,10 @@ exit 2. `ask` and `plan` below force a road: `plan` previews without classifying
 classifies and only answers, declining a change.
 
 ```text
-idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource|API] [--repo <dir> | --demo | --backstage]
-idp-agent show <name-or-reference> [--repo <dir> | --demo | --backstage]
-idp-agent relations <name-or-reference> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-reference>] [--depth <n>] [--repo <dir> | --demo | --backstage]
-idp-agent ask "<question>" [--repo <dir> | --demo | --backstage] [--quiet]  # needs IDP_PROVIDER, IDP_MODEL and its key
+idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource|API] [--repo <dir> | --demo | --backstage] [--refresh | --cached]
+idp-agent show <name-or-reference> [--repo <dir> | --demo | --backstage] [--refresh | --cached]
+idp-agent relations <name-or-reference> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-reference>] [--depth <n>] [--repo <dir> | --demo | --backstage] [--refresh | --cached]
+idp-agent ask "<question>" [--repo <dir> | --demo | --backstage] [--refresh | --cached] [--quiet]  # needs IDP_PROVIDER, IDP_MODEL and its key
 idp-agent validate <directory>                     # what the generated CI runs
 idp-agent init platform <dir> --owner @org/team    # writes the directory it is handed
 idp-agent plan --from <plan.json> [--repo <dir>]   # no model, and none is possible
@@ -511,9 +511,9 @@ directory, is a declarations repository, is the `--repo` directory or one of its
 
 **Exit codes:** `0` success · `1` negative answer (nothing matched, the repository doesn't
 conform, or a gate refused the plan), a model call that failed, a Backstage catalogue that
-could not be read, or a submission the repository refused (a catalogue file that
+could not be read, `--cached` with no copy kept, or a submission the repository refused (a catalogue file that
 differs from `HEAD`, or a branch of that name holding something else) · `2` bad arguments
-or configuration, a `--submit` into a directory that cannot take a branch, or no
+or configuration, `--refresh` or `--cached` where no catalogue is read, a `--submit` into a directory that cannot take a branch, or no
 model, no key or no usable `IDP_TIMEOUT` or `IDP_SUPERVISOR_MODEL` configured · `3`
 understood but not acted on: a change request put to `ask`, a question the model refused,
 or a value nobody can vouch for · `130` Ctrl-C at a question or at the `[y/N]`
@@ -579,6 +579,12 @@ file. The directory you stand in, when it is a declarations repository, beats th
 `--backstage` chooses the catalogue there.
 It is read over HTTP once per run, **before any model is called**, through the reader a YAML
 file goes through, and a change is still decided against the declarations repository alone.
+A read is kept five minutes under `~/.cache/idp-agent/backstage` (`$XDG_CACHE_HOME` when set),
+only for your account, and a second run answers from it and says so: `read from cache, 3 min
+old; --refresh reads Backstage again`. `--refresh` reads Backstage again; `--cached` answers
+from the kept copy whatever its age — when Backstage cannot be reached, for example — and
+never otherwise; `IDP_BACKSTAGE_CACHE=off` keeps nothing. A kept copy is read again through
+the same checks and reader as a page, holds no token, and never reaches a plan.
 The token is sent to that catalogue alone, on two read routes, and nowhere else
 ([`SECURITY.md`](SECURITY.md)). A catalogue larger than a run reads — 20,000 Components,
 Resources and APIs; 200,000 Groups, Users, Systems and Domains; 200,000 references of other
@@ -704,7 +710,7 @@ firewall automation and ticketing) and adds the multi-agent layer that system ne
 | 4 | Preview only: Inspector, Architect, `Plan`, diff; writes nothing | ✅ |
 | 5 | Write + local branch: `--submit` cuts one create-only branch, idempotent and atomic ([the check](docs/stage-5-check.md)) | ✅ |
 | 6 | [GitHub pull request](docs/stage-6-brief.md): your own git pushes, your own gh opens the pull request, the base's ruleset checked; designed, not started | |
-| 6b | [Read the live catalogue](docs/backstage-http-brief.md) (`backstage-http`): questions and relations against a running Backstage, the organisation included (slices 1 and 3, done); large catalogues and a cache (slice 2) next; both sources side by side and namespaces (slices 4–5) with stage 8. No Backstage needed to use the tool | 🚧 |
+| 6b | [Read the live catalogue](docs/backstage-http-brief.md) (`backstage-http`): questions and relations against a running Backstage, the organisation included (slices 1 and 3, done); large catalogues answered in part and a read kept five minutes (slice 2, done); both sources side by side and namespaces (slices 4–5) with stage 8. No Backstage needed to use the tool | 🚧 |
 | 7 | Polish: Ink TUI, asciinema, npm publish | |
 | 8 | [Discovery](docs/stage-8-brief.md): catalogue an existing service and its dependencies; designed, not started; preview-only until stage 6 lands, submission after it | |
 

@@ -251,6 +251,23 @@ describe.skipIf(process.platform === 'win32' || OWNER === 0)('BackstageProvider 
     expect(sent).toEqual([])
   })
 
+  it('kept, a copy that was not used: the refusal on the failure, so the person is told why (Task 2.3)', async () => {
+    const { fetch, sent } = fake()
+    expect((await errorOf(loading(await scratch(), 'kept', fetch))).notUsed).toBeUndefined()
+    const { root, file, fetchedAt } = await kept()
+    const text = await readFile(file)
+    text[text.length - 10] = (text[text.length - 10] ?? 0) ^ 0x01
+    await writeFile(file, text)
+    expect((await errorOf(loading(root, 'kept', fetch, () => fetchedAt))).notUsed).toEqual({ kind: 'unverified', reason: 'mac' })
+    await chmod(STORE(root), 0o755)
+    expect((await errorOf(loading(root, 'kept', fetch, () => fetchedAt))).notUsed).toEqual({
+      kind: 'open',
+      path: 'idp-agent/backstage',
+      mode: 0o755,
+    })
+    expect(sent).toEqual([])
+  })
+
   it('fresh, under other limits than the copy was made under: another key, a load, the other copy never read', async () => {
     const { root, file, fetchedAt } = await kept()
     const before = await readFile(file)
