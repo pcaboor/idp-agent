@@ -238,7 +238,7 @@ destination ref:
 ```text
 git --no-pager -c core.hooksPath=/dev/null -c core.fsmonitor=false -c core.untrackedCache=false
     -c user.useConfigOnly=true
-    -c protocol.ext.allow=never -c http.followRedirects=false
+    -c protocol.ext.allow=never -c protocol.file.allow=never -c http.followRedirects=false
     -c push.followTags=false -c push.recurseSubmodules=no -c push.gpgSign=false
     -C <clone> push --porcelain --no-verify --no-follow-tags --no-recurse-submodules --no-signed
     --force-with-lease=refs/heads/idp-agent/<slug>-<8 hex>:
@@ -262,7 +262,10 @@ Each part answers something.
   (`*` a new ref, `=` up to date, `!` rejected) is all idpa reads of the push's output.
 - **`<url>`, never the remote's name.** Pushing to a name consults `remote.<name>.push`
   refspecs, `remote.<name>.mirror`, `remote.<name>.receivepack` and `remote.<name>.proxy`.
-  Pushing to a URL consults none of them. The URL is the one `git remote get-url --push`
+  Pushing to a URL consults none of the tracked remote's — but git looks the URL up as a
+  remote's name first, so a section named after the URL itself (`[remote
+  "git@github.com:acme/iac.git"]`) would decide where the push goes (measured, git 2.46): § 7
+  refuses every such section in the clone's own configuration. The URL is the one `git remote get-url --push`
   printed at step 2, after git expanded every `insteadOf` and `pushInsteadOf`, parsed as one of
   the five GitHub forms of § 13 and required to name the same host, owner and repository as
   the fetch URL. It is passed as one argument, after the options, and a URL beginning with `-`
@@ -270,12 +273,15 @@ Each part answers something.
 - **Hooks off, twice.** `core.hooksPath=/dev/null` is already on every call (`HARDENING`), and
   `--no-verify` bypasses `pre-push` "completely" ([git push][git-push]). A repository's hooks
   are its author's code, and this tool does not run it.
-- **No tags, no submodules, no signature, no ext.** A global `push.followTags=true` would push
+- **No tags, no submodules, no signature, no ext, no file.** A global `push.followTags=true` would push
   every annotated tag reachable from the commit; a `push.recurseSubmodules=on-demand` would push
   other repositories; `push.gpgSign` would run `gpg.program`. Each is pinned on the command
   line, which outranks every configuration file ([git config][git-config]), and the matching
   flag is given as well. `protocol.ext.allow=never` keeps the one transport that runs a command
-  line off even if a global configuration enabled it. `http.followRedirects=false` stops a
+  line off even if a global configuration enabled it, and `protocol.file.allow=never` the one
+  that reaches this machine: a push to GitHub never needs it, and git starts a local
+  `git-receive-pack` without the command line's pins, so the target's hooks would run.
+  `http.followRedirects=false` stops a
   renamed repository's redirect from carrying the push elsewhere; the person is told to check
   the remote's URL.
 - **The same environment rules as every git call, and the person's configuration for
@@ -559,14 +565,15 @@ cannot remove a key with an unknown subsection (`url.<anything>.insteadOf`,
 global helper too. So the design is **pin what is idpa's to decide, and refuse what is the
 person's to fix**:
 
-- **Pinned on every push** (§ 4): hooks, `protocol.ext.allow`, `http.followRedirects`, tags,
-  submodules, signing.
+- **Pinned on every push** (§ 4): hooks, `protocol.ext.allow`, `protocol.file.allow`,
+  `http.followRedirects`, tags, submodules, signing.
 - **Refused, exit 2, before any model and again at step 8**, when set at the `local` or
   `worktree` scope (read with `git config --list --show-scope -z`, which reports a value from
   an included file with the scope of the file that includes it, so an `include.path` cannot
   hide a key): any key in the sections `url`, `credential`, `http`, `protocol`, `ssh`, `gpg`
-  and `push`; `core.sshCommand`, `core.askPass`, `core.gitProxy`; and `remote.<name>.vcs`,
-  `.receivepack`, `.uploadpack`, `.proxy`, `.proxyAuthMethod`. These are the keys that choose
+  and `push`; `core.sshCommand`, `core.askPass`, `core.gitProxy`; `remote.<name>.vcs`,
+  `.receivepack`, `.uploadpack`, `.proxy`, `.proxyAuthMethod`; and every key of a `remote`
+  section whose name is not a remote's name, as one named after a URL is (below). These are the keys that choose
   where a push goes, who authenticates it, or what program runs during it. The refusal names
   the key and its scope, never its value, and gives the command that moves it.
 
@@ -593,8 +600,13 @@ Nothing was written.
 - **Read and checked, not refused**: `remote.<name>.url` and `remote.<name>.pushurl` live in
   the repository by nature. They are read through `git remote get-url` and required to parse
   as github.com, the same owner and repository for fetch and push, and no userinfo (§ 13).
-  Because the push names the resulting URL rather than the remote, no other `remote.<name>.*`
-  key takes part.
+  Because the push names the resulting URL rather than the remote, no other key of the
+  tracked remote takes part. A remote **section named after that URL** would: git looks a
+  push's destination up as a remote's name before it reads it as a URL, so a hand-written
+  `[remote "git@github.com:acme/iac.git"] url = …` would send the push where it says, and a
+  path there would run that repository's `pre-receive` hook (measured, git 2.46). Every
+  push form holds `:`, which no remote's name does, so a `remote.<subsection>.*` key whose
+  subsection is not a remote's name this build reads is refused like the keys above.
 
 What the person's **global and system** configuration does is theirs, as it is for their own
 `git push`: a global `url."git@github.com:".insteadOf https://github.com/` is common and

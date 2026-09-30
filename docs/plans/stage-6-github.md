@@ -1,6 +1,6 @@
 # Stage 6 — a GitHub pull request, with the person's own git and gh
 
-**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
+**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
 § 19 (Q1–Q4) were settled on 2026-09-30, each as recommended, and this plan takes them as
 given; so were the four questions the plan itself asked, the same day ([Questions for the
 owner](#questions-for-the-owner)). Eleven stacked pull requests: ten, 6.1.1 to 6.4.2, then 6.4.3, the owner's step: every tape
@@ -458,7 +458,7 @@ that adds it, and is added here first when the plan changes.
 
 **`process/`.**
 - `class LauncherRefusal extends Error` (`name = 'LauncherRefusal'`), message `` `git ${word} is not a command idp-agent runs` `` / `` `gh ${word} is not a command idp-agent runs` ``.
-- git: `checkGitArgv(args: readonly string[]): void`; `interface PushRequest { url: string; commit: string; branch: string }`; `type PushFlag = 'created' | 'up-to-date' | 'rejected'` (porcelain `*`, `=`, `!`); `interface PushOutcome { flag: PushFlag; summary: string }` (`summary`: the porcelain line's summary, `stale info` or a repository rule, which is on stdout with `--porcelain`); `type Push = (request: PushRequest) => Promise<PushOutcome>`; `pushIn(repo: string, options?: { env?: NodeJS.ProcessEnv; limits?: GitLimits }): Push`; `PUSH_PINS` (the `-c` pairs of § 4 beyond `HARDENING`: `protocol.ext.allow=never`, `http.followRedirects=false`, `push.followTags=false`, `push.recurseSubmodules=no`, `push.gpgSign=false`); `PUSH_FLAGS` (`--porcelain`, `--no-verify`, `--no-follow-tags`, `--no-recurse-submodules`, `--no-signed`); `PUSH_LIMITS = { timeoutMs: 120_000, maxOutputBytes: 64 * 1024 }`; `PUSH_VARIABLES = ['GIT_SSH_COMMAND', 'GIT_SSH', 'GIT_SSH_VARIANT', 'GIT_ASKPASS']`; `pushEnvironment(env?)`; `parsePorcelain(stdout: Buffer, ref: string): PushOutcome`; `SUBMISSION_REF = /^refs\/heads\/idp-agent\/[a-z0-9-]+-[0-9a-f]{8}$/`; `GITHUB_PUSH_URL` (the five forms).
+- git: `checkGitArgv(args: readonly string[]): void`; `interface PushRequest { url: string; commit: string; branch: string }`; `type PushFlag = 'created' | 'up-to-date' | 'rejected'` (porcelain `*`, `=`, `!`); `interface PushOutcome { flag: PushFlag; summary: string }` (`summary`: the porcelain line's summary, `stale info` or a repository rule, which is on stdout with `--porcelain`); `type Push = (request: PushRequest) => Promise<PushOutcome>`; `pushIn(repo: string, options?: { env?: NodeJS.ProcessEnv; limits?: GitLimits }): Push`; `PUSH_PINS` (the `-c` pairs of § 4 beyond `HARDENING`: `protocol.ext.allow=never`, `protocol.file.allow=never` (added by 6.1.2), `http.followRedirects=false`, `push.followTags=false`, `push.recurseSubmodules=no`, `push.gpgSign=false`); `PUSH_FLAGS` (`--porcelain`, `--no-verify`, `--no-follow-tags`, `--no-recurse-submodules`, `--no-signed`); `PUSH_LIMITS = { timeoutMs: 120_000, maxOutputBytes: 64 * 1024 }`; `PUSH_VARIABLES = ['GIT_SSH_COMMAND', 'GIT_SSH', 'GIT_SSH_VARIANT', 'GIT_ASKPASS']`; `pushEnvironment(env?)`; `parsePorcelain(stdout: Buffer, ref: string): PushOutcome`; `SUBMISSION_REF = /^refs\/heads\/idp-agent\/[a-z0-9-]+-[0-9a-f]{8}$/`; `GITHUB_PUSH_URL` (the five forms).
 - gh: `type GhRoute = { route: 'user' } | { route: 'repository'; owner; name } | { route: 'branch'; owner; name; branch } | { route: 'rules'; owner; name; branch } | { route: 'ruleset'; owner; name; id: number } | { route: 'ref'; owner; name; branch } | { route: 'commit'; owner; name; sha } | { route: 'pulls'; owner; name; head: string }`; `type GhRequest = { kind: 'version' } | { kind: 'get'; route: GhRoute } | { kind: 'open-pull-request'; owner; name; body: string }`; `ghArgv(request): string[]`; `checkGhArgv(argv: readonly string[], stdin?: Buffer): void`; `encodeRefPath(ref: string): string`; `interface GhExit { code: number | string | undefined; stdout: Buffer; stderr: string; timedOut: boolean }`; `type GhProcess = (argv: readonly string[], options: { stdin?: Buffer; env: NodeJS.ProcessEnv; limits: GhLimits }) => Promise<GhExit>`; `spawnGh: GhProcess`; `interface GhAnswer { status: number; hasNext: boolean; body: string }`; `parseIncluded(stdout: Buffer): GhAnswer | undefined`; `interface GhClient { version(): Promise<string>; get(route: GhRoute): Promise<GhAnswer>; openPullRequest(owner: string, name: string, body: string): Promise<GhAnswer>; calls(): number }`; `ghIn(options?: { env?: NodeJS.ProcessEnv; run?: GhProcess; limits?: GhLimits }): GhClient`; `interface GhLimits { timeoutMs: number; maxOutputBytes: number }`; `ghEnvironment(env?)`; `GH_REMOVED` (`GIT_*` and `GH_HOST`, `GH_REPO`, `GH_DEBUG`, `DEBUG`, `GODEBUG`, `GH_FORCE_TTY`, `CLICOLOR_FORCE`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, compared by upper-cased name, never indexed); `GH_SET` (`GH_PROMPT_DISABLED=1`, `GH_NO_UPDATE_NOTIFIER=1`, `GH_NO_EXTENSION_UPDATE_NOTIFIER=1`, `GH_SPINNER_DISABLED=1`, `NO_COLOR=1`, `GH_PAGER=cat`); `GH_LIMITS = { timeoutMs: 15_000, maxOutputBytes: 1024 * 1024 }`; `class GhError extends Error { kind: 'missing' | 'auth' | 'timeout' | 'too-large' | 'unreadable' | 'failed' }` (`missing` = `ENOENT`, `auth` = gh's exit 4), its message never quoting gh. No gh route takes a login, so `process/gh.ts` holds no login grammar.
 
 **`core/github/`.**
@@ -1381,6 +1381,10 @@ Constraints cited: 1, 3, 8, 9, 12, 15.
 - Create: `tests/unit/github-remote.test.ts`, `tests/unit/repository-config.test.ts`,
   `tests/unit/road.test.ts`, `tests/unit/gh-identity.test.ts`, `tests/unit/grammar-agreement.test.ts`
 - Modify: `tests/architecture/dependencies.test.ts` (the fourth rule, its self-test)
+- Modify: `src/process/git.ts` (`GITHUB_PUSH_URL`, the disagreement Step 4 found; `PUSH_PINS` gains
+  `protocol.file.allow=never`), `tests/unit/process-git.test.ts` (a real push refused the file
+  transport), `tests/support/fake-gh.ts` (its copy of the pins), `docs/stage-6-brief.md` (§ 4 and
+  § 7: a remote section named after the push URL)
 - Modify: `AGENTS.md` (28 → 29; the folder table's `forge/` row names `github/`; the layering
   diagram), `docs/design.md` §5.5 (twenty-nine), `SECURITY.md:164`, README's badge,
   `CHANGELOG.md`, `docs/roadmap.md`
@@ -1449,8 +1453,8 @@ Where this task settles what the shared names left open (each now recorded there
   `http.https://example.com/?access_token=<token>.extraheader`, which holds no `@`. So a
   subsection is printed only when it has a shape that cannot carry one, never on the absence of
   one character: for `url`, `http` and `credential`, whose subsection is a URL, only when it
-  matches `^[a-z][a-z0-9+.-]*://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]*)?$` — no `@`,
-  `?`, `#`, `%` or `;` — and for every other section only when it matches `isRemoteName`'s
+  matches `^[a-z][a-z0-9+.-]*://[A-Za-z0-9.-]+(:[0-9]{1,5})?/?$` — no `@`, no path past `/`
+  (a path can hold a secret, as a webhook's does), no `?`, `#`, `%` or `;` — and for every other section only when it matches `isRemoteName`'s
   grammar; and in both cases only when `inertLine` leaves it unchanged. Otherwise the key is
   named `url.<a URL this build does not print>.insteadof` (`<a name this build does not print>`
   outside the three URL sections) and the remedy is `git config --local --edit`, so the token is
@@ -1462,7 +1466,7 @@ Where this task settles what the shared names left open (each now recorded there
   A local `pushInsteadOf` that sends only the push elsewhere makes the push URL differ from the
   fetch URL, which is exit 2.
 
-- [ ] **Step 1: The pure half, failing first**
+- [x] **Step 1: The pure half, failing first**
 
 `tests/unit/github-remote.test.ts` (fails: `core/github/remote.ts` does not exist):
 
@@ -1507,7 +1511,11 @@ Where this task settles what the shared names left open (each now recorded there
 - *refuses the named keys* — `core.sshcommand`, `core.askpass`, `core.gitproxy`,
   `remote.origin.vcs`, `.receivepack`, `.uploadpack`, `.proxy`, `.proxyauthmethod`, for any
   remote's name; `remote.origin.url`, `.pushurl`, `.fetch` and `remote.origin.mirror` are not
-  (§ 7: the push names a URL, never the remote).
+  (§ 7: `readRoad` reads and checks the tracked remote's URLs, and the push names a URL). But
+  every key of a `remote` section whose name fails `isRemoteName` is refused — `remote.git@github.com:acme/iac.git.url`,
+  `.pushurl`, `remote.https://github.com/acme/iac.url`: git looks a push's URL up as a remote's
+  name before it reads it as a URL, so such a section would decide where the push goes, and
+  every push form holds `:`, which no remote's name does.
 - *keeps the six harmless two-part keys* — `http.postbuffer`, `http.lowspeedlimit`,
   `http.lowspeedtime`, `push.default`, `push.autosetupremote`, `gpg.format`: not refused; with a
   subsection (`http.https://x.postbuffer`), refused; compared lower-cased, so `HTTP.PostBuffer`
@@ -1515,7 +1523,9 @@ Where this task settles what the shared names left open (each now recorded there
 - *says which key, where, and what it would decide, never its value* — `configRefusal` for
   `credential.helper (local)` is the sentence of *Exact lines* with *who pushes for you*; `url.…` and
   `remote.origin.proxy` read *where your push goes*; `core.sshcommand`, `gpg.program`,
-  `push.pushoption` read *what program runs during your push*; a subsection holding `@`
+  `push.pushoption`, `remote.origin.vcs`, `.receivepack` and `.uploadpack` read *what program runs
+  during your push*; a URL's path (`http.https://example.com/hooks/T000/B000/canary/.extraheader`)
+  is elided like a query; a subsection holding `@`
   (`url.https://x-access-token:canary@github.com/.insteadof`), one holding a query
   (`http.https://example.com/?access_token=canary.extraheader`), one holding `#` or `%40`, and
   one holding a bidi character are each elided as `<a URL this build does not print>`, the
@@ -1528,7 +1538,7 @@ Where this task settles what the shared names left open (each now recorded there
 → `2.40.0`, over `gh version 2.62.0-rc.1 (…)` → `2.62.0`, over `gh version DEV` → `undefined`;
 `isAtLeast` numeric by part (`2.9.0` is older than `2.40.0`).
 
-- [ ] **Step 2: The road, over real clones, failing first** (`tests/unit/road.test.ts`)
+- [x] **Step 2: The road, over real clones, failing first** (`tests/unit/road.test.ts`)
 
 Clones built by `tests/support/git.ts` (`committed`, test-side `git`), read by `gitIn(repo)`,
 the real launcher; the global configuration is the run directory's `HOME` (6.1.1), which a case
@@ -1551,9 +1561,10 @@ fills when it needs one. Fails: `readRoad` does not exist.
 | `branch.main.remote .` | `main tracks this clone itself (branch.main.remote is .); idpa pushes to a named remote. Set its upstream to one (git branch --set-upstream-to <remote>/<branch>), then run this again. Nothing was written.` |
 | `branch.main.remote git@github.com:acme/iac.git` | `branch.main.remote is a URL, not a remote's name; …` (the same remedy) |
 | `branch.main.remote --push` (set by hand) | `branch.main.remote names a remote this build does not read (a name is 1 to 100 letters, digits, '.', '_', '-' and '/', not beginning with '-' or '.'). Nothing was written.`, the value unquoted |
-| `branch.main.merge refs/tags/v1` | `main's upstream is not a branch this build reads (branch.main.merge must be refs/heads/ and a branch name). Nothing was written.` |
+| `branch.main.merge refs/tags/v1`, or `refs/heads/HEAD` (the grammar's yes, git's no: `check-ref-format --branch` exits 128) | `main's upstream is not a branch this build reads (branch.main.merge must be refs/heads/ and a branch name). Nothing was written.` |
 | `branch.main.remote upstream`, no such remote | `main tracks upstream, which this clone does not define (git remote -v lists its remotes). Nothing was written.` |
 | each key of § 7's refused list set locally, and once through `include.path` | `ForgeInputError`, `configRefusal`'s sentence with scope `local`; the value's canary nowhere |
+| a local `remote."git@github.com:acme/iac.git".url` (or `.pushurl`), the push URL as a section's name | `ForgeInputError`, `configRefusal`'s sentence, the name elided: git would push where that section says |
 | the same key in the run directory's `~/.gitconfig` | the GitHub road: `global` is the person's |
 | detached HEAD | `HEAD is detached; check out the branch this request is for` (stage 5's words) |
 | a checked-out branch named `a%b` | `a%b is a branch name this build does not read ('%' is read as an escape in GitHub's paths). Nothing was written.` |
@@ -1561,13 +1572,13 @@ fills when it needs one. Fails: `readRoad` does not exist.
 `readRoad`'s order: `symbolic-ref --quiet HEAD`; the branch's grammar; `config --get
 branch.<b>.remote` (exit 1: no upstream); its grammar, then `check-ref-format
 refs/remotes/<name>/HEAD`; `config --get branch.<b>.merge` (exit 1: no upstream), `baseOfMerge`,
-then `check-ref-format --branch <base>`; both `get-url` reads, one line each; `parseRemoteUrl`
+then `check-ref-format --branch <base>` (its no is exit 128, not 1); both `get-url` reads, one line each; `parseRemoteUrl`
 over each, a `switch` over `RemoteUrl['kind']` with `const _exhaustive: never`; hosts and
 repositories compared; on the GitHub road, `config --list --show-scope -z`, then
 `refusedConfigKeys`. Every value a refusal names has passed its grammar first (a branch, a remote's name, a base,
 an owner and a name), or is not named; the CLI's `inertLine` still cleans each at print.
 
-- [ ] **Step 3: Who gh is, failing first** (`tests/unit/gh-identity.test.ts`)
+- [x] **Step 3: Who gh is, failing first** (`tests/unit/gh-identity.test.ts`)
 
 Against `fakeGitHub()` (6.1.1) through `githubClient({ run: fake.process })`, over the GitHub
 road of Step 2's second row. Fails: `readIdentity` does not exist.
@@ -1602,7 +1613,7 @@ could not be read."; `paginated` (6.1.3). Each ends "Nothing was written." A `Gh
 client after the identity is wrapped: `auth` → `401`, `timeout`, `too-large`, and `missing`,
 `unreadable` and `failed` → `unreadable`.
 
-- [ ] **Step 4: The two copies of the grammars, one answer** (`tests/unit/grammar-agreement.test.ts`)
+- [x] **Step 4: The two copies of the grammars, one answer** (`tests/unit/grammar-agreement.test.ts`)
 
 `process/` imports nothing of ours, so `process/git.ts` and `process/gh.ts` hold copies of
 `core/github/remote.ts`'s grammars. Over fast-check strings (ASCII with `-`, `.`, `/`, `%`,
@@ -1623,7 +1634,7 @@ for the test:
 *Fails first:* on `2b2250e` neither copy exists; written before Step 5's code, it fails on the
 missing modules, then on any character class the two copies disagree about.
 
-- [ ] **Step 5: The fourth rule, failing first**
+- [x] **Step 5: The fourth rule, failing first**
 
 ```typescript
 /** The gh launcher, and the one folder that may load it: the forge's GitHub half. */
@@ -1648,7 +1659,7 @@ handing it on (`export { ghIn } from '../../process/gh.js'`) — each refused;
 `cli/typed.ts` (`import type { GhProcess }`), `forge/github/api.ts` (`import { ghIn }`) and
 `process/gh.ts` itself pass. Count after: **29**.
 
-- [ ] **Step 6: The code**
+- [x] **Step 6: The code**
 
 `src/core/github/` imports Zod and nothing of ours but `core/` — the rule *core/ imports nothing
 from context/, cli/, …* already holds it, and `core/ neither reads nor writes` walks it.
@@ -1670,7 +1681,7 @@ export function githubClient(options: { env?: NodeJS.ProcessEnv; run?: GhProcess
 `unreadable`). `src/forge/provider.ts` gains the four types, with a `type` import of
 `GitHubRepository`; the comment on "the token this interface holds" is 6.2.1's.
 
-- [ ] **Step 7: Run what changed, and count**
+- [x] **Step 7: Run what changed, and count**
 
 ```bash
 pnpm vitest run tests/unit/github-remote.test.ts tests/unit/repository-config.test.ts tests/unit/road.test.ts tests/unit/gh-identity.test.ts tests/unit/grammar-agreement.test.ts tests/unit/launcher-doors.test.ts
@@ -1679,7 +1690,7 @@ pnpm vitest run tests/architecture --reporter=verbose
 
 Expected: PASS; **29** rules.
 
-- [ ] **Step 8: The documents this makes true**
+- [x] **Step 8: The documents this makes true**
 
 `AGENTS.md`: "**Twenty-eight**" → "**Twenty-nine**", *only forge/github/ loads the gh launcher*
 named; the layering diagram shows `forge/` reaching `core/` and `process/` for `local/` and
@@ -1711,17 +1722,45 @@ pnpm typecheck
 pnpm test
 pnpm build
 pnpm smoke
-git add src/core/github src/core/README.md src/forge/provider.ts src/forge/github src/forge/README.md tests/unit/github-remote.test.ts tests/unit/repository-config.test.ts tests/unit/road.test.ts tests/unit/gh-identity.test.ts tests/unit/grammar-agreement.test.ts tests/architecture/dependencies.test.ts AGENTS.md docs/design.md SECURITY.md README.md CHANGELOG.md docs/roadmap.md docs/plans/stage-6-github.md
+git add src/core/github src/core/README.md src/forge/provider.ts src/forge/github src/forge/README.md src/process/git.ts tests/unit/github-remote.test.ts tests/unit/repository-config.test.ts tests/unit/road.test.ts tests/unit/gh-identity.test.ts tests/unit/grammar-agreement.test.ts tests/unit/process-git.test.ts tests/support/fake-gh.ts tests/architecture/dependencies.test.ts AGENTS.md docs/design.md SECURITY.md README.md CHANGELOG.md docs/roadmap.md docs/stage-6-brief.md docs/plans/stage-6-github.md
 git commit -m "feat(forge): read the road a submission takes, refuse a clone configured to redirect the push, and ask gh who it is"
 ```
 
 Base `feat/s6-allow-list`. Exhaustive switches added: `RemoteUrl` (`readRoad`), `LocalRoad['why']`
 where a test switches on it. Architecture rules: **29**.
 
-**What the owner can run** (from the worktree, keyless and offline; no command takes the road
-yet, so the proof is the tests and the parser itself):
+*As built* (where the code differed from this task's text): `main` held **29** rules before
+this task, not 28 (`backstage-http` slice 2 added one after the plan was written), so the new
+rule makes **30**, and `AGENTS.md` and design §5.5 say thirty. `grammar-agreement.test.ts`
+found one disagreement: `process/git.ts`'s `GITHUB_PUSH_URL` held the last segment, `.git`
+included, to 100 characters, so a repository name of 97 to 100 characters written with `.git`
+was refused by the push and read by gh; both copies now read a name of up to 100 with `.git`
+after it or not, and neither reads `.git` alone. `core/` cannot import `cli/`'s `inertLine`,
+so `configRefusal` prints a subsection only in ASCII shapes that hold no control character,
+and `repository-config.test.ts` checks that `inertLine` leaves every sentence unchanged. A
+GitHub status the task names no sentence for (a 422 before 6.2.1) reads "…, which this build
+does not read". The README's test badge is set by the shipping script, not by hand.
+
+The review found four more, fixed here. **§ 7's premise was false:** git looks the destination
+of `git push <url>` up as a remote's name before it reads it as a URL, so a local `[remote
+"git@github.com:acme/iac.git"] url = <path>` sent the launcher's own push form to that path,
+and the planted repository's `pre-receive` hook ran (measured, git 2.46). `refusedConfigKeys`
+now refuses every key of a `remote` section whose name fails `isRemoteName`, and `PUSH_PINS`
+gains `protocol.file.allow=never`, the floor under it: a push to GitHub never needs the file
+transport. The brief's § 4 and § 7 say so. `git check-ref-format --branch` says no with exit
+128, not 1, so a base the grammar reads and git does not (`refs/heads/HEAD`) escaped as a
+`GitError`; it is now the worded exit 2. A URL's path is no longer printed (a webhook's holds
+a secret), and `remote.<n>.vcs`, `.receivepack` and `.uploadpack` read *what program runs
+during your push*. A gh that times out, says too much or fails on `--version` is a
+`GitHubAnswerError` on route `version`, exit 1, not "update gh".
+
+**What the owner can run** (from `~/Documents/idp-agent-main` once this is merged, keyless and
+offline; no command takes the road yet, so the proof is the tests and the parser itself):
 
 ```bash
+cd ~/Documents/idp-agent-main
+git pull --ff-only
+pnpm install
 pnpm vitest run tests/unit/road.test.ts tests/unit/repository-config.test.ts tests/unit/gh-identity.test.ts --reporter=verbose
 pnpm build
 node -e 'import("./dist/core/github/remote.js").then((m) => { for (const u of ["git@github.com:acme/iac.git", "ssh://git@ssh.github.com:443/acme/iac", "https://x-access-token:secret@github.com/acme/iac.git", "git@gitlab.example.com:acme/iac.git", "https://github.com/acme"]) console.log(JSON.stringify(m.parseRemoteUrl(u))) })'
@@ -1729,12 +1768,14 @@ pnpm vitest run tests/architecture --reporter=verbose
 ```
 
 Attendu :
-- the first run lists, among its cases, one per row of the road table, the credential-carrying
-  URL refused without its token, and the Bot identity refused; exit 0;
+- the first run lists, among its 75 cases in 3 files, one per row of the road table, the
+  credential-carrying URL refused without its token, and the Bot identity refused; exit 0;
 - the `node -e` prints five lines: `github` with `acme`/`iac` twice, `userinfo` with host
   `github.com` and path `acme/iac.git` (the token is in the input line only, never in a message
   idpa prints), `other-host` with `gitlab.example.com`, and `{"kind":"unreadable"}`;
-- the last run lists **29** rules, the new one *only forge/github/ loads the gh launcher*; exit 0.
+- the last run lists **30** rules in the `architecture` block, the new one *only forge/github/
+  loads the gh launcher*, and its self-test *refuses every module but forge/github/ that loads
+  the gh launcher*; exit 0.
 
 ---
 

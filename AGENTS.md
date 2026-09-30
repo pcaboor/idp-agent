@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 4376 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 4471 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -294,7 +294,8 @@ cli/  ──→  context/   ──→  core/
   ├──→  agents/   ──→  llm/client.ts   (types only — this is the whole rule)
   ├──→  llm/      ──→  the model SDK   (cli/ builds the client; agents/ may not)
   ├──→  trace/    ──→  agents/events, llm/client   (types only; cli/ ships the trace)
-  ├──→  forge/    ──→  core/, process/   (only cli/ reaches it at run time)
+  ├──→  forge/    ──→  core/, process/   (only cli/ reaches it at run time;
+  │                                        local/ through git, github/ through git and gh)
   └──→  scaffold/ ──→  core/, confine/
 ```
 
@@ -311,14 +312,14 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 
 | Folder | Responsibility |
 |---|---|
-| `core/` | schemas (Zod), the nine validation rules and the Backstage registration, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — and the engine's check on an answer's commentary (`core/answer/`) |
+| `core/` | schemas (Zod), the nine validation rules and the Backstage registration, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — the engine's check on an answer's commentary (`core/answer/`), and `core/github/`: a remote's URL and the grammars a clone's own configuration is held to, the configuration's scope check, gh's version, and the fields read of GitHub's answers |
 | `context/` | `ContextProvider` (`fixtures`, and `iac-fs` behind `--repo`; `backstage/provider.ts`, a whole catalogue through the file reader or nothing, which `cli/` constructs for a configured catalogue), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries, `backstage/transport.ts` — the only code that sends a catalogue token, over a `fetch` it is handed — and `backstage/cache.ts`, a catalogue read kept under the person's cache folder, which only the provider loads and no command uses yet |
 | `cli/` | argument parsing, commands, rendering, `.idp-agent.yml` and the personal `config.yml`, which source a command reads — the only layer that writes to stdout |
 | `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |
 | `agents/` | the five agents, the bounded turn, the repair loop, the tool registries — reaches no disk, transitively |
 | `trace/` | the trace of one run: `createTraceBuilder` over the event stream and the model calls, the `traced` client decorator, and `toOtlpJson` — pure; `cli/trace-sink.ts` is how a trace leaves |
 | `scaffold/` | the `init platform` layout, the packaged templates, and `write.ts`, the writer for a repository being created |
-| `forge/` | where a submission becomes a branch: `provider.ts` — `ForgeProvider`, `Base`, `Submitted`, types only, with no merge, no delete and no caller-chosen name — `ForgeInputError`, a refusal that is the user's arguments — and `local/`, the local forge: `openLocalForge` for one repository, which writes git objects and one create-only ref, through the launcher, and never the working tree, the index or `HEAD` (ADR-0010). `plan … --submit`, on either road, and `init --submit`, for the service's repository, reach it, through `cli/commands/submit.ts` |
+| `forge/` | where a submission becomes a branch: `provider.ts` — `ForgeProvider`, `Base`, `Submitted`, types only, with no merge, no delete and no caller-chosen name — `ForgeInputError`, a refusal that is the user's arguments — and `local/`, the local forge: `openLocalForge` for one repository, which writes git objects and one create-only ref, through the launcher, and never the working tree, the index or `HEAD` (ADR-0010) — and `github/`, which reads through both launchers and judges with `core/github/`: `readRoad`, the road a submission takes, `readIdentity`, who gh is, and `githubApi`, GitHub through gh, which no command reaches yet. `plan … --submit`, on either road, and `init --submit`, for the service's repository, reach it, through `cli/commands/submit.ts` |
 | `confine/` | physical confinement: `confine.ts`'s `followInside`, `openToRead` (`O_NOFOLLOW`, checked once open), `makeFolders` and `createNew` (`O_CREAT \| O_EXCL \| O_NOFOLLOW`) — what `assertInsideRepo`, lexical, cannot see; `iac-fs` follows no link, `project-fs` follows one that stays inside, `init platform` writes through none |
 | `process/` | the one place a process is started: `git.ts`'s `gitIn` — hooks and fsmonitor off, `user.useConfigOnly`, every `GIT_*` scrubbed, started outside the repository, bounded — and `pushIn`, the one push form; `gh.ts`'s `ghIn`, gh in the same shape; each checks the finished vector against its grammar (`checkGitArgv`, `checkGhArgv`) before anything starts, and throws `LauncherRefusal` otherwise; and `environment.ts`'s `spawnedEnvironment`, the one builder of a child process's environment |
 
@@ -587,7 +588,7 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   checklist; tick its boxes as you go — Stage 1 shipped with all 36 unticked, which is
   how a plan stops being a status signal.
 - No `switch` on a closed union without `const _exhaustive: never = value` in `default`.
-- **Twenty-nine** architecture rules are enforced by `tests/architecture/`. `core/` imports
+- **Thirty** architecture rules are enforced by `tests/architecture/`. `core/` imports
   neither `agents/`, `llm/`, `context/`, `cli/`, `scaffold/`, `forge/`, `process/`,
   `confine/`, the network nor the model SDK, and nothing reachable from it reads or writes — its disk rule
   walks the transitive closure too. `agents/` imports neither `fs`, `child_process` nor a git client — **and
@@ -615,7 +616,8 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   starts (stage 6 brief § 6): git for the Inspector's `git ls-files`, the forge and the one
   push form, from two calls, and gh from one, each given an environment `spawnedEnvironment`
   builds: without any `IDP_BACKSTAGE_*` variable and without any provider key; only
-  `context/project-fs/snapshot.ts` and `forge/` load the git launcher. No source in `src/`
+  `context/project-fs/snapshot.ts` and `forge/` load the git launcher, and only
+  `forge/github/` loads the gh launcher (*only forge/github/ loads the gh launcher*). No source in `src/`
   names a door the grammars refuse (*nothing in src/ names a door the allow-list refuses*) or
   reads a GitHub credential from the environment (*nothing in src/ reads a GitHub credential
   from the environment*), and in `tests/` only `tests/live/` and `tests/support/fake-gh.ts`

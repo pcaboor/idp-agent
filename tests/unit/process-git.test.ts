@@ -617,6 +617,25 @@ describe('the push', () => {
     await expect(stat(marker)).rejects.toThrow()
   })
 
+  it('never pushes to this machine, whatever a remote section named after the URL says', async () => {
+    // git looks the push's URL up as a remote's name first (measured, git
+    // 2.46), and a push over the file transport starts git-receive-pack
+    // without the command line's pins, so the target's pre-receive hook would
+    // run. readRoad refuses such a section; this pin is the floor under it.
+    const repo = await repository()
+    const bare = await temp('idp-planted-')
+    await git(bare, 'init', '-q', '--bare')
+    const marker = path.join(await temp('idp-pre-receive-'), 'ran')
+    await marking(path.join(bare, 'hooks', 'pre-receive'), marker)
+    await git(repo, 'config', `remote.${URL}.url`, bare)
+    const push = pushIn(repo)
+    const head = await git(repo, 'rev-parse', 'HEAD')
+
+    await expect(push({ url: URL, commit: head, branch: BRANCH })).rejects.toBeInstanceOf(GitError)
+    await expect(stat(marker)).rejects.toThrow()
+    await expect(git(bare, 'rev-parse', '--verify', '--quiet', REF)).rejects.toThrow()
+  })
+
   it('reads the porcelain line of its ref, and no other', () => {
     const line = (flag: string, ref: string, summary: string): string => `${flag}\t${SHA}:${ref}\t${summary}`
     const other = 'refs/heads/idp-agent/y-0123abcd'

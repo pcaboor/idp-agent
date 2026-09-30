@@ -105,6 +105,19 @@ and nothing here can be steered by what it validates. Hence the property tests r
   every script; the rest is bounded at a sentence boundary. Plain data in — the entities
   as `KnownEntity`, the witnessed references, the question — and the cleaner handed in,
   since nothing here imports a renderer.
+- **GitHub** — `github/`, the pure half of stage 6's road to a pull request; `forge/github/`
+  reads through the launchers and judges with it. `remote.ts`: `parseRemoteUrl`, a remote's
+  URL as one of GitHub's five forms, another host (`this machine` for a path), a URL
+  carrying a credential or one that does not parse, and the grammars every value read from
+  a clone's own configuration is held to before it reaches a process or a sentence
+  (`isRemoteName`, `baseOfMerge`, `isBranch`, `isLogin`) — copies of the launchers' own, which
+  `process/` cannot import, held to one verdict by `tests/unit/grammar-agreement.test.ts`.
+  `config.ts`: `git config --list --show-scope -z` read as keys and scopes, every value
+  dropped at parse, the keys that could redirect a push or run a program during it refused at
+  the `local` and `worktree` scopes (`refusedConfigKeys`), and `configRefusal`, the sentence,
+  which prints a key's subsection only in a shape that cannot carry a credential.
+  `gh-version.ts`: `GH_MINIMUM_VERSION` and the reading of `gh --version`. `answers.ts`: the
+  fields read of each GitHub answer, as Zod schemas.
 
 **The rule: nothing in `core/` may read, write, fetch or ask.** Work that needs a disk belongs
 in `context/` or `cli/`, work that needs a model in `agents/` or `llm/` — carve out the pure

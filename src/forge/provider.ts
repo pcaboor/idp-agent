@@ -1,3 +1,4 @@
+import type { GitHubRepository } from '../core/github/remote.js'
 import type { Cleared, Expectation, Repository } from '../core/plan/clear.js'
 
 /**
@@ -67,4 +68,49 @@ export interface ForgeProvider {
   recognise(change: Cleared, base: Base): Promise<Recognised | undefined>
   /** Re-reads the base, re-checks divergence, then creates one branch — or says why not. */
   submit(change: Cleared, base: Base): Promise<Submitted>
+}
+
+/**
+ * The road a submission takes, decided once, before anything is read on
+ * GitHub (stage 6 brief § 13), by `forge/github/road.ts`'s `readRoad`: the
+ * branch HEAD names tracks a branch on github.com, or it does not.
+ */
+export type Road = GitHubRoad | LocalRoad
+
+/**
+ * The checked-out branch tracks a branch on github.com, both of its remote's
+ * URLs name the same repository, and the clone's own configuration sets no
+ * key that could redirect the push or run a program during it (§ 7).
+ */
+export interface GitHubRoad {
+  readonly kind: 'github'
+  readonly repository: GitHubRepository
+  /** The remote the branch tracks, `origin` usually: named in sentences, never pushed to by name. */
+  readonly remote: string
+  /** The branch on GitHub a pull request goes into: what `branch.<branch>.merge` names. */
+  readonly base: string
+  /** The checked-out branch, whose upstream `base` is. */
+  readonly branch: string
+  /** The URL `git remote get-url --push` printed, one of `GITHUB_PUSH_URL`'s forms: what the push names. */
+  readonly pushUrl: string
+}
+
+/**
+ * The local branch only, as stage 5, and why: the branch tracks nothing, its
+ * remote is on another host (`this machine` for a path), or `--local` asked.
+ */
+export type LocalRoad =
+  | { readonly kind: 'local'; readonly why: 'no-upstream'; readonly branch: string }
+  | { readonly kind: 'local'; readonly why: 'other-host'; readonly host: string }
+  | { readonly kind: 'local'; readonly why: 'asked' }
+
+/**
+ * Who gh acts as on github.com: a person, by GitHub's own answer (§ 5). The
+ * role is `undefined` out of `readIdentity`, which spends the two gh calls §
+ * 15 gives the identity on the version and `/user`; the preflight reads it
+ * from the repository's `permissions` (stage 6 plan, Task 6.1.3).
+ */
+export interface GhIdentity {
+  readonly login: string
+  readonly role: 'admin' | 'maintain' | 'write' | undefined
 }
