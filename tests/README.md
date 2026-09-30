@@ -33,6 +33,22 @@ one stale, and what to do when your change does.
 
 `unit/offline.test.ts` and `unit/personal-config.test.ts` fail if any of that stops holding.
 
+## The properties
+
+`invariants/` draws its input at a seed fast-check picks per run, so every run explores input
+the last one did not. A property that fails prints `{ seed, path }`; handed to that
+`fc.assert`, they replay the counterexample. Every file of properties imports
+`invariants/budget.ts`: a test there may run 60 seconds, and fast-check stops at 50 and
+reports the stop as a failure naming its seed, so a run slowed by a busy machine is never a
+bare "timed out" nobody can replay. Each property also counts what it met — plans the signer
+accepted and what they held, files written by hand, edits made into them — and fails under a
+floor set far below what many seeds measured: a generator that stops drawing a shape turns a
+property red instead of vacuous. A floor is checked after `fc.assert` returned, where
+fast-check names no seed, so those properties draw theirs with `freshSeed()` and each floor's
+message names it. The files are drawn written by hand, every trait on its own
+(`arbitraries.ts`), and `core.test.ts` asserts each trait is drawn, by a check no other trait
+satisfies.
+
 ## The fake Backstage
 
 A catalogue is never reached over a socket here. `tools/fake-backstage.ts` serves a folder of

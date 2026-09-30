@@ -1,5 +1,6 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
+import { PROPERTY_TIMEOUT } from './budget.js'
 import type { AgentEvent } from '../../src/agents/events.js'
 import type { Gate } from '../../src/agents/repair.js'
 import type { Answer } from '../../src/core/schemas/query.js'
@@ -369,7 +370,7 @@ function holdsOfAnyTrace(trace: Trace, steps: readonly Step[]): void {
   )
 }
 
-describe('the trace builder, over any sequence of events', () => {
+describe('the trace builder, over any sequence of events', { timeout: PROPERTY_TIMEOUT }, () => {
   it('never throws, drops nothing, and always hands back one closed tree nested in time', () => {
     fc.assert(
       // `size: 'max'`, or fast-check's default size keeps the array near ten
@@ -381,7 +382,7 @@ describe('the trace builder, over any sequence of events', () => {
   })
 })
 
-describe('the trace builder, over a run the harness could produce', () => {
+describe('the trace builder, over a run the harness could produce', { timeout: PROPERTY_TIMEOUT }, () => {
   it('closes every span by its own event, and fails a span only for a reason of its own', () => {
     fc.assert(
       fc.property(run, fc.boolean(), (body, threw) => {

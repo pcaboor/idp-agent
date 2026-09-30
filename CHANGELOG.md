@@ -232,6 +232,19 @@ Each pull request adds its line here.
 
 ### Fixed
 
+- The invariant generators draw what breaks: hand-written files vary their marker,
+  indentation, byte-order mark, CRLF, comments, quoting, anchors, flow style, blank lines,
+  `...` and final line break one by one, and each trait is asserted on by a check no other
+  trait satisfies; a creation into such a file is shown to add its document and nothing else,
+  byte for byte ahead of it; the `signPlan` properties run over plans valid by construction —
+  Components, levelled grants, updates, questions — with `fc.pre` and floors counted on the
+  plans accepted, each floor naming the seed that replays it; §9.2's idempotence meets the
+  file where a creation is filed or the grant an update amends; the one flaky run, a
+  five-second timeout under CPU contention that carried no seed, is reproduced and given a
+  sixty-second budget inside which fast-check stops first and names its seed; and a file with
+  no final line break, which insertion gives one, is left out of the two byte-for-byte round
+  trips and pinned at the bytes it comes back as rather than fixed — review batch B1
+  ([#113](https://github.com/pcaboor/idp-agent/pull/113)).
 - What reaches a model, and what a run reports: every vocabulary value of the summary is
   flattened to one line and bounded; the Supervisor reads a word its model decorated
   (`Question.`, `**QUESTION**`), asks once more, then ends on exit 1 with one line naming
