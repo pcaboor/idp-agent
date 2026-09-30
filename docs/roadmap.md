@@ -256,6 +256,11 @@ The owner's decisions, dated, each with where it is recorded.
   example MCP servers such as Jira's, for ticket handling — to be discussed before anything
   is planned; it is the queue's last line, not a stage
   ([#112](https://github.com/pcaboor/idp-agent/pull/112)).
+- A file whose last line has no line break keeps that convention: after an insertion it still
+  ends without one, and insert then remove gives it back byte for byte, like the byte-order
+  mark and CRLF. The debt B1 found and pinned ([#113](https://github.com/pcaboor/idp-agent/pull/113))
+  is closed, and §9.2's two round trips draw every file
+  ([#114](https://github.com/pcaboor/idp-agent/pull/114)).
 
 ## Known debts and open items
 
@@ -276,21 +281,6 @@ Each was checked against `main` at `3b642fa`.
   inspection read — an owner read there is vouched for though the branch does not carry the
   file. Proving every file read would refuse `init` in any repository with one dirty
   unrelated file.
-
-**Textual surgery, found by batch B1**
-
-- **A file whose last line has no line break gains one.** `insertDocument` ends that line
-  before the document it appends, and `removeDocument` cannot know the break was never
-  there, so §9.2's "insert then remove yields the file byte for byte" holds only for a file
-  that ends in a line break: `# note`, with nothing after it, comes back as `# note` and a
-  line break. A creation still carries out exactly what it says — the parser reads the file's
-  documents and the new one — but the file's last line shows in the diff as changed. Found
-  by B1's generators ([#113](https://github.com/pcaboor/idp-agent/pull/113)), left
-  unfixed on purpose and pinned at the bytes it comes back as in
-  `tests/invariants/core.test.ts`; only the two round trips leave such a file out, and every
-  other property draws it. The fix is a behaviour change — keep the file's missing break at
-  its new end, as `appendSequenceItem` already does, or state the invariant for files that
-  end in one — and is the owner's to choose.
 
 **First contact, left from review id docs-2**
 

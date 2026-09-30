@@ -264,9 +264,11 @@ function fileText(documents: readonly HandWrittenDocument[], traits: FileTraits)
   })
   const eol = traits.crlf ? '\r\n' : '\n'
   const end = traits.finalNewline ? eol : ''
-  // No document and no comment: an empty file, or a mark alone on its line —
-  // what an editor saving an empty file with a byte-order mark leaves.
-  if (lines.length === 0) return traits.bom ? `\uFEFF${end}` : ''
+  // No document and no comment: an empty file, a line break alone, or a mark
+  // alone on its line — what an editor saving an empty file leaves, with or
+  // without a byte-order mark. A lone break is not an empty file: it is one
+  // blank line, and the round trips give it back.
+  if (lines.length === 0) return (traits.bom ? '\uFEFF' : '') + end
   return (traits.bom ? '\uFEFF' : '') + lines.join(eol) + end
 }
 
@@ -301,19 +303,6 @@ export const handWrittenFileOf = (held: Partial<typeof fileTraitsDrawn> = {}) =>
 
 export const arbitraryHandWritten = handWrittenFileOf()
 export const arbitraryHandWrittenFile = arbitraryHandWritten.map((file) => file.text)
-
-/**
- * The same files, every one ending in a line break: what the two byte-for-byte
- * round trips run over. A file whose last line has none gains one when a
- * document is inserted, and removing the document cannot know the break was
- * never there, so §9.2's "insert then remove yields the file byte for byte"
- * does not hold for it. Found by these generators, left open, and pinned in
- * `core.test.ts` at the exact bytes it comes back as. Every other property
- * holds for such a file and draws it.
- */
-export const arbitraryHandWrittenFileEndingInBreak = handWrittenFileOf({
-  finalNewline: fc.constant(true),
-}).map((file) => file.text)
 
 /**
  * A database and a right over it, which the proposal schema accepts: a right

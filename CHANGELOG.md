@@ -232,6 +232,12 @@ Each pull request adds its line here.
 
 ### Fixed
 
+- A file whose last line has no line break still ends without one after a document is added
+  to it, as its byte-order mark and line endings are kept: `# note` used to come back from an
+  insertion and a removal as `# note` and a line break, and a file holding a line break alone
+  came back empty. §9.2's two byte-for-byte round trips now draw every hand-written file, a
+  lone line break included, instead of pinning that
+  ([#114](https://github.com/pcaboor/idp-agent/pull/114)).
 - The invariant generators draw what breaks: hand-written files vary their marker,
   indentation, byte-order mark, CRLF, comments, quoting, anchors, flow style, blank lines,
   `...` and final line break one by one, and each trait is asserted on by a check no other
