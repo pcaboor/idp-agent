@@ -29,7 +29,7 @@ export class IacFsProvider implements ContextProvider {
         // what it holds is missing from every answer, and the reader is told.
         ...(unreadable ?? []).map((folder) => ({
           source: folder.path === '' ? '.' : folder.path,
-          reason: `could not be listed (${folder.reason})`,
+          reason: folder.link === true ? folder.reason : `could not be listed (${folder.reason})`,
         })),
         ...files.flatMap((file) =>
           file.rejections.map((reason) => ({ source: file.path, reason })),

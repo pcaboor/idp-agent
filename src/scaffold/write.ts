@@ -1,5 +1,6 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
+import { createNew, makeFolders, realRootOf } from '../confine/confine.js'
 import { assertInsideRepo } from '../core/paths/entity-path.js'
 import type { ScaffoldFile } from './layout.js'
 
@@ -44,29 +45,51 @@ export interface FileIO {
   writeNew(absoluteFile: string, content: string): Promise<boolean>
 }
 
-const realIO: FileIO = {
-  mkdir: async (directory) => void (await mkdir(directory, { recursive: true })),
-  writeNew: async (file, content) => {
-    try {
-      // 'wx' is the whole guarantee: it fails rather than truncate. Checking
-      // for existence first would leave a window where a concurrent write is
-      // silently lost.
-      await writeFile(file, content, { encoding: 'utf8', flag: 'wx' })
-      return true
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false
-      throw error
-    }
-  },
+/**
+ * The disk, confined to `root` physically as well as by name (runtime-probe-11,
+ * core-yaml-5). `assertInsideRepo` below is lexical: `catalog -> ../outside`
+ * passed it, and three witnesses were written outside. Every folder is made
+ * one name at a time and every file created with `O_EXCL | O_NOFOLLOW`
+ * (`confine/`), so a folder on the way that is a link — to outside, to
+ * inside or to nothing — is refused by name, a link where a file goes is kept
+ * as a file there is, and nothing is written through either. `root` itself is
+ * the directory the user named, by whatever path, and is made when it does
+ * not exist yet, as it always was.
+ */
+async function confinedIO(root: string): Promise<FileIO> {
+  const named = path.resolve(root)
+  await mkdir(named, { recursive: true })
+  const real = await realRootOf(named)
+  // Every path handed in came out of `assertInsideRepo(root, …)`, so it is
+  // `named` joined with a relative path that stays under it.
+  const under = (absolute: string): string => path.relative(named, absolute)
+  return {
+    mkdir: (directory) => makeFolders(real, under(directory)),
+    writeNew: (file, content) => createNew(real, under(file), content),
+  }
 }
 
 export async function writeScaffold(
   root: string,
   files: readonly ScaffoldFile[],
-  io: FileIO = realIO,
+  io?: FileIO,
 ): Promise<WriteReport> {
   const written: string[] = []
   const kept: string[] = []
+
+  let disk = io
+  if (disk === undefined) {
+    try {
+      disk = await confinedIO(root)
+    } catch (error) {
+      // The root could not be made or resolved: the first file is where it
+      // stopped, as when its folder could not be made, with nothing written.
+      const first = files[0]
+      if (first === undefined) return { written, kept }
+      const reason = error instanceof Error ? error.message : String(error)
+      throw new ScaffoldWriteError(first.path, [], [], reason)
+    }
+  }
 
   for (const file of files) {
     // Every path through the same check the entity writer uses: a template
@@ -76,8 +99,8 @@ export async function writeScaffold(
     try {
       // Inside, so a folder that cannot be made — a file already where it
       // belongs — is reported as the file it was for, with the same list.
-      await io.mkdir(path.dirname(absolute))
-      if (await io.writeNew(absolute, file.content)) written.push(file.path)
+      await disk.mkdir(path.dirname(absolute))
+      if (await disk.writeNew(absolute, file.content)) written.push(file.path)
       else kept.push(file.path)
     } catch (error) {
       // Named, and only what was genuinely written is reported.

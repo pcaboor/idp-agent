@@ -50,27 +50,20 @@ Each line says what the item is for. The sweep of the review is done
 ([its verdicts](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27)); its batches are
 here, one pull request each, each naming the check run together at the end.
 
-1. **Batch B3, physical confinement.** core-yaml-5, runtime-probe-11,
-   gap-stage5-readiness-4 (its submission half closed by stage 5's task 4): one lstat,
-   realpath and `O_NOFOLLOW` primitive shared from
-   `project-fs`, used by `scaffold/write.ts` and by the iac-fs walk, which rejects a
-   symbolic link by name. Medium, and after stage 5: the forge writes only objects and a
-   ref, never the working tree, and refuses a symbolic link tracked in `HEAD`, so B3 is for
-   the read side and `scaffold/write.ts` (the stage-5 check, D17).
-2. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
+1. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
    harness half of agents-llm-9: record from an empty tape, fail on a turn never replayed,
    and digest the JSON Schema the provider is sent. It needs no key, but it prunes dead turns
    and rewrites every tape's digest, so it waits for the owner's go-ahead.
-3. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
+2. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
    catalogue is plugged in.
-4. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
+3. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
    authorisation (ADR-0006).
-5. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
+4. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence.
-6. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
+5. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
    the project's end goal (2026-09-23).
-8. **After stage 7, the enterprise needs: a discussion, not a stage.** The owner brings the
+6. **After stage 7, the enterprise needs: a discussion, not a stage.** The owner brings the
    needs and constraints they identified for a company — for example MCP servers such as
    Jira's, for ticket handling — to be discussed before anything is planned. Nothing is
    scheduled; design §13 keeps real Jira integrations out of v0.1, and an MCP server exposed
@@ -281,6 +274,19 @@ Each was checked against `main` at `3b642fa`.
   inspection read — an owner read there is vouched for though the branch does not carry the
   file. Proving every file read would refuse `init` in any repository with one dirty
   unrelated file.
+
+**Physical confinement, left from batch B3**
+
+Checked against this change ([#115](https://github.com/pcaboor/idp-agent/pull/115)).
+
+- **`.idp-agent.yml` is read through a link.** `cli/config.ts` reads it with `readFile`, in
+  either repository; the batch covered the catalogue files, `init platform`'s writer and
+  the Inspector (`src/confine/`).
+- **One instant is not closed.** Node has no `openat`, so a folder swapped for a link
+  between one of `init platform`'s checks and the `mkdir` or the create after it can leave
+  one empty folder or one empty file where the link led, refused before anything deeper
+  is made or a byte written, and named; a folder swapped and swapped back between two
+  checks is not caught at all. `SECURITY.md` states it.
 
 **First contact, left from review id docs-2**
 

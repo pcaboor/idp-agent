@@ -12,7 +12,9 @@
  * declares nothing (design §4.4). `node_modules` is somebody else's.
  *
  * About names only. Whether a file is a symbolic link is a question about its
- * type, which B3 answers (docs/roadmap.md), not this predicate.
+ * type, which only a module that asks the disk can answer: `iac-fs` names every
+ * link its walk meets and reads none (`confine/`), and the forge refuses one
+ * tracked in `HEAD`.
  */
 const YAML = /\.ya?ml$/
 

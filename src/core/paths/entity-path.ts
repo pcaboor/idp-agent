@@ -108,6 +108,11 @@ export function resolveEntityPath(entity: Entity): string {
  * Resolve `candidate` against `repoRoot` and refuse anything landing outside.
  * Compares against `repoRoot + sep` so `/repo-evil` is never accepted for `/repo`,
  * and refuses the root itself, which is a directory rather than a file.
+ *
+ * Lexical, and only lexical: `core/` touches no disk, so a name is all it can
+ * judge, and `catalog -> ../outside` passes (core-yaml-5). Where a name leads
+ * is `confine/`'s to decide, and every module that reads or writes a user's
+ * repository asks it after asking this.
  */
 export function assertInsideRepo(repoRoot: string, candidate: string): string {
   assertRelativeSafe(candidate)

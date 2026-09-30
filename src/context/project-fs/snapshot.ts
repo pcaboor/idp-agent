@@ -1,7 +1,7 @@
 import { isUtf8 } from 'node:buffer'
-import { constants } from 'node:fs'
-import { lstat, open, readdir, realpath } from 'node:fs/promises'
+import { lstat, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
+import { followInside, isInside, openToRead } from '../../confine/confine.js'
 import { assertInsideRepo, PathEscapeError } from '../../core/paths/entity-path.js'
 import { GitError, gitIn } from '../../process/git.js'
 import { secretIn, type SecretClass } from './secrets.js'
@@ -304,15 +304,6 @@ function fileReason(name: string): string | undefined {
 }
 
 /**
- * Containment. `root + sep` rather than a bare prefix, so `/repo-evil` is never
- * accepted for `/repo` — the same stance as `assertInsideRepo`. The root itself
- * is accepted here, unlike there: a link to the root is a cycle, not an escape,
- * and the ancestor check below gives it the reason it deserves.
- */
-const isInside = (root: string, candidate: string): boolean =>
-  candidate === root || candidate.startsWith(root + path.sep)
-
-/**
  * Why this RESOLVED path is never read.
  *
  * The rule that matters, and the one this module first got wrong: exclusion is
@@ -548,14 +539,14 @@ async function walk(
     let target = absolute
     let stats = entry
     if (entry.isSymbolicLink()) {
-      // realpath before deciding anything: `..` and an intermediate link are
-      // both resolved by it and by nothing short of it.
-      const resolved = await realpath(absolute).catch(() => undefined)
-      if (resolved === undefined) {
+      // Where it leads, decided before anything is read through it — by the
+      // primitive every reader and writer of a repository shares (`confine/`).
+      const led = await followInside(state.realRoot, absolute)
+      if (led.outcome === 'nowhere') {
         state.skipped.push({ path: here, reason: 'skipped: a symlink that resolves to nothing' })
         continue
       }
-      if (!isInside(state.realRoot, resolved)) {
+      if (led.outcome === 'outside') {
         // The target is NOT named: it is a path outside the project, and this
         // string is handed to a model like every other string here.
         state.skipped.push({
@@ -564,15 +555,12 @@ async function walk(
         })
         continue
       }
-      // `resolved` has no link left in it, so this lstat is a stat that
-      // follows nothing.
-      const targetStats = await lstat(resolved).catch(() => undefined)
-      if (targetStats === undefined) {
+      if (led.outcome === 'unreadable') {
         state.skipped.push({ path: here, reason: 'skipped: it could not be read' })
         continue
       }
-      target = resolved
-      stats = targetStats
+      target = led.real
+      stats = led.stats
     }
 
     if (stats.isDirectory()) {
@@ -674,19 +662,21 @@ async function walk(
  * `readFile(path)` re-resolves the path, so the containment decided during the
  * walk and the bytes taken after it were about two different opens — a window
  * as long as the whole walk, in which a file can be replaced by a symlink
- * pointing anywhere. `O_NOFOLLOW` closes it: the open fails outright if the
- * final component has become a link, and everything after happens on the
- * descriptor, which names an inode rather than a path.
+ * pointing anywhere. `openToRead` closes it (`confine/`): the open fails
+ * outright if the final component has become a link, a folder above it that
+ * has is refused once the descriptor is open, and everything after happens on
+ * the descriptor, which names an inode rather than a path.
  *
  * It also bounds the read. One byte past the cap is enough to know the file is
  * over it, so an enormous file is never pulled into memory to be rejected.
  */
 async function readBounded(
+  realRoot: string,
   absolute: string,
 ): Promise<{ bytes: Buffer; over: boolean } | undefined> {
   let handle
   try {
-    handle = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW)
+    handle = await openToRead(realRoot, absolute)
   } catch {
     return undefined
   }
@@ -837,14 +827,16 @@ async function rootCatalogs(realRoot: string, known: ReadonlySet<string>): Promi
       found.push({ path: name, unreadable: 'it is not a plain file, and it was not followed' })
       continue
     }
-    found.push(await declarationOf({ path: name, absolute: path.join(realRoot, name), size: stats.size }))
+    found.push(
+      await declarationOf(realRoot, { path: name, absolute: path.join(realRoot, name), size: stats.size }),
+    )
   }
   return found
 }
 
 /** One catalog-info, whole, or why not. The same bounded read as every file here. */
-async function declarationOf(candidate: Candidate): Promise<Declaration> {
-  const read = await readBounded(candidate.absolute)
+async function declarationOf(realRoot: string, candidate: Candidate): Promise<Declaration> {
+  const read = await readBounded(realRoot, candidate.absolute)
   if (read === undefined) return { path: candidate.path, unreadable: 'it could not be read' }
   if (read.over) {
     return {
@@ -882,7 +874,7 @@ async function declarationsOf(
   }
   const read: Declaration[] = []
   for (const catalog of [...catalogs].sort(byPath)) {
-    const declaration = await declarationOf(catalog)
+    const declaration = await declarationOf(realRoot, catalog)
     const workspace = workspaceOf(catalog.path)
     read.push(workspace === undefined ? declaration : { ...declaration, workspace })
   }
@@ -997,7 +989,7 @@ export async function readProject(root: string): Promise<ProjectRead> {
       break
     }
 
-    const read = await readBounded(candidate.absolute)
+    const read = await readBounded(realRoot, candidate.absolute)
     if (read === undefined) {
       state.skipped.push({ path: candidate.path, reason: 'skipped: it could not be read' })
       continue

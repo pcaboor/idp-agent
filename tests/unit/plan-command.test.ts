@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -559,6 +559,31 @@ describe('plan --from, over a repository it cannot read whole', () => {
     expect(result.err).toContain(locked)
     expect(result.err).toContain('EACCES')
     expect(await hashTree(root)).toBe(before)
+  })
+
+  // A link was read through twice, for its entities and for its bytes, so the
+  // preview judged and diffed a file that is not in the repository, and only
+  // the submission refused it (gap-stage5-readiness-4, D17). Refused here too,
+  // by name, before anything it leads to is read. Windows gives a symbolic
+  // link to an administrator or to developer mode alone, so the runner may
+  // not be able to make one: skipped there, by this condition.
+  it.skipIf(process.platform === 'win32')('refuses a file that is a symbolic link, naming it, and reads nothing through it', async () => {
+    const outside = await mkdtemp(path.join(tmpdir(), 'idp-plan-outside-'))
+    await writeFile(
+      path.join(outside, 'planted.yml'),
+      entityDocument('planted-db-prod', 'database', 'prod', ['  # PLANTED-OUTSIDE']),
+    )
+    const root = await scaffoldedRepository()
+    const linked = 'catalog/databases/planted-db-prod.yml'
+    await symlink(path.join(outside, 'planted.yml'), path.join(root, ...linked.split('/')))
+    const from = await planFile(root, CREATE_PLAN)
+
+    const result = await run(['plan', '--from', from, '--repo', root], answering('read'))
+
+    expect(result.code).toBe(2)
+    expect(result.out).not.toContain('@@')
+    expect(result.err).toContain(`${linked} is a symbolic link, never followed`)
+    expect(result.out + result.err).not.toContain('PLANTED-OUTSIDE')
   })
 })
 

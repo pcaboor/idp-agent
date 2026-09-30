@@ -12,7 +12,9 @@ reads the demo SI, a directory laid out exactly like an IaC repository. `IacFsPr
 `source` is the file's repository-relative path. `isDeclarationsRepository` (beside it, in
 `iac-fs/snapshot.ts`) is how those three decide the working directory is one: a witnessed folder
 directly under `catalog/` or `dependencies/`, read at the root and never walked, and not through
-a symbolic link, which `readRepository` would not follow either. `isApplicationRepository`, beside it, is how
+a symbolic link, which `readRepository` does not follow either: every link its walk meets is
+named — a linked `.yml` as a file it did not read, any other as a link it did not follow —
+and nothing is read through one, inside the repository or out (`confine/`, batch B3). `isApplicationRepository`, beside it, is how
 a change decides the working directory is a service's to inspect: a `catalog-info.yaml`/`.yml`
 or a package manifest (`APPLICATION_MARKERS`, or a `*.csproj`) as a regular file at the root,
 and not a declarations repository.
@@ -33,8 +35,8 @@ sets, the organisation kinds a catalogue read whole: a reference to one of them 
 against what was read, and a folder's Group files are never the whole organisation.
 Both readers go through `core/`'s `parseDocuments`, the one reader of entity documents
 (`readDocuments` for the YAML, then `readValue` for each value, the half a catalogue's items
-will meet too), and `iac-fs` also rejects a file it cannot open — no permission, a link to
-nothing — rather than ending `validate` on a stack trace. Throwing would lose every valid entity
+will meet too), and `iac-fs` also rejects a file it cannot open — no permission, a link —
+rather than ending `validate` on a stack trace. Throwing would lose every valid entity
 because of one bad one; swallowing is what the catalogue does — it ignores duplicates in silence
 (design.md § 4.4) and reports nothing for what it could not ingest — and a tool that inherits
 the failure mode it exists to prevent is worth nothing.
@@ -172,7 +174,7 @@ with no shell and none of the repository's own commands; an untracked path is co
 named), the exclusion list (`.env*`, key
 material, credential files, `.git/`, `node_modules/` and hidden directories bar `.github`), the
 content test of `project-fs/secrets.ts` — key material, a known issuer's token, a secret assigned
-a literal, every match examined, escaped and base64 text decoded — the `lstat`-then-`realpath` symlink refusal, and three caps —
+a literal, every match examined, escaped and base64 text decoded — the `lstat`-then-`realpath` symlink refusal and the `O_NOFOLLOW` read, both `confine/`'s, and three caps —
 200 files, 64 KB each, 1 MB in total. The caps are spent on the service's signal files first —
 its manifests, `package.json` before any other, CODEOWNERS, catalog-info, charts, Dockerfiles,
 compose files and deployment YAML, a README — the shallower first, then the rest by depth; the

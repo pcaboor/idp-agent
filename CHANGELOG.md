@@ -232,6 +232,21 @@ Each pull request adds its line here.
 
 ### Fixed
 
+- A symbolic link is judged by where it leads, through one lstat, realpath and `O_NOFOLLOW`
+  primitive, `src/confine/`, which `init platform`'s writer, `iac-fs` and `project-fs` share
+  (two new architecture rules, twenty-five in all). `init platform` no longer writes through
+  a linked folder — `catalog -> ../outside` put three witnesses outside, and a dangling one
+  had its target made — and stops, naming it; a link where a file goes is kept, as before.
+  `iac-fs` no longer follows a link: a linked `.yml` is rejected as a link wherever it
+  leads — an `invalid-entity` error to `validate` — where it was read through, or failed on
+  its target's `ENOENT`, `ELOOP` or `EISDIR`; any other link, a linked folder first, is an
+  `unreadable-folder` error naming it as a symbolic link, never followed, where it was
+  dropped in silence; and `plan` refuses a repository holding a linked file, naming it,
+  exit 2, where it previewed a diff of whatever the link led to. A file or folder swapped
+  for a link after it was checked, whether the link leads outside the root or to another
+  folder inside it, is refused at the open — review batch B3, core-yaml-5, runtime-probe-11,
+  security-8 and the preview half of gap-stage5-readiness-4
+  ([#115](https://github.com/pcaboor/idp-agent/pull/115)).
 - A file whose last line has no line break still ends without one after a document is added
   to it, as its byte-order mark and line endings are kept: `# note` used to come back from an
   insertion and a removal as `# note` and a line break, and a file holding a line break alone

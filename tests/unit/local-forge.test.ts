@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { CATALOG_INFO } from '../../src/core/plan/catalog-info.js'
@@ -567,15 +567,21 @@ describe('submitting', () => {
   })
 
   it('never carries a linked file into a submitted blob', async () => {
-    // D17: B3 is after stage 5. The forge writes objects and one ref, never the
-    // working tree, and refuses a symlink tracked in HEAD and any path absent
-    // from it — so a file the walk followed through a link cannot reach a branch.
+    // D17: the forge writes objects and one ref, never the working tree, and
+    // refuses a symlink tracked in HEAD and any path absent from it. Since B3
+    // the walk follows no link and `plan` refuses one in the working tree, so
+    // the one way left to hand the forge such a file is a regular file in the
+    // working tree over a link in HEAD: the gates judged its bytes, and HEAD
+    // holds a link there. Refused all the same, and by the link.
     const repo = await clone()
     const outside = path.join(await scratch('idp-outside-'), 'secret.yml')
     await writeFile(outside, '# outside the repository\n')
-    await symlink(outside, path.join(repo, 'catalog', 'databases', 'linked.yml'))
+    const linked = path.join(repo, 'catalog', 'databases', 'linked.yml')
+    await symlink(outside, linked)
     await git(repo, 'add', '-A')
     await git(repo, 'commit', '-q', '-m', 'a link')
+    await rm(linked)
+    await writeFile(linked, '# outside the repository\n')
     const change = await clearedFor(repo)
     const forge = await openLocalForge(repo, 'declarations')
     const before = await observable(repo)
