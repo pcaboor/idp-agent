@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -10,6 +11,7 @@ import { PROPOSE_TOOL } from '../../src/agents/tools/propose-tool.js'
 import { PROVIDER_NAMES, type ProviderName } from '../../src/llm/providers.js'
 import { catalogueOf } from '../../tools/fake-backstage.js'
 import { fakeBackstage, type Faults, type Sent as ToCatalogue } from '../support/fake-backstage.js'
+import { fakeGitHub, protectedMain } from '../support/fake-gh.js'
 import { memorySink, onlyTrace } from '../support/trace.js'
 
 /**
@@ -600,5 +602,89 @@ describe.each(PROVIDER_NAMES)('the %s key and the catalogue token on a real run'
     // Refused before any model: nothing reached the provider or MLflow.
     expect(ran.toProvider).toEqual([])
     heldNowhere(ran)
+  })
+})
+
+/**
+ * The gh leg (stage 6 brief § 5, § 16): `idpa protection`, the first command
+ * that starts gh. idpa holds no GitHub credential: gh reads its own login —
+ * here `GH_TOKEN` and `GITHUB_TOKEN`, as a person may export them — and the
+ * environment it is handed is the person's, passed on unread, minus what the
+ * gh launcher removes: the variable that would point gh at another host, and
+ * every provider key and catalogue variable `spawnedEnvironment` removes. No
+ * credential reaches an argument, stdin, stdout or stderr. gh is the fake,
+ * handed in as `MainDeps.gh`; the git that reads the clone runs for real,
+ * through the mocked `execFile` above, and is held to the same.
+ */
+describe('idpa protection', () => {
+  const GH_CANARY = 'canary-gh-token-that-is-not-real-0123456789'
+
+  it('hands gh the person’s login variables unread, and no model key, catalogue token or host', async () => {
+    const base = await mkdtemp(path.join(tmpdir(), 'idp-key-reach-gh-'))
+    temporary.push(base)
+    const repo = path.join(base, 'iac')
+    const home = path.join(base, 'home')
+    await mkdir(repo)
+    await mkdir(home)
+    // The fixture's own git, synchronous: the mocked execFile above is the
+    // run's, and a clone built through it would be counted as the run's.
+    const fixture = (...args: string[]): void =>
+      void execFileSync('git', ['-C', repo, ...args], {
+        env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
+        stdio: 'ignore',
+      })
+    fixture('init', '-q', '-b', 'main')
+    fixture('config', 'user.name', 'key reach')
+    fixture('config', 'user.email', 'key-reach@idp-agent.invalid')
+    fixture('commit', '-q', '--allow-empty', '-m', 'base')
+    fixture('remote', 'add', 'origin', 'git@github.com:acme/iac.git')
+    fixture('config', 'branch.main.remote', 'origin')
+    fixture('config', 'branch.main.merge', 'refs/heads/main')
+    spawned.environments.length = 0
+
+    const fake = fakeGitHub({ repositories: [protectedMain()] })
+    const out: string[] = []
+    const err: string[] = []
+    const code = await main(['protection', '--repo', repo], {
+      gh: fake.process,
+      env: {
+        PATH: process.env['PATH'],
+        HOME: home,
+        XDG_CONFIG_HOME: path.join(home, '.config'),
+        GH_TOKEN: GH_CANARY,
+        GITHUB_TOKEN: GH_CANARY,
+        OPENAI_API_KEY: KEY,
+        IDP_BACKSTAGE_TOKEN: TOKEN,
+        GH_HOST: 'evil.example',
+      },
+      out: (chunk) => void out.push(chunk),
+      err: (chunk) => void err.push(chunk),
+    })
+
+    // gh was started — the version, whom it acts as, and § 8's reads — so the
+    // searches below are not vacuous.
+    expect(fake.sent.length).toBeGreaterThanOrEqual(5)
+    expect(code, err.join('')).toBe(0)
+    for (const sent of fake.sent) {
+      expect(sent.env['GH_TOKEN']).toBe(GH_CANARY)
+      expect(sent.env['GITHUB_TOKEN']).toBe(GH_CANARY)
+      expect(Object.keys(sent.env).map((name) => name.toUpperCase())).not.toContain('GH_HOST')
+      const environment = JSON.stringify(sent.env)
+      for (const secret of [KEY, TOKEN, 'evil.example']) expect(environment).not.toContain(secret)
+      const handed = JSON.stringify([sent.argv, sent.stdin?.toString('utf8') ?? ''])
+      for (const secret of [GH_CANARY, KEY, TOKEN, 'evil.example']) expect(handed).not.toContain(secret)
+    }
+
+    // The git that read the clone's upstream: no model key, no catalogue token.
+    expect(spawned.environments.length).toBeGreaterThan(0)
+    for (const environment of spawned.environments) {
+      const shown = JSON.stringify(environment)
+      expect(shown).not.toContain(KEY)
+      expect(shown).not.toContain(TOKEN)
+    }
+
+    for (const text of [out.join(''), err.join('')]) {
+      for (const secret of [GH_CANARY, KEY, TOKEN]) expect(text).not.toContain(secret)
+    }
   })
 })

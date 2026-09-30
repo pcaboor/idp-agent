@@ -27,6 +27,7 @@ import { committed, git, observable, show, stored } from '../support/git.js'
 import { ConfigError, readConfig } from '../../src/cli/config.js'
 import { CONFIG_FILE, serializeConfig } from '../../src/core/schemas/config.js'
 import { listDocumentNames } from '../../src/core/yaml/surgery.js'
+import { protectionText } from '../../src/core/github/protection.js'
 
 /** The line a preview of `init` ends on, in place of `plan`'s about the merge. */
 const INIT_CLOSING =
@@ -121,18 +122,26 @@ describe('init platform', () => {
     expect(await readFile(path.join(root, 'repo'), 'utf8')).toBe('x\n')
   })
 
-  it('prints the branch protection it cannot set, on every run', async () => {
+  it('prints the ruleset idpa protection checks, on every run', async () => {
     // "An automaton that verifies its own powerlessness, out loud." The
-    // no-op run must say it too, or the second reader never sees it.
+    // no-op run must say it too, or the second reader never sees it. The list
+    // is the one idpa protection checks and a refused submission prints, so
+    // the three cannot drift.
     const root = await temp()
     const first = await init(['init', 'platform', 'repo', '--owner', '@acme/platform'], root)
     const second = await init(['init', 'platform', 'repo', '--owner', '@acme/platform'], root)
     for (const run of [first, second]) {
-      expect(run.out).toContain('Branch protection is set in the forge')
-      expect(run.out).toMatch(/cannot verify/i)
-      expect(run.out).toContain('stage 6')
+      expect(run.out).toContain(
+        [
+          'Branch protection is set in the forge, not here. Add a ruleset on the default branch (Settings → Rules → Rulesets):',
+          ...protectionText(),
+          'idpa protection checks them once the repository is on GitHub.',
+        ].join('\n'),
+      )
+      expect(run.out).not.toContain('stage 6')
+      expect(run.out).not.toMatch(/cannot verify/i)
       // ADR-0012: a downstream refusal must never merge, once one reports.
-      expect(run.out).toContain('status')
+      expect(run.out).toContain('required status check')
     }
   })
 

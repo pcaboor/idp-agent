@@ -1,6 +1,6 @@
 # Stage 6 — a GitHub pull request, with the person's own git and gh
 
-**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
+**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
 § 19 (Q1–Q4) were settled on 2026-09-30, each as recommended, and this plan takes them as
 given; so were the four questions the plan itself asked, the same day ([Questions for the
 owner](#questions-for-the-owner)). Eleven stacked pull requests: ten, 6.1.1 to 6.4.2, then 6.4.3, the owner's step: every tape
@@ -466,7 +466,7 @@ that adds it, and is added here first when the plan changes.
 - `interface ConfigEntry { scope: string; key: string }` (no value field, ever); `parseConfigListing(bytes: Buffer): ConfigEntry[]`; `refusedConfigKeys(entries): ConfigEntry[]`; `REFUSED_SECTIONS = ['url', 'credential', 'http', 'protocol', 'ssh', 'gpg', 'push']`; `REFUSED_KEYS = ['core.sshcommand', 'core.askpass', 'core.gitproxy']` and `remote.<name>.{vcs,receivepack,uploadpack,proxy,proxyauthmethod}`; `KEPT_LOCAL_KEYS = ['http.postbuffer', 'http.lowspeedlimit', 'http.lowspeedtime', 'push.default', 'push.autosetupremote', 'gpg.format']` (git's keys are case-insensitive in section and name: compared lower-cased); `configRefusal(entry: ConfigEntry, more: number): string`, the exit-2 sentence, which names a key's subsection only when it has a shape that cannot carry a credential (a URL of scheme, host, port and path alone in `url`, `http` and `credential`; a remote's name elsewhere), and elides it otherwise.
 - `GH_MINIMUM_VERSION = '2.40.0'` (provisional); `parseGhVersion(stdout: string): string | undefined`; `isAtLeast(version, minimum): boolean`.
 - `userAnswer`, `repositoryAnswer`, `branchAnswer`, `rulesAnswer`, `rulesetAnswer`, `refAnswer`, `commitAnswer`, `pullsAnswer`, `pullAnswer`.
-- `type Missing = 'pull-request' | 'approvals' | 'last-push' | 'non-fast-forward' | 'deletion' | 'bypassable' | 'deploy-key' | 'classic-only' | 'archived' | 'no-push' | 'renamed'`; `interface ProtectionVerdict { holds: boolean; missing: readonly Missing[]; rulesets: readonly number[]; reported: { codeOwners: boolean; statusChecks: readonly string[]; signatures: boolean; mergeQueue: boolean; lastPushOnly: boolean; dismissStaleOnly: boolean; bypassActors: readonly { type: string; count: number }[] | 'unreadable'; role: 'admin' | 'maintain' | 'write' | 'read' } }` (`'read'`: a repository answering `permissions.push: false`, which fails on `no-push`); `interface ProtectionInput { expected: GitHubRepository; repository: RepositoryAnswer; rules?: RulesAnswer; rulesets: ReadonlyMap<number, RulesetAnswer>; classic?: boolean }`; `judgeProtection(input: ProtectionInput): ProtectionVerdict`; `PROTECTION_SETTINGS: readonly { level: 'required' | 'advised'; text: string }[]` (§ 8's nine lines, in its order); `protectionText(): string[]`.
+- `type Missing = 'pull-request' | 'approvals' | 'last-push' | 'non-fast-forward' | 'deletion' | 'bypassable' | 'deploy-key' | 'classic-only' | 'archived' | 'no-push' | 'renamed'`; `interface ProtectionVerdict { holds: boolean; missing: readonly Missing[]; rulesets: readonly number[]; binding: readonly number[]; deployKeys?: readonly number[]; renamedTo?: string; reported: { codeOwners: boolean; statusChecks: readonly string[]; signatures: boolean; mergeQueue: boolean; lastPushOnly: boolean; dismissStaleOnly: boolean; bypassActors: readonly { type: string; count: number }[] | 'unreadable'; bypassHidden: readonly number[]; role: 'admin' | 'maintain' | 'write' | 'read' } }` (`'read'`: a repository answering `permissions.push: false`, which fails on `no-push`); `interface ProtectionInput { expected: GitHubRepository; repository: RepositoryAnswer; rules?: RulesAnswer; rulesets: ReadonlyMap<number, RulesetAnswer>; classic?: boolean }`; `judgeProtection(input: ProtectionInput): ProtectionVerdict`; `PROTECTION_SETTINGS: readonly { level: 'required' | 'advised'; text: string }[]` (§ 8's nine lines, in its order); `protectionText(): string[]`.
 - `interface PullRequestInput { message: string /* messageFor's */; request: string; road: 'from' | 'intent' | 'init' | 'phrase'; branch: string }`; `pullRequestBody(input): { title: string; body: string }`; `pullRequestUrl(repository, number): string`; `fenceFor(text): string`; `ENGINE_BLOCK_END = '<!-- idp-agent: end of the engine\'s block -->'`.
 - `core/plan/clear.ts`: `Cleared.request: string` (6.2.1), what `messageFor` records, cut at 500.
 
@@ -1829,6 +1829,8 @@ Constraints cited: 1, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15.
 // src/core/github/protection.ts
 export type Missing = 'pull-request' | 'approvals' | 'last-push' | 'non-fast-forward' | 'deletion' | 'bypassable' | 'deploy-key' | 'classic-only' | 'archived' | 'no-push' | 'renamed'
 export interface ProtectionVerdict { … as the shared names state it, with reported.role: 'admin' | 'maintain' | 'write' | 'read' }   // 'read' ADDED
+//   ADDED by the review: binding: readonly number[] (the supplying rulesets answering never), deployKeys?: readonly number[]
+//   (set with `deploy-key`), renamedTo?: string (set with `renamed`), reported.bypassHidden: readonly number[]
 export interface ProtectionInput {
   readonly expected: GitHubRepository                        // parsed from the remote
   readonly repository: RepositoryAnswer
@@ -1875,12 +1877,20 @@ Where this task settles what the shared names left open:
   that sends anything through the person's gh; the row says what (the reads of § 8, through the
   person's gh, to github.com; no credential of idpa's), and 6.2.2 widens it to the pull
   request, beside the push's row.
+- **Every bypass list shown is looked at, ruleset by ruleset** (review of 6.1.3). A repository's
+  administrator is shown a repository ruleset's `bypass_actors` and not an organisation's, so
+  one list can be shown while another is hidden: a `DeployKey` in any list shown refuses, and the
+  refusal names its rulesets (`deployKeys`); the hidden ones are named apart (`bypassHidden`). The
+  report counts only the binding rulesets' lists, and the holding block names only those rulesets
+  (`binding`): a ruleset gh's account bypasses, repeating a rule a binding one supplies, takes
+  nothing away and is not `bypassable` (§ 8, item 3: a rule counts only when its ruleset answers
+  `never`).
 - **Decision 18's line.** `idpa protection` prints, after the list, "Also advised: a ruleset on
   refs/heads/idp-agent/** blocking force pushes and deletions, so a branch under review is never
   rewritten." It is not in `PROTECTION_SETTINGS`: `init platform` prints the base's list, and
   the branches do not exist yet there.
 
-- [ ] **Step 1: The judgement, failing first** (`tests/unit/protection.test.ts`)
+- [x] **Step 1: The judgement, failing first** (`tests/unit/protection.test.ts`)
 
 Fails: `core/github/protection.ts` does not exist. Rules and rulesets are written as GitHub
 answers them (`type`, `ruleset_id`, `parameters`), one fixture per case:
@@ -1896,8 +1906,14 @@ answers them (`type`, `ruleset_id`, `parameters`), one fixture per case:
 | the ruleset answers `always`, `pull_requests_only`, `exempt`, or no `current_user_can_bypass` | false | the three rules' entries, then `bypassable` once | |
 | `pull_request` from a `never` ruleset, `non_fast_forward` and `deletion` from an `always` one | false | `non-fast-forward`, `deletion`, `bypassable` | |
 | two `never` rulesets: 1 approval in one, `require_last_push_approval` in the other | true | [] | the most restrictive wins, as GitHub enforces both |
-| a `DeployKey` in a supplying ruleset's visible `bypass_actors` | false | `deploy-key` | `bypassActors: [{ type: 'DeployKey', count: 1 }]` |
-| `bypass_actors` absent from a supplying ruleset | true | [] | `bypassActors: 'unreadable'` |
+| the three rules from a `never` ruleset, `deletion` repeated by an `always` one | true | [] | `binding: [1]`: a ruleset gh's account bypasses takes nothing away when a binding one supplies what it repeats (review fix: `bypassable` is said only for a required rule type no binding ruleset supplies) |
+| `pull_request` and `non_fast_forward` from a `never` ruleset, `non_fast_forward` repeated by an `always` one | false | `deletion` only | |
+| a `DeployKey` in a supplying ruleset's visible `bypass_actors` | false | `deploy-key` | `bypassActors: [{ type: 'DeployKey', count: 1 }]`, `deployKeys: [1]` |
+| a `DeployKey` visible on ruleset 1, ruleset 2's `bypass_actors` absent | false | `deploy-key` | `deployKeys: [1]`: every list shown is looked at, whichever other is hidden (review fix) |
+| a `DeployKey` in the visible list of an `always` ruleset repeating a rule | false | `deploy-key` | `deployKeys: [2]`: on any supplying ruleset (§ 8, item 3) |
+| `bypass_actors` absent from a supplying ruleset | true | [] | `bypassActors: 'unreadable'`, `bypassHidden: [1]` |
+| a `Team` visible on ruleset 1, ruleset 2's list absent | true | [] | `bypassActors: [{ type: 'Team', count: 1 }]`, `bypassHidden: [2]` |
+| a `RepositoryRole` in an `always` ruleset repeating a rule | true | [] | `bypassActors: []`: only the binding rulesets' lists are reported |
 | an `Integration` and a `Team` visible | true | [] | counted by type, never named |
 | no ruleset rule, the branch `protected` | false | `classic-only` | |
 | no ruleset rule, the branch not protected | false | `pull-request`, `last-push`, `non-fast-forward`, `deletion` | |
@@ -1920,7 +1936,7 @@ answers them (`type`, `ruleset_id`, `parameters`), one fixture per case:
   required status check, once one reports (ADR-0012)`. `protectionText()` is those lines as § 8
   prints them, `  required · …` and `  advised  · …`.
 
-- [ ] **Step 2: The reads, failing first** (`tests/unit/preflight.test.ts`)
+- [x] **Step 2: The reads, failing first** (`tests/unit/preflight.test.ts`)
 
 The fake's model grows (`tools/fake-gh.ts`): `repositories: { owner; name; fullName?;
 archived; permissions: Record<login, { admin; maintain; push }>; bare?: string; branches:
@@ -1958,7 +1974,7 @@ readable) and `repository(model)` helpers. Fails: `readProtection` and `prefligh
 - *reads no field it does not need* — a repository answer with `owner`, `description` and a
   canary field: parsed; a ruleset answer missing `id`: `unreadable`.
 
-- [ ] **Step 3: The command, failing first** (`tests/unit/protection-command.test.ts`)
+- [x] **Step 3: The command, failing first** (`tests/unit/protection-command.test.ts`)
 
 Through `main(['protection', …], { gh: fake.process, env, cwd, out, err, client: untouchable })`,
 over clones from `tests/support/git.ts` whose upstream is `origin` on `git@github.com:acme/iac.git`
@@ -1970,7 +1986,7 @@ the configuration.
 | Case | Exit | stdout | stderr |
 |---|---|---|---|
 | `protectedMain()` | 0 | `renderProtection`'s holding block (below), byte for byte | `checking github.com/acme/iac's main (origin, main's upstream), as ada (gh)` |
-| the same, `ada` with `push` only (`admin` and `maintain` false) | 0 | the block, its fourth line `ada (gh, write) cannot bypass ruleset 1 (current_user_can_bypass: never)` and its fifth `bypass list: not readable with ada's role, so a deploy key there would go unseen` | the same line (the role is read by the preflight, so the stderr line names none, as *Exact lines* words it) |
+| the same, `ada` with `push` only (`admin` and `maintain` false) | 0 | the block, its fourth line `ada (gh, write) cannot bypass ruleset 1 (current_user_can_bypass: never)` and its fifth `bypass list: not shown to ada, who cannot edit ruleset 1, so a deploy key there would go unseen` | the same line (the role is read by the preflight, so the stderr line names none, as *Exact lines* words it) |
 | no ruleset, `main` unprotected | 1 | the non-holding block, the four `missing:` lines and the nine lines | the `checking` line |
 | classic only | 1 | `missing: a ruleset: main is protected by classic branch protection only, which idpa does not read` | |
 | archived | 1 | `missing: …archived…` and no ruleset list | |
@@ -2018,9 +2034,14 @@ Also advised: a ruleset on refs/heads/idp-agent/** blocking force pushes and del
 
 With `dismissStaleOnly`, the second line reads `stale approvals dismissed on a new push (ruleset
 1); approval of the most recent push is not set, so the account your git pushes with could
-approve a pull request gh opened`. With `bypassActors: 'unreadable'`: `bypass list: not readable
-with ada's role, so a deploy key there would go unseen`. With visible actors: `bypass list: 1
-app and 1 team; none is you, as gh reads you`. Status checks: `status checks: ci, deploy/tufin`.
+approve a pull request gh opened`. With `bypassActors: 'unreadable'`: `bypass list: not shown to ada,
+who cannot edit ruleset 1, so a deploy key there would go unseen` (GitHub shows a bypass list
+only to someone who may edit the ruleset, so an organisation's is hidden from a repository's
+administrator: the line names no role). With visible actors: `bypass list: 1 app and 1 team;
+none is you, as gh reads you`. With some lists shown and some not (`bypassHidden`), one line
+each: `bypass list of ruleset 1: 1 team; none is you, as gh reads you`, `bypass list of ruleset
+2: not shown to ada, who cannot edit it, so a deploy key there would go unseen`. The block names
+the rulesets that bind gh's account (`binding`), never one it bypasses. Status checks: `status checks: ci, deploy/tufin`.
 
 **Not holding** (`missing` → text by a `switch` over `Missing` with `const _exhaustive: never`):
 
@@ -2038,8 +2059,9 @@ Then run idpa protection again.
 
 The other `missing:` texts: `approvals` "at least 1 required approval (the pull request rule
 requires 0)"; `bypassable` "rules ada cannot bypass: a ruleset that supplies them lets gh's
-account bypass it"; `deploy-key` "no deploy key in the bypass list: a ruleset that supplies these
-rules lets a deploy key bypass it, and a deploy key pushes with git, where gh cannot see it";
+account bypass it"; `deploy-key` "no deploy key in the bypass list: ruleset 1 lets a deploy key
+bypass it, and a deploy key pushes with git, where gh cannot see it", naming the rulesets of
+`deployKeys` as § 8 asks;
 `classic-only` above; `archived` "a repository that is not archived: github.com/acme/iac is";
 `no-push` "push access: ada cannot push to acme/iac"; `renamed` "the remote's name: GitHub
 answers <full_name>, so the repository was renamed or transferred; update the remote's URL".
@@ -2050,7 +2072,7 @@ this pull request from merging it:`, the lines, `Add a ruleset on main (Settings
 Rulesets):`, `protectionText()`, `Then run this again. Nothing was written.` — unit-tested here,
 first called by 6.2.2's `refuseUnprotected`.
 
-- [ ] **Step 4: `init platform`'s list, failing first** (`tests/unit/init-command.test.ts:124-137`)
+- [x] **Step 4: `init platform`'s list, failing first** (`tests/unit/init-command.test.ts:124-137`)
 
 The case *prints the branch protection it cannot set, on every run* becomes *prints the ruleset
 idpa protection checks, on every run*: both runs print `Branch protection is set in the forge,
@@ -2061,7 +2083,7 @@ check. *Fails:* `BRANCH_PROTECTION` prints six unlevelled lines and "arrives at 
 `src/cli/commands/init.ts:76-90`: `BRANCH_PROTECTION` removed, the three lines built from
 `protectionText()`.
 
-- [ ] **Step 5: The key-reach leg, failing first** (`tests/contract/key-reach.test.ts`)
+- [x] **Step 5: The key-reach leg, failing first** (`tests/contract/key-reach.test.ts`)
 
 A `describe('idpa protection')`, the first command that starts gh (§ 16: "the key-reach leg for
 `idpa protection`, the first command that starts gh"): `main(['protection', '--repo', clone],
@@ -2079,7 +2101,7 @@ GH_CANARY, OPENAI_API_KEY: KEY, IDP_BACKSTAGE_TOKEN: TOKEN, GH_HOST: 'evil.examp
 *Fails:* `protection` is not a command (the run is a phrase, refused on the configuration, and
 the fake received nothing, so the first assertion on `fake.sent` fails before any other).
 
-- [ ] **Step 6: The code**
+- [x] **Step 6: The code**
 
 `src/forge/github/open.ts`:
 
@@ -2184,7 +2206,7 @@ common one to the global configuration (`git config --local --unset-all credenti
 `git config --global credential.helper …`). `tests/unit/doc-symbols.test.ts` holds it from now
 on.
 
-- [ ] **Step 7: Run what changed**
+- [x] **Step 7: Run what changed**
 
 ```bash
 df -h "$TMPDIR"
@@ -2196,7 +2218,7 @@ Expected: PASS; **29** rules (6.1.3 adds none: `cli/` loads `forge/github/open.t
 `preflight.ts`, which *only cli/ reaches forge/ at runtime* allows, and names `GhProcess` by
 type only). `entry.test.ts`'s *knows every command HELP lists* passes with the new line.
 
-- [ ] **Step 8: The documents this makes true**
+- [x] **Step 8: The documents this makes true**
 
 - `AGENTS.md`: `idp-agent protection [--repo <dir>]` in *Current state*'s block, with one
   sentence (reads through the person's gh, no model, no write); the exit codes' paragraph: `idpa

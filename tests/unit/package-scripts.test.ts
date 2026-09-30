@@ -78,3 +78,43 @@ describe('pnpm demo:backstage', () => {
     expect(demo).toMatch(/process\.on\('exit'/)
   })
 })
+
+describe('pnpm demo:github', () => {
+  // idpa protection's three answers against the fake gh (stage 6 plan, Task
+  // 6.1.3): no GitHub, no gh, no ssh, no model. The fake is TypeScript run by
+  // Node's type stripping, as the Backstage demo's is, so it refuses and the
+  // smoke skips it where Node cannot run it.
+  const smoke = readFileSync(path.join(ROOT, 'scripts/smoke.mjs'), 'utf8')
+  const demo = readFileSync(path.join(ROOT, 'scripts/demo-github.mjs'), 'utf8')
+
+  it('is the script, and the smoke runs it', () => {
+    expect(scripts['demo:github']).toBe('node scripts/demo-github.mjs')
+    expect(smoke).toContain("'scripts/demo-github.mjs'")
+  })
+
+  it('both branches are wired: the demo refuses, the smoke skips and goes on', () => {
+    expect(demo).toMatch(/strippingRefusal\(\)/)
+    expect(smoke).toContain('skipped pnpm demo:github: ')
+  })
+
+  it('hands what it runs no GitHub token, and puts its own gh and ssh first on PATH', () => {
+    expect(demo).toMatch(/delete environment\['GH_TOKEN'\]/)
+    expect(demo).toMatch(/delete environment\['GITHUB_TOKEN'\]/)
+    expect(demo).toMatch(/program\('gh', `exec "\$\{process\.execPath\}" --disable-warning=ExperimentalWarning "\$\{path\.join\(ROOT, 'tools\/fake-gh\.ts'\)\}" "\$@"`\)/)
+    expect(demo).toMatch(/program\('ssh', /)
+    expect(demo).toMatch(/PATH: `\$\{BIN_DIR\}\$\{path\.delimiter\}/)
+    expect(demo).toMatch(/GH_CONFIG_DIR: path\.join\(scratch, /)
+  })
+
+  it('removes its scratch directory however it ends', () => {
+    expect(demo).toMatch(/process\.on\('exit', \(\) => rmSync\(scratch, \{ recursive: true, force: true \}\)\)/)
+  })
+
+  it('and the smoke hands the binary a guard gh and ssh, a HOME and a gh folder of its own, and no GitHub variable', () => {
+    expect(smoke).toMatch(/for \(const program of \['gh', 'ssh'\]\)/)
+    expect(smoke).toMatch(/PATH: `\$\{GUARD\}\$\{path\.delimiter\}/)
+    expect(smoke).toMatch(/HOME: path\.join\(INSTALLED, 'home'\)/)
+    expect(smoke).toMatch(/GH_CONFIG_DIR: path\.join\(INSTALLED, 'gh-config'\)/)
+    expect(smoke).toContain("const REACHES_OUT = /^(?:IDP_|GH_|GITHUB_)|_API_KEY$|^SSH_AUTH_SOCK$|^SSH_ASKPASS$/i")
+  })
+})

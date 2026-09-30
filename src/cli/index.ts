@@ -49,7 +49,10 @@ import { runValidate } from './commands/validate.js'
 import { PlanInputError, questionLines, runIntent, runPlan, type Ask } from './commands/plan.js'
 import { openForSubmission, reopening, type Confirm, type SubmitOptions } from './commands/submit.js'
 import { ForgeInputError } from '../forge/errors.js'
+import { GitHubAnswerError } from '../forge/github/api.js'
 import type { GitError } from '../process/git.js'
+import type { GhError, GhProcess } from '../process/gh.js'
+import { runProtection } from './commands/protection.js'
 import { wantsColour } from './render/diff.js'
 import {
   configFlagsOf,
@@ -89,6 +92,7 @@ import {
   noCacheRefusal,
   overviewName,
   planNeedsRepository,
+  protectionNeedsRepository,
   sourceNotice,
   sourceOf,
   type BackstageSource,
@@ -184,6 +188,11 @@ export type Command =
        */
       submit?: true
     }
+  /**
+   * `idpa protection`: absent `repo` is found as `plan` finds it, never the
+   * demo SI and never a catalogue (`source.ts`).
+   */
+  | { name: 'protection'; repo?: string }
   | { name: 'init-platform'; directory: string; owner: string }
   /**
    * Absent `repo` means the repository the user is standing in (§7.3).
@@ -240,6 +249,7 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   idp-agent validate <directory>
   idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json] [--submit]
   idp-agent plan --from <plan.json> [--repo <directory>] [--json] [--submit]
+  idp-agent protection [--repo <directory>]
   idp-agent init [--repo <directory>] [--name <name>] [--lifecycle experimental|production|deprecated] [--owner group:<namespace>/<name>] [--submit] [--iac-repo <locator>] [--environment <name>]...
   idp-agent init platform <directory> --owner @org/team
   idp-agent version
@@ -256,6 +266,12 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   members, and what a System or a Domain holds and what holds it. Without a
   flag, every relation that holds something. It needs no model and no key.
 
+  protection checks, through your gh and with reads only, that the branch the
+  clone tracks on github.com keeps a pull request from merging until someone
+  other than its opener approves its latest commit, and prints the ruleset to
+  add when it does not. It needs gh logged in to github.com as you, and no
+  model; it writes nothing.
+
   init previews the catalog-info.yaml of the service it is run in, or adds to
   the one the repository keeps. --name, --lifecycle and --owner answer what
   its files do not state; at a terminal it asks instead. --iac-repo and
@@ -271,10 +287,10 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   when it is one, else IDP_REPO, else repo in the personal config.yml
   ($XDG_CONFIG_HOME/idp-agent/, else ~/.config/idp-agent/). With none, graph,
   show, relations and a question read the fictional demo SI, as --demo does,
-  and a change is refused. A change inspects the service --project names, or
-  the current directory when it is an application repository (a
-  catalog-info.yaml or a package manifest at its root), and otherwise drafts
-  from the catalogue alone.
+  and a change or idpa protection is refused. A change inspects the service
+  --project names, or the current directory when it is an application
+  repository (a catalog-info.yaml or a package manifest at its root), and
+  otherwise drafts from the catalogue alone.
   A Backstage catalogue answers graph, show, relations and a question when
   IDP_BACKSTAGE_URL, or backstage in the personal config.yml, names its API's
   base (https://<backend host>/api/catalog), ahead of IDP_REPO and repo but
@@ -477,6 +493,25 @@ export function parseArguments(argv: string[]): Command {
     }
   }
 
+  if (commandName === 'protection') {
+    try {
+      // Strict, and no positional: a word after it would otherwise be read
+      // as nothing at all, and --local, --json or --demo mean nothing here.
+      const { values, positionals } = parseArgs({
+        args: rest,
+        options: { repo: { type: 'string' } },
+        allowPositionals: true,
+        strict: true,
+      })
+      if (positionals.length > 0) {
+        return { name: 'error', message: `protection takes no argument but --repo, not ${positionals.join(', ')}` }
+      }
+      return { name: 'protection', ...(values.repo !== undefined ? { repo: values.repo } : {}) }
+    } catch (error) {
+      return { name: 'error', message: (error as Error).message }
+    }
+  }
+
   if (commandName === 'ask') {
     try {
       // Strict, where every argument used to be the question: an option this
@@ -579,6 +614,7 @@ export const COMMANDS = [
   'ask',
   'validate',
   'plan',
+  'protection',
   'init',
   'help',
   'version',
@@ -744,7 +780,7 @@ function parsePhrase(argv: string[]): Command {
 }
 
 /** The commands that read the declarations and call no model. */
-const KEYLESS: ReadonlySet<string> = new Set(['graph', 'show', 'relations', 'validate', 'help', 'version'])
+const KEYLESS: ReadonlySet<string> = new Set(['graph', 'show', 'relations', 'validate', 'protection', 'help', 'version'])
 
 /**
  * What to say after a phrase could not reach a model, when its first word is
@@ -1010,6 +1046,13 @@ export interface MainDeps {
    * `fetch`: the catalogue's token is sent through this and nothing else.
    */
   catalogueFetch?: CatalogueFetch
+  /**
+   * How a vector reaches gh: the fake GitHub a test hands in
+   * (`tests/support/fake-gh.ts`), and the real gh otherwise — the launcher's
+   * own `spawnGh`, which `cli/` never loads. A type, erased: only
+   * `forge/github/` loads the gh launcher.
+   */
+  gh?: GhProcess
   /** Lowered by a test to reach a bound of the catalogue read; a run keeps `BACKSTAGE_LIMITS`. */
   catalogueLimits?: Partial<BackstageLimits>
   /**
@@ -1294,6 +1337,38 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     // A write that failed part-way: the list says what it left, and the run
     // failed — something failed unexpectedly is exit 1.
     return result.found ? EXIT.ok : EXIT.notFound
+  }
+
+  // The branch a declarations repository's clone tracks on github.com,
+  // through the person's gh: found as `plan` finds its repository, never the
+  // demo SI or a catalogue, and said on stderr when it was not typed. No
+  // model is chosen, so none can be called, and nothing is written.
+  if (command.name === 'protection') {
+    const context = sourceContextOf(deps)
+    let declarations: RepositorySource | undefined
+    try {
+      declarations = await sourceOf({ command: 'protection', repo: command.repo }, context)
+    } catch (error) {
+      return failed(error, err)
+    }
+    if (declarations === undefined) {
+      err(`${protectionNeedsRepository(context)}\n\n${usageOf('protection')}`)
+      return EXIT.badUsage
+    }
+    const notice = sourceNotice('protection', declarations, context)
+    if (notice !== undefined) err(`${notice}\n`)
+    let result: CommandResult
+    try {
+      result = await runProtection({
+        repo: declarations.root,
+        env: deps.env ?? process.env,
+        ...(deps.gh === undefined ? {} : { gh: deps.gh }),
+        notice: toStderr(err),
+      })
+    } catch (error) {
+      return failed(error, err)
+    }
+    return report(result, out)
   }
 
   // Reads the directory it was handed, so it must not go through the fixture
@@ -1781,7 +1856,7 @@ interface Read {
  * through — the injected one in a test, the global one in a real run.
  */
 async function providerOf(
-  name: Exclude<DeclarationsCommand, 'plan'>,
+  name: Exclude<DeclarationsCommand, 'plan' | 'protection'>,
   from: ReadFrom,
   deps: MainDeps,
 ): Promise<Read> {
@@ -2199,6 +2274,14 @@ function failed(error: unknown, err: (chunk: string) => void): number {
     err(`${inert(error.message)}\n`)
     return EXIT.notFound
   }
+  // GitHub's answer through gh, at run time: exit 1, in the sentence this
+  // build wrote for the route and the status — never GitHub's or gh's words,
+  // which a repository or a server can reach. A GhError the forge did not
+  // wrap says only gh's command word and a reason of ours.
+  if (error instanceof GitHubAnswerError || isGhError(error)) {
+    err(`${inertLine(error.message, Number.POSITIVE_INFINITY)}\n`)
+    return EXIT.notFound
+  }
   // The Supervisor's model gave no word, twice: exit 1, as a call that could
   // not succeed is, not 3 — nothing was understood and declined
   // (gap-ask-grounding-7). One line, never cut: it quotes the model's text.
@@ -2222,6 +2305,10 @@ function failed(error: unknown, err: (chunk: string) => void): number {
  */
 const isGitError = (error: unknown): error is GitError =>
   error instanceof Error && error.name === 'GitError' && typeof (error as { stderr?: unknown }).stderr === 'string'
+
+/** By name, for the reason `isGitError` is: only `forge/github/` loads the gh launcher. */
+const isGhError = (error: unknown): error is GhError =>
+  error instanceof Error && error.name === 'GhError' && typeof (error as { kind?: unknown }).kind === 'string'
 
 /**
  * Runs one command that needs a model, closes the tape afterwards, and traces
