@@ -4,12 +4,10 @@ import { PROPERTY_TIMEOUT, freshSeed } from './budget.js'
 import {
   arbitraryEntity,
   arbitraryHandWrittenFile,
-  arbitraryHandWrittenFileEndingInBreak,
   arbitraryHandWrittenGrant,
   handWrittenAround,
   entityName,
   arbitraryValidPlan,
-  handWrittenFileOf,
 } from './arbitraries.js'
 import { parseEntity, serializeEntity } from '../../src/core/yaml/serialize.js'
 import { entitySchema, type Entity } from '../../src/core/schemas/entity.js'
@@ -88,47 +86,27 @@ describe('invariants', { timeout: PROPERTY_TIMEOUT }, () => {
     // The file is hand-written on purpose. Building it with insertDocument would
     // make this vacuous: the input would already be normalised by the code under
     // test, and a parse-and-restringify implementation would pass.
+    //
+    // Every file, whether its last line ends in a line break or not: one that
+    // does not keeps its missing break at its new end, the way it keeps its
+    // byte-order mark and its CRLF. Before that, `# note` came back as `# note`
+    // and a line break, and these round trips left such a file out (B1).
+    const seed = freshSeed()
+    let unended = 0
     fc.assert(
-      fc.property(arbitraryHandWrittenFileEndingInBreak, arbitraryEntity, (file, entity) => {
+      fc.property(arbitraryHandWrittenFile, arbitraryEntity, (file, entity) => {
         fc.pre(!listDocumentNames(file).includes(entity.metadata.name))
         const grown = insertDocument(file, serializeEntity(entity))
+        if (file !== '' && !file.endsWith('\n')) unended += 1
         expect(removeDocument(grown, entity.metadata.name)).toBe(file)
       }),
-    )
-  })
-
-  // Pinned, not fixed: a hand-written file whose last line has no line break
-  // comes back with one. `insertDocument` must end that line before the
-  // document it appends, and `removeDocument` cannot know the break was never
-  // there — so §9.2's "byte for byte" holds only for a file that ends in one,
-  // and the two round trips run over `arbitraryHandWrittenFileEndingInBreak`.
-  // Found by batch B1's generators: `# note` comes back as `# note` and a line
-  // break. This asserts those exact bytes rather than that the round trip
-  // fails: a test that expects a failure stays green for any failure, a crash
-  // in the generator included. It turns red the day the defect is fixed —
-  // then it asserts `file`, and the round trips draw every file.
-  it('insert then remove gives a file with no final line break one, and nothing else', () => {
-    const seed = freshSeed()
-    let nonEmpty = 0
-    fc.assert(
-      fc.property(
-        handWrittenFileOf({ finalNewline: fc.constant(false) }),
-        arbitraryEntity,
-        ({ text: file }, entity) => {
-          fc.pre(!listDocumentNames(file).includes(entity.metadata.name))
-          const grown = insertDocument(file, serializeEntity(entity))
-          const eol = file.includes('\r\n') ? '\r\n' : '\n'
-          if (file !== '') nonEmpty += 1
-          expect(removeDocument(grown, entity.metadata.name)).toBe(file === '' ? '' : file + eol)
-        },
-      ),
       { seed },
     )
-    // An empty file has no last line to break: 91 to 99 of 100 drawn at seeds
-    // 1 to 25 held one.
-    expect(nonEmpty, `seed ${seed}`).toBeGreaterThan(50)
+    // Files with no final break drawn, or the property says nothing about
+    // them: 40 to 56 of 100 were, at seeds 1 to 25.
+    expect(unended, `seed ${seed}`).toBeGreaterThan(25)
     const grown = insertDocument('# note', serializeEntity(SOME))
-    expect(removeDocument(grown, SOME.metadata.name)).toBe('# note\n')
+    expect(removeDocument(grown, SOME.metadata.name)).toBe('# note')
   })
 
   it('insert then append then remove yields the file byte for byte', () => {
@@ -138,7 +116,7 @@ describe('invariants', { timeout: PROPERTY_TIMEOUT }, () => {
     // insertDocument — a normalised input would make this vacuous.
     fc.assert(
       fc.property(
-        arbitraryHandWrittenFileEndingInBreak,
+        arbitraryHandWrittenFile,
         arbitraryEntity,
         entityName,
         (file, entity, consumer) => {

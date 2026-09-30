@@ -1192,10 +1192,12 @@ Schemas, serialiser, path computation, diff. No I/O. Around 60 % of the suite.
                     or the operation is dropped, naming the file
 ```
 
-One known exception to the round trip: a file whose last line has no line break comes back
-with one, since insertion ends that line and removal cannot know it was never ended. It is
-listed in the roadmap's known debts, and `tests/invariants/core.test.ts` pins the bytes it
-comes back as.
+"Byte for byte" includes how the file ends. A file whose last line has no line break still
+ends without one after an insertion: that line gains the break that separates it from the
+new document, and the document's own last line carries none — kept as the byte-order mark
+and the line endings are kept, so removal gives back exactly what was there. A new file, or
+an empty one, ends in a line break; a file holding a line break alone is not empty but one
+blank line, and comes back as one.
 
 "Initial state" is the observable state — every ref, what `HEAD` is, the index, the
 working tree — and not `.git/objects`. "Applying twice" is held at two levels: over the

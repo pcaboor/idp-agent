@@ -240,14 +240,26 @@ export class SurgeryError extends Error {
   }
 }
 
-/** Append a document, preceded by a blank line when the file is not empty. */
+/**
+ * Append a document, preceded by a blank line when the file is not empty.
+ *
+ * The file ends the way it did: a last line with no line break gains the one
+ * that separates it from the document, and the document's own last line
+ * carries none — as the byte-order mark and CRLF are kept. Ending it anyway
+ * was a byte nobody asked for, and `removeDocument` cannot know it was never
+ * there, so insert then remove did not give the file back (B1). An empty file
+ * has no convention to keep, and a new file ends in a line break. Empty means
+ * no bytes: a line break alone is one blank line, kept like any other.
+ */
 export function insertDocument(fileContent: string, documentText: string): string {
   const body = documentText.endsWith(NEWLINE) ? documentText.slice(0, -1) : documentText
   const documentLines = [MARKER, ...body.split(NEWLINE)]
   const eol = endingOf(fileContent)
-  const { lines } = splitLines(fileContent, eol)
-  if (lines.length === 0) return joinLines(documentLines, true, false, eol)
-  return joinLines([...lines, '', ...documentLines], true, false, eol)
+  if (fileContent === '') return joinLines(documentLines, true, false, eol)
+  const { lines, trailing } = splitLines(fileContent, eol)
+  // splitLines reads a lone break as no lines at all, which drops it.
+  const kept = lines.length === 0 ? [''] : lines
+  return joinLines([...kept, '', ...documentLines], trailing, false, eol)
 }
 
 /**

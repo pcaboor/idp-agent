@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  appendSequenceItem,
   insertDocument,
   listDocumentNames,
   removeDocument,
@@ -168,5 +169,78 @@ describe('a file written with CRLF line endings', () => {
   it('removes what it inserted, byte for byte', () => {
     const file = crlf(`# hand written\n---\n${docA}`)
     expect(removeDocument(insertDocument(file, docB), 'beta')).toBe(file)
+  })
+})
+
+describe('a file whose last line has no line break', () => {
+  // The file's convention is kept, as its byte-order mark and its CRLF are:
+  // the old last line gains the break that separates it from what follows,
+  // and the new document's last line carries none. Adding one there was a
+  // byte nobody asked for, and removal could not know it had never been there,
+  // so `# note` came back as `# note` and a line break (B1, core-yaml-6).
+  const crlf = (text: string) => text.replaceAll('\n', '\r\n')
+  const unended = (text: string) => text.replace(/\r?\n$/, '')
+
+  it('comes back byte for byte after an insertion and a removal', () => {
+    const grown = insertDocument('# note', docB)
+    expect(grown).toBe(`# note\n\n---\n${unended(docB)}`)
+    expect(removeDocument(grown, 'beta')).toBe('# note')
+  })
+
+  it('keeps every byte ahead of a creation, and still ends without a break', () => {
+    const file = unended(`# hand written\n---\n${docA}`)
+    const grown = insertDocument(file, docB)
+    // Every existing byte, then the separator the old last line needs.
+    expect(grown.startsWith(`${file}\n`)).toBe(true)
+    expect(grown).toBe(`${file}\n\n---\n${unended(docB)}`)
+    expect(grown.endsWith('\n')).toBe(false)
+    expect(listDocumentNames(grown)).toEqual(['alpha', 'beta'])
+    expect(removeDocument(grown, 'beta')).toBe(file)
+  })
+
+  it('does the same with CRLF line endings', () => {
+    const file = unended(crlf(`# hand written\n---\n${docA}`))
+    const grown = insertDocument(file, docB)
+    expect(grown).toBe(`${file}\r\n\r\n---\r\n${unended(crlf(docB))}`)
+    expect(grown).not.toMatch(/(?:^|[^\r])\n/)
+    expect(removeDocument(grown, 'beta')).toBe(file)
+  })
+
+  it('does the same behind a byte-order mark', () => {
+    const file = unended(`\uFEFF# hand written\n---\n${docA}`)
+    const grown = insertDocument(file, docB)
+    expect(grown).toBe(`${file}\n\n---\n${unended(docB)}`)
+    expect(removeDocument(grown, 'beta')).toBe(file)
+  })
+
+  it('keeps a byte-order mark alone on its line, and one ahead of CRLF', () => {
+    // A mark alone is what an editor saving an empty file with one leaves.
+    expect(removeDocument(insertDocument('\uFEFF', docB), 'beta')).toBe('\uFEFF')
+    const file = unended(crlf(`\uFEFF# hand written\n---\n${docA}`))
+    expect(removeDocument(insertDocument(file, docB), 'beta')).toBe(file)
+  })
+
+  it('keeps it through an append into the document it gained', () => {
+    const file = unended(`---\n${docA}`)
+    const grown = insertDocument(file, `${docB}spec:\n  owner: group:default/tiger\n`)
+    const amended = appendSequenceItem(grown, 'beta', 'dependencyOf', 'component:default/x')
+    expect(amended).toBe(`${grown}\n  dependencyOf:\n    - component:default/x`)
+    expect(removeDocument(amended, 'beta')).toBe(file)
+  })
+
+  it('leaves an empty file to become a new one, which ends in a break', () => {
+    expect(insertDocument('', docA)).toBe(`---\n${docA}`)
+  })
+
+  it('reads a line break alone as a blank line, not as an empty file', () => {
+    // Empty means no bytes. A lone break is one blank line, and dropping it was
+    // the same byte nobody asked to lose: `\n` came back as nothing.
+    const grown = insertDocument('\n', docB)
+    expect(grown).toBe(`\n\n---\n${docB}`)
+    expect(listDocumentNames(grown)).toEqual(['beta'])
+    expect(removeDocument(grown, 'beta')).toBe('\n')
+    const grownCrlf = insertDocument('\r\n', docB)
+    expect(grownCrlf).toBe(`\r\n\r\n---\r\n${crlf(docB)}`)
+    expect(removeDocument(grownCrlf, 'beta')).toBe('\r\n')
   })
 })
