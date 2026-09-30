@@ -417,6 +417,10 @@ Each pull request adds its line here.
 
 ### Documentation
 
+- Stage 6 is planned ([the plan](docs/plans/stage-6-github.md)): eleven stacked pull requests,
+  from the git and gh launchers and their allow-list to the owner's live test and re-recording,
+  each test first, with the owner's four answers of 2026-09-30; stage 6's ADR is numbered 0015
+  ([#121](https://github.com/pcaboor/idp-agent/pull/121)).
 - `backstage-http` slice 2 is planned ([the plan](docs/plans/backstage-http-slice-2.md)): a
   catalogue past a bound answered in part and saying so, a disk cache sealed by a MAC and read
   back through the same checks as the network, `--refresh` and `--cached`; three stacked pull

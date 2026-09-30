@@ -61,7 +61,9 @@ here, one pull request each, each naming the check run together at the end.
    credential, and the base's ruleset is checked before any write and again at the moment of
    acting. Four slices: 6.1 the git/gh allow-list and `idpa protection`; 6.2 push and pull
    request on `plan --from`; 6.3 the intent, `init` and phrase roads; 6.4 the owner's live test,
-   ADR-0015 and the documents.
+   ADR-0015 and the documents. Planned ([the plan](plans/stage-6-github.md),
+   [#121](https://github.com/pcaboor/idp-agent/pull/121)): eleven pull requests, 6.1.1 to
+   6.4.3, the last the owner's re-recording of the tapes.
 3. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence.
@@ -310,6 +312,13 @@ The owner's decisions, dated, each with where it is recorded.
   its shape, and `.idp-agent.yml` is committed. `acme/iac`, `github.com/acme/iac` and
   `https://github.com/acme/iac.git` stay accepted (confirmed by the owner,
   [#111](https://github.com/pcaboor/idp-agent/pull/111)).
+- Stage 6's plan, the owner's four answers: with `--local`, the closing line is `--local:
+  nothing pushed by this run`, which stays true when an earlier run pushed the branch; the
+  "submitting to" line names gh's login and no role, which `idpa protection` prints; the
+  suite removes `NODE_USE_ENV_PROXY`, so a recording is never sent to the closed proxy port
+  and the owner checks nothing first; and a question put to `idpa "<phrase>" --submit` is exit
+  3, `unsupported`, the mirror of a change put to `ask`
+  ([#121](https://github.com/pcaboor/idp-agent/pull/121)).
 
 ## Known debts and open items
 
