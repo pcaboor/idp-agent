@@ -91,6 +91,10 @@ const run = async (scenario: string, intent: string, entities: Item[]): Promise<
   expect(stderr, `${scenario}: the recording is stale — re-record it`).not.toMatch(
     /prompt changed since recording/,
   )
+  // A tape turn the run never reached fails the run, as in plan-mode.test.ts.
+  expect(stderr, `${scenario}: the tape holds turns the run never makes`).not.toMatch(
+    /never replayed/,
+  )
   // The catalogue was read — not the demo SI, not a repository.
   expect(catalogue.sent.length, `${scenario}: the catalogue was never read`).toBeGreaterThan(0)
   expect(stderr).toContain('reading the Backstage catalogue at 127.0.0.1:7007 (IDP_BACKSTAGE_URL)')

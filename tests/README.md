@@ -83,6 +83,10 @@ loops, the tools, the gates, the renderers all run for real.
 - **A turn the tape does not hold is fatal**: `no recording for <scenario> <agent> turn <n>`.
   A new scenario, or a change that makes an agent take a turn more, fails until it is
   recorded.
+- **A turn the run never reached is fatal too**, once the run has succeeded:
+  `recording <scenario>: <agent> turn <n> was never replayed`. A change that makes an agent
+  take a turn less fails the same way, and a tape cannot keep a turn no scenario plays —
+  nor a second entry for one turn, whose earlier copy is named `an earlier <agent> turn <n>`.
 - **A turn whose request changed warns** — `the prompt changed since recording; replaying
   anyway` — and replays the old answer. That answer was given to a request the code no
   longer sends. `scenarios/plan-mode.test.ts` turns the warning into a failure, naming the
@@ -93,21 +97,30 @@ loops, the tools, the gates, the renderers all run for real.
 
 ### What makes a tape stale
 
-The digest is taken over the whole request an agent builds (`digestOf` in
-`src/llm/runtime.ts`), so anything that changes what a model is sent changes it:
+The digest is taken over the request as a provider is shown it (`digestsOf` in
+`src/llm/runtime.ts`): the system prompt, the transcript, the tool choice, and each tool's
+name, description and advertised JSON Schema. Anything that changes what a model is sent
+changes it:
 
 - an agent's system prompt, or the wording of a message the harness writes into the
   transcript — an opening message, a repair report, a refusal's text;
-- a tool's name or description, or what a tool returns;
+- a tool's name or description, a field's `.describe()`, a `.max()` or a `.regex()`, or what
+  a tool returns;
 - a fixture a scenario reads: the Inspector's `read_file` results and the Architect's search
   results are in the transcript;
 - one changed turn: turn *n* carries turn *n − 1*'s answers, so every later turn of that
   agent warns too.
 
-What does not: the timeout, and part of a tool's schema. The digest holds the tool's Zod
-schema as `JSON.stringify` writes it, which keeps its fields and drops a `.max()`, a
-`.regex()` or a `.describe()`; such a change reaches the provider and stales a tape with no
-warning (review agents-llm-9, batch B2 in the roadmap).
+What does not: the timeout, and the settings of a call that are not part of the request.
+
+That is a turn recorded since 2026-09-30, whose digest starts `sent:sha256:`. A turn
+recorded before holds a `sha256:` digest, taken over the request as the agents build it,
+with each tool's Zod schema as `JSON.stringify` writes it: its fields are there, a `.max()`,
+a `.regex()` and a `.describe()` are not, so such a change still stales that turn with no
+warning. It cannot be moved to the new digest without a key: the tape stores neither the
+tools nor the tool choice it was sent, and its transcript was stored as it grew after the
+call (review tests-6, wip-diff-12). The replay compares each turn with the digest in its own
+scheme, so an old turn keeps the verdict it had until it is recorded again.
 
 ### When your change stales one
 
@@ -133,9 +146,9 @@ IDP_PROVIDER=openai IDP_MODEL=<model> OPENAI_API_KEY=… IDP_RECORDING=record \
 - Only a file under `tests/scenarios/` records; everywhere else the variables are removed and
   the network stays closed. `-t` keeps the run to the scenario you name: recording calls the
   model for every turn of every scenario it runs, with no replay.
-- The tape is written when the run ends, merged into the old one: a turn the new run did
-  not take stays in the file (review tests-5, batch B2). Check the diff for turns that no
-  longer belong.
+- The tape is written when the run ends, from an empty one: it holds the turns the new run
+  made and nothing of the file it replaces (review tests-5). A run that fails writes
+  nothing.
 - Read the new tape before committing it. It holds every file the Inspector read, verbatim;
   `carries no credential` fails on a header's name, key material, a secret's assignment or a
   known token's shape, not on everything a file can hold.

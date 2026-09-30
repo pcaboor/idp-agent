@@ -152,6 +152,11 @@ const run = async (
   expect(stderr, `${scenario}: the recording is stale — re-record it`).not.toMatch(
     /prompt changed since recording/,
   )
+  // A tape turn the run never reached fails the run (src/llm/recording.ts),
+  // and is said here by name: the exit code alone is one `endedWell` accepts.
+  expect(stderr, `${scenario}: the tape holds turns the run never makes`).not.toMatch(
+    /never replayed/,
+  )
   // Whatever the model chose, the trace a replay produces tells the run the
   // way its own stream did: every span closed by an event, every model call
   // inside an agent, every gate verdict under its attempt.

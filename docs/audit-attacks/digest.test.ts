@@ -3,7 +3,8 @@ import { describe, expect } from 'vitest'
 import { it } from './oracle.js'
 import { z } from 'zod'
 
-// Mirrors src/llm/runtime.ts digestOf exactly (it is not exported).
+// Mirrors the old scheme's digest (`sha256:`, one half of `digestsOf` in
+// src/llm/runtime.ts) exactly; it is not exported.
 const digestOf = (value: unknown): string =>
   `sha256:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`
 

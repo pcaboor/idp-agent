@@ -46,10 +46,12 @@ hands an invalid call back unchanged. The gate is on the other side — every to
 in `agents/` parses the call against its own Zod schema, and the Analyst and the Reviewer
 hand a failed `answer` or `verdict` back for repair. It lives here and not in the agents'
 schemas because this is the single crossing point, and because `spec.parameters` is inside
-the recording digest, where reshaping it would stale every tape. The digest does **not**
-cover the advertised JSON Schema: the existing tapes were recorded against the union shape
-and replay without a warning, which is sound only because the argument shape is identical,
-and the next re-record captures the new one. `tests/contract/providers.test.ts` checks the
+the old scheme's recording digest, where reshaping it would stale every tape recorded under
+it. A turn recorded since 2026-09-30 is digested over the advertised JSON Schema itself
+(`digestsOf`, below), so a change to what `objectRooted` shows stales it. The turns
+recorded before were digested over the Zod schema, against the union shape, and replay
+without a warning, which is sound only because the argument shape is identical.
+`tests/contract/providers.test.ts` checks the
 bytes each adapter actually sends, which no tape can — replay never builds an adapter.
 
 ## A turn that said nothing is not sent back
@@ -220,7 +222,21 @@ key the recording was made with.
 The key is `(scenario, agent, turn)`, never a hash of the prompt: hashing would invalidate
 every recording on one changed comma. The digest is stored and *compared*, so a prompt that
 changed since recording **warns and replays anyway**, while a **missing entry is fatal** —
-a warning there would let a brand new scenario pass green having replayed nothing.
+a warning there would let a brand new scenario pass green having replayed nothing. So is
+the converse: a replayed run that succeeds having left a turn of its tape unplayed fails
+(`assertAllReplayed`) — the earlier of two entries for one turn included, which the key
+leaves unreachable — and a recording starts from an empty tape, so a re-record keeps
+nothing of the run before it.
+
+The digest has two schemes, named by its prefix, and a turn is compared in its own.
+`sent:sha256:` is taken over what a provider is shown — the system prompt, the transcript,
+the tool choice, each tool's name, description and advertised JSON Schema — and is what a
+turn is recorded under since 2026-09-30. `sha256:` is the request as the agents build it,
+each tool's Zod schema as `JSON.stringify` writes it: blind to a `.describe()`, a `.max()`
+or a `.regex()`, and moved by a Zod upgrade that sends the same bytes. It is still
+computed because the tapes recorded before hold it and cannot be moved off it honestly: a
+turn stores neither its tools nor its tool choice, and its transcript was stored as the
+agent grew it after the call. The runtime now stores a copy taken before the call.
 
 One consequence worth knowing before you debug it: turn *n*'s prompt embeds turn *n−1*'s
 tool output, so a single changed fixture row cascades digest warnings down the rest of a

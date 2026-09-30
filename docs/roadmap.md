@@ -50,20 +50,16 @@ Each line says what the item is for. The sweep of the review is done
 ([its verdicts](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27)); its batches are
 here, one pull request each, each naming the check run together at the end.
 
-1. **Batch B2, the recording harness, offline.** tests-5, wip-diff-12, tests-6, and the
-   harness half of agents-llm-9: record from an empty tape, fail on a turn never replayed,
-   and digest the JSON Schema the provider is sent. It needs no key, but it prunes dead turns
-   and rewrites every tape's digest, so it waits for the owner's go-ahead.
-2. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
+1. **`backstage-http` slice 2: large catalogues and the cache.** Before a real, large
    catalogue is plugged in.
-3. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
+2. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
    authorisation (ADR-0006).
-4. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
+3. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence.
-5. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
+4. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
    the project's end goal (2026-09-23).
-6. **After stage 7, the enterprise needs: a discussion, not a stage.** The owner brings the
+5. **After stage 7, the enterprise needs: a discussion, not a stage.** The owner brings the
    needs and constraints they identified for a company — for example MCP servers such as
    Jira's, for ticket handling — to be discussed before anything is planned. Nothing is
    scheduled; design §13 keeps real Jira integrations out of v0.1, and an MCP server exposed
@@ -254,6 +250,15 @@ The owner's decisions, dated, each with where it is recorded.
   mark and CRLF. The debt B1 found and pinned ([#113](https://github.com/pcaboor/idp-agent/pull/113))
   is closed, and §9.2's two round trips draw every file
   ([#114](https://github.com/pcaboor/idp-agent/pull/114)).
+- For batch B2 alone, the owner authorised what the rules otherwise forbid: `tests/recordings`
+  may change with no key and no `IDP_RECORDING=record` — every tape's digest fields
+  rewritten, its dead turns pruned — and no recorded response, nor the recorded content of
+  any request, may change. A rewrite must never hide staleness: a new digest is computed
+  from what the tape recorded, never from today's request, and where a tape does not hold
+  enough the batch stops and reports the options. The 16 turns no scenario replays were
+  pruned; no digest was rewritten, because no tape holds the tools or the tool choice it was
+  sent, and its transcript was stored as the agent grew it after the call. The question
+  tapes stale today are still reported stale ([#116](https://github.com/pcaboor/idp-agent/pull/116)).
 
 ## Known debts and open items
 
@@ -351,6 +356,17 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
   there and not in the service's own catalog-info is proposed again (stage 8, slice 3).
 
 **Recordings that need the owner's key**
+
+- **Every tape recorded before 2026-09-30 keeps the old digest, blind to part of a tool's
+  schema.** Batch B2 ([#116](https://github.com/pcaboor/idp-agent/pull/116)) digests a turn
+  recorded since over what the provider is sent, each tool's advertised JSON Schema among
+  it; a turn recorded before holds `sha256:`, taken over each tool's Zod object, which
+  misses a `.describe()`, a `.max()` or a `.regex()`. It
+  is still compared as before, so no verdict moved, and it cannot be recomputed from the
+  tape. The options are the owner's: re-record every tape, which moves each to the new
+  digest; or say, on every replay of an old turn, that its tool schema was not recorded;
+  and, for the next scheme change, store the tools and the tool choice in the tape from the
+  next recording on, which makes a digest recomputable offline at the cost of a larger tape.
 
 - **The question-mode recordings are stale.** `tests/scenarios/question-mode.test.ts`'s
   question tapes (`question-prod-databases.json`, `question-consumers-of-billing-db.json`,
@@ -577,7 +593,9 @@ vocabulary), product-gap-6 (no offset and no system, lifecycle or tag criteria i
   and reasoning in the transcript), agents-llm-2 (a context and call budget).
 - **Recordings and what the scenarios pin.** agents-llm-9, tests-4, wip-diff-6,
   gap-ask-grounding-13, and wip-diff-7 with tests-2 (pin each replayed exit code and diff).
-  Batch B2 waits for a go-ahead too.
+  Batch B2 closed agents-llm-9's harness half
+  ([#116](https://github.com/pcaboor/idp-agent/pull/116)); its re-record and the forced-turn
+  fallback's digest are left.
 - **What the Reviewer and the Analyst may accept** (each also a re-record). wip-diff-3 (the
   Reviewer vetoes declaring a missing resource the request needs; high), security-6 (no rule
   ties a grant's consumer and target to the request), gap-ask-grounding-2, -3, -4 and -8

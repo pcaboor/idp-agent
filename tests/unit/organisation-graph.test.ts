@@ -61,8 +61,9 @@ const calling = (...calls: Array<readonly [string, unknown]>): GenerateResult =>
 })
 
 /**
- * Every request a question sends, as `digestOf` hashes it, when the Analyst
- * searches every kind and reads every entity of the source — so each row
+ * Every request a question sends, as the old scheme's digest (`sha256:`,
+ * `digestsOf` in src/llm/runtime.ts) hashes it, when the Analyst searches
+ * every kind and reads every entity of the source — so each row
  * `search_entities` and `get_entity` can return is in a request, and so is the
  * summary both agents open on.
  */

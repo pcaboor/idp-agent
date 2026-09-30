@@ -2277,8 +2277,13 @@ async function openSession(
       // line on stderr, inert, while the run waits.
       notice: (line) => err(`  ! ${whole(line)}\n`),
     }),
+    // After a run that succeeded, and only then: a failed run stopped short of
+    // its tape, and its failure is what it says. A replay that left a turn
+    // unplayed fails the run — the tape holds more than its scenario makes.
     save: async (): Promise<void> => {
-      if (mode === 'record' && tape !== undefined) await tape.save()
+      if (tape === undefined) return
+      if (mode === 'record') await tape.save()
+      else tape.assertAllReplayed()
     },
     // A replayed trace's latencies measure the tape, not the model; `idp.mode`
     // is how a reader of the trace knows which.
