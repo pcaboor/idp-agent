@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -131,5 +131,127 @@ describe('writeScaffold', () => {
     await writeFile(path.join(root, 'catalog/databases/mine.yml'), 'keep me\n')
     await writeScaffold(root, await files())
     expect(await readFile(path.join(root, 'catalog/databases/mine.yml'), 'utf8')).toBe('keep me\n')
+  })
+})
+
+/**
+ * Real directories and real links, as `project-fs.test.ts` stages them: a link
+ * is only a link on a disk. Windows gives a symbolic link to an administrator
+ * or to developer mode alone, so the runner may not be able to make one; these
+ * cases are skipped there, by this condition, rather than failing on the setup.
+ */
+const LINKS = process.platform !== 'win32'
+
+describe.skipIf(!LINKS)('writeScaffold, over symbolic links (runtime-probe-11, core-yaml-5)', () => {
+  /** What `dir` holds, every path under it, so "nothing landed there" is a comparison. */
+  const listing = async (dir: string): Promise<string[]> =>
+    (await readdir(dir, { recursive: true })).map(String).sort()
+
+  const refusal = async (root: string): Promise<ScaffoldWriteError> => {
+    const error = await writeScaffold(root, await files()).then(
+      () => undefined,
+      (thrown: unknown) => thrown,
+    )
+    expect(error).toBeInstanceOf(ScaffoldWriteError)
+    return error as ScaffoldWriteError
+  }
+
+  it('never writes through a folder linked outside the root', async () => {
+    // The review's probe: `catalog -> ../outside` put three witnesses outside.
+    const outside = await temp()
+    const root = await temp()
+    await symlink(outside, path.join(root, 'dependencies'))
+
+    const error = await refusal(root)
+
+    expect(error.failed).toBe('dependencies/access/.witness.yml')
+    expect(error.message).toContain('dependencies is a symbolic link')
+    expect(await listing(outside)).toEqual([])
+    // Nothing is undone: what came before the link is written, and said.
+    expect(error.written).toContain('catalog/databases/.witness.yml')
+  })
+
+  it('never writes through a folder linked inside the root either', async () => {
+    // Inside is no excuse: the file a reviewer is shown lands at another path.
+    const root = await temp()
+    await mkdir(path.join(root, 'elsewhere'))
+    await symlink(path.join(root, 'elsewhere'), path.join(root, 'catalog'))
+
+    const error = await refusal(root)
+
+    expect(error.message).toContain('catalog is a symbolic link')
+    expect(await listing(path.join(root, 'elsewhere'))).toEqual([])
+  })
+
+  it('never writes through a linked folder deeper down', async () => {
+    const outside = await temp()
+    const root = await temp()
+    await mkdir(path.join(root, '.github'))
+    await symlink(outside, path.join(root, '.github/workflows'))
+
+    const error = await refusal(root)
+
+    expect(error.failed).toBe('.github/workflows/validate.yml')
+    expect(error.message).toContain('.github/workflows is a symbolic link')
+    expect(await listing(outside)).toEqual([])
+  })
+
+  it('never creates the folder a dangling link names', async () => {
+    // `mkdir -p` through the link made the folder it led to, outside.
+    const outside = await temp()
+    const root = await temp()
+    await mkdir(path.join(root, 'catalog'))
+    await symlink(path.join(outside, 'gone'), path.join(root, 'catalog/databases'))
+
+    const error = await refusal(root)
+
+    expect(error.failed).toBe('catalog/databases/.witness.yml')
+    expect(error.message).toContain('catalog/databases is a symbolic link')
+    expect(await listing(outside)).toEqual([])
+  })
+
+  it('keeps a file that is a link, and writes nothing through it', async () => {
+    // `wx` never followed one and still does not: a link where a file goes is
+    // kept as a hand-edited file is, and `init platform` says a kept
+    // registration is not a regular file (init-command.test.ts).
+    const outside = await temp()
+    await writeFile(path.join(outside, 'owners'), '* @outside/team\n')
+    const root = await temp()
+    await symlink(path.join(outside, 'owners'), path.join(root, 'CODEOWNERS'))
+
+    const report = await writeScaffold(root, await files())
+
+    expect(report.kept).toEqual(['CODEOWNERS'])
+    expect(await readFile(path.join(outside, 'owners'), 'utf8')).toBe('* @outside/team\n')
+  })
+
+  it('keeps a dangling link where a file goes, and creates nothing at its target', async () => {
+    const outside = await temp()
+    const root = await temp()
+    await symlink(path.join(outside, 'planted'), path.join(root, 'CODEOWNERS'))
+
+    const report = await writeScaffold(root, await files())
+
+    expect(report.kept).toEqual(['CODEOWNERS'])
+    expect(await listing(outside)).toEqual([])
+  })
+
+  it('writes into the directory it was named, when that name is itself a link', async () => {
+    // The user chose that directory, by whatever path; below it, nothing is
+    // followed. A temporary directory on macOS is reached through /var, a link.
+    const target = await temp()
+    const holder = await temp()
+    await symlink(target, path.join(holder, 'repo'))
+
+    const report = await writeScaffold(path.join(holder, 'repo'), await files())
+
+    expect(report.written).toHaveLength(13)
+    expect(await readFile(path.join(target, 'CODEOWNERS'), 'utf8')).toContain('@acme/platform')
+  })
+
+  it('creates the directory it was named when it does not exist yet', async () => {
+    const holder = await temp()
+    const report = await writeScaffold(path.join(holder, 'new/iac'), await files())
+    expect(report.written).toHaveLength(13)
   })
 })

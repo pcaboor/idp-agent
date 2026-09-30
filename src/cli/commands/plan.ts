@@ -1,5 +1,4 @@
 import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 import { NOT_INSPECTED, draftPlan } from '../../agents/architect.js'
 import type { EventSink } from '../../agents/events.js'
 import { inspect } from '../../agents/inspector.js'
@@ -15,7 +14,7 @@ import { formatSummary } from '../../agents/summary.js'
 import { buildTools } from '../../agents/tools/graph-tools.js'
 import { EntityGraph, refOf } from '../../context/graph/entity-graph.js'
 import { summariseGraph, type SiSummary } from '../../context/graph/summary.js'
-import { readRepository } from '../../context/iac-fs/snapshot.js'
+import { readRepository, readRepositoryText } from '../../context/iac-fs/snapshot.js'
 import { readProject } from '../../context/project-fs/snapshot.js'
 import { renderUnifiedDiff, type FileEdit } from '../../core/diff/unified.js'
 import { clearPlan, type Cleared, type ClearInput, type ClearRefusal } from '../../core/plan/clear.js'
@@ -176,12 +175,13 @@ async function loadPlan(from: string): Promise<Plan> {
  * provenance and drops the text, and `planEdits` composes against text — it has
  * to, because a reviewer reads an added line and not an AST (§4.3). Reading
  * twice is the price of not making the snapshot carry a second representation
- * of every file.
+ * of every file. Read by `iac-fs`, as the snapshot was, so the two reads agree
+ * on what a link is: never followed.
  *
- * A file it cannot read refuses the run, named. `readRepository` reports one
- * as a rejection, which is right for `validate`; skipping it here is not:
- * `planEdits` takes a path it holds no bytes for as a file that does not
- * exist, and would preview a creation over one that does.
+ * A file it cannot read refuses the run, named — a symbolic link among them.
+ * `readRepository` reports one as a rejection, which is right for `validate`;
+ * skipping it here is not: `planEdits` takes a path it holds no bytes for as a
+ * file that does not exist, and would preview a creation over one that does.
  */
 async function readContents(
   root: string,
@@ -189,14 +189,18 @@ async function readContents(
 ): Promise<ReadonlyMap<string, string>> {
   const entries = await Promise.all(
     snapshot.files.map(async (file) => {
-      const absolute = path.join(root, ...file.path.split('/'))
       try {
-        return [file.path, await readFile(absolute, 'utf8')] as const
+        return [file.path, await readRepositoryText(root, file.path)] as const
       } catch (error) {
-        const why = (error as NodeJS.ErrnoException).code ?? String(error)
-        throw new PlanInputError(
-          `${file.path} could not be read (${why}); plan needs every file of the repository`,
-        )
+        const code = (error as NodeJS.ErrnoException).code
+        // A link has no code: its refusal names the file and says why.
+        const why =
+          code !== undefined
+            ? `${file.path} could not be read (${code})`
+            : error instanceof Error
+              ? error.message
+              : String(error)
+        throw new PlanInputError(`${why}; plan needs every file of the repository`)
       }
     }),
   )

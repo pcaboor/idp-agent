@@ -1,6 +1,7 @@
 import type { Dirent } from 'node:fs'
-import { lstat, readdir, readFile } from 'node:fs/promises'
+import { lstat, readdir } from 'node:fs/promises'
 import path from 'node:path'
+import { LinkRefused, openToRead, realRootOf } from '../../confine/confine.js'
 import {
   repositoryFileOf,
   type RepositoryFile,
@@ -21,6 +22,16 @@ import { isCatalogueFolder, isCataloguePath } from '../../core/paths/catalogue.j
 
 
 const WITNESS = '.witness.yml'
+
+/**
+ * Why a symbolic link is not read. A declarations repository holds none: the
+ * one `init platform` writes holds none, the forge refuses one tracked in
+ * `HEAD`, and a reviewer reads the file a link names while the gates would
+ * judge the one it leads to (gap-stage5-readiness-4). So every link the walk
+ * meets is named for what it is, and nothing is read through it — inside or
+ * out, to a file, to a folder or to nothing.
+ */
+const LINK = 'a symbolic link, never followed'
 
 /** POSIX separators whatever the platform: a violation names a path a human types. */
 const relative = (root: string, absolute: string): string =>
@@ -74,7 +85,23 @@ async function walk(root: string, directory: string, found: Walked): Promise<voi
     // not land in a CONFIGURED repository at all, while every fixture that had
     // no config passed. `.witness.yml` needed no rule of its
     // own once this one existed, and its named skip went with it.
-    if (isCataloguePath(relative(root, full))) found.files.push(full)
+    const where = relative(root, full)
+    if (isCataloguePath(where)) {
+      // A link among them too: `readOne` opens with O_NOFOLLOW, and names it.
+      found.files.push(full)
+      continue
+    }
+    // A link by any other name was dropped here in silence, and a link to a
+    // folder is one: `catalog/caches -> ../outside` held entities nobody
+    // checked, and `validate` said nothing. It is not followed to learn
+    // whether it is a folder the walk would have entered, so every link the
+    // walk would have looked at is named beside the folders it could not
+    // list — as a link, since `NOTES.md -> README.md` is no folder, and
+    // nothing says it could not be listed. A hidden one is tooling whatever
+    // it leads to, as a hidden folder is.
+    if (entry.isSymbolicLink() && isCatalogueFolder(entry.name)) {
+      found.unreadable.push({ path: where, reason: LINK, link: true })
+    }
   }
 }
 
@@ -82,19 +109,30 @@ async function readOne(root: string, absolute: string): Promise<RepositoryFile> 
   const where = relative(root, absolute)
   let content: string
   try {
-    content = await readFile(absolute, 'utf8')
+    // Through a descriptor that cannot be a link (`confine/`): a link was
+    // followed here, wherever it pointed, so a `.yml` linked outside the
+    // repository was read, previewed and judged as though it were in it.
+    const handle = await openToRead(root, absolute)
+    try {
+      content = await handle.readFile('utf8')
+    } finally {
+      await handle.close()
+    }
   } catch (error) {
     // A file the walk found and the read could not open — no permission, a
-    // link to a directory or to nothing, a file deleted in between. One of
-    // those ended `validate` on a stack trace that reported none of the other
-    // files; it is a rejection for this path instead, the same shape as a
-    // document the schema refused, and `invalid-entity` reports it.
-    const why = (error as NodeJS.ErrnoException).code ?? String(error)
+    // link, a file deleted in between. One of those ended `validate` on a
+    // stack trace that reported none of the other files; it is a rejection
+    // for this path instead, the same shape as a document the schema refused,
+    // and `invalid-entity` reports it.
+    const why =
+      error instanceof LinkRefused
+        ? `not read: ${error.through ? `reached through ${LINK}` : LINK}`
+        : `could not be read: ${(error as NodeJS.ErrnoException).code ?? String(error)}`
     return {
       path: where,
       entities: [],
       apis: [],
-      rejections: [`could not be read: ${why}`],
+      rejections: [why],
       ignored: [],
       documents: 0,
     }
@@ -197,17 +235,46 @@ export async function isApplicationRepository(directory: string): Promise<boolea
  * asks of a file it kept: does it register the repository with Backstage?
  */
 export async function readRegistrationFile(root: string): Promise<RepositoryFile | undefined> {
-  const absolute = path.join(root, REGISTRATION_FILE)
+  const real = await realOrAsNamed(root)
+  const absolute = path.join(real, REGISTRATION_FILE)
   const entry = await lstat(absolute).catch(() => undefined)
   if (entry?.isFile() !== true) return undefined
-  return readOne(root, absolute)
+  return readOne(real, absolute)
+}
+
+/**
+ * The root every path is judged against, with no link left in it: the
+ * directory the user named is theirs, by whatever path, and below it nothing
+ * is followed. One that does not resolve is walked as named, and `walk` says
+ * it could not be listed.
+ */
+const realOrAsNamed = (root: string): Promise<string> =>
+  realRootOf(root).catch(() => path.resolve(root))
+
+/**
+ * The text of one file `readRepository` listed, read as it reads one: through
+ * a descriptor that is never a link, inside the root. For `plan`, which
+ * composes its edits against bytes the snapshot does not keep — it read them
+ * with `readFile`, through any link, so a `.yml` linked outside the repository
+ * was diffed although the snapshot refused it. A link throws the refusal
+ * `confine/` names it with; anything else, the error with its code.
+ */
+export async function readRepositoryText(root: string, file: string): Promise<string> {
+  const real = await realOrAsNamed(root)
+  const handle = await openToRead(real, path.join(real, ...file.split('/')))
+  try {
+    return await handle.readFile('utf8')
+  } finally {
+    await handle.close()
+  }
 }
 
 export async function readRepository(root: string): Promise<RepositorySnapshot> {
   const found: Walked = { folders: [], witnesses: [], files: [], unreadable: [] }
-  await walk(root, root, found)
+  const real = await realOrAsNamed(root)
+  await walk(real, real, found)
 
-  const files = await Promise.all(found.files.sort().map((file) => readOne(root, file)))
+  const files = await Promise.all(found.files.sort().map((file) => readOne(real, file)))
 
   return {
     folders: found.folders.sort(),

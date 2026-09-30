@@ -27,9 +27,9 @@ import { blobId, treeOf, writeTree, type TreeEntry } from './objects.js'
  *     `core.autocrlf` or a CRLF checkout are refused as divergence: the gates
  *     judged the working tree, the branch is cut from `HEAD`, and the two are
  *     different bytes.
- *   - The preview still reads a file through a symbolic link; the submission
- *     refuses one (B3, after stage 5; D17). A person sees the preview and the
- *     refusal disagree, which is the safe direction.
+ *   - A symbolic link is refused twice: the preview reads none (`iac-fs`,
+ *     batch B3, which names it), and the submission refuses one tracked in
+ *     `HEAD` — a link committed after the preview included (D17).
  *   - The hidden files the gates judged — the `.witness.yml` files and
  *     `.idp-agent.yml` — are not in a clearance's expectation (`Expectation`,
  *     `clear.ts`), so a witness removed between clearance and submission is not
@@ -134,8 +134,9 @@ export async function openLocalForge(
         found.push(`${file} was read but is not in ${where} — uncommitted, untracked or ignored`)
         continue
       }
-      // A symlink's blob is its target's NAME; the reader followed it. Refused
-      // rather than reasoned about: the gates judged bytes git does not hold.
+      // A symlink's blob is its target's NAME, and the reader, which follows
+      // none since B3, judged no bytes of it. Refused rather than reasoned
+      // about: whatever the gates read at that path, git does not hold it.
       if (entry.mode !== '100644' && entry.mode !== '100755') {
         found.push(`${file} is a symbolic link at ${where}; a submission carries files, never links`)
         continue

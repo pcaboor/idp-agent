@@ -154,7 +154,10 @@ export function clearPlan(signed: SignedPlan, input: ClearInput): Cleared | Clea
   if (input.snapshot.unreadable !== undefined && input.snapshot.unreadable.length > 0) {
     return refused(
       input.snapshot.unreadable.map(
-        (one) => `${one.path === '' ? 'the root' : one.path} could not be read: ${one.reason}`,
+        (one) =>
+          one.link === true
+            ? `${one.path} is ${one.reason}`
+            : `${one.path === '' ? 'the root' : one.path} could not be read: ${one.reason}`,
       ),
     )
   }

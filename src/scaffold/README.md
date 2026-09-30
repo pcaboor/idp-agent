@@ -13,8 +13,10 @@ the writer that produces one does not.
 
 Two modules touch the disk, for two different things. `templates.ts` *reads* the files
 shipped inside the package, into memory; `write.ts` *writes* into someone else's repository,
-and is the only module here importing a writing function. `tests/architecture/` names both
-and holds both lines. The writer stays the writer for a repository being created — one
+and is the only module here importing a writing function — `mkdir`, for the directory it was
+named — and the only one loading `confine/`, which makes every folder and file below it.
+`tests/architecture/` names both and holds both lines: `scaffold/` imports `core/` and
+`confine/`, and nothing else of ours. The writer stays the writer for a repository being created — one
 being created has no branch to write to; a branch in an existing one is `forge/local/`'s
 (ADR-0010).
 
@@ -33,10 +35,18 @@ the registry through `core/validate/registration.ts`, which `validate` reads it 
 
 ## What it never does
 
-It never clobbers. `writeNew` uses `flag: 'wx'`, so a file that exists is kept and
-reported, never overwritten and never deleted. Re-running `init platform` over a
+It never clobbers. A file is created with `O_CREAT | O_EXCL` (`confine/`'s `createNew`), so
+a file that exists is kept and reported, never overwritten and never deleted. Re-running `init platform` over a
 hand-edited `CODEOWNERS` leaves it byte for byte — *absent means already done* (§4.3), and
 a scaffolder that clobbers is one nobody runs twice.
+
+It never writes through a symbolic link, nor outside the directory it was named
+(runtime-probe-11, core-yaml-5). `assertInsideRepo` is lexical, and `catalog -> ../outside`
+passed it: three witnesses were written outside. Every folder is now made one name at a
+time, and a link anywhere on the way — outside, inside, to a folder or to nothing — stops the
+run, named, as a file it could not write does. A link where a file goes is kept, as a file
+there is: `O_EXCL` neither follows it nor creates what it names. The directory the user
+named is theirs, by whatever path, a link included.
 
 It never rolls back either, so a write that fails part-way leaves what it wrote, and says
 so: `ScaffoldWriteError` carries the file it stopped at and what was written and kept before

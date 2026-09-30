@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 3942 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 3975 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -178,7 +178,8 @@ idp-agent plan "<intent>" --repo <dir> [--json] [--submit]  # Inspector, Archite
 idp-agent init [--repo <dir>] [--name <n>] [--lifecycle <l>] [--owner <ref>] [--submit] [--iac-repo <locator>] [--environment <name>]...  # the catalog-info.yaml, and .idp-agent.yml when a flag states it
 ```
 
-**`init platform` writes into the directory it was handed. `plan … --submit` and
+**`init platform` writes into the directory it was handed, and through no symbolic link
+under it. `plan … --submit` and
 `init --submit` write one new ref and the objects it reaches, and nothing else** — never `HEAD`, the index, the
 working tree or a ref that exists; nothing is pushed and no merge request is opened. With
 `IDP_TRACE_DIR` set, `idpa "<phrase>"`, `plan "<intent>"`, `ask` and `init` also write one
@@ -266,16 +267,20 @@ check — reads the developer's own. `IDP_REPO` must be absolute or start with `
 
 ```
 cli/  ──→  context/   ──→  core/
-  │           └──→  process/   (context/project-fs: git ls-files)
+  │           ├──→  process/   (context/project-fs: git ls-files)
+  │           └──→  confine/   (context/iac-fs and project-fs: lstat, realpath, O_NOFOLLOW)
   ├──→  agents/   ──→  llm/client.ts   (types only — this is the whole rule)
   ├──→  llm/      ──→  the model SDK   (cli/ builds the client; agents/ may not)
   ├──→  trace/    ──→  agents/events, llm/client   (types only; cli/ ships the trace)
   ├──→  forge/    ──→  core/, process/   (only cli/ reaches it at run time)
-  └──→  scaffold/ ──→  core/
+  └──→  scaffold/ ──→  core/, confine/
 ```
 
 `process/` is a leaf: it imports nothing of ours, and it holds the one launcher every process
-`src/` starts goes through — the Inspector's `git ls-files`, and the forge's git.
+`src/` starts goes through — the Inspector's `git ls-files`, and the forge's git. `confine/`
+is a leaf too, and holds the one primitive a user's repository is read and written through
+below its root — `init platform`'s writer, `iac-fs` and `project-fs` — so that a symbolic
+link is judged by where it leads, never by its name alone.
 
 `cli/` is the only layer that may reach both `llm/` and the disk, which is why the client
 is built in `index.ts` and handed to a command rather than chosen inside one — and why
@@ -291,6 +296,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 | `trace/` | the trace of one run: `createTraceBuilder` over the event stream and the model calls, the `traced` client decorator, and `toOtlpJson` — pure; `cli/trace-sink.ts` is how a trace leaves |
 | `scaffold/` | the `init platform` layout, the packaged templates, and `write.ts`, the writer for a repository being created |
 | `forge/` | where a submission becomes a branch: `provider.ts` — `ForgeProvider`, `Base`, `Submitted`, types only, with no merge, no delete and no caller-chosen name — `ForgeInputError`, a refusal that is the user's arguments — and `local/`, the local forge: `openLocalForge` for one repository, which writes git objects and one create-only ref, through the launcher, and never the working tree, the index or `HEAD` (ADR-0010). `plan … --submit`, on either road, and `init --submit`, for the service's repository, reach it, through `cli/commands/submit.ts` |
+| `confine/` | physical confinement: `confine.ts`'s `followInside`, `openToRead` (`O_NOFOLLOW`, checked once open), `makeFolders` and `createNew` (`O_CREAT \| O_EXCL \| O_NOFOLLOW`) — what `assertInsideRepo`, lexical, cannot see; `iac-fs` follows no link, `project-fs` follows one that stays inside, `init platform` writes through none |
 | `process/` | the one place a process is started: `git.ts`'s `gitIn` — hooks and fsmonitor off, `user.useConfigOnly`, every `GIT_*` scrubbed, started outside the repository, bounded — and `environment.ts`'s `spawnedEnvironment`, the one builder of a child process's environment |
 
 Each folder carries its own README stating what lives there, what may not, and which
@@ -558,20 +564,24 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   checklist; tick its boxes as you go — Stage 1 shipped with all 36 unticked, which is
   how a plan stops being a status signal.
 - No `switch` on a closed union without `const _exhaustive: never = value` in `default`.
-- **Twenty-three** architecture rules are enforced by `tests/architecture/`. `core/` imports
-  neither `agents/`, `llm/`, `context/`, `cli/`, `scaffold/`, `forge/`, `process/`, the
-  network nor the model SDK, and nothing reachable from it reads or writes — its disk rule
+- **Twenty-five** architecture rules are enforced by `tests/architecture/`. `core/` imports
+  neither `agents/`, `llm/`, `context/`, `cli/`, `scaffold/`, `forge/`, `process/`,
+  `confine/`, the network nor the model SDK, and nothing reachable from it reads or writes — its disk rule
   walks the transitive closure too. `agents/` imports neither `fs`, `child_process` nor a git client — **and
   nothing reachable from it does either**, the test walks the transitive closure. Only
   `llm/` imports the model SDK, and `agents/` imports `llm/client.js` and nothing else from
-  it. `scaffold/` imports `core/` and nothing else of ours; only `write.ts` and
+  it. `scaffold/` imports `core/` and `confine/` and nothing else of ours; only `write.ts` and
   `templates.ts` touch the disk there, and only `write.ts` imports a writing function. In
   `context/`, only `iac-fs` and `project-fs` read a user's repository; in `cli/`, seven named
-  modules touch the disk, among them `commands/plan.ts` and `config.ts`, which read the
-  repositories too. Across `src/`, only `scaffold/write.ts`, `cli/recording-fs.ts` and
-  `cli/trace-sink.ts` import a writing function — `project-fs/snapshot.ts` opens files, read
-  only — each named with the functions it may use; the forge is the fourth writer, through
-  git and nothing else. Only `process/git.ts` starts a process, for the Inspector's
+  modules touch the disk, among them `config.ts`, which reads `.idp-agent.yml` in either
+  repository, and `commands/plan.ts`, which reads the plan file `--from` names — the
+  declarations' bytes it reads through `iac-fs`. Across `src/`, only `scaffold/write.ts`
+  (`mkdir`, for the directory it is named), `confine/confine.ts`, `cli/recording-fs.ts` and
+  `cli/trace-sink.ts` import a writing function — `confine/` opens files, read only for
+  `iac-fs` and `project-fs`, create-only for `init platform` — each named with the functions
+  it may use; the forge is the fifth writer, through git and nothing else. `confine/`
+  imports nothing of ours, only `node:` built-ins, and only `scaffold/write.ts`,
+  `context/iac-fs` and `context/project-fs` load it. Only `process/git.ts` starts a process, for the Inspector's
   `git ls-files` and the forge, from one call, given the
   environment `spawnedEnvironment` builds: without any `IDP_BACKSTAGE_*` variable and without
   any provider key; only `context/project-fs/snapshot.ts` and `forge/` load that launcher.

@@ -108,17 +108,24 @@ export interface RepositorySnapshot {
   readonly witnesses: readonly string[]
   readonly files: readonly RepositoryFile[]
   /**
-   * The folders the reader could not list, `''` for the root, each with why.
-   * Absent is none. What they hold was never read, so a rule that found
-   * nothing there found nothing because it looked at nothing.
+   * The folders the reader could not list, `''` for the root, each with why,
+   * and the symbolic links it did not follow. Absent is none. What they hold
+   * was never read, so a rule that found nothing there found nothing because
+   * it looked at nothing.
    */
   readonly unreadable?: readonly UnreadableFolder[]
 }
 
-/** A folder `readdir` refused: repository-relative, POSIX, and the error code. */
+/**
+ * A folder `readdir` refused: repository-relative, POSIX, and the error code.
+ * Or a symbolic link the walk named and did not follow, `link` set: a link
+ * to a folder or to a file alike, since it was never followed to learn which,
+ * so nothing may say of it that it was a folder that could not be listed.
+ */
 export interface UnreadableFolder {
   readonly path: string
   readonly reason: string
+  readonly link?: true
 }
 
 const refOf = (entity: Entity | Api | OrganisationEntity): string =>
@@ -151,7 +158,10 @@ export function checkRepository(snapshot: RepositorySnapshot): Violation[] {
       rule: 'unreadable-folder',
       file: folder.path === '' ? '.' : folder.path,
       severity: 'error',
-      message: `could not be listed (${folder.reason}); nothing in it was checked`,
+      message:
+        folder.link === true
+          ? `${folder.reason}; nothing it leads to was checked`
+          : `could not be listed (${folder.reason}); nothing in it was checked`,
     })
   }
 

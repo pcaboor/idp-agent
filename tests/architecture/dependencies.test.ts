@@ -598,6 +598,35 @@ const LAUNCHER = 'process/git.ts'
 const RUNS_GIT = (name: string): boolean => name === 'context/project-fs/snapshot.ts' || name.startsWith('forge/')
 
 /**
+ * What a rule about one module refuses under `root`: a module other than
+ * those `may` names that loads `target`, a run-time load no source can spell
+ * from one of those others, and one of the named handing `target` on with an
+ * `export … from`. A type is erased and may be named anywhere.
+ */
+async function loaderOffences(
+  root: string,
+  target: string,
+  may: (name: string) => boolean,
+): Promise<string[]> {
+  const offending: string[] = []
+  for (const file of await sourceFiles(root)) {
+    const name = nameUnder(root, file)
+    if (name === target) continue
+    for (const load of await loadsOf(file)) {
+      if (load.specifier === undefined) {
+        if (!may(name)) offending.push(unfollowable(name, load))
+        continue
+      }
+      if (load.typeOnly || !load.specifier.startsWith('.')) continue
+      if (targetOf(root, file, load.specifier) !== target) continue
+      if (!may(name)) offending.push(`${name} → ${load.written}`)
+      else if (load.handedOn) offending.push(`${name} hands on ${load.written}`)
+    }
+  }
+  return offending
+}
+
+/**
  * What the launcher's rule refuses under `root`: a module that loads
  * `process/git.ts` other than project-fs's snapshot and forge/, a run-time
  * load no source can spell, and one of those two handing the launcher on with
@@ -606,24 +635,26 @@ const RUNS_GIT = (name: string): boolean => name === 'context/project-fs/snapsho
  * confinement project-fs holds — the secret exclusions first. A type is
  * erased and may be named anywhere; `process/environment.ts` starts nothing.
  */
-async function launcherOffences(root: string): Promise<string[]> {
-  const offending: string[] = []
-  for (const file of await sourceFiles(root)) {
-    const name = nameUnder(root, file)
-    if (name === LAUNCHER) continue
-    for (const load of await loadsOf(file)) {
-      if (load.specifier === undefined) {
-        if (!RUNS_GIT(name)) offending.push(unfollowable(name, load))
-        continue
-      }
-      if (load.typeOnly || !load.specifier.startsWith('.')) continue
-      if (targetOf(root, file, load.specifier) !== LAUNCHER) continue
-      if (!RUNS_GIT(name)) offending.push(`${name} → ${load.written}`)
-      else if (load.handedOn) offending.push(`${name} hands on ${load.written}`)
-    }
-  }
-  return offending
-}
+const launcherOffences = (root: string): Promise<string[]> => loaderOffences(root, LAUNCHER, RUNS_GIT)
+
+/** The confinement primitive, and the modules that may load it. */
+const CONFINE = 'confine/confine.ts'
+const CONFINES = new Set([
+  'scaffold/write.ts', // `init platform`'s writer
+  'context/iac-fs/snapshot.ts', // the declarations repository
+  'context/project-fs/snapshot.ts', // the application repository
+])
+
+/**
+ * What the confinement rule refuses under `root`: a module other than the
+ * three that act on a user's repository loading `confine/confine.ts`, and one
+ * of them handing it on. `createNew` writes and `openToRead` reads with no fs
+ * function in the importer's source, so a fourth module loading it would be a
+ * writer the rule naming writers never sees, and a reader of a repository the
+ * rule naming readers never sees.
+ */
+const confineOffences = (root: string): Promise<string[]> =>
+  loaderOffences(root, CONFINE, (name) => CONFINES.has(name))
 
 describe('architecture', () => {
   it('core/ does not import agents/ or llm/', async () => {
@@ -677,12 +708,21 @@ describe('architecture', () => {
     expect(offending).toEqual([])
   })
 
-  it('scaffold/ imports core/ and nothing else of ours', async () => {
+  it('scaffold/ imports core/ and confine/, and nothing else of ours', async () => {
     // It derives a layout and writes it. It has no business knowing about a
-    // model, a graph, or the CLI that calls it.
-    const offending = (await importsUnder(path.join(SOURCE_ROOT, 'scaffold'))).filter(
-      ({ specifier }) => /(^|\/)(agents|llm|context|cli)\//.test(specifier),
-    )
+    // model, a graph, or the CLI that calls it. A list of what may be imported,
+    // resolved, not a list of folders it may not: `forge/`, `process/` and
+    // `trace/` passed the list of four it replaced. confine/ is the leaf that
+    // confines a path on the disk, which core/ cannot.
+    const offending: string[] = []
+    for (const file of await sourceFiles(path.join(SOURCE_ROOT, 'scaffold'))) {
+      for (const { specifier } of await importsOf(file)) {
+        if (!specifier.startsWith('.')) continue
+        if (!/^(core|confine|scaffold)\//.test(targetOf(SOURCE_ROOT, file, specifier))) {
+          offending.push(`${nameUnder(SOURCE_ROOT, file)} imports ${specifier}`)
+        }
+      }
+    }
     expect(offending).toEqual([])
   })
 
@@ -759,12 +799,14 @@ describe('architecture', () => {
     // is in neither list: it writes into a repository through git — objects
     // and one ref — never through a writing function of its own.
     const writes: Record<string, readonly string[]> = {
-      'scaffold/write.ts': ['mkdir', 'writeFile'], // `init platform`'s scaffold
+      'scaffold/write.ts': ['mkdir'], // the directory `init platform` was named
       'cli/recording-fs.ts': ['mkdir', 'writeFile'], // a tape, when recording
       'cli/trace-sink.ts': ['mkdir', 'writeFile'], // a trace, under IDP_TRACE_DIR
-      // `open` is the one call that can do both; this one opens a file
-      // O_RDONLY | O_NOFOLLOW, to read it.
-      'context/project-fs/snapshot.ts': ['open'],
+      // `open` is the one call that can do both: the confinement primitive
+      // opens a file O_RDONLY | O_NOFOLLOW for iac-fs and project-fs, and
+      // O_CREAT | O_EXCL | O_NOFOLLOW for `init platform`, whose folders it
+      // makes one at a time. Only the three named below may load it.
+      'confine/confine.ts': ['mkdir', 'open'],
     }
     // `process/git.ts`, for the Inspector's `git ls-files` and the forge, and
     // nothing else starts a process.
@@ -786,7 +828,7 @@ describe('architecture', () => {
     expect(offending).toEqual([])
   })
 
-  it('core/ imports nothing from context/, cli/, scaffold/, forge/ or process/', async () => {
+  it('core/ imports nothing from context/, cli/, scaffold/, forge/, process/ or confine/', async () => {
     // core/ is the deterministic half: schemas, paths, serialisation, rules.
     // A dependency on a layer that reads a disk would make it one by proxy,
     // and its own README says it is not. Nothing enforced this until the
@@ -794,7 +836,7 @@ describe('architecture', () => {
     // depends on core/ — `Cleared` is core's — so core naming forge, even by
     // type, is a cycle; and at run time it is core reaching a process.
     const offending = (await importsUnder(path.join(SOURCE_ROOT, 'core'))).filter(
-      ({ specifier }) => /(^|\/)(context|cli|scaffold|forge|process)\//.test(specifier),
+      ({ specifier }) => /(^|\/)(context|cli|scaffold|forge|process|confine)\//.test(specifier),
     )
     expect(offending).toEqual([])
   })
@@ -899,6 +941,21 @@ describe('architecture', () => {
     expect(offending).toEqual([])
   })
 
+  it('confine/ imports nothing of ours, and only node: built-ins', async () => {
+    // A leaf scaffold/, context/iac-fs and context/project-fs import: the one
+    // lstat, realpath and O_NOFOLLOW primitive a user's repository is read and
+    // written through. Anything it imported would be reachable from all three,
+    // and scaffold/ may reach core/ and it alone.
+    const offending = (await importsUnder(path.join(SOURCE_ROOT, 'confine'))).filter(
+      ({ specifier }) => !specifier.startsWith('node:') && !/^\.\/[\w-]+\.js$/.test(specifier),
+    )
+    expect(offending).toEqual([])
+  })
+
+  it('only scaffold/write.ts, context/iac-fs and context/project-fs load confine/', async () => {
+    expect(await confineOffences(SOURCE_ROOT)).toEqual([])
+  })
+
   it('forge/ imports core/, process/, node:crypto and node:path, and nothing else', async () => {
     // A forge is the one layer that writes into a user's repository. What it
     // may reach is kept as small as scaffold/'s — and smaller: no package at
@@ -949,7 +1006,7 @@ describe('the architecture rules themselves', () => {
   })
 
   it('reads every layer it has a rule about, and the tree as a whole', async () => {
-    for (const layer of ['agents', 'cli', 'context', 'core', 'forge', 'llm', 'process', 'scaffold', 'trace']) {
+    for (const layer of ['agents', 'cli', 'confine', 'context', 'core', 'forge', 'llm', 'process', 'scaffold', 'trace']) {
       expect((await sourceFiles(path.join(SOURCE_ROOT, layer))).length, layer).toBeGreaterThan(0)
     }
     expect((await sourceFiles(SOURCE_ROOT)).length).toBeGreaterThan(40)
@@ -1195,6 +1252,32 @@ describe('the architecture rules themselves', () => {
         'cli/named.ts loads name at run time: no rule can tell what it names',
         'process/index.ts → ./git.js',
         'forge/local/passed.ts hands on ../../process/git.js',
+      ].sort(),
+    )
+  })
+
+  it('refuses every module but the three named that loads the confinement primitive', async () => {
+    const root = await tree({
+      // A writer and a reader no other rule would see: neither names an fs function.
+      'cli/commands/probe-write.ts': "import { createNew } from '../../confine/confine.js'\n",
+      'context/backstage/probe-read.ts': "import { openToRead } from '../../confine/confine.js'\n",
+      'forge/local/late.ts': "const { createNew } = await import('../../confine/confine.js')\n",
+      'agents/named.ts': 'const m = await import(name)\n',
+      // One of the three handing it on is a second door.
+      'context/iac-fs/snapshot.ts': "export { openToRead } from '../../confine/confine.js'\n",
+      // A type is erased, and these may.
+      'cli/typed.ts': "import type { LinkTarget } from '../confine/confine.js'\n",
+      'scaffold/write.ts': "import { createNew } from '../confine/confine.js'\n",
+      'context/project-fs/snapshot.ts': "import { openToRead } from '../../confine/confine.js'\n",
+      'confine/confine.ts': "import { open } from 'node:fs/promises'\n",
+    })
+    expect((await confineOffences(root)).sort()).toEqual(
+      [
+        'cli/commands/probe-write.ts → ../../confine/confine.js',
+        'context/backstage/probe-read.ts → ../../confine/confine.js',
+        "forge/local/late.ts → '../../confine/confine.js' at run time",
+        'agents/named.ts loads name at run time: no rule can tell what it names',
+        'context/iac-fs/snapshot.ts hands on ../../confine/confine.js',
       ].sort(),
     )
   })
