@@ -108,6 +108,7 @@ function refusalAt(relative: string, stats: NameStats, kind: CacheRefusal['kind'
       return { kind, path: relative }
     case 'unverified':
     case 'io':
+    case 'no-parent':
     case 'root':
       throw new Error(`acceptable never answers ${kind}`)
     default: {
@@ -158,7 +159,10 @@ async function realCacheRoot(root: string): Promise<string> {
   } catch (error) {
     if (!isErrno(error, 'ENOENT')) throw error
   }
-  const realParent = await realRootOf(path.dirname(resolved))
+  const realParent = await realRootOf(path.dirname(resolved)).catch((error: unknown) => {
+    if (isErrno(error, 'ENOENT')) throw new Refused({ kind: 'no-parent' })
+    throw error
+  })
   await makeFolders(realParent, path.basename(resolved), { mode: 0o700 })
   return realRootOf(resolved)
 }

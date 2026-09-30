@@ -822,7 +822,7 @@ slice 1, was recorded by the owner on 2026-09-29 with slice 3's two
 
 ### Slice 2 — scale and cache
 
-Closed by 2.2: a second run against a large fake catalogue answers in under a second, says
+Closed by 2.3 (below): a second run against a large fake catalogue answers in under a second, says
 "read from cache, 3 min old; --refresh reads Backstage again", and a catalogue over the bound
 answers with "not loaded" rather than refusing.
 
@@ -838,6 +838,44 @@ answers with "not loaded" rather than refusing.
    and a plain hash of a short token can be reversed offline. A TTL of 5 minutes, of the order
    of the catalogue's own lag. The age is always stated. `--refresh` bypasses the cache. A
    fourth disk writer in `context/`, named in the architecture test.
+
+**Built** ([#119](https://github.com/pcaboor/idp-agent/pull/119),
+[#120](https://github.com/pcaboor/idp-agent/pull/120) and
+[#122](https://github.com/pcaboor/idp-agent/pull/122), the plan
+[`docs/plans/backstage-http-slice-2.md`](plans/backstage-http-slice-2.md); ADR-0013 and
+ADR-0014): a second run against `tools/fake-backstage.ts --scale 20500` answers from the kept
+copy in 0.4 s, where the first read took 1.5 s, and says `read from cache, less than a minute
+old; --refresh reads Backstage again`; the same catalogue, over the bound, answers with `not
+loaded` rather than refusing. Its departures, each the owner's decision of 2026-09-30 or
+recorded in the plan:
+
+- **three pull requests, not two**, and so **closed by 2.3** rather than 2.2: the store and its
+  proofs (2.2) before any command wrote one (2.3);
+- **all three ceilings are stated bounds** (question 3), not the modelled one alone: a bounded
+  organisation read judges nothing, a bounded refs read leaves its kinds not loaded;
+- *never called dangling* is **narrowed** to a reference into a kind whose read was bounded; a
+  reference into a kind read whole is still declared nowhere, since that answer is known;
+- the count of what a bound left out is worded **`past the bound`** — the notice's term, a
+  stderr line `past the bound:`, the overview's `partial` block — and `not loaded` is kept as
+  the marker a reference carries, because `not loaded:` already began the line of the kinds
+  not modelled (question 5); `show` on a hit closes with the `partial:` line too;
+- the copy is **minimised**, not "the raw entity JSON as served": an organisation or refs item
+  as the fields its read asked for, an API's definition read as declared as `declared`; it is
+  **stored as lines** — a header, the envelope, one item a line, none longer than a page —
+  **sealed** by a MAC over its format, its key, its header and every byte of its body, and its
+  `judged` **recomputed** from its account of its own reads, which is checked against what a
+  live read could derive;
+- the cache root is **handed in by `bin.ts`** alone (`cacheRootOf`), so no test's `main` writes
+  under a real home; a missing root is **made one name deep**, `0700`; there is **none for
+  root**, nor on Windows;
+- `--cached` is named by the failure line after a failure of reach, **after a failed
+  `--refresh` too**, and **never after a 401 or a 403**, which may be a revoked token;
+- an **off switch**, `IDP_BACKSTAGE_CACHE=off`, `off` its one value (question 2);
+- a copy is **kept 7 days**, then removed by the next run that writes one (question 1);
+- a run answered from a copy is traced with **no page and no byte**, and its own time: the
+  census a copy keeps is the load's that made it, and describes what the copy holds; the
+  notice says a uid served twice again, after `read from cache`, as a fact of that earlier
+  read: `the catalogue changed during the read this copy keeps`.
 
 ### Slice 3 — the organisation in the read model
 

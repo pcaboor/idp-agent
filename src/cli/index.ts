@@ -11,7 +11,7 @@ import {
 } from '../context/backstage/transport.js'
 import { FixtureProvider } from '../context/fixtures/index.js'
 import { IacFsProvider } from '../context/iac-fs/provider.js'
-import type { ContextProvider, Ignored, LoadResult } from '../context/provider.js'
+import type { CacheReport, ContextProvider, Ignored, LoadResult } from '../context/provider.js'
 import { PLAN_LIMITS } from '../core/schemas/plan.js'
 import { ModelCallError } from '../llm/failures.js'
 import {
@@ -64,10 +64,10 @@ import { isForgeHandle } from '../scaffold/codeowners.js'
 import { VERSION } from '../core/index.js'
 import type { LlmClient } from '../llm/client.js'
 import type { CommandResult } from './commands/result.js'
-import { partialLine, pastBoundOf, setAsideLine, skippedLines } from './render/catalogue-read.js'
+import { cacheLines, copyAge, partialLine, pastBoundOf, setAsideLine, skippedLines } from './render/catalogue-read.js'
 import { NOWHERE, NOWHERE_IN_CATALOGUE } from './render/entity.js'
 import { inert, inertLine, oneLine, plain } from './render/plain.js'
-import { homeOf } from './personal.js'
+import { homeOf, shownPath, type CacheRoot } from './personal.js'
 import {
   RepositoryArgumentError,
   applicationRoot,
@@ -81,9 +81,12 @@ import {
 } from './repository.js'
 import {
   blameOf,
+  cacheFlagRefusal,
+  cacheFlagWords,
   catalogueConfigured,
   catalogueFailureLine,
   declarationsFor,
+  noCacheRefusal,
   overviewName,
   planNeedsRepository,
   sourceNotice,
@@ -115,10 +118,26 @@ export type PlanSource = { from: string } | { intent: string; project?: string }
  * absences rather than values, which is what exactOptionalPropertyTypes keeps
  * them. Two of them is unrepresentable, and refused at parsing.
  */
-export type ReadFrom =
+export type ReadFrom = ReadSource & CacheUse
+
+/** `--repo`, `--demo` or `--backstage`: one of them, or none. */
+type ReadSource =
   | { repo?: string; demo?: never; backstage?: never }
   | { demo: true; repo?: never; backstage?: never }
   | { backstage: true; repo?: never; demo?: never }
+
+/**
+ * How a catalogue's kept copy is used (`context/backstage/cache.ts`): neither,
+ * a copy younger than five minutes answers; `refresh`, Backstage is read again
+ * whatever is kept; `cached`, the kept copy answers whatever its age and
+ * Backstage is never asked. Omitted when absent, never false; both at once,
+ * or either beside --repo or --demo, is refused at parsing, and either
+ * against a source that is not a catalogue once it is resolved.
+ */
+export type CacheUse =
+  | { refresh?: never; cached?: never }
+  | { refresh: true; cached?: never }
+  | { cached: true; refresh?: never }
 
 export type Command =
   | ({ name: 'graph'; options: GraphOptions } & ReadFrom)
@@ -201,7 +220,7 @@ export type Usage = Exclude<(typeof COMMANDS)[number], 'help'> | 'init-platform'
 
 export const HELP = `idp-agent - turn an intent into reviewed infrastructure declarations
 
-  idpa "<phrase>" [--repo <directory> | --demo | --backstage] [--project <directory>] [--json] [--quiet]
+  idpa "<phrase>" [--repo <directory> | --demo | --backstage] [--refresh | --cached] [--project <directory>] [--json] [--quiet]
 
   The one gesture, from anywhere: a question about the SI is answered, an
   intent to change it is previewed as a plan, and the phrase need not say
@@ -214,10 +233,10 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   frame it with a sentence before and a few after, each checked by the engine
   and marked with ›; --quiet prints the verified answer alone.
 
-  idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource|API] [--repo <directory> | --demo | --backstage]
-  idp-agent show <name-or-reference> [--repo <directory> | --demo | --backstage]
-  idp-agent relations <name-or-reference> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-reference>] [--depth <n>] [--repo <directory> | --demo | --backstage]
-  idp-agent ask "<question>" [--repo <directory> | --demo | --backstage] [--quiet]
+  idp-agent graph [--env <env>] [--type <type>] [--kind Component|Resource|API] [--repo <directory> | --demo | --backstage] [--refresh | --cached]
+  idp-agent show <name-or-reference> [--repo <directory> | --demo | --backstage] [--refresh | --cached]
+  idp-agent relations <name-or-reference> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-reference>] [--depth <n>] [--repo <directory> | --demo | --backstage] [--refresh | --cached]
+  idp-agent ask "<question>" [--repo <directory> | --demo | --backstage] [--refresh | --cached] [--quiet]
   idp-agent validate <directory>
   idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json] [--submit]
   idp-agent plan --from <plan.json> [--repo <directory>] [--json] [--submit]
@@ -262,6 +281,11 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   never of --repo or the current directory; --backstage chooses it over both.
   It is read once per run, with the token in IDP_BACKSTAGE_TOKEN, and a
   change is still decided against a declarations repository, never it.
+  A read is kept five minutes under $XDG_CACHE_HOME/idp-agent/backstage
+  (else ~/.cache/…), for your account alone, and a run within them answers
+  from it and says how old it is; --refresh reads Backstage again, --cached
+  answers from the kept copy whatever its age and never asks Backstage, and
+  IDP_BACKSTAGE_CACHE=off keeps nothing.
   A phrase, ask, plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL. None
   of them writes, and neither do plan and init without --submit. With it, plan cuts
   a branch idp-agent/… from HEAD in the declarations repository, which must
@@ -874,6 +898,8 @@ const READ_OPTIONS = {
   repo: { type: 'string' },
   demo: { type: 'boolean' },
   backstage: { type: 'boolean' },
+  refresh: { type: 'boolean' },
+  cached: { type: 'boolean' },
 } as const
 
 /**
@@ -883,8 +909,39 @@ const READ_OPTIONS = {
  */
 function readFrom(
   command: 'graph' | 'show' | 'relations' | 'ask' | 'idpa',
-  values: { repo?: string | undefined; demo?: boolean | undefined; backstage?: boolean | undefined },
+  values: {
+    repo?: string | undefined
+    demo?: boolean | undefined
+    backstage?: boolean | undefined
+    refresh?: boolean | undefined
+    cached?: boolean | undefined
+  },
 ): ReadFrom | { name: 'error'; message: string } {
+  const source = sourceFrom(command, values)
+  if ('message' in source) return source
+  if (values.refresh === true && values.cached === true) {
+    return {
+      name: 'error',
+      message: `${command} takes --refresh or --cached, never both: one reads Backstage again and the other only the kept copy`,
+    }
+  }
+  const flag = values.cached === true ? '--cached' : values.refresh === true ? '--refresh' : undefined
+  if (flag === undefined) return source
+  // A repository or the fictional SI keeps no copy: the flag would do nothing, and silence would say it did.
+  if (values.repo !== undefined || values.demo === true) {
+    return {
+      name: 'error',
+      message: `${cacheFlagWords(flag)}, and ${values.repo !== undefined ? '--repo names a repository' : '--demo names the fictional SI'}`,
+    }
+  }
+  return { ...source, ...(values.cached === true ? { cached: true as const } : { refresh: true as const }) }
+}
+
+/** `--repo`, `--demo` or `--backstage`, as `readFrom` takes them. */
+function sourceFrom(
+  command: 'graph' | 'show' | 'relations' | 'ask' | 'idpa',
+  values: { repo?: string | undefined; demo?: boolean | undefined; backstage?: boolean | undefined },
+): ReadSource | { name: 'error'; message: string } {
   if (values.demo === true && values.repo !== undefined) {
     return {
       name: 'error',
@@ -955,6 +1012,14 @@ export interface MainDeps {
   catalogueFetch?: CatalogueFetch
   /** Lowered by a test to reach a bound of the catalogue read; a run keeps `BACKSTAGE_LIMITS`. */
   catalogueLimits?: Partial<BackstageLimits>
+  /**
+   * Where a catalogue read is kept (`cacheRootOf`), or why none is. Absent is
+   * none, as in every test but the cache's own: `bin.ts` passes
+   * `cacheRootOf(process.env, process.platform, process.getuid?.())`, and
+   * nothing here defaults it, so no test that passes a HOME keeps a copy
+   * between two of its runs.
+   */
+  cacheRoot?: CacheRoot
 }
 
 /**
@@ -1441,15 +1506,22 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   // from a repository or the demo SI instead. One read up to a stated bound
   // is answered from, and every answer says it is partial (ADR-0013).
   let loaded: LoadResult
+  // This run's own time to load: what a run answered from a copy is traced
+  // with, rather than the census the copy keeps of the load that made it.
+  const loadStarted = performance.now()
   try {
     loaded = await provider.load()
   } catch (error) {
     if (error instanceof CatalogueReadError && source.kind === 'backstage') {
+      // Why `--cached` found no copy it could read, before the line that says it found none.
+      const why = error.notUsed === undefined ? [] : cacheLinesOf({ read: { state: 'not-used', refusal: error.notUsed } }, deps, context)
+      for (const line of why) err(`${line}\n`)
       err(`${inertLine(catalogueFailureLine(error, source, tokenOf(context) !== undefined), Number.POSITIVE_INFINITY)}\n`)
       return EXIT.notFound
     }
     return failed(error, err)
   }
+  const loadMs = Math.round(performance.now() - loadStarted)
   const { entities, rejected, ignored, unread } = loaded
   // Read beside the entities, and counted as read: a Group is no longer a
   // document this tool does not model.
@@ -1473,8 +1545,13 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     },
     catalogue:
       source.kind === 'repo' && source.origin.by === 'working-directory' && (await catalogueConfigured(context)),
+    ...(answeredFromCopy(loaded.cache)
+      ? { copy: { age: copyAge(loaded.cache.read, Date.now()), cached: loaded.cache.read.state === 'kept' } }
+      : {}),
   })
   if (notice !== undefined) err(`${notice}\n`)
+  // A copy that was not used, a read that was not kept: said once, after the notice.
+  if (loaded.cache !== undefined) for (const line of cacheLinesOf(loaded.cache, deps, context)) err(`${line}\n`)
   // Reported, never dropped in silence: that silent drop is the catalogue
   // behaviour this tool exists to compensate for (design 4.4).
   // Both halves are the file's own words: a path is a name somebody chose, and
@@ -1551,7 +1628,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   // The load precedes `agentBacked`, so no span covers it: a catalogue read is
   // said as root attributes of the run, as the Inspector's skip is, and never
   // its token (brief § 8).
-  const attributes = source.kind === 'backstage' ? sourceAttributes(source, loaded) : undefined
+  const attributes = source.kind === 'backstage' ? sourceAttributes(source, loaded, loadMs) : undefined
 
   if (command.name === 'entry') {
     // What `ask` is handed, word for word, so the question road is `ask`'s —
@@ -1713,12 +1790,17 @@ async function providerOf(
     { command: name, repo: from.repo, demo: from.demo, backstage: from.backstage },
     context,
   )
+  const flag = from.cached === true ? '--cached' : from.refresh === true ? '--refresh' : undefined
+  // Before any request: a flag about a catalogue's copy against a source that
+  // keeps none would do nothing, and running on would say it did.
+  if (flag !== undefined && source.kind !== 'backstage') throw await cacheFlagRefusal(flag, source, context)
   switch (source.kind) {
     case 'repo':
       return { source, provider: new IacFsProvider(source.root) }
     case 'demo':
       return { source, provider: new FixtureProvider(deps.root ?? DEFAULT_ROOT) }
-    case 'backstage':
+    case 'backstage': {
+      const cache = cacheOf(from, deps.cacheRoot)
       return {
         source,
         provider: new BackstageProvider({
@@ -1726,13 +1808,33 @@ async function providerOf(
           token: tokenOf(context),
           catalogueFetch: deps.catalogueFetch ?? globalThis.fetch,
           ...(deps.catalogueLimits === undefined ? {} : { limits: deps.catalogueLimits }),
+          ...(cache === undefined ? {} : { cache }),
         }),
       }
+    }
     default: {
       const exhaustive: never = source
       return exhaustive
     }
   }
+}
+
+/**
+ * The store a catalogue read is kept in, and how this run uses it — or none,
+ * when no root was handed in (`cacheRootOf` said none, or a test's `main`
+ * call). `--cached` with none is refused, exit 2, naming why: a kept read
+ * with no store could only fail, and the reason is the setting to look at.
+ */
+function cacheOf(
+  from: CacheUse,
+  root: CacheRoot | undefined,
+): { root: string; owner: number; use: 'fresh' | 'refresh' | 'kept' } | undefined {
+  const owner = process.getuid?.()
+  if (root === undefined || !('dir' in root) || owner === undefined) {
+    if (from.cached === true) throw noCacheRefusal(root === undefined ? undefined : 'none' in root ? root.none : 'platform')
+    return undefined
+  }
+  return { root: root.dir, owner, use: from.cached === true ? 'kept' : from.refresh === true ? 'refresh' : 'fresh' }
 }
 
 /** The catalogue's token, from the environment a source is resolved in; empty is unset. */
@@ -1746,11 +1848,16 @@ const tokenOf = (context: SourceContext): string | undefined => {
  * host, port and path, never a token, which the URL cannot hold — what it
  * served, what of that was not read, and what it cost.
  */
-function sourceAttributes(source: BackstageSource, loaded: LoadResult): Attributes {
+function sourceAttributes(source: BackstageSource, loaded: LoadResult, loadMs: number): Attributes {
   const url = new URL(source.url)
   // An organisation node is read, not set aside.
   const read = loaded.entities.length + (loaded.organisation?.length ?? 0)
   const served = loaded.census?.served ?? read + loaded.ignored.length + loaded.rejected.length
+  const cache = loaded.cache
+  // A run answered from a copy sent no request: no page and no byte, and the
+  // time is this run's own, reading the copy. The census the copy keeps is the
+  // load's that made it, and describes what the copy holds, not this run.
+  const copy = answeredFromCopy(cache)
   return {
     'idp.source.kind': 'backstage',
     'idp.source.origin': `${url.protocol}//${url.host}${url.pathname}`,
@@ -1758,10 +1865,34 @@ function sourceAttributes(source: BackstageSource, loaded: LoadResult): Attribut
     'idp.source.set_aside': served - read,
     // What a bound left out, at least: 0 on a whole read.
     'idp.source.not_loaded': pastBoundOf(loaded.partial ?? []).count,
-    'idp.source.pages': loaded.census?.pages ?? 0,
-    'idp.source.bytes': loaded.census?.bytes ?? 0,
-    'idp.source.ms': loaded.census?.ms ?? 0,
+    'idp.source.pages': copy ? 0 : (loaded.census?.pages ?? 0),
+    'idp.source.bytes': copy ? 0 : (loaded.census?.bytes ?? 0),
+    'idp.source.ms': copy ? loadMs : (loaded.census?.ms ?? 0),
+    // `off`: no cache root, as a test's run or IDP_BACKSTAGE_CACHE=off.
+    'idp.source.cache_read': cache?.read.state ?? 'off',
+    ...(cache?.written === undefined ? {} : { 'idp.source.cache_written': cache.written.state }),
+    // Negative for a copy dated after this clock's now, which only --cached reads.
+    ...(copy ? { 'idp.source.cache_age_s': Math.floor((cache.read.ageMs ?? Date.now() - cache.read.fetchedAt) / 1000) } : {}),
   }
+}
+
+/** Whether a load was answered from a kept copy: `fresh` or `kept`, and then no request was sent. */
+function answeredFromCopy(
+  cache: CacheReport | undefined,
+): cache is CacheReport & { read: Extract<CacheReport['read'], { state: 'fresh' | 'kept' }> } {
+  return cache !== undefined && (cache.read.state === 'fresh' || cache.read.state === 'kept')
+}
+
+/**
+ * The lines a cache report adds after the notice, each cleaned: a path under
+ * the cache root is one the person's environment named. Shown under `~` when
+ * it is in the home directory.
+ */
+function cacheLinesOf(report: CacheReport, deps: MainDeps, context: SourceContext): string[] {
+  const root = deps.cacheRoot !== undefined && 'dir' in deps.cacheRoot ? deps.cacheRoot.dir : ''
+  return cacheLines(report, root, (file) => shownPath(file, context.env)).map((line) =>
+    inertLine(line, Number.POSITIVE_INFINITY),
+  )
 }
 
 /** The two repositories a change reads (`applicationRoot`). */

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { VERDICT_TOOL } from '../../src/agents/reviewer.js'
 import { REPORT_TOOL } from '../../src/agents/tools/project-tools.js'
 import { PROPOSE_TOOL } from '../../src/agents/tools/propose-tool.js'
-import { main, type MainDeps } from '../../src/cli/index.js'
+import { main, parseArguments, type MainDeps } from '../../src/cli/index.js'
 import { shownUrl } from '../../src/cli/source.js'
 import type { CatalogueFetch } from '../../src/context/backstage/transport.js'
 import type { AgentName, GenerateResult, LlmClient } from '../../src/llm/client.js'
@@ -290,5 +290,100 @@ describe('the catalogue URL, checked before any request', () => {
     expect(committed.fetched).toBe(0)
     expect(committed.err).not.toContain('evil.example')
     expect(committed.err).toMatch(/^reading the declarations repository /)
+  })
+})
+
+describe('--refresh and --cached, refused where they would read nothing kept', () => {
+  // Two booleans on the read commands and the phrase alone: plan, validate and
+  // init read no catalogue. Each refusal is the arguments', exit 2, before any
+  // request (backstage-http slice 2, Task 2.3).
+  it('parses either flag on every read command and the phrase', () => {
+    expect(parseArguments(['graph', '--refresh'])).toMatchObject({ name: 'graph', refresh: true })
+    expect(parseArguments(['show', 'x', '--cached'])).toMatchObject({ name: 'show', query: 'x', cached: true })
+    expect(parseArguments(['relations', 'x', '--impacts', '--refresh'])).toMatchObject({
+      name: 'relations',
+      relation: 'impacts',
+      refresh: true,
+    })
+    expect(parseArguments(['ask', 'q', '--cached'])).toMatchObject({ name: 'ask', intent: 'q', cached: true })
+    expect(parseArguments(['which databases are in prod', '--refresh'])).toMatchObject({ name: 'entry', refresh: true })
+    // Absent is omitted, never false: a run with neither is what it always was.
+    expect(parseArguments(['graph'])).toStrictEqual({ name: 'graph', options: {} })
+  })
+
+  it('refuses both at once, and either beside --repo or --demo', () => {
+    expect(parseArguments(['graph', '--refresh', '--cached'])).toStrictEqual({
+      name: 'error',
+      message: 'graph takes --refresh or --cached, never both: one reads Backstage again and the other only the kept copy',
+    })
+    expect(parseArguments(['graph', '--cached', '--repo', 'x'])).toStrictEqual({
+      name: 'error',
+      message: '--cached reads a kept copy of a Backstage catalogue, and --repo names a repository',
+    })
+    expect(parseArguments(['show', 'x', '--refresh', '--demo'])).toStrictEqual({
+      name: 'error',
+      message: '--refresh reads a Backstage catalogue again, and --demo names the fictional SI',
+    })
+  })
+
+  it('is an unknown option where no catalogue is read, as before', () => {
+    for (const argv of [['plan', 'x', '--refresh'], ['validate', 'd', '--cached'], ['init', '--cached']]) {
+      expect(parseArguments(argv)).toStrictEqual({ name: 'error', message: expect.stringMatching(/^Unknown option '--(refresh|cached)'/) })
+    }
+  })
+
+  it('refuses either against a source that is not a catalogue, naming what was read, before any request', async () => {
+    const standing = await mkdtemp(path.join(tmpdir(), 'backstage-flags-'))
+    await cp(DEMO, standing, { recursive: true })
+    const repo = await run(['graph', '--cached'], {
+      env: { IDP_BACKSTAGE_URL: LOOPBACK },
+      cwd: standing,
+      catalogueFetch: untouchable,
+      cacheRoot: { dir: standing },
+    })
+    expect(repo.code).toBe(2)
+    expect(repo.err).toBe(
+      `--cached reads a kept copy of a Backstage catalogue, and this run reads the declarations repository ${path.basename(standing)} (the current directory); --backstage reads the catalogue\n`,
+    )
+    const demo = await run(['show', 'billing-api', '--refresh'], { env: {}, catalogueFetch: untouchable })
+    expect(demo.code).toBe(2)
+    expect(demo.err).toMatch(
+      /^--refresh reads a Backstage catalogue again, and this run reads the demo SI \(the default\); no catalogue is configured: IDP_BACKSTAGE_URL, or backstage in /,
+    )
+  })
+
+  it('refuses --cached where this tool keeps no copy, naming why', async () => {
+    const reasons = {
+      off: 'IDP_BACKSTAGE_CACHE is off',
+      'no-home': 'neither XDG_CACHE_HOME nor HOME names an absolute folder',
+      platform: 'this tool keeps none on Windows',
+      root: 'this tool keeps none for root, so a sudo run never leaves company data owned by root in a home',
+    } as const
+    for (const [none, why] of Object.entries(reasons)) {
+      const { code, err } = await run(['graph', '--cached'], {
+        env: { IDP_BACKSTAGE_URL: LOOPBACK },
+        catalogueFetch: untouchable,
+        cacheRoot: { none: none as keyof typeof reasons },
+      })
+      expect(code, none).toBe(2)
+      expect(err).toBe(`--cached reads a copy this tool keeps, and none is kept here: ${why}\n`)
+    }
+    // A run handed no root at all — every test's, since only bin.ts resolves one.
+    const unrooted = await run(['graph', '--cached'], { env: { IDP_BACKSTAGE_URL: LOOPBACK }, catalogueFetch: untouchable })
+    expect(unrooted.code).toBe(2)
+    expect(unrooted.err).toBe('--cached reads a copy this tool keeps, and none is kept here: this run was given no cache folder\n')
+  })
+
+  it('refuses an IDP_BACKSTAGE_CACHE other than off, so a typo never keeps what was meant to be kept nowhere', async () => {
+    for (const value of ['of', 'OFF', 'no', '0']) {
+      const { code, err } = await run(['graph'], {
+        env: { IDP_BACKSTAGE_URL: LOOPBACK, IDP_BACKSTAGE_CACHE: value },
+        catalogueFetch: untouchable,
+      })
+      expect(code, value).toBe(2)
+      expect(err).toBe(`IDP_BACKSTAGE_CACHE=${value} is not off, its one value; unset it to keep a catalogue read five minutes\n`)
+    }
+    // Empty is unset, as for every IDP_ variable.
+    expect((await run(['graph'], { env: { IDP_BACKSTAGE_URL: LOOPBACK, IDP_BACKSTAGE_CACHE: '' } })).code).toBe(0)
   })
 })

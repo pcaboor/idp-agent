@@ -972,7 +972,11 @@ but a loopback one: `config.yml` holds no credential, whatever other files — t
 deliberately no field in it that could carry one. The catalogue is read once per run,
 before any model, whole, or up to a stated bound and said to be partial (ADR-0013): a read
 that could not be completed is exit 1, naming the host and what named it, and never falls
-back to a repository or the demo.
+back to a repository or the demo. A read is kept five minutes under `$XDG_CACHE_HOME/idp-agent/backstage`
+(else `~/.cache/…`), for the person's account alone (ADR-0014): a run within them answers
+from the copy and says its age, `--refresh` reads the catalogue again, and `--cached` answers
+from the copy whatever its age, never asking the catalogue — only when asked, never as a fall
+back. `IDP_BACKSTAGE_CACHE=off` keeps nothing.
 
 ### 7.1 First contact — no configuration
 

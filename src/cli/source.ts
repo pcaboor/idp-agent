@@ -10,18 +10,24 @@ import {
 import { isDeclarationsRepository } from '../context/iac-fs/snapshot.js'
 import type { Census } from '../context/provider.js'
 import {
+  CACHE_VARIABLE,
   expandHome,
   flat,
   pathOf,
   personalConfigFile,
   readPersonalConfig,
   shownPath,
+  type CacheRoot,
   type Env,
   type PersonalConfig,
 } from './personal.js'
+import { ageWords } from './render/catalogue-read.js'
 import type { OverviewSource } from './render/overview.js'
 import { oneLine } from './render/plain.js'
 import { RepositoryArgumentError, declarationsRoot, type DeclarationsCommand } from './repository.js'
+
+/** Why no catalogue read is kept on this run (`cacheRootOf`). */
+type NoCache = Extract<CacheRoot, { none: unknown }>['none']
 
 /**
  * Where the SI a command reads comes from, decided here for `graph`, `show`,
@@ -399,6 +405,15 @@ function catalogueAt(
 ): BackstageSource {
   const base = catalogueBase(raw, where)
   const label = flat(base.host)
+  // `off` is the one value, so a typo never keeps what was meant to be kept
+  // nowhere; empty is unset, as for every IDP_ variable. Refused here, where a
+  // catalogue is resolved: nothing else reads a copy.
+  const cache = context.env['IDP_BACKSTAGE_CACHE']
+  if (cache !== undefined && cache !== '' && cache !== 'off') {
+    throw refusal(
+      `${CACHE_VARIABLE}=${cache} is not off, its one value; unset it to keep a catalogue read five minutes`,
+    )
+  }
   const token = context.env[BACKSTAGE_TOKEN_VARIABLE]
   if (token !== undefined && token !== '' && !headerCarries(token)) {
     throw refusal(
@@ -534,6 +549,62 @@ export async function catalogueConfigured(context: SourceContext): Promise<boole
   if (url !== undefined && url !== '') return true
   const config = await readPersonalConfig(context.env, context.platform ?? process.platform).catch(() => undefined)
   return config?.backstage !== undefined
+}
+
+/**
+ * Why `--refresh` or `--cached` is refused once the source is resolved and
+ * is not a catalogue — the directory the person stands in, a configured
+ * repository, the demo SI — exit 2, before any request: what was read, and
+ * the way to the catalogue when one is configured.
+ */
+export async function cacheFlagRefusal(
+  flag: '--refresh' | '--cached',
+  source: RepositorySource | DemoSource,
+  context: SourceContext,
+): Promise<RepositoryArgumentError> {
+  const what =
+    source.kind === 'repo'
+      ? `the declarations repository ${source.label} (${originText(source.origin)})`
+      : `the demo SI (${originText(source.origin)})`
+  const way = (await catalogueConfigured(context))
+    ? '--backstage reads the catalogue'
+    : `no catalogue is configured: ${BACKSTAGE_URL_VARIABLE}, or backstage in ${personalFileHint(context.env, context.platform)}`
+  return refusal(`${cacheFlagWords(flag)}, and this run reads ${what}; ${way}`)
+}
+
+/** What `--cached` and `--refresh` read, as the start of a refusal of one: at parsing, and once the source is resolved. */
+export const cacheFlagWords = (flag: '--cached' | '--refresh'): string =>
+  flag === '--cached'
+    ? '--cached reads a kept copy of a Backstage catalogue'
+    : '--refresh reads a Backstage catalogue again'
+
+/**
+ * Why `--cached` is refused when this tool keeps no copy here (`cacheRootOf`),
+ * exit 2 — or, `undefined`, when this run was handed no cache root at all,
+ * which only an embedding or a test does.
+ */
+export function noCacheRefusal(reason: NoCache | undefined): RepositoryArgumentError {
+  return refusal(`--cached reads a copy this tool keeps, and none is kept here: ${noCacheWords(reason)}`)
+}
+
+/** Why no copy is kept, in the words of `--cached`'s refusal. */
+function noCacheWords(reason: NoCache | undefined): string {
+  switch (reason) {
+    case 'off':
+      return `${CACHE_VARIABLE} is off`
+    case 'no-home':
+      return 'neither XDG_CACHE_HOME nor HOME names an absolute folder'
+    case 'platform':
+      return 'this tool keeps none on Windows'
+    case 'root':
+      return 'this tool keeps none for root, so a sudo run never leaves company data owned by root in a home'
+    case undefined:
+      return 'this run was given no cache folder'
+    default: {
+      const exhaustive: never = reason
+      return exhaustive
+    }
+  }
 }
 
 /** Where the personal file would be, as a person reads it — for a sentence that tells them to write one. */
@@ -692,7 +763,15 @@ export function sourceNotice(
   command: DeclarationsCommand,
   source: Source,
   context: Pick<SourceContext, 'env' | 'platform'>,
-  read: { readonly counts?: ReadCounts; readonly catalogue?: boolean } = {},
+  read: {
+    readonly counts?: ReadCounts
+    readonly catalogue?: boolean
+    /**
+     * A catalogue answered from its kept copy: its age as the notice says it
+     * (`copyAge`), and whether `--cached` asked for it whatever its age.
+     */
+    readonly copy?: { readonly age: string; readonly cached: boolean }
+  } = {},
 ): string | undefined {
   switch (source.kind) {
     case 'repo': {
@@ -713,7 +792,7 @@ export function sourceNotice(
       )
     }
     case 'backstage': {
-      const counts = read.counts
+      const { counts, copy } = read
       const past = counts?.pastBound
       const atLeast = past !== undefined && !past.exact ? 'at least ' : ''
       const served =
@@ -723,12 +802,22 @@ export function sourceNotice(
             `${countOf(counts.entities)} read, ${countOf(counts.notModelled)} not modelled` +
             (counts.setAside > 0 ? `, ${countOf(counts.setAside)} set aside` : '') +
             (counts.skipped > 0 ? `, ${countOf(counts.skipped)} skipped` : '') +
-            (past !== undefined && past.count > 0 ? `, ${atLeast}${countOf(past.count)} past the bound` : '') +
-            ((counts.census?.repeated ?? 0) > 0
-              ? `; the catalogue changed while it was read (${countOf(counts.census?.repeated ?? 0)} served twice)`
-              : '')
+            (past !== undefined && past.count > 0 ? `, ${atLeast}${countOf(past.count)} past the bound` : '')
+      const repeated = counts?.census?.repeated ?? 0
+      // This run sent nothing: the counts are the kept copy's, and so is a
+      // uid served twice — said after `read from cache`, of the read that made
+      // the copy, never of this run.
+      const kept =
+        copy === undefined
+          ? repeated > 0
+            ? `; the catalogue changed while it was read (${countOf(repeated)} served twice)`
+            : ''
+          : `; read from cache, ${copy.age}` +
+            (copy.cached ? ', as --cached asks: Backstage was not asked' : '') +
+            (repeated > 0 ? `; the catalogue changed during the read this copy keeps (${countOf(repeated)} served twice)` : '') +
+            (copy.cached ? '' : '; --refresh reads Backstage again')
       return (
-        `reading the Backstage catalogue at ${oneLine(source.label)} (${oneLine(originText(source.origin))})${served}; ` +
+        `reading the Backstage catalogue at ${oneLine(source.label)} (${oneLine(originText(source.origin))})${served}${kept}; ` +
         'it may lag the declarations repository by minutes; --repo <directory> reads a repository'
       )
     }
@@ -779,8 +868,18 @@ const secondsOf = (ms: number): string => `${String(ms / 1000)} s`
  */
 export function catalogueFailureLine(error: CatalogueReadError, source: BackstageSource, token: boolean): string {
   const at = `the Backstage catalogue at ${oneLine(source.label)} (${oneLine(originText(source.origin))})`
+  // `--cached` never asks the catalogue, so its way out is the other road.
+  if (error.failure.kind === 'not-kept') return `${at} ${whatFailed(error.failure, source, token)}`
+  // A copy is kept, and the read failed for reach: the provider sets `kept`
+  // then and never after a 401 or a 403, which may be a revoked token.
+  const kept =
+    error.kept === undefined
+      ? ''
+      : error.kept.ageMs === undefined
+        ? '; --cached reads the kept copy, of an age this clock cannot tell'
+        : `; --cached reads the copy kept ${ageWords(error.kept.ageMs)} ago`
   return (
-    `${at} ${whatFailed(error.failure, source, token)}; ` +
+    `${at} ${whatFailed(error.failure, source, token)}${kept}; ` +
     '--repo <directory> reads a repository instead, and `idpa plan` decides a change without the catalogue'
   )
 }
@@ -835,7 +934,7 @@ function whatFailed(failure: CatalogueFailure, source: BackstageSource, token: b
     case 'changed':
       return `changed while it was read (${countOf(failure.expected)} expected, ${countOf(failure.read)} read)`
     case 'not-kept':
-      return 'has no copy kept on this machine that verifies, and --cached never asks Backstage'
+      return 'was not read: no copy of it read with this token is kept on this machine (--cached); run without --cached to read it'
     default: {
       const exhaustive: never = failure
       return exhaustive

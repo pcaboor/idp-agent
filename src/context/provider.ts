@@ -120,6 +120,8 @@ export type CacheRefusal =
   | { readonly kind: 'unverified'; readonly reason: UnverifiedReason }
   /** The disk said no: the error's code, never its message. */
   | { readonly kind: 'io'; readonly code: string }
+  /** The root is missing, and so is the folder above it: the store makes one name, never a chain. */
+  | { readonly kind: 'no-parent' }
   /**
    * A run as root keeps and reads nothing: `sudo` can keep the caller's home,
    * and one run would leave a tree of company data there that every later run

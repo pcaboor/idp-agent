@@ -120,6 +120,10 @@ const CONFIG_HOME = path.join(ELSEWHERE, 'config')
 const CLEAN_ENV = {
   ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('IDP_'))),
   XDG_CONFIG_HOME: CONFIG_HOME,
+  // Where the binary keeps a catalogue read: a folder no one makes, which the
+  // store makes one name deep, so no smoke run writes under the contributor's
+  // ~/.cache. `pnpm demo:backstage` sets its own.
+  XDG_CACHE_HOME: path.join(ELSEWHERE, 'cache'),
 }
 
 const failures = []
@@ -676,6 +680,10 @@ check({
     for (const shown of [
       /^\$ env -u IDP_BACKSTAGE_TOKEN IDP_BACKSTAGE_URL=http:\/\/127\.0\.0\.1:\d+\/api\/catalog node dist\/cli\/bin\.js relations mysql-prod-01 --impacts$/m,
       /^reading the Backstage catalogue at 127\.0\.0\.1:\d+ \(IDP_BACKSTAGE_URL\): 40 entities: 40 read, 0 not modelled;/m,
+      // The second read answered from the copy the first kept: bin.ts hands the
+      // cache root in, and smoke fails if the second read reaches the fake.
+      /^reading the Backstage catalogue at 127\.0\.0\.1:\d+ \(IDP_BACKSTAGE_URL\): 40 entities: 40 read, 0 not modelled; read from cache, less than a minute old; --refresh reads Backstage again;/m,
+      /^the fake Backstage was sent no request for the second read$/m,
       /^impacts \(9\)$/m,
       /^component:default\/billing-api$/m,
       /^\+\+\+ b\/dependencies\/network\/orders-api-to-payments\.yml$/m,

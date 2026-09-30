@@ -1,4 +1,13 @@
-import { scopeWords, type Ignored, type PartialRead, type PrePassRule, type Rejection } from '../../context/provider.js'
+import {
+  scopeWords,
+  type CacheRefusal,
+  type CacheReport,
+  type Ignored,
+  type PartialRead,
+  type PrePassRule,
+  type Rejection,
+  type UnverifiedReason,
+} from '../../context/provider.js'
 import { inertLine } from './plain.js'
 
 /**
@@ -204,4 +213,143 @@ export function partialClosing(partial: readonly PartialRead[], held: string): s
  */
 export function missIn(partial: readonly PartialRead[], miss: string): string {
   return partial.length === 0 ? `${miss}.` : `${miss} in the part of the catalogue read: ${partialSentence(partial)}.`
+}
+
+/**
+ * How old a kept copy is, as the notice and the failure line say it: `less
+ * than a minute`, `N min` (floored), `N h` from an hour, `N days` from two
+ * days. Coarse on purpose: a copy is read or not by the TTL, and what a person
+ * needs is the order of its age, not a timestamp.
+ */
+export function ageWords(ms: number): string {
+  const minutes = Math.floor(ms / 60_000)
+  if (minutes < 1) return 'less than a minute'
+  if (minutes < 60) return `${String(minutes)} min`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 48) return `${String(hours)} h`
+  return `${String(Math.floor(hours / 24))} days`
+}
+
+/**
+ * A copy's age for the notice: `3 min old`, or — a copy dated after this
+ * clock's now, which is never fresh and is read only with `--cached` — `of an
+ * age this clock cannot tell (dated 10 min ahead of it)`.
+ */
+export function copyAge(read: { readonly fetchedAt: number; readonly ageMs: number | undefined }, now: number): string {
+  return read.ageMs === undefined
+    ? `of an age this clock cannot tell (dated ${ageWords(read.fetchedAt - now)} ahead of it)`
+    : `${ageWords(read.ageMs)} old`
+}
+
+/** Which check a copy failed, in the words of the line that says it was not used. */
+function unverifiedWords(reason: UnverifiedReason): string {
+  switch (reason) {
+    case 'size':
+      return 'its size'
+    case 'header':
+      return 'its header'
+    case 'format':
+      return 'its format'
+    case 'origin':
+      return 'its origin'
+    case 'length':
+      return 'its length'
+    case 'mac':
+      return 'its MAC'
+    case 'envelope':
+      return 'its envelope'
+    case 'account':
+      return 'its account of its own reads'
+    case 'items':
+      return 'its items'
+    default: {
+      const exhaustive: never = reason
+      return exhaustive
+    }
+  }
+}
+
+/**
+ * What is wrong with the name a refusal names, `it` being that name — or,
+ * for a refusal that names none, the whole of what went wrong.
+ */
+function refusedWords(refusal: CacheRefusal, root: string): { path?: string; why: string } {
+  switch (refusal.kind) {
+    case 'link':
+      return { path: refusal.path, why: 'it is a symbolic link, never followed' }
+    case 'foreign':
+      return { path: refusal.path, why: 'it belongs to another account' }
+    case 'open':
+      return { path: refusal.path, why: `others may open it (mode ${refusal.mode.toString(8).padStart(4, '0')})` }
+    case 'not-a-folder':
+      return { path: refusal.path, why: 'it is not a folder' }
+    case 'not-a-file':
+      return { path: refusal.path, why: 'it is not a regular file' }
+    case 'linked':
+      return { path: refusal.path, why: 'it has a second name, a hard link beside it' }
+    case 'busy':
+      return { path: refusal.path, why: 'another run replaced it three times in a row' }
+    case 'io':
+      // Any code, ENOENT included: a key folder or a temporary file another run removed says nothing of the root.
+      return { why: `the disk answered ${refusal.code} under ${root}` }
+    case 'no-parent':
+      return { why: `${root} does not exist, nor does the folder above it` }
+    case 'root':
+      return { why: 'this tool keeps none for root' }
+    case 'unverified':
+      return { why: `the kept copy did not verify (${unverifiedWords(refusal.reason)})` }
+    default: {
+      const exhaustive: never = refusal
+      return exhaustive
+    }
+  }
+}
+
+const sameRefusal = (a: CacheRefusal, b: CacheRefusal): boolean => JSON.stringify(a) === JSON.stringify(b)
+
+/**
+ * The lines a cache report adds after the notice: a copy that was not used,
+ * and a read that was not kept — one line when both facts name one path and
+ * one reason, since they say one thing. None when the copy answered, or none
+ * was kept yet, and the read was kept: the notice says the age, and a first
+ * run's stderr is what it always was. `root` is the cache root as the person
+ * named it, and `shown` how a path under it is printed (`~` for the home).
+ * The store never repairs what it refuses, so a refused name ends on
+ * "nothing was changed".
+ */
+export function cacheLines(report: CacheReport, root: string, shown: (file: string) => string): string[] {
+  const at = (relative: string): string => shown([root, ...relative.split('/')].join('/').replace(/\/\/+/g, '/'))
+  const read = report.read.state === 'not-used' ? report.read.refusal : undefined
+  const written = report.written?.state === 'not-written' ? report.written.refusal : undefined
+  const lines: string[] = []
+  if (read !== undefined && written !== undefined && sameRefusal(read, written)) {
+    const { path, why } = refusedWords(read, shown(root))
+    return [
+      path === undefined
+        ? `this read of the catalogue was not kept: ${why}`
+        : `the cache at ${at(path)} was not used and this read was not kept: ${why}; nothing was changed`,
+    ]
+  }
+  if (read !== undefined) {
+    if (read.kind === 'unverified') {
+      lines.push(
+        `the kept copy of this catalogue did not verify (${unverifiedWords(read.reason)}) and was not used` +
+          (report.written?.state === 'written' ? '; it is replaced by this read' : ''),
+      )
+    } else {
+      const { path, why } = refusedWords(read, shown(root))
+      lines.push(
+        path === undefined ? `the cache at ${shown(root)} was not used: ${why}` : `the cache at ${at(path)} was not used: ${why}; nothing was changed`,
+      )
+    }
+  }
+  if (written !== undefined) {
+    const { path, why } = refusedWords(written, shown(root))
+    lines.push(
+      path === undefined
+        ? `this read of the catalogue was not kept: ${why}`
+        : `the cache at ${at(path)} could not keep this read: ${why}; nothing was changed`,
+    )
+  }
+  return lines
 }

@@ -28,6 +28,7 @@ const THE_SYSTEMS = new Map([
   ['USERPROFILE', 'HOME on Windows'],
   ['APPDATA', 'where the personal config.yml is on Windows'],
   ['XDG_CONFIG_HOME', 'where the personal config.yml is first looked for'],
+  ['XDG_CACHE_HOME', 'where a catalogue read is kept, first looked for'],
   ['NO_COLOR', 'whether a diff is painted'],
   ['FORCE_COLOR', 'whether a diff is painted'],
 ])

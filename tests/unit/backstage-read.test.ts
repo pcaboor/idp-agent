@@ -415,6 +415,63 @@ describe('a change, with a catalogue configured', () => {
     expect(out).toContain('spec.owner')
   })
 
+  it('lets nothing kept vouch either: an owner only the kept copy holds is asked, exit 3, nothing sent', async () => {
+    // The first run keeps a copy; the second answers from it, and its change
+    // is still decided against the repository, which declares no such owner.
+    const INVENTED = 'group:default/invented'
+    const { home } = await configured(LOOPBACK)
+    const cacheRoot = { dir: await mkdtemp(path.join(tmpdir(), 'backstage-read-cache-')) }
+    const entities = [...withOrganisation(), component('kept-only-canary', { owner: INVENTED })]
+    const first = await run(['graph'], { env: { HOME: home }, cwd: await elsewhere(), entities, cacheRoot })
+    expect(first.code).toBe(0)
+    expect(first.sent.length).toBeGreaterThan(0)
+
+    const client = scripted({
+      supervisor: [saying('MUTATION')],
+      architect: [
+        calling(PROPOSE_TOOL, {
+          operations: [
+            {
+              op: 'create-entity',
+              entity: {
+                kind: 'Resource',
+                metadata: { name: 'ledger-db-prod', env: 'prod' },
+                spec: { type: 'database', owner: INVENTED },
+              },
+            },
+          ],
+        }),
+      ],
+    })
+    const never = unreached()
+    // The request does not name the owner: a person's own words would vouch
+    // for it (`Provenance`), and the point is that the kept copy never does.
+    const second = await run(['declare the database ledger-db-prod in prod'], {
+      env: { HOME: home },
+      cwd: await elsewhere(),
+      client,
+      cacheRoot,
+      catalogueFetch: never.fetch,
+    })
+    expect(second.code).toBe(3)
+    expect(second.out).toContain('spec.owner')
+    expect(second.err.split('\n')[0]).toMatch(/; read from cache, less than a minute old; --refresh reads Backstage again; /)
+    expect(never.calls).toBe(0)
+    // The Supervisor was shown the kept catalogue; the Architect the repository.
+    expect(JSON.stringify(client.seen.filter((request) => request.agent === 'supervisor'))).toContain(INVENTED)
+    const architect = client.seen.filter((request) => request.agent === 'architect')
+    expect(architect.length).toBeGreaterThan(0)
+    expect(JSON.stringify(architect)).not.toContain(INVENTED)
+    // And plan, which reads no catalogue, takes no flag about one.
+    const refused = await run(['plan', 'declare the database ledger-db-prod in prod', '--refresh'], {
+      env: { HOME: home },
+      catalogueFetch: never.fetch,
+      cacheRoot,
+    })
+    expect(refused.code).toBe(2)
+    expect(refused.err).toMatch(/Unknown option '--refresh'/)
+  })
+
   it('is refused with a catalogue and no repository, in planNeedsRepository’s words', async () => {
     const client = scripted({ supervisor: [saying('MUTATION')] })
     const { code, err, sent } = await run(['let reporting-worker read orders-db-prod'], { cwd: await elsewhere(), client })

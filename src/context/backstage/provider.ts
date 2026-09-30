@@ -1,7 +1,7 @@
 import type { CatalogueEntity, OrganisationEntity } from '../../core/schemas/entity.js'
 import { readValue } from '../../core/yaml/serialize.js'
 import { refOf } from '../graph/entity-graph.js'
-import type { CacheReport, ContextProvider, Ignored, LoadResult, Rejection } from '../provider.js'
+import type { CacheRefusal, CacheReport, ContextProvider, Ignored, LoadResult, Rejection } from '../provider.js'
 import { catalogueCache } from './cache.js'
 import { BACKSTAGE_LIMITS, type BackstageLimits } from './limits.js'
 import { loadCatalogue, type Served } from './load.js'
@@ -99,7 +99,8 @@ export class BackstageProvider implements ContextProvider {
       const age = now() - fetchedAt
       return age >= 0 ? age : undefined
     }
-    const notKept = (): CatalogueReadError => new CatalogueReadError({ kind: 'not-kept' }, this.options.base.origin)
+    const notKept = (notUsed?: CacheRefusal): CatalogueReadError =>
+      new CatalogueReadError({ kind: 'not-kept' }, this.options.base.origin, undefined, notUsed)
     // The effective limits: a copy made under other bounds is under another key, and never read.
     const made = await catalogueCache({
       root: cache.root,
@@ -112,12 +113,16 @@ export class BackstageProvider implements ContextProvider {
       readOnly: cache.use === 'kept',
     })
     if (!('cache' in made)) {
-      if (cache.use === 'kept') throw notKept()
+      if (cache.use === 'kept') throw notKept('unusable' in made ? made.unusable : undefined)
       if (!('unusable' in made)) throw new Error('only a read-only store is ever absent')
       const refusal = made.unusable
       return {
         served: await this.live(limits),
-        report: { read: { state: 'not-used', refusal }, written: { state: 'not-written', refusal } },
+        report: {
+          // A refresh never uses a copy: only the read not kept is news.
+          read: cache.use === 'refresh' ? { state: 'skipped' } : { state: 'not-used', refusal },
+          written: { state: 'not-written', refusal },
+        },
       }
     }
     const store = made.cache
@@ -126,7 +131,7 @@ export class BackstageProvider implements ContextProvider {
     switch (cache.use) {
       case 'kept': {
         const copy = await store.read('kept')
-        if (!('kept' in copy)) throw notKept()
+        if (!('kept' in copy)) throw notKept(typeof copy.none === 'string' ? undefined : copy.none)
         const { served, fetchedAt } = copy.kept
         return { served, report: { read: { state: 'kept', fetchedAt, ageMs: ageOf(fetchedAt) } } }
       }

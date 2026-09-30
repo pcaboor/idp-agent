@@ -129,6 +129,19 @@ while you browse. Nowhere else is it acceptable.
 **SQLite in memory.** The catalogue is rebuilt from the files at every start, within seconds,
 and the demo needs no database service.
 
+**The kept catalogue, in a scratch folder.** `idpa` keeps a catalogue read five minutes
+(backstage-http slice 2), and both demos point `XDG_CACHE_HOME` at a folder of their run's
+scratch, removed when they end, so nothing lands in the contributor's own `~/.cache`. The
+Docker demo's steps: 1, the catalogue holds the demo SI; 2, `relations mysql-prod-01
+--impacts` reads Backstage and keeps the read; 3, `show billing-api` and 4, `show tiger`,
+answer from that copy, their stdout unchanged and their stderr saying `read from cache, less
+than a minute old; --refresh reads Backstage again`; 5, `show billing-api --refresh` reads
+Backstage again, with no word of a cache; 6, without the token, the catalogue answers 401 —
+another token is another key, so no copy stands in for the refusal; 7, the token reads and
+does nothing else (403). `pnpm demo:backstage`'s step 2 is its second read: answered from the
+copy step 1 kept, it prints `the fake Backstage was sent no request for the second read`, and
+fails with the number it was sent otherwise.
+
 ## What a real Backstage serves that the fake does not
 
 `tools/fake-backstage.ts` stays what the suite and `pnpm demo:backstage` read. Against this

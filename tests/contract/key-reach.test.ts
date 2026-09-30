@@ -1,4 +1,5 @@
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -399,6 +400,8 @@ describe.each(PROVIDER_NAMES)('the %s key on a real run', (provider) => {
  * marker, so the searches for it are not vacuous.
  */
 const TOKEN = 'canary-backstage-token-that-is-not-real-0123456789'
+/** Whether this machine keeps a copy at all: none on Windows, and none for root. */
+const KEEPS = process.platform !== 'win32' && process.getuid?.() !== 0
 const CATALOGUE = 'https://backstage.canary.example/api/catalog'
 const MARKER = 'group:default/only-in-catalogue'
 
@@ -423,6 +426,8 @@ describe.each(PROVIDER_NAMES)('the %s key and the catalogue token on a real run'
 
   interface Ran {
     code: number
+    /** The cache root the run was handed, as `bin.ts` hands one: every byte under it is searched. */
+    cache: string
     toCatalogue: ToCatalogue[]
     toProvider: Sent[]
     toMlflow: Sent[]
@@ -434,6 +439,8 @@ describe.each(PROVIDER_NAMES)('the %s key and the catalogue token on a real run'
   const runRoad = async (argv: string[], word: Road['word'], operations: unknown[] = [], faults?: Faults): Promise<Ran> => {
     const { repo } = await repositories()
     const xdg = path.join(path.dirname(repo), 'xdg')
+    // A folder no one made: the store makes it, one name deep.
+    const cache = path.join(path.dirname(repo), 'cache')
     await mkdir(path.join(xdg, 'idp-agent'), { recursive: true })
     await writeFile(path.join(xdg, 'idp-agent', 'config.yml'), `repo: ${repo}\nbackstage: ${CATALOGUE}\n`, 'utf8')
 
@@ -463,6 +470,7 @@ describe.each(PROVIDER_NAMES)('the %s key and the catalogue token on a real run'
         IDP_BACKSTAGE_TOKEN: TOKEN,
       },
       catalogueFetch: catalogue.fetch,
+      cacheRoot: { dir: cache },
       fetch: keeping(toMlflow, () => new Response('{}', { status: 200 })),
       traceSinks: [sink],
       out: (chunk) => void out.push(chunk),
@@ -470,7 +478,7 @@ describe.each(PROVIDER_NAMES)('the %s key and the catalogue token on a real run'
       events: () => {},
     })
     const trace = JSON.stringify(sink.traces, (_, value: unknown) => (typeof value === 'bigint' ? value.toString() : value))
-    return { code, toCatalogue: catalogue.sent, toProvider, toMlflow, out: out.join(''), err: err.join(''), trace }
+    return { code, cache, toCatalogue: catalogue.sent, toProvider, toMlflow, out: out.join(''), err: err.join(''), trace }
   }
 
   /** Nothing the token or the key could be found in but where each belongs. */
@@ -484,6 +492,21 @@ describe.each(PROVIDER_NAMES)('the %s key and the catalogue token on a real run'
       expect(text).not.toContain(TOKEN)
       expect(text).not.toContain(KEY)
     }
+  }
+
+  /** The token, its sha256 and its base64: none is at rest under the cache root, in a name or a byte. */
+  const noneAtRest = async (cache: string): Promise<number> => {
+    const forms = [TOKEN, createHash('sha256').update(TOKEN).digest('hex'), Buffer.from(TOKEN).toString('base64')]
+    const names = (await readdir(cache, { recursive: true, withFileTypes: true }).catch(() => [])).filter((entry) => entry.isFile())
+    for (const entry of names) {
+      const file = path.join(entry.parentPath, entry.name)
+      const bytes = await readFile(file, 'latin1')
+      for (const form of forms) {
+        expect(path.relative(cache, file)).not.toContain(form)
+        expect(bytes, file).not.toContain(form)
+      }
+    }
+    return names.length
   }
 
   it('reaches the catalogue only, in one header, on a question and on a change', async () => {
@@ -533,7 +556,34 @@ describe.each(PROVIDER_NAMES)('the %s key and the catalogue token on a real run'
         expect(spawned.environments).toEqual([])
       }
       heldNowhere(ran)
+      // A copy and the secret were kept, so the search is not vacuous — where a copy is kept at all.
+      const kept = await noneAtRest(ran.cache)
+      if (KEEPS) expect(kept).toBeGreaterThanOrEqual(2)
     }
+  })
+
+  it.skipIf(!KEEPS)('keys a copy by the token under the secret: two roots, two secrets, two keys, neither the token’s hash', async () => {
+    const sha = createHash('sha256').update(TOKEN).digest('hex')
+    const keyOf = async (): Promise<string> => {
+      const cache = await mkdtemp(path.join(tmpdir(), 'key-reach-cache-'))
+      const catalogue = fakeBackstage({ entities: catalogueEntities(), token: TOKEN })
+      const code = await main(['graph', '--backstage'], {
+        root: FIXTURES,
+        env: { IDP_BACKSTAGE_URL: CATALOGUE, IDP_BACKSTAGE_TOKEN: TOKEN },
+        catalogueFetch: catalogue.fetch,
+        cacheRoot: { dir: cache },
+        out: () => {},
+        err: () => {},
+      })
+      expect(code).toBe(0)
+      await noneAtRest(cache)
+      const keys = (await readdir(path.join(cache, 'idp-agent', 'backstage'))).filter((name) => /^[0-9a-f]{32}$/.test(name))
+      expect(keys).toHaveLength(1)
+      return keys[0] ?? ''
+    }
+    const [one, two] = [await keyOf(), await keyOf()]
+    expect(one).not.toBe(two)
+    for (const key of [one, two]) expect(sha.startsWith(key)).toBe(false)
   })
 
   it.each<[string, Faults]>([

@@ -33,9 +33,12 @@ names the test that fails if it stops being true.
 - **Exports a trace, only when asked**: to the MLflow server `IDP_MLFLOW_TRACKING_URI`
   names, or as a file in the directory `IDP_TRACE_DIR` names.
 - **Writes nothing, except** the files `init platform` scaffolds into the directory it is
-  handed, and a trace file when `IDP_TRACE_DIR` is set. (A contributor's
+  handed, a trace file when `IDP_TRACE_DIR` is set, and a Backstage catalogue read kept five
+  minutes under `$XDG_CACHE_HOME/idp-agent/backstage` (else `~/.cache/…`), for your account
+  alone ([The kept catalogue](#the-kept-catalogue)). (A contributor's
   `IDP_RECORDING=record` also writes a tape into `tests/recordings/`.) The named writers
-  are `scaffold/write.ts`, `cli/recording-fs.ts` and `cli/trace-sink.ts`; the fourth is the
+  are `scaffold/write.ts`, `cli/recording-fs.ts`, `cli/trace-sink.ts` and
+  `context/backstage/cache.ts`, through `confine/`; the fifth is the
   local forge, through git: one new branch per submission, cut in the repository named, and
   the objects it reaches — never the working tree, the index or `HEAD`. `plan … --submit`
   reaches it, worded by its route (D4): `plan "<intent>"` crosses all five gates, the
@@ -62,6 +65,56 @@ this tool reads. Retention is otherwise the provider's: every call to OpenAI's R
 says `store: false`, where the default is to store the response (held by
 `tests/contract/providers.test.ts`); Anthropic and Mistral are sent no retention option, and
 their defaults apply.
+
+## The kept catalogue
+
+A catalogue read is kept on your disk for five minutes, so a second run within them answers
+without asking Backstage and says so: `read from cache, 3 min old; --refresh reads Backstage
+again` (ADR-0014). It is company data at rest.
+
+**What it holds.** What the token read: Components, Resources and APIs as served —
+descriptions, links, annotations, relations — the organisation's names, types and
+memberships, and other kinds' references. Never a token, nor anything derived from one
+without this machine's secret; never a User's profile, a User's or a Group's annotation, or
+an API's definition text.
+
+**Who can read it.** Your account, and the machine's administrators. Folders are `0700` and
+files `0600`, owned by the running account, and each name is checked for its owner, mode, type
+and links before every read and write; a store that fails the check is not used that run, and
+one line says which path and why. It is never repaired, `chmod`-ed or removed: a tree under
+the cache folder owned by another account — one a `sudo` run of another tool made, say — is
+refused, and removed by that account (`sudo rm -rf ~/.cache/idp-agent` when root made it). A
+run as root keeps and reads nothing. Anything that copies your home copies it too — a backup
+(Time Machine does not exclude `~/.cache`), a sync tool, a disk image: `XDG_CACHE_HOME` puts it
+elsewhere, and `IDP_BACKSTAGE_CACHE=off` keeps nothing (`off` is its one value; any other is
+refused). There is none on Windows.
+
+**What it can and cannot be made to say.** A copy is keyed by an HMAC of the catalogue's base,
+the token and the read's shape under a per-machine secret, and sealed by a MAC over its
+format, its key, its header and every byte of its body: a flipped byte, a changed date, or a
+copy moved into another key's folder does not verify, is said, and is replaced. A copy that
+verifies is read again through the load's checks, the pre-pass and the reader, as a page is,
+and is no more than a hostile Backstage could serve. Your own account, or root, is beyond any
+check a file can make — it can read the secret too. What `confine/` cannot close for a
+repository it cannot close here either ([Known to be incomplete](#known-to-be-incomplete)).
+
+**The clock.** Its age is read from this machine's wall clock. A copy dated after now is never
+answered from without `--cached`; a clock moved forward makes copies look older, and
+Backstage is read again; a clock moved back by less than a copy's age makes it look younger by
+as much, which nothing can detect.
+
+**A revoked token keeps answering from its copy.** A run inside the five minutes answers from
+its fresh copy without asking Backstage, so a token revoked two minutes ago answers for up to
+five more with no 401 to see — and from any copy, whatever its age, with `--cached`, since the
+copy is on your machine. `--refresh` is what proves a token still reads. A failed read is
+never answered from a copy; after a failure of reach the failure line names `--cached`, and
+after a 401 or a 403 it never does. A new token is a new key, which never reads the old copy.
+A copy older than seven days is removed by the next run that keeps a read; until one does, it
+stays on disk, and `rm -rf ~/.cache/idp-agent` (under `$XDG_CACHE_HOME` when it is set) removes
+them all.
+
+**Nothing kept reaches a plan.** Only the provider loads the store, the provider is built for
+the read road alone, and a change is decided against the declarations repository.
 
 ## The threat model
 
@@ -184,6 +237,8 @@ Inspector.
 | The transport sends only `GET` on its two routes, to the configured origin and path, checked once the URL is built; follows no redirect and refuses a 3xx, a response marked redirected or from another address; bounds every body and request; and never quotes a response, a header or the token | `tests/unit/backstage-transport.test.ts` — *sends GET to the base and route, the token in one header, and redirect: error*, *checks the URL it built, origin and pathname, whatever base it is given*, *throws before any request for a method or a route outside the list*, *refuses a response whose url is on another origin, or another path, …*, *refuses a response marked redirected, even from the same address*, *refuses a body over the bound while it streams, and stops reading it* |
 | A catalogue URL that could aim the token elsewhere — not https: (http: only to this machine), userinfo, a query, a fragment, a space or a control character, a `\`, no path, an empty, `.` or `..` segment, encoded or not — is refused with exit 2 before any request, quoting no secret; a host not on this machine is never read without a token, and a token a header cannot carry is refused the same way, quoting none of it; `.idp-agent.yml`'s `backstage:` is never requested, on the change road that reads the file | `tests/unit/backstage-source.test.ts` — *refuses … with 2, naming IDP_BACKSTAGE_URL, before any request, quoting no secret*, one per case, *quotes no secret from config.yml behind …*, *refuses a token unset/empty for a host that is not this machine …*, *refuses a token holding … with 2, before any request, quoting none of it*, *never reads backstage: in .idp-agent.yml …* |
 | A catalogue read whole, or up to a stated bound and answered as partial — every answer saying so, a reference past the bound `not loaded` and never declared nowhere; every failure one line and exit 1, never a fall back; a change is decided against the declarations repository, and an owner only the catalogue holds is asked | `tests/unit/backstage-read.test.ts` — *… one classified line, exit 1, nothing on stdout*, *is decided against the configured repo, never the catalogue it was classified from*, *lets nothing in the catalogue vouch …*; `tests/unit/backstage-partial.test.ts` — *what a person reads of a catalogue past a bound*, *what a model is sent about a catalogue past a bound* |
+| A kept catalogue is opened only by its account, never through a link, and read again through the reader: a copy that does not verify is not used, and a store open to others is refused and never repaired | `tests/unit/backstage-cache.test.ts` — *refuses the store when backstage/ or idp-agent/ is a link, and never reads or writes the folder it leads to*, *refuses a copy that is a link, for a read and a write: the link kept, its target untouched, no temporary file left*, *refuses a copy moved into another key’s folder: the MAC covers the key*; `tests/unit/backstage-provider-cache.test.ts` — *runs the pre-pass and the reader on a copy …*; `tests/unit/backstage-cache-read.test.ts` — *says a store others may open was not used, and changes nothing* |
+| Nothing kept reaches a plan, and no token is at rest: a kept owner is still asked, and no name or byte under the cache root holds the token, its sha256 or its base64 | `tests/unit/backstage-read.test.ts` — *lets nothing kept vouch either: an owner only the kept copy holds is asked, exit 3, nothing sent*; `tests/contract/key-reach.test.ts` — *reaches the catalogue only, in one header, on a question and on a change*, *keys a copy by the token under the secret …* |
 | What a catalogue serves reaches the terminal with nothing a terminal obeys, and no grouped line past its bound | `tests/unit/read-commands-hostile.test.ts` — *what a catalogue served, as the read commands print it*, *holds each grouped line to the bounds catalogue-read.ts states …* |
 | No test reaches the network, or reads a key or a model setting from the contributor's shell: `fetch`, `node:http`, `node:https`, `node:net`, `node:tls` and `WebSocket` throw, and every `IDP_` variable but `IDP_TRACE_DIR` and every `*_API_KEY` are removed, but in a scenario being recorded — where a catalogue's two variables are removed still, so no tape holds what a catalogue serves; recordings replay offline | `tests/setup/offline.ts` and `tests/setup/shell.ts`, asserted by `tests/unit/offline.test.ts` — *refuses a network call from inside the suite*, *refuses every other way out: http, https, net, tls and WebSocket*, *is set aside: every IDP_ variable but IDP_TRACE_DIR, and every key*, *records only in a scenario: a unit test never writes a tape*, *keeps a catalogue from every run, a recording included …* |
 

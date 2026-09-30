@@ -189,6 +189,17 @@ describe('parseArguments: --submit', () => {
   })
 })
 
+describe('HELP: --refresh and --cached', () => {
+  it('names both on every command that reads a catalogue, and on none that does not', () => {
+    for (const usage of ['graph', 'show', 'relations', 'ask', 'entry'] as const) {
+      expect(usageOf(usage), usage).toContain('[--refresh | --cached]')
+    }
+    for (const usage of ['plan', 'validate', 'init', 'init-platform'] as const) {
+      expect(usageOf(usage), usage).not.toMatch(/--refresh|--cached/)
+    }
+  })
+})
+
 describe('HELP: --submit', () => {
   it('is in the usage plan prints, and HELP says what it writes and by which route', () => {
     expect(usageOf('plan')).toContain('idp-agent plan --from <plan.json> [--repo <directory>] [--json] [--submit]')
