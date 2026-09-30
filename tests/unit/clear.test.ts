@@ -599,6 +599,24 @@ describe('messageFor (D18)', () => {
     expect([...recorded.trim()]).toHaveLength(500)
     expect(message).not.toMatch(LONE_SURROGATE)
   })
+
+  it('carries the request as the commit records it', () => {
+    // The pull request's body fences the request (stage 6 brief § 12): the
+    // very string the commit records, never one parsed back out of it.
+    const recordedIn = (change: Cleared): string => {
+      const lines = change.message.split('\n')
+      return (lines[lines.indexOf('Requested, as recorded with the plan (no gate reads it):') + 1] ?? '').slice(2)
+    }
+    const hostile = cleared(clearPlan(sign(`${INTENT}\u202E\u009B[2J`, [DATABASE, ACCESS]), input))
+    expect(hostile.request).toBe(recordedIn(hostile))
+    expect(hostile.request).not.toMatch(UNSAFE)
+    expect(hostile.message).toContain(`\n  ${hostile.request}\n`)
+
+    const long = cleared(clearPlan(sign(`${INTENT} ${'x'.repeat(600)}`, [DATABASE, ACCESS]), input))
+    expect(long.request).toBe(recordedIn(long))
+    expect([...long.request]).toHaveLength(500)
+    expect(long.request.endsWith('…')).toBe(true)
+  })
 })
 
 describe('branchFor', () => {

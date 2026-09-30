@@ -1,12 +1,13 @@
 import { spawnSync } from 'node:child_process'
-import { writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { strippingRefusal } from '../../scripts/type-stripping.mjs'
 import { GH_LIMITS, ghArgv, ghIn, parseIncluded, type GhRequest } from '../../src/process/gh.js'
 import { answer } from '../../tools/fake-gh.js'
 import { removeClones, scratch } from '../support/forge-fixture.js'
-import { DOORS, FAKE_GH_VERSION, fakeGitHub, protectedMain } from '../support/fake-gh.js'
+import { DOORS, FAKE_GH_VERSION, MODELLED_DOORS, fakeGitHub, protectedMain } from '../support/fake-gh.js'
+import { committed, git } from '../support/git.js'
 
 afterAll(removeClones)
 
@@ -15,10 +16,12 @@ afterAll(removeClones)
  * reads the argument vector with its own patterns, independently of the
  * launcher's grammar, so a drift between the two fails here, and it answers
  * as gh prints an `--include` answer. It models the accounts and the session
- * (`--version`, `GET user`) and, from 6.1.3, the repositories § 8 reads: the
- * repository, the rules for a branch, a ruleset, a branch and a ref. The
- * other routes the launcher builds are recognised and answered "not
- * modelled" by name, and every door is not a vector idp-agent sends.
+ * (`--version`, `GET user`), the repositories § 8 reads (the repository, the
+ * rules for a branch, a ruleset, a branch and a ref) and, from 6.2.1, a
+ * commit, the pull requests and the one write, over a bare repository on
+ * disk, and the doors § 10 tries as a pull request's author: a merge, an
+ * approval, a write to a base. Every other door is not a vector idp-agent
+ * sends.
  */
 
 const text = (bytes: Buffer): string => bytes.toString('utf8')
@@ -87,8 +90,10 @@ describe('the fake gh', () => {
   })
 })
 
+const repo_ = { owner: 'acme', name: 'iac' }
+
 describe("the fake's own grammar", () => {
-  const repo = { owner: 'acme', name: 'iac' }
+  const repo = repo_
   const SAMPLES: readonly [string, GhRequest][] = [
     ['repository', { kind: 'get', route: { route: 'repository', ...repo } }],
     ['branch', { kind: 'get', route: { route: 'branch', ...repo, branch: 'release/1' } }],
@@ -114,21 +119,65 @@ describe("the fake's own grammar", () => {
     ],
   ]
 
-  /** The five reads of § 8, which the fake answers from its model: 404 for a repository it does not hold. */
-  const MODELLED = new Set(['repository', 'branch', 'rules', 'ruleset', 'ref'])
-
-  it('recognises every vector the launcher builds, and names what it does not model yet', async () => {
+  it('recognises every vector the launcher builds, and answers each from its model', async () => {
+    // No repository held: GitHub's 404, for the reads and the write alike.
     const fake = fakeGitHub()
     for (const [route, request] of SAMPLES) {
       const stdin = request.kind === 'open-pull-request' ? Buffer.from(request.body) : undefined
       const exit = await fake.process(ghArgv(request), { ...(stdin === undefined ? {} : { stdin }), env: {}, limits: GH_LIMITS })
-      if (MODELLED.has(route)) {
-        expect(parseIncluded(exit.stdout)?.status, route).toBe(404)
-      } else {
-        expect(exit.code, route).toBe(97)
-        expect(exit.stderr, route).toBe(`fake gh: ${route} is not modelled\n`)
-      }
+      expect(parseIncluded(exit.stdout)?.status, route).toBe(404)
     }
+  })
+
+  it('answers a commit, the pull requests and the one write from a bare repository', async () => {
+    const root = await scratch('idp-fake-pulls-')
+    const repo = path.join(root, 'iac')
+    await mkdir(repo)
+    const head = await committed(repo)
+    const branch = 'idp-agent/x-0123abcd'
+    await git(repo, 'update-ref', `refs/heads/${branch}`, head)
+    const fake = fakeGitHub({ repositories: [protectedMain({ bare: path.join(repo, '.git') })] })
+    const gh = ghIn({ run: fake.process })
+    const body = JSON.stringify({ title: 't', head: branch, base: 'main', body: 'b', draft: false, maintainer_can_modify: false })
+
+    const commit = JSON.parse((await gh.get({ route: 'commit', ...repo_, sha: head })).body) as Record<string, unknown>
+    expect(commit).toMatchObject({ sha: head, tree: { sha: await git(repo, 'rev-parse', 'HEAD^{tree}') }, parents: [], message: 'base\n' })
+    const created = await gh.openPullRequest('acme', 'iac', body)
+    expect(created.status).toBe(201)
+    expect(JSON.parse(created.body)).toMatchObject({ number: 1, state: 'open', head: { ref: branch }, base: { ref: 'main' }, user: { login: 'ada' } })
+    // One open pull request from a head into a base: a second is GitHub's 422.
+    expect((await gh.openPullRequest('acme', 'iac', body)).status).toBe(422)
+    const listed = JSON.parse((await gh.get({ route: 'pulls', ...repo_, head: branch })).body) as unknown[]
+    expect(listed).toHaveLength(1)
+    expect(fake.state.pulls?.[0]).toMatchObject({ number: 1, author: 'ada', lastPusher: 'ada', reviews: [] })
+    expect(JSON.parse((await gh.get({ route: 'pulls', ...repo_, head: 'idp-agent/y-0123abcd' })).body)).toEqual([])
+  })
+
+  it('answers a fault for the calls it names, and carries out a made one', async () => {
+    const root = await scratch('idp-fake-fault-')
+    const repo = path.join(root, 'iac')
+    await mkdir(repo)
+    const head = await committed(repo)
+    await git(repo, 'update-ref', 'refs/heads/idp-agent/x-0123abcd', head)
+    const fake = fakeGitHub({ repositories: [protectedMain({ bare: path.join(repo, '.git') })] })
+    const gh = ghIn({ run: fake.process })
+    const body = JSON.stringify({ title: 't', head: 'idp-agent/x-0123abcd', base: 'main', body: 'b', draft: false, maintainer_can_modify: false })
+
+    fake.fault({ route: 'ref', status: 404, times: 2 })
+    for (const status of [404, 404, 200]) expect((await gh.get({ route: 'ref', ...repo_, branch: 'main' })).status).toBe(status)
+    fake.fault({ route: 'open-pull-request', status: 502, times: 1 })
+    expect((await gh.openPullRequest('acme', 'iac', body)).status).toBe(502)
+    expect(fake.state.pulls ?? []).toEqual([])
+    // Lost: the call is made, and its answer is nothing at all.
+    fake.fault({ route: 'open-pull-request', status: 'lost', times: 1 })
+    const lost = await fake.process(ghArgv({ kind: 'open-pull-request', ...repo_, body }), {
+      stdin: Buffer.from(body),
+      env: {},
+      limits: GH_LIMITS,
+    })
+    expect(lost.code).toBe(1)
+    expect(lost.stdout.length).toBe(0)
+    expect(fake.state.pulls).toHaveLength(1)
   })
 
   it('answers the five reads of § 8 from its model, and asks a login for each', async () => {
@@ -153,7 +202,7 @@ describe("the fake's own grammar", () => {
     await expect(gh.get({ route: 'repository', ...repo })).rejects.toMatchObject({ kind: 'auth' })
   })
 
-  // Four Node starts that strip types: well inside a minute, but past
+  // Five Node starts that strip types: well inside a minute, but past
   // vitest's five seconds on a loaded machine, so the bound is the test's own.
   it(
     'runs as a program, reading its world from FAKE_GH_STATE, with the in-process answer’s bytes',
@@ -179,15 +228,35 @@ describe("the fake's own grammar", () => {
         expect(run.stdout.toString('utf8'), argv.join(' ')).toBe(expected.stdout.toString('utf8'))
         expect(run.status, argv.join(' ')).toBe(expected.code)
       }
+      // What an answer changes is written back: a fault, spent.
+      await writeFile(file, JSON.stringify({ ...state, faults: [{ route: 'ref', status: 502, times: 1 }] }), 'utf8')
+      const faulted = spawnSync(
+        process.execPath,
+        [
+          '--disable-warning=ExperimentalWarning',
+          path.resolve(import.meta.dirname, '../../tools/fake-gh.ts'),
+          ...ghArgv({ kind: 'get', route: { route: 'ref', owner: 'acme', name: 'iac', branch: 'main' } }),
+        ],
+        { env: { PATH: process.env['PATH'] ?? '', FAKE_GH_STATE: file }, stdio: ['ignore', 'pipe', 'pipe'] },
+      )
+      expect(parseIncluded(faulted.stdout)?.status).toBe(502)
+      expect((JSON.parse(await readFile(file, 'utf8')) as { faults: { times: number }[] }).faults[0]?.times).toBe(0)
     },
     60_000,
   )
 
-  it('answers every door as a vector idp-agent never sends', async () => {
+  it('answers the doors it models from its model, and every other as a vector idp-agent never sends', async () => {
+    // No repository held: a door the model answers finds nothing to act on.
     const fake = fakeGitHub()
+    expect(DOORS.filter((door) => MODELLED_DOORS.has(door.name))).toHaveLength(MODELLED_DOORS.size)
     for (const door of DOORS) {
       const stdin = door.stdin === undefined ? undefined : Buffer.from(door.stdin)
       const exit = await fake.process(door.argv, { ...(stdin === undefined ? {} : { stdin }), env: {}, limits: GH_LIMITS })
+      if (MODELLED_DOORS.has(door.name)) {
+        expect(exit.code, door.name).toBe(1)
+        if (door.argv[0] === 'api') expect(parseIncluded(exit.stdout)?.status, door.name).toBe(404)
+        continue
+      }
       expect(exit.code, door.name).toBe(97)
       expect(text(exit.stdout), door.name).toBe('')
       expect(exit.stderr, door.name).toBe('fake gh: not a vector idp-agent sends\n')

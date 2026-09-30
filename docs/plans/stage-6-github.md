@@ -1,6 +1,6 @@
 # Stage 6 — a GitHub pull request, with the person's own git and gh
 
-**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
+**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
 § 19 (Q1–Q4) were settled on 2026-09-30, each as recommended, and this plan takes them as
 given; so were the four questions the plan itself asked, the same day ([Questions for the
 owner](#questions-for-the-owner)). Eleven stacked pull requests: ten, 6.1.1 to 6.4.2, then 6.4.3, the owner's step: every tape
@@ -472,7 +472,7 @@ that adds it, and is added here first when the plan changes.
 
 **`forge/`.**
 - `provider.ts`: `type LocalRoad = { kind: 'local'; why: 'no-upstream'; branch: string } | { kind: 'local'; why: 'other-host'; host: string } | { kind: 'local'; why: 'asked' }`; `interface GitHubRoad { kind: 'github'; repository: GitHubRepository; remote: string; base: string; branch: string; pushUrl: string }`; `type Road = GitHubRoad | LocalRoad`; `interface GhIdentity { login: string; role: 'admin' | 'maintain' | 'write' | undefined }` (`undefined` out of `readIdentity`: the role is the preflight's, `ProtectionVerdict.reported.role`); `interface PullRequest { host: 'github.com'; repository: string; number: number; url: string; state: 'opened' | 'open'; base: string }`; `ForgeProvider.name: 'local' | 'github'`; `Submitted` gains `pushed?: boolean`, `pullRequest?: PullRequest` and `olderBase?: string` on `created` and `already-submitted`, `statusChecks?: readonly string[]` on `created`, `kept?: string` on `refused`, plus `{ outcome: 'pushed-without-pull-request'; branch; commit; reason: string }` and `{ outcome: 'closed'; branch; number: number; merged: boolean; at: string }`; `Recognised = Extract<Submitted, { outcome: 'already-submitted' | 'refused' | 'pushed-without-pull-request' | 'closed' }>`.
-- `readRoad(git: Git, options: { local: boolean }): Promise<Road>`; `githubClient(options: { env?: NodeJS.ProcessEnv; run?: GhProcess }): GhClient` (in `api.ts`, the one caller of `ghIn`, so `cli/` never loads the launcher); `readIdentity(gh: GhClient, road: GitHubRoad, purpose?: 'submission' | 'protection'): Promise<GhIdentity>`; `githubApi(gh: GhClient, repository: GitHubRepository): GitHubApi` with `user()`, `repository()`, `rules(base)`, `ruleset(id)`, `branch(base)`, `ref(branch)`, `commit(sha)`, `pulls(branch)`, `openPullRequest(input)` and `calls(): number` (the `GhClient`'s count, for `idp.forge.gh_calls`); `class GitHubAnswerError extends Error { route: GhRoute['route'] | 'open-pull-request'; status: number | 'timeout' | 'too-large' | 'unreadable' | 'paginated' }`; `GITHUB_LIMITS = { submissionMs: 180_000, ghCalls: 48, rulesets: 10, pullsPage: 100, readBack: [500, 1500], bodyBytes: 1024 * 1024 }`; `readProtection(api, road: GitHubRoad, identity): Promise<ProtectionVerdict>` (§ 8 items 1 to 5, 6.1.3); `preflight(api, road, base: Base, identity): Promise<Preflight>` with `interface Preflight { verdict: ProtectionVerdict; level: 'level' | { github: string } }`; `readRules(api, road, identity): Promise<ProtectionVerdict>` (items 2 and 3, 6.2.1); `type PushFailure = 'authentication' | 'host-key' | 'lease' | 'ruleset' | 'network' | 'other'`; `classifyPushFailure(error: GitError): PushFailure`; `openGitHubForge(input: { repo: string; local: ForgeProvider; road: GitHubRoad; identity: GhIdentity; api: GitHubApi; env: NodeJS.ProcessEnv; route: PullRequestInput['road']; git?: Git; push?: Push; wait?: (ms: number) => Promise<void>; now?: () => number }): ForgeProvider` (`git` and `push` default to `gitIn(repo, { env })` and `pushIn(repo, { env })`; a test injects failing ones); `openGitHub(input: { repo: string; env: NodeJS.ProcessEnv; gh?: GhProcess; local: boolean; git?: Git; purpose?: 'submission' | 'protection' }): Promise<GitHubSide>` in `forge/github/open.ts` (6.1.3), `interface GitHubSide { road: Road; identity?: GhIdentity; api?: GitHubApi }`, the road and, on a GitHub road, gh's identity: what `idpa protection` and every submission open first; `openSubmissionForge(input: { repo: string; repository: Repository; env: NodeJS.ProcessEnv; gh?: GhProcess; local: boolean; route: PullRequestInput['road'] }): Promise<OpenedForge>` in `forge/open.ts` (6.2.2), beside its internal `OPENS_PULL_REQUESTS` and `NOT_YET` (the interim refusals), `interface OpenedForge { forge: ForgeProvider; road: Road; github?: { identity: GhIdentity; api: GitHubApi } }`: the local forge (with `acceptOlderBase` on a GitHub road), then `openGitHub`, then `openGitHubForge`. `cli/` reaches the launchers only through these; `openLocalForge(repo, repository, git?, options?: { acceptOlderBase?: boolean })`; `treeFor(git: Git, parent: string, edits: readonly FileEdit[], format: 'sha1' | 'sha256'): Promise<string>`; `treeId(entries, format): string`; `objectFormat(git): Promise<'sha1' | 'sha256'>` (in `objects.ts`, called by both forges).
+- `readRoad(git: Git, options: { local: boolean }): Promise<Road>`; `githubClient(options: { env?: NodeJS.ProcessEnv; run?: GhProcess }): GhClient` (in `api.ts`, the one caller of `ghIn`, so `cli/` never loads the launcher); `readIdentity(gh: GhClient, road: GitHubRoad, purpose?: 'submission' | 'protection'): Promise<GhIdentity>`; `githubApi(gh: GhClient, repository: GitHubRepository): GitHubApi` with `user()`, `repository()`, `rules(base)`, `ruleset(id)`, `branch(base)`, `ref(branch)`, `commit(sha)`, `pulls(branch)`, `openPullRequest(input)` and `calls(): number` (the `GhClient`'s count, for `idp.forge.gh_calls`); `class GitHubAnswerError extends Error { route: GhRoute['route'] | 'open-pull-request'; status: number | 'timeout' | 'too-large' | 'unreadable' | 'paginated' }`; `GITHUB_LIMITS = { submissionMs: 180_000, ghCalls: 48, rulesets: 10, pullsPage: 100, readBack: [500, 1500], bodyBytes: 1024 * 1024 }`; `readProtection(api, road: GitHubRoad): Promise<ProtectionVerdict>` (§ 8 items 1 to 5, 6.1.3); `preflight(api, road, base: Base): Promise<Preflight>` with `interface Preflight { verdict: ProtectionVerdict; level: 'level' | { github: string } }` (no `identity`: 6.1.3 built it without one); `readRules(api, road): Promise<ProtectionVerdict>` (items 2 and 3, 6.2.1, item 1 taken as the preflight found it); `pushChange` and `Pushed` (6.2.1, `push.ts`, step 10 and its read-back); `type PushFailure = 'authentication' | 'host-key' | 'lease' | 'ruleset' | 'network' | 'other'`; `classifyPushFailure(error: GitError): PushFailure`; `openGitHubForge(input: { repo: string; local: ForgeProvider; road: GitHubRoad; identity: GhIdentity; api: GitHubApi; env: NodeJS.ProcessEnv; route: PullRequestInput['road']; git?: Git; push?: Push; wait?: (ms: number) => Promise<void>; now?: () => number }): ForgeProvider` (`git` and `push` default to `gitIn(repo, { env })` and `pushIn(repo, { env })`; a test injects failing ones); `openGitHub(input: { repo: string; env: NodeJS.ProcessEnv; gh?: GhProcess; local: boolean; git?: Git; purpose?: 'submission' | 'protection' }): Promise<GitHubSide>` in `forge/github/open.ts` (6.1.3), `interface GitHubSide { road: Road; identity?: GhIdentity; api?: GitHubApi }`, the road and, on a GitHub road, gh's identity: what `idpa protection` and every submission open first; `openSubmissionForge(input: { repo: string; repository: Repository; env: NodeJS.ProcessEnv; gh?: GhProcess; local: boolean; route: PullRequestInput['road'] }): Promise<OpenedForge>` in `forge/open.ts` (6.2.2), beside its internal `OPENS_PULL_REQUESTS` and `NOT_YET` (the interim refusals), `interface OpenedForge { forge: ForgeProvider; road: Road; github?: { identity: GhIdentity; api: GitHubApi } }`: the local forge (with `acceptOlderBase` on a GitHub road), then `openGitHub`, then `openGitHubForge`. `cli/` reaches the launchers only through these; `openLocalForge(repo, repository, git?, options?: { acceptOlderBase?: boolean })`; `treeFor(git: Git, parent: string, edits: readonly FileEdit[], format: 'sha1' | 'sha256'): Promise<string>`; `treeId(entries, format): string`; `objectFormat(git): Promise<'sha1' | 'sha256'>` (in `objects.ts`, called by both forges).
 
 **`cli/`.**
 - `MainDeps.gh?: GhProcess`.
@@ -497,7 +497,7 @@ that adds it, and is added here first when the plan changes.
 - exit 2, configuration: `this clone's own configuration sets <key> (<scope>), which would decide who pushes for you; idpa pushes only with your global git configuration. Remove it with \`git config --<scope> --unset-all <key>\`, or set it globally, then run this again. Nothing was written.` (the phrase after the comma follows the key's section: *where your push goes* for `url`, `http`, `protocol` and the `remote.*` keys, *who pushes for you* for `credential`, *what program runs during your push* for `ssh`, `gpg`, `push`, `core.*`).
 - exit 2, userinfo: `<remote>'s URL carries a credential; set it to https://github.com/<o>/<r>. Nothing was written.`
 
-**Test helpers.** `fakeGitHub(model?: FakeModel): FakeGitHub` with `.process: GhProcess`, `.as(login)`, `.logout()`, `.state`, `.sent` (each call received: argv, stdin, environment), and from 6.2.1 `.approve(number, login)`, `.pushAs(actor, ref, commit)`, `.fault({ route, status, times })`; `FAKE_GH_VERSION = '2.40.0'`; `DOORS: readonly { name: string; argv: readonly string[]; stdin?: string }[]` (gh), `GIT_DOORS` (git, full vectors), `DOOR_WORDS` (§ 6's source-level strings, which the architecture rules import rather than spell), `MERGE_DOOR` (6.2.1), all in `tests/support/fake-gh.ts`; `stubGh(options?: StubOptions)` and `stubGit(options?: StubOptions)`, each `Promise<{ bin: string; calls(): Promise<StubCall[]> }>`; `githubClone(options?: { model?: FakeModel; source?: string; repository?: string }): Promise<{ repo: string; bare: string; env: NodeJS.ProcessEnv; gh: FakeGitHub }>` (`source` and `repository` from 6.3.1), `githubForge(clone, options?)`, `fakeSsh(dir, bare, refuse?)`, `remoteRefs(bare)` (6.2.1), `unprotect(gh)`, `moveGitHubBase(clone)` (6.3.1), `openedPullRequest()` (6.4.1), in `tests/support/github-fixture.ts`; stage 5's `clone`, `clearedFor`, `committed`, `observable`, `stored`, `scratch`, `removeClones` reused as they are. 6.4.1: `tests/live/guard.ts` (`LIVE_VARIABLES`, `liveRepository`, `reviewerConfigDir`, `scrubLiveEnvironment`), `tests/live/github/doors.ts` (`LiveDoor`, `LIVE_DOORS`), `tests/support/github-answers.ts` (`Shape`, `KEPT_KEYS`, `shapeOf`, `fakeWithin`, `scrubbed`, `identifying`, `TOKEN_SHAPE`, `AnswersFile`, `answersFiles`). 6.4.2: `INVARIANT` in `tests/unit/invariant-wording.test.ts`, the one place in `tests/` that states the owner's words. 6.4.3: `FIRST_SENT` in `tests/scenarios/prompt-digests.test.ts`.
+**Test helpers.** `fakeGitHub(model?: FakeModel): FakeGitHub` with `.process: GhProcess`, `.as(login)`, `.logout()`, `.state`, `.sent` (each call received: argv, stdin, environment), and from 6.2.1 `.approve(number, login)`, `.pushAs(actor, ref, commit)`, `.fault({ route, status, times, made? })` (`made`: the call carried out and only its answer replaced, by default for `lost` and never for a status); `FAKE_GH_VERSION = '2.40.0'`; `DOORS: readonly { name: string; argv: readonly string[]; stdin?: string }[]` (gh), `GIT_DOORS` (git, full vectors), `DOOR_WORDS` (§ 6's source-level strings, which the architecture rules import rather than spell), `MERGE_DOOR` and `MODELLED_DOORS` (6.2.1, the doors the fake's model answers, by name), all in `tests/support/fake-gh.ts`; `stubGh(options?: StubOptions)` and `stubGit(options?: StubOptions)`, each `Promise<{ bin: string; calls(): Promise<StubCall[]> }>`; `githubClone(options?: { model?: FakeModel; source?: string; repository?: string }): Promise<{ repo: string; bare: string; env: NodeJS.ProcessEnv; gh: FakeGitHub }>` (`source` and `repository` from 6.3.1), `githubForge(clone, options?)`, `fakeSsh(dir, bare, refuse?)`, `remoteRefs(bare)` (6.2.1), `unprotect(gh)`, `moveGitHubBase(clone)` (6.3.1), `openedPullRequest()` (6.4.1), in `tests/support/github-fixture.ts`; stage 5's `clone`, `clearedFor`, `committed`, `observable`, `stored`, `scratch`, `removeClones` reused as they are. 6.4.1: `tests/live/guard.ts` (`LIVE_VARIABLES`, `liveRepository`, `reviewerConfigDir`, `scrubLiveEnvironment`), `tests/live/github/doors.ts` (`LiveDoor`, `LIVE_DOORS`), `tests/support/github-answers.ts` (`Shape`, `KEPT_KEYS`, `shapeOf`, `fakeWithin`, `scrubbed`, `identifying`, `TOKEN_SHAPE`, `AnswersFile`, `answersFiles`). 6.4.2: `INVARIANT` in `tests/unit/invariant-wording.test.ts`, the one place in `tests/` that states the owner's words. 6.4.3: `FIRST_SENT` in `tests/scenarios/prompt-digests.test.ts`.
 
 **Architecture rules** (exact titles). Renamed: *only the named modules write, and only process/git.ts and process/gh.ts start a process*. Unchanged titles, widened content: *every process src/ starts is given spawnedEnvironment* (both launchers; a `SPAWNS` entry names a list of environment functions, since `process/git.ts` makes two calls, `gitIn`'s with `gitEnvironment` and `pushIn`'s with `pushEnvironment`). New in 6.1.1: *nothing in src/ names a door the allow-list refuses*; *nothing in src/ reads a GitHub credential from the environment*; *in tests/, only tests/live/ and tests/support/fake-gh.ts name a door*. New in 6.1.2: *only forge/github/ loads the gh launcher* (`cli/` names `GhProcess` with `import type`, which is erased, as it names the forge's types today; `ghIn`'s default process is `spawnGh`, so no other module needs the launcher at run time). Their self-tests, in *the architecture rules themselves*: *refuses every way src/ can name a door*, *refuses every way src/ can read a GitHub credential*, *refuses every module but forge/github/ that loads the gh launcher*.
 
@@ -2570,7 +2570,8 @@ of it.
   repository moving, not an argument, so it becomes `refused` with that message, exit 1, as
   `forge.ts:274-278` does for a HEAD that moved); `readRules(api, road, identity)` must hold;
   `api.ref(road.base)` must be `base.commit`; `api.ref(change.branch)` is read again, and its
-  commit judged as in recognition (`api.commit` only when it is not the local branch's).
+  commit judged as in recognition (`api.commit` only when it is not the local branch's), and
+  (as built) `api.pulls(change.branch)` read again, the table above applied to both.
   `pullRequestBody` is computed here, and a body past `GITHUB_LIMITS.bodyBytes` is refused
   here, before anything is written.
 - **The remote branch is ours already** (the second and fourth rows of § 14's table, a push
@@ -2631,7 +2632,39 @@ nothing is on GitHub":
 Authentication is matched before the network: `Could not read from remote repository` follows
 a refused key too, and is not read at all.
 
-- [ ] **Step 1: Write the failing tests — `treeFor` and `treeId`**
+**As built (6.2.1), where the code led.** `preflight` and `readProtection` take no
+`identity` (6.1.3 built them without one), so `readRules(api, road)` takes none either, and
+judges item 1 as the preflight found it; nothing the forge decides reads an identity, so
+`openGitHubForge` takes none (6.2.2's call is written without it). The API's budget refusal
+is a plain `Error`, as 6.1.2 built it. Step 8 reads the pull requests from the branch again
+too, and answers by § 14's table as `recognise` does: a pull request closed, merged or opened
+into another base while the person was confirming is answered as it is (`closed`,
+`refused`), one open into the base is `already-submitted`, and none of them is ever opened a
+second time. A push that does not answer "created" — a `rejected` flag, any `GitError`,
+or a push wrapper's own throw — is read back, with step 11's waits, before it is classified
+(`pushChange`, `push.ts`), so a push that landed and lost its answer is ours whatever git
+said, even while GitHub's API lags; a `rejected` line is `ruleset` only where its summary
+says `GH013` or `repository rule violations`, any other remote refusal (a hook, a limit) is
+`other`. A POST that throws anything but a numeric status other than 422 is listed again. A
+closed pull request GitHub gives no day for is `unreadable` (`PullRequestFrom` is a union:
+an open one has no `at`, a closed one always has), never a sentence put in a date's place. The
+body writes each file's path as a code span, so a file name can no more mention or link than
+the fenced request can. An open pull request
+with no branch on GitHub is refused in its own words ("…which GitHub does not hold; it is not
+this submission"), not "exists on …". `fault` gains `made?`, since "lost after the fake
+created it" and "lost before" are two faults. The longest path of *stays within 48 gh calls*
+has no branch on GitHub (a branch already there skips the push and its read-back): 34 calls
+without the preflight. *refuses a branch on GitHub that is not ours* holds five strangers:
+the fifth, a merge whose first parent is the base, pins § 14's "one commit". In
+`merge-refused.test.ts`, a door the fake does not model is asserted as exactly its
+"not a vector idp-agent sends" exit, never counted as GitHub refusing it, and *counts
+neither the author's own approval nor the last pusher's* pins the two exclusions of the
+fake's merge rule. In *lets the author merge unreviewed wherever the preflight refuses*,
+the author merges a head pushed on top of another account's approval: with the push rule
+unset, the rule still wants one approval. `forge-types.test.ts`'s `@ts-expect-error` lines
+sit in a branch that never runs, since `declare const forge` is `undefined` at run time.
+
+- [x] **Step 1: Write the failing tests — `treeFor` and `treeId`**
 
 `tests/unit/tree-for.test.ts`, over real repositories (`clone()`, test-side `git`):
 
@@ -2651,7 +2684,7 @@ a refused key too, and is not read at all.
 Why they fail: `src/forge/local/tree.ts` does not exist and `objects.ts` exports no `treeId`;
 the imports fail.
 
-- [ ] **Step 2: Write the failing tests — the local forge's older base, and `Cleared.request`**
+- [x] **Step 2: Write the failing tests — the local forge's older base, and `Cleared.request`**
 
 Add to `tests/unit/local-forge.test.ts`, reusing its `land` helper:
 
@@ -2672,7 +2705,7 @@ without its indentation, and a 600-character intent is cut to 500 code points th
 Why they fail: `openLocalForge` takes no fourth argument (a type error, and at run time the
 option is ignored, so `recognise` refuses); `Cleared` has no `request`.
 
-- [ ] **Step 3: Write the failing tests — the pull request's text**
+- [x] **Step 3: Write the failing tests — the pull request's text**
 
 `tests/unit/pull-request-body.test.ts`, over `messageFor`'s real output (a `Cleared` from
 `clearedFor`):
@@ -2699,7 +2732,7 @@ option is ignored, so `recognise` refuses); `Cleared` has no `request`.
 
 Why they fail: `src/core/github/pull-request.ts` does not exist.
 
-- [ ] **Step 4: Write the failing tests — the three new routes**
+- [x] **Step 4: Write the failing tests — the three new routes**
 
 `tests/unit/github-pulls.test.ts`, against `fakeGitHub()` and a stub `GhProcess` answering
 chosen bytes:
@@ -2730,7 +2763,7 @@ chosen bytes:
 Why they fail: `GitHubApi` has no `commit`, `pulls`, `openPullRequest` or `calls`, and
 `answers.ts` no `commitAnswer`, `pullsAnswer` or `pullAnswer`.
 
-- [ ] **Step 5: Write the failing tests — § 14's rows, the re-check, the push, the read-back**
+- [x] **Step 5: Write the failing tests — § 14's rows, the re-check, the push, the read-back**
 
 `tests/unit/github-forge.test.ts`. Each test starts from `githubClone()` (a committed clone
 whose `main` tracks `git@github.com:acme/iac.git`, level with a bare repository; the fake gh
@@ -2840,7 +2873,7 @@ Races and failures:
 Why they fail: `src/forge/github/forge.ts` and `push.ts` do not exist; `github-fixture.ts`
 does not exist.
 
-- [ ] **Step 6: Write the failing tests — the identity that opened it cannot merge it (§ 10)**
+- [x] **Step 6: Write the failing tests — the identity that opened it cannot merge it (§ 10)**
 
 `tests/unit/merge-refused.test.ts`, directly against the fake's model, never through the
 launcher (which refuses every door before a process starts, 6.1.1). The doors are `DOORS`
@@ -2871,7 +2904,7 @@ rule *in tests/, only tests/live/ and tests/support/fake-gh.ts name a door* requ
 Why they fail: the fake answers no pull request route and models no review, merge or push
 yet; `MERGE_DOOR`, `approve` and `pushAs` do not exist.
 
-- [ ] **Step 7: Write the failing tests — a hostile clone (§ 7)**
+- [x] **Step 7: Write the failing tests — a hostile clone (§ 7)**
 
 `tests/unit/hostile-clone.test.ts`, one `it.each` per key, the value always the canary
 `hostile-value-0123`:
@@ -2902,7 +2935,7 @@ Why they fail: `openGitHubForge` does not exist, so the last three cannot be run
 two already pass against 6.1.2's `readRoad` through `openGitHub`, and are here end to end
 with a push that did not happen.
 
-- [ ] **Step 8: Write the failing tests — the type has no method (§ 10)**
+- [x] **Step 8: Write the failing tests — the type has no method (§ 10)**
 
 `tests/unit/forge-types.test.ts`, typechecked by `pnpm typecheck` (`tsconfig.json` includes
 `tests/**/*.ts`):
@@ -2944,7 +2977,7 @@ Why it fails: `githubForge` does not exist. The `@ts-expect-error` lines already
 `2b2250e` for `merge`, `approve`, `close` and `delete`; they are written here so that a later
 widening of `ForgeProvider` fails `pnpm typecheck`.
 
-- [ ] **Step 9: Write the failing tests — two systems, every failure**
+- [x] **Step 9: Write the failing tests — two systems, every failure**
 
 `tests/invariants/github-forge.test.ts`, in the manner of `tests/invariants/forge.test.ts`:
 
@@ -2972,7 +3005,7 @@ two hundred clones and bare repositories. Timeout 300 s. Run it targeted, after 
 
 Why they fail: `openGitHubForge` does not exist.
 
-- [ ] **Step 10: Run the tests, see them fail for the reasons above**
+- [x] **Step 10: Run the tests, see them fail for the reasons above**
 
 ```bash
 df -h "$TMPDIR"
@@ -2983,7 +3016,7 @@ pnpm vitest run tests/unit/github-forge.test.ts tests/unit/merge-refused.test.ts
 Expected: FAIL, on missing modules and exports; `clear.test.ts` and `local-forge.test.ts` on
 the new cases only.
 
-- [ ] **Step 11: `objects.ts`, `tree.ts`, and the local forge's option**
+- [x] **Step 11: `objects.ts`, `tree.ts`, and the local forge's option**
 
 `treeId(entries, format)`: the entries sorted as git sorts a tree (by name, a folder compared
 as `name/`), each written `<mode> <name>\0<raw id>` with `040000` written `40000`, hashed with
@@ -3004,7 +3037,7 @@ answer as it returns any `already-submitted`. Every other line is unchanged.
 `  ${recordedRequest(plan.intent)}` where it wrote `  ${cut(plan.intent, 500)}`; `mint` sets
 `request: recordedRequest(plan.intent)`.
 
-- [ ] **Step 12: `pull-request.ts`**
+- [x] **Step 12: `pull-request.ts`**
 
 ```typescript
 export const ENGINE_BLOCK_END = '<!-- idp-agent: end of the engine\'s block -->'
@@ -3049,7 +3082,7 @@ throws; `https://github.com/${owner}/${name}/pull/${number}`, from the parsed ow
 
 `src/core/README.md`: `core/github/pull-request.ts`, the text and the URL of a pull request.
 
-- [ ] **Step 13: The three routes, and `readRules`**
+- [x] **Step 13: The three routes, and `readRules`**
 
 `answers.ts`: `commitAnswer` (`sha`, `tree.sha`, `parents[].sha`, `message`), `pullsAnswer` (an
 array of `number`, `state`, `merged_at`, `closed_at`, `base.ref`, `head.ref`), `pullAnswer`
@@ -3063,7 +3096,7 @@ the number from a 201; `calls()` returns the `GhClient`'s. `preflight.ts`: items
 into `readRules(api, road, identity)`, which `preflight` calls; `tests/unit/protection.test.ts`
 (6.1.3) passes unchanged, which is the proof nothing moved.
 
-- [ ] **Step 14: `push.ts` and `forge.ts`**
+- [x] **Step 14: `push.ts` and `forge.ts`**
 
 `classifyPushFailure(error)`: `timedOut` is `network`; then the table above, in its order,
 over `error.stderr`; `other` last. `forge.ts`: `openGitHubForge(input)` as **The forge, in the
@@ -3096,7 +3129,7 @@ every intermediate state is a row of § 4's table that the same command complete
       throw new Error(`the local forge never answers ${submitted.outcome}`)
 ```
 
-- [ ] **Step 15: The fake's pull requests, reviews, merges and doors; the fixture**
+- [x] **Step 15: The fake's pull requests, reviews, merges and doors; the fixture**
 
 `tools/fake-gh.ts`: pull requests (a `POST` creates the next number, author the logged-in
 account, head and base read from the bare repository, 422 when an open one exists from that
@@ -3132,7 +3165,7 @@ moved here: one fake ssh in `tests/support/`. `githubForge(clone, options)` open
 `openSubmissionForge` will: `openGitHub` (6.1.3) for the road and identity, `openLocalForge`
 with `acceptOlderBase: true`, then `openGitHubForge` with `route: 'from'`.
 
-- [ ] **Step 16: Run the tests**
+- [x] **Step 16: Run the tests**
 
 ```bash
 df -h "$TMPDIR"
@@ -3147,7 +3180,7 @@ Expected: PASS. The architecture block holds **29** rules, as after 6.1.2: this 
 none. `forge/github/forge.ts` imports `core/`, `process/` and `forge/` only; the gh launcher is
 loaded by `forge/github/` alone; `tools/` is read by no rule.
 
-- [ ] **Step 17: The documents this task makes true**
+- [x] **Step 17: The documents this task makes true**
 
 - `src/forge/README.md`: `provider.ts`'s line names the widened `Submitted` and the absent
   methods; a line for `local/tree.ts`; `github/forge.ts` in the folder's list.
@@ -3580,7 +3613,7 @@ GitHub road, `ForgeInputError(NOT_YET[route])` before gh is asked (Global Constr
 git })`. A local road returns `{ forge: local, road }`. A GitHub road opens the local forge
 again with `acceptOlderBase: true` (its checks are four reads already passed; the option is
 fixed at opening, so the local road's forge keeps D7 untouched), then `openGitHubForge({ repo,
-local: older, road, identity, api, env, git, route })`. `forge/open.ts` names `GhProcess` with
+local: older, road, api, env, git, route })` (no `identity`: 6.2.1 built the forge without one, since nothing it decides reads one). `forge/open.ts` names `GhProcess` with
 `import type` and loads no launcher but `process/git.ts`, which `forge/` already loads.
 6.3.1, 6.3.2 and 6.3.3 each add their road to `OPENS_PULL_REQUESTS` and remove its entry
 from `NOT_YET`.

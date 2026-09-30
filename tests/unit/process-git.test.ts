@@ -25,6 +25,7 @@ import {
 } from '../../src/process/git.js'
 import { LauncherRefusal } from '../../src/process/refusal.js'
 import { GIT_DOORS } from '../support/fake-gh.js'
+import { fakeSsh } from '../support/github-fixture.js'
 import { committed, git } from '../support/git.js'
 import { onPath, removeStubs, stubGit } from '../support/stub-gh.js'
 
@@ -568,11 +569,8 @@ describe('the push', () => {
     const repo = await repository()
     const bare = await temp('idp-bare-')
     await git(bare, 'init', '-q', '--bare')
-    const ssh = path.join(await temp('idp-fake-ssh-'), 'ssh')
-    // Ignores the host and the command git asks for, and serves the bare
-    // repository: nothing leaves this machine.
-    await writeFile(ssh, `#!/bin/sh\nexec git receive-pack '${bare}'\n`)
-    await chmod(ssh, 0o755)
+    // Ignores the host and serves the bare repository: nothing leaves this machine.
+    const ssh = await fakeSsh(await temp('idp-fake-ssh-'), bare)
     const marker = path.join(await temp('idp-pre-push-'), 'ran')
     await marking(path.join(repo, '.git', 'hooks', 'pre-push'), marker)
     // The push fixture's half of the floor: an ssh form, so the variable

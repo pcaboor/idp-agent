@@ -255,6 +255,11 @@ function outcomeOf(
         result: { text: said(status), found: false },
       }
     }
+    case 'pushed-without-pull-request':
+    case 'closed':
+      // Only the GitHub forge answers these, and no road opens it before
+      // stage 6 plan's 6.2.2, which replaces both cases.
+      throw new Error(`the local forge never answers ${submitted.outcome}`)
     default: {
       const _exhaustive: never = submitted
       return _exhaustive

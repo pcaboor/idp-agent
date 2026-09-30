@@ -4,17 +4,20 @@ The layer that writes into a user's repository: one new ref under `refs/heads/id
 cut through git's plumbing, and nothing else (ADR-0010). It holds its shapes, its refusals and
 the local forge; `plan … --submit`, on either road, and `init --submit`, for the service's own
 repository, reach it, through `cli/commands/submit.ts`; `idpa protection` reaches its GitHub
-half, which only reads, through `cli/commands/protection.ts`.
+half, which only reads, through `cli/commands/protection.ts`. The GitHub forge, which pushes
+that branch and opens one pull request, is built and tested offline; no command reaches it
+yet (stage 6 plan, 6.2.2 wires it).
 
 ## What lives here
 
 | file | what it is |
 |---|---|
-| `provider.ts` | `ForgeProvider`, `Base`, `Submitted`, and the road a submission takes (`Road`, `GitHubRoad`, `LocalRoad`) and who gh is (`GhIdentity`) — **types only**, like `llm/client.ts` |
+| `provider.ts` | `ForgeProvider` (`name: 'local' \| 'github'`, and no `merge`, `approve`, `close` or `delete`), `Base`, `Submitted` and `Recognised` — on GitHub also `pushed`, `pullRequest`, `olderBase`, `statusChecks`, a refusal's `kept`, and `pushed-without-pull-request` and `closed` — `PullRequest`, the road a submission takes (`Road`, `GitHubRoad`, `LocalRoad`) and who gh is (`GhIdentity`) — **types only**, like `llm/client.ts` |
 | `errors.ts` | `ForgeInputError` — the refusals that are the user's arguments, exit 2 |
-| `local/objects.ts` | `blobId`, `treeOf`, `writeTree` — reading and writing git objects, never a ref |
-| `local/forge.ts` | `openLocalForge(repo, repository)` — `base`, `diverges`, `recognise`, `submit`, over a clone on this machine |
-| `github/` | stage 6's GitHub half, which reads so far and which `idpa protection` reaches: `readRoad`, `readIdentity`, `githubApi`, `readProtection`, `openGitHub` — [its README](github/README.md) |
+| `local/objects.ts` | `blobId`, `treeId`, `objectFormat`, `treeOf`, `writeTree` — reading and writing git objects, never a ref; `buildTree`, the one walk `writeTree` and `treeFor` share |
+| `local/tree.ts` | `treeFor(git, parent, edits, format)` — the tree a change would have on `parent`, computed and never written: what the GitHub forge compares a commit this clone never made with (stage 6 brief § 4, § 14) |
+| `local/forge.ts` | `openLocalForge(repo, repository, git?, { acceptOlderBase? })` — `base`, `diverges`, `recognise`, `submit`, over a clone on this machine; `acceptOlderBase`, the GitHub forge's alone, takes our one commit on an ancestor of the base as ours on an older base |
+| `github/` | stage 6's GitHub half: `readRoad`, `readIdentity`, `githubApi`, `readProtection`, `readRules`, `openGitHub`, which `idpa protection` reaches, and `github/forge.ts`, the GitHub forge — [its README](github/README.md) |
 
 ## How a submission is atomic
 
@@ -25,6 +28,13 @@ object no ref reaches is garbage `git gc` collects. So nothing is rolled back, b
 a person can observe exists before the ref. `tests/invariants/forge.test.ts` holds that by
 failing every git call of a submission, before it runs and after, over real repositories, and
 by a stranger creating the branch before each of them.
+
+The GitHub forge adds a second system, and the two together are not atomic: its only writes on
+GitHub are one ref, created by a push whose lease says it must not exist, and one pull request,
+each atomic on its own. Every state a failure leaves between them is a row of the stage 6
+brief's § 4 table that the same command, run again, completes;
+`tests/invariants/github-forge.test.ts` fails every git, push and gh call of a submission in
+turn, both ways, and runs it again.
 
 Before that one write, `submit` checks, in this order: the value is one `clear.ts` minted
 (`isCleared`, D3); it is for this forge's repository; `HEAD` is still the branch and commit
@@ -49,7 +59,8 @@ show, never a command to the terminal.
 ## What a forge can do, and what it cannot
 
 `ForgeProvider` has four methods — `base`, `diverges`, `recognise`, `submit` — one of which
-writes, and the absences are the design. `recognise` is `submit`'s own test of a branch
+writes, and the absences are the design (`tests/unit/forge-types.test.ts` holds them, on both
+forges, with `@ts-expect-error`). `recognise` is `submit`'s own test of a branch
 already there, run before anyone is asked to confirm, and it only reads. There is no `merge`: the merge is the act of authorisation (ADR-0006), and a method
 nobody calls is not a guarantee. There is no `delete`, no push to a base and no way to name
 a branch: `submit` takes a `Cleared`, whose branch the engine computed from its bytes, and a

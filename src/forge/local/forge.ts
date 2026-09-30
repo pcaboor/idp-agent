@@ -4,7 +4,7 @@ import { isCataloguePath } from '../../core/paths/catalogue.js'
 import { GitError, gitIn, type Git } from '../../process/git.js'
 import { ForgeInputError } from '../errors.js'
 import type { Base, ForgeProvider, Recognised, Submitted } from '../provider.js'
-import { blobId, treeOf, writeTree, type TreeEntry } from './objects.js'
+import { blobId, objectFormat, treeOf, writeTree, type TreeEntry } from './objects.js'
 
 /**
  * The local forge: a submission becomes one new branch in a clone on this
@@ -69,11 +69,17 @@ const modeAfter = (atBase: TreeEntry | undefined): string =>
  * and host names (D13). Both, because git configures them apart
  * (`author.*`, `committer.*`): measured, a repository with only `committer.*`
  * passed a committer-only probe and failed at `commit-tree`, after the run.
+ *
+ * `acceptOlderBase` is set by the GitHub forge alone (stage 6 brief § 14): a
+ * branch of ours whose one parent is an ancestor of the base, not the base, is
+ * a submission made before the base moved, whose pull request may be open.
+ * Without it — stage 5's local road — such a branch is refused, as D7 says.
  */
 export async function openLocalForge(
   repo: string,
   repository: Repository,
   git: Git = gitIn(repo),
+  options: { readonly acceptOlderBase?: boolean } = {},
 ): Promise<ForgeProvider> {
   const inside = await git(['rev-parse', '--is-inside-work-tree']).catch((error: unknown) => {
     if (error instanceof GitError && error.code === 'ENOENT') {
@@ -97,7 +103,7 @@ export async function openLocalForge(
             '--submit needs the root, or the branch would be cut in someone else’s repository',
     )
   }
-  const format = text(await git(['rev-parse', '--show-object-format'])) === 'sha256' ? 'sha256' : 'sha1'
+  const format = await objectFormat(git)
   for (const who of ['author', 'committer'] as const) {
     await git(['var', `GIT_${who.toUpperCase()}_IDENT`]).catch(() => {
       throw new ForgeInputError(
@@ -192,7 +198,19 @@ export async function openLocalForge(
     const parents = text(await git(['rev-list', '--parents', '-n', '1', head])).split(' ').slice(1)
     const [parent] = parents
     if (parents.length !== 1 || parent === undefined) return other
-    if (parent !== at.commit) {
+    // On the GitHub road only (stage 6 brief § 14): our one commit on an
+    // ANCESTOR of the base is ours on an older base — the base moved after an
+    // earlier run submitted it — and is judged exactly as on the base below.
+    // Any failure of the ancestry check, an unknown object included, is "not
+    // an ancestor".
+    const older =
+      parent !== at.commit &&
+      options.acceptOlderBase === true &&
+      (await git(['merge-base', '--is-ancestor', parent, at.commit]).then(
+        () => true,
+        () => false,
+      ))
+    if (parent !== at.commit && !older) {
       return refused(
         `${change.branch} already exists on ${short(parent)}, not on ${at.branch}@${short(at.commit)}; ` +
           'it is not this submission',
@@ -225,7 +243,12 @@ export async function openLocalForge(
           'did not write for this request',
       )
     }
-    return { outcome: 'already-submitted', branch: change.branch, commit: head }
+    return {
+      outcome: 'already-submitted',
+      branch: change.branch,
+      commit: head,
+      ...(older ? { olderBase: parent } : {}),
+    }
   }
 
   /**

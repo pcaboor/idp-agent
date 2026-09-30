@@ -3,8 +3,10 @@
 Stage 6's road to a pull request, opened with the person's own git and gh
 ([`docs/stage-6-brief.md`](../../../docs/stage-6-brief.md)). This build holds no GitHub
 credential: gh reads its own login and git pushes with the person's, and nothing here reads,
-stores or sends either. It is built task by task ([`docs/plans/stage-6-github.md`](../../../docs/plans/stage-6-github.md));
-so far it reads, and `idpa protection` is the one command that reaches it.
+stores or sends either. It is built task by task ([`docs/plans/stage-6-github.md`](../../../docs/plans/stage-6-github.md)):
+`idpa protection` reaches the reads; the forge, which pushes and opens a pull request, is
+reached by no command until 6.2.2, and is proved offline, against the fake gh and a bare
+repository on disk.
 
 ## What lives here
 
@@ -12,8 +14,10 @@ so far it reads, and `idpa protection` is the one command that reaches it.
 |---|---|
 | `road.ts` | `readRoad(git, { local })` — the road a submission takes, read before anything is read on GitHub: the branch HEAD names, the remote it tracks and the branch on it, both URLs the person's own git prints, and, on the GitHub road only, the clone's own configuration refused by key and scope (§ 7, § 13) |
 | `identity.ts` | `readIdentity(gh, road, purpose?)` — who gh is: installed, at least `GH_MINIMUM_VERSION`, logged in to github.com, and as a person (§ 5, § 9); two gh calls |
-| `api.ts` | `githubClient`, the one caller of `ghIn` in `src/`; `githubApi`, one typed method per route (`user()`, and § 8's `repository()`, `rules(base)`, `ruleset(id)`, `branch(base)`, `ref(branch)`), each answer's status held to its route, one page only, and its body to `core/github/answers.ts`; `GitHubAnswerError`, a failure in this build's words; the call budget |
-| `preflight.ts` | `readProtection(api, road)` — § 8's reads, in order: the repository, stopping there when it is archived, renamed or not the account's to push to; the rules for the base; each ruleset that supplies a required rule, at most ten; the branch, only when none does — judged by `core/github/protection.ts`. `preflight(api, road, base)` adds the base's ref: whether GitHub's base is at the clone's commit |
+| `api.ts` | `githubClient`, the one caller of `ghIn` in `src/`; `githubApi`, one typed method per route (`user()`, § 8's `repository()`, `rules(base)`, `ruleset(id)`, `branch(base)`, `ref(branch)`, and the forge's `commit(sha)`, `pulls(branch)` and `openPullRequest(input)`, the one write, at most once per API whatever the first answered), each answer's status held to its route, one page only, and its body to `core/github/answers.ts`; `GitHubAnswerError`, a failure in this build's words; the call budget, `calls()` |
+| `preflight.ts` | `readProtection(api, road)` — § 8's reads, in order: the repository, stopping there when it is archived, renamed or not the account's to push to; the rules for the base; each ruleset that supplies a required rule, at most ten; the branch, only when none does — judged by `core/github/protection.ts`. `preflight(api, road, base)` adds the base's ref: whether GitHub's base is at the clone's commit. `readRules(api, road)` is items 2 and 3 alone, what the forge reads again at the moment of acting and before the pull request |
+| `push.ts` | `pushChange` — step 10, the person's own `git push` of the very commit the local forge cut, create-only, a push that did not say "created" read back, with step 11's waits, before anything is concluded, and a remote's refusal called a ruleset only where GitHub's words say so; `classifyPushFailure`, git's stderr read into a `PushFailure` and one engine sentence each, git's words never repeated |
+| `forge.ts` | `openGitHubForge` — the GitHub forge: the local forge's `base` and `diverges`; `recognise`, which reads the local branch, then the branch on GitHub, its commit and the pull requests from it (§ 14); `submit`, which re-reads the road, the clone's configuration, the rules, the base, the branch on GitHub and the pull requests from it at the moment of acting, cuts the local branch, pushes, reads the branch back, reads the rules once more and opens one pull request whose body the engine writes (`core/github/pull-request.ts`) |
 | `open.ts` | `openGitHub({ repo, env, gh?, local, purpose? })` — the clone's root, the road, and on GitHub's road gh's identity and the API: what `idpa protection` opens, and every submission will |
 | `limits.ts` | `GITHUB_LIMITS` — what one run may spend (§ 15): 48 gh calls, which the brief's figures add up to exactly |
 
@@ -30,6 +34,20 @@ credential, a fork set-up, a refused configuration key, gh missing, logged out, 
 a person — is a `ForgeInputError`, exit 2, before anything is written and before any model. An
 answer GitHub failed to give is a `GitHubAnswerError`, exit 1, which names the route and the
 status and never GitHub's or gh's words.
+
+## What the forge may not do
+
+No merge, no approval, no close, no deletion, and no push but the create-only one, of one
+commit, to one ref under `refs/heads/idp-agent/`, at the URL the remote printed — never to a
+remote's name; and never a ref name from a caller: the branch is the clearance's, which the
+engine computed from its bytes. It writes nothing on either side before the re-check passes,
+and opens nothing before the branch reads back at the commit it pushed and the rules hold
+again. `tests/unit/github-forge.test.ts` holds § 14's rows, the re-check and every failure of
+the push and the pull request; `tests/unit/merge-refused.test.ts` tries every door as the
+account that opened the pull request, against the fake gh: a merge, an approval and a write to
+a base judged by its model, every other door refused as a vector this build never sends;
+`tests/unit/hostile-clone.test.ts` refuses a clone configured to redirect the push;
+`tests/invariants/github-forge.test.ts` fails every call of a submission in turn.
 
 ## What may not
 

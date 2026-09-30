@@ -252,6 +252,15 @@ Each pull request adds its line here.
   and names the command, `docs/submitting.md` says how to add the ruleset, and
   `pnpm demo:github` shows the three answers against a fake gh
   ([#125](https://github.com/pcaboor/idp-agent/pull/125)).
+- The GitHub forge, not yet reachable from the command line: through the person's own gh it
+  recognises a submission already on GitHub (its branch, on this base or an older one, and
+  its pull request, open, closed or merged) before anyone is asked; at the moment of acting
+  it re-reads the clone's configuration, the base's rules, the base's tip, the branch and its
+  pull requests, cuts the local branch, pushes that very commit create-only with the person's
+  own git, reads it back, reads the rules once more and opens one pull request whose body the
+  engine writes, the request in a fence and each file's path as code. Offline tests against a fake gh and a bare repository try every door as the
+  pull request's author, refuse a hostile clone's configuration, and fail every git and gh
+  call of a submission in turn ([#126](https://github.com/pcaboor/idp-agent/pull/126)).
 
 ### Changed
 

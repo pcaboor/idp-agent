@@ -100,3 +100,56 @@ export const refAnswer = z.object({
 })
 
 export type RefAnswer = z.infer<typeof refAnswer>
+
+/** A commit or tree id, as GitHub writes one: SHA-1 or SHA-256, lower case, whole. */
+const objectId = z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/)
+
+/**
+ * `GET repos/<o>/<r>/git/commits/<sha>`: what recognition compares a branch
+ * this clone never made with (§ 14) — the commit, its tree, its parents and
+ * its message. Whether GitHub keeps the message's final newline is one of the
+ * answers the owner's live run records (6.4.1); the forge accepts either.
+ */
+export const commitAnswer = z.object({
+  sha: objectId,
+  tree: z.object({ sha: objectId }),
+  parents: z.array(z.object({ sha: objectId })),
+  message: z.string(),
+})
+
+export type CommitAnswer = z.infer<typeof commitAnswer>
+
+/** A pull request's number: a positive whole number a double holds exactly. */
+const pullNumber = z.number().int().positive().max(Number.MAX_SAFE_INTEGER)
+
+/**
+ * `POST repos/<o>/<r>/pulls`'s answer: the number GitHub gave the pull
+ * request, and what it says it opened, which must be what was asked.
+ */
+export const pullAnswer = z.object({
+  number: pullNumber,
+  state: z.string(),
+  base: z.object({ ref: z.string() }),
+  head: z.object({ ref: z.string() }),
+})
+
+export type PullAnswer = z.infer<typeof pullAnswer>
+
+/**
+ * `GET repos/<o>/<r>/pulls?head=<o>:<branch>&state=all&per_page=100` (§ 14):
+ * every pull request from the branch, closed and merged ones included, one
+ * page. `merged_at` says a closed one was merged; the two dates are GitHub's
+ * words, and only a day read from their start is ever printed.
+ */
+export const pullsAnswer = z.array(
+  z.object({
+    number: pullNumber,
+    state: z.enum(['open', 'closed']),
+    merged_at: z.string().nullable(),
+    closed_at: z.string().nullable(),
+    base: z.object({ ref: z.string() }),
+    head: z.object({ ref: z.string() }),
+  }),
+)
+
+export type PullsAnswer = z.infer<typeof pullsAnswer>
