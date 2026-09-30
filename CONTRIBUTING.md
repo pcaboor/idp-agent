@@ -11,13 +11,15 @@ That is it. Node >= 22 and pnpm 10, nothing else — no API key, no network, no 
 no database. If a change makes any of those necessary to run the suite, the change is
 wrong, not the setup.
 
-Before opening a pull request, run what CI runs:
+Before opening a pull request, run what CI runs. `pnpm typecheck` is not redundant:
+vitest does not typecheck. `pnpm smoke` packs the tarball and runs its
+`dist/cli/bin.js`, which the suite never does.
 
 ```bash
-pnpm typecheck    # vitest does not typecheck; this is not redundant
+pnpm typecheck
 pnpm test
 pnpm build
-pnpm smoke        # packs the tarball and runs its dist/cli/bin.js, which the suite never does
+pnpm smoke
 ```
 
 **Neither leaves anything in the temp directory.** A test that needs one calls

@@ -352,6 +352,15 @@ Each pull request adds its line here.
 
 ### Documentation
 
+- The README describes the tool after stage 5 and `backstage-http` slices 1 and 3: `--submit`
+  and its local branch in the tagline, the diagram, the commands, the exit codes, the roadmap
+  and the FAQ; a keyless submission to a git copy of the demo SI; the organisation's
+  relations against the fake Backstage; `--backstage` in every synopsis and a row for `init`;
+  no `#` comment left in a block meant to be pasted, which zsh hands to the command; and no
+  Terraform in the licence line, which is not Apache-2.0. The roadmap records the owner's
+  2026-09-30 decision: after stage 7, the enterprise needs, such as ticket handling through
+  MCP servers, are discussed before anything is planned
+  ([#112](https://github.com/pcaboor/idp-agent/pull/112)).
 - Stage 5 is checked against `main` and planned: [the check](docs/stage-5-check.md) of the
   owner's uncommitted work and plan (every piece kept, three adapted, measured green), the
   owner's nineteen decisions of 2026-09-29, the brief kept as a dated record, the plan

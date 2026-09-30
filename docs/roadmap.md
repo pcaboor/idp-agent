@@ -9,7 +9,7 @@ What has already shipped is in [`CHANGELOG.md`](../CHANGELOG.md). What the 2026-
 found, and which of its findings are closed, is in its
 [Status section](reviews/2026-09-23-deep-review.md#status).
 
-*Updated 2026-09-29, `main` at `d0fdee9`.*
+*Updated 2026-09-30, `main` at `389fe3a`.*
 
 ## Where the project stands
 
@@ -44,8 +44,8 @@ questions, were recorded by the owner on 2026-09-29 and replay with no key
 
 ## The queue
 
-**In order**, as the owner decided on 2026-09-23, 2026-09-25, 2026-09-26, 2026-09-27 and
-2026-09-29.
+**In order**, as the owner decided on 2026-09-23, 2026-09-25, 2026-09-26, 2026-09-27,
+2026-09-29 and 2026-09-30.
 Each line says what the item is for. The sweep of the review is done
 ([its verdicts](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27)); its batches are
 here, one pull request each, each naming the check run together at the end.
@@ -79,6 +79,11 @@ here, one pull request each, each naming the check run together at the end.
    dependencies it already has, with evidence.
 7. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
    the project's end goal (2026-09-23).
+8. **After stage 7, the enterprise needs: a discussion, not a stage.** The owner brings the
+   needs and constraints they identified for a company — for example MCP servers such as
+   Jira's, for ticket handling — to be discussed before anything is planned. Nothing is
+   scheduled; design §13 keeps real Jira integrations out of v0.1, and an MCP server exposed
+   by `idp-agent` is §13's own v0.2 item, a different thing (2026-09-30).
 
 Within stage 8, its design note (section 11) states its own order:
 priorities 6 (done, [#79](https://github.com/pcaboor/idp-agent/pull/79)), 7 (done,
@@ -253,6 +258,13 @@ The owner's decisions, dated, each with where it is recorded.
   without `--submit` byte-identical, and the order forge, configuration questions, the
   project read, `init`'s verdicts, divergence, then the Inspector
   ([#111](https://github.com/pcaboor/idp-agent/pull/111)).
+
+**2026-09-30**
+
+- After stage 7, the owner brings the enterprise needs and constraints they identified — for
+  example MCP servers such as Jira's, for ticket handling — to be discussed before anything
+  is planned; it is the queue's last line, not a stage
+  ([#112](https://github.com/pcaboor/idp-agent/pull/112)).
 
 ## Known debts and open items
 

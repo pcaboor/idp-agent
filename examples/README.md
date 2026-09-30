@@ -3,13 +3,19 @@
 Each file is a `Plan` — the JSON an Architect would produce. `plan --from` reads
 one, signs it, runs the policies, re-checks it against the repository, and shows
 the diff it would produce. No model is involved and none can be, so none of this
-needs a key. It writes nothing, ever.
+needs a key. Without `--submit` it writes nothing; with `--submit`, over a git clone, it
+cuts one local branch, `idp-agent/…`, and moves nothing else (see the README's
+Commands).
+
+Against the fictional demo SI shipped in `fixtures/si-demo`:
 
 ```bash
-# against the fictional demo SI shipped in fixtures/si-demo
 node dist/cli/bin.js plan --from examples/open-network.json --repo fixtures/si-demo
+```
 
-# against a declarations repository of your own, freshly scaffolded
+Against a declarations repository of your own, freshly scaffolded:
+
+```bash
 node dist/cli/bin.js init platform /tmp/my-iac --owner @acme/platform
 node dist/cli/bin.js plan --from examples/declare-database.json --repo /tmp/my-iac
 ```
