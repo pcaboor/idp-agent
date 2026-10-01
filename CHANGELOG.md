@@ -271,6 +271,13 @@ Each pull request adds its line here.
   `--submit --local` cuts the branch in the clone only. `--json`'s `submission` gains `pushed`
   and `pullRequest`, and the outcomes `pushed-without-pull-request` and `closed`
   ([#127](https://github.com/pcaboor/idp-agent/pull/127)).
+- `plan "<intent>" --submit` opens a GitHub pull request as `plan --from` does: the road,
+  gh's identity and the base's rules are read before any model is called, and the rules
+  again after the Reviewer, at the moment of acting; a service whose `.idp-agent.yml` names
+  another declarations repository than the one the clone's branch tracks is refused, naming
+  both — `iacRepo`'s first reader, a cross-check and never a source; a refusal on the
+  base's rules names gh's account, never its login, since a traced run keeps it
+  ([#128](https://github.com/pcaboor/idp-agent/pull/128)).
 
 ### Changed
 

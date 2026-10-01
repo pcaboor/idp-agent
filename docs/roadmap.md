@@ -24,7 +24,7 @@ each:
 | 3 | `init platform` and `validate` | done |
 | 4 | Preview only: nothing is written | done |
 | 5 | Write + local branch | done ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)): task 1, `Cleared` for the declarations repository ([#105](https://github.com/pcaboor/idp-agent/pull/105)); task 2, `Cleared` for the service repository ([#106](https://github.com/pcaboor/idp-agent/pull/106)); task 3, the shared git launcher and the `forge/` types ([#107](https://github.com/pcaboor/idp-agent/pull/107)); task 4, the local forge — create-only, idempotent, atomic ([#108](https://github.com/pcaboor/idp-agent/pull/108)); task 5, `plan --from … --submit` ([#109](https://github.com/pcaboor/idp-agent/pull/109)); task 6, `plan "<intent>" --submit`, refused before a model is paid ([#110](https://github.com/pcaboor/idp-agent/pull/110)); task 7, `init --submit` and `.idp-agent.yml`, and a branch already there answered before the confirmation ([#111](https://github.com/pcaboor/idp-agent/pull/111)) |
-| 6 | GitHub pull request | in progress ([the plan](plans/stage-6-github.md)): slice 6.1 done: 6.1.1, the allow-list ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2, the remote and who gh is ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3, the preflight and `idpa protection` ([#125](https://github.com/pcaboor/idp-agent/pull/125)); slice 6.2: 6.2.1, the GitHub forge ([#126](https://github.com/pcaboor/idp-agent/pull/126)) |
+| 6 | GitHub pull request | in progress ([the plan](plans/stage-6-github.md)): slice 6.1 done: 6.1.1, the allow-list ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2, the remote and who gh is ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3, the preflight and `idpa protection` ([#125](https://github.com/pcaboor/idp-agent/pull/125)); slice 6.2 done: 6.2.1, the GitHub forge ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2, `plan --from … --submit` to GitHub ([#127](https://github.com/pcaboor/idp-agent/pull/127)); slice 6.3: 6.3.1, `plan "<intent>" --submit` to GitHub, and `iacRepo` as a cross-check ([#128](https://github.com/pcaboor/idp-agent/pull/128)) |
 | 7 | Polish: Ink TUI, asciinema, npm publish | not started |
 | 8 | Discovery | designed ([the design note](stage-8-brief.md), [#76](https://github.com/pcaboor/idp-agent/pull/76)); not started |
 
@@ -51,7 +51,7 @@ minutes for the person's account, read again through the reader, with `--refresh
 ## The queue
 
 **In order**, as the owner decided on 2026-09-23, 2026-09-25, 2026-09-26, 2026-09-27,
-2026-09-29 and 2026-09-30.
+2026-09-29, 2026-09-30 and 2026-10-01.
 Each line says what the item is for. The sweep of the review is done
 ([its verdicts](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27)); its batches are
 here, one pull request each, each naming the check run together at the end.
@@ -78,17 +78,39 @@ here, one pull request each, each naming the check run together at the end.
    anything is written, one question naming the push and the pull request, the closing lines
    with the engine-built URL, `--local`, and the intent and `init` roads refused toward GitHub
    until theirs land ([#127](https://github.com/pcaboor/idp-agent/pull/127)), which closes
-   slice 6.2. Slice 6.3, the intent, `init` and phrase roads, is next.
+   slice 6.2. 6.3.1, `plan "<intent>" --submit` to GitHub — the road and gh's identity before
+   the model is configured, the base's rules before the first model call and again after the
+   Reviewer, and `.idp-agent.yml`'s `iacRepo` read as a cross-check that refuses a service
+   pointed at another repository's clone — is on `main`
+   ([#128](https://github.com/pcaboor/idp-agent/pull/128)); `init --submit` (6.3.2) and
+   the phrase (6.3.3) are next. Three tasks the owner added on 2026-10-01 follow them, before
+   6.4: 6.3.4, the pull request always opened whatever the base's rules, with a neutral `note:`
+   when its author may merge it alone; 6.3.5, the Supervisor proposing to open the pull request
+   after the diff, the person's `y` authorising it and the engine opening it and reporting it,
+   with no `--submit` typed in a terminal; and what is in flight — the open `idp-agent` pull
+   requests touching the same service read before any model is paid, so two people never open
+   competing ones. Each is planned in `docs/plans/stage-6-github.md` before it is built.
 2. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
-   dependencies it already has, with evidence.
-3. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
-   the project's end goal (2026-09-23).
-4. **After stage 7, the enterprise needs: a discussion, not a stage.** The owner brings the
+   dependencies it already has, with evidence; two people discovering the same service see what
+   the other has in flight rather than a competing pull request (2026-10-01).
+3. **Removing and changing an access, and company rules** (2026-10-01). Revoking a right,
+   changing its level or decommissioning a service, always as a pull request a person merges —
+   today the tool only appends, and least privilege needs the other half; and gates a company
+   configures in its declarations repository (a ticket required for a `readwrite` grant in
+   production, its naming conventions). Placed after stage 8 and before stage 7; the order is
+   the owner's to confirm.
+4. **Stage 7, Ink TUI, asciinema, npm publish.** The Claude-Code-like chat in the terminal,
+   the project's end goal (2026-09-23), with a Tab switch between the intent mode and the
+   discovery mode (2026-10-01).
+5. **After stage 7, the enterprise needs: a discussion, not a stage.** The owner brings the
    needs and constraints they identified for a company — for example MCP servers such as
    Jira's, for ticket handling — to be discussed before anything is planned. Nothing is
    scheduled; design §13 keeps real Jira integrations out of v0.1, and an MCP server exposed
-   by `idp-agent` is §13's own v0.2 item, a different thing (2026-09-30).
+   by `idp-agent` is §13's own v0.2 item, a different thing (2026-09-30). Added on 2026-10-01:
+   GitLab, the forge interface being GitHub's alone in v0.1; and a proof that what a merged
+   pull request declares was really done downstream (ADR-0012), which will come with MCP
+   servers or integrations.
 
 Within stage 8, its design note (section 11) states its own order:
 priorities 6 (done, [#79](https://github.com/pcaboor/idp-agent/pull/79)), 7 (done,
@@ -339,6 +361,33 @@ The owner's decisions, dated, each with where it is recorded.
   the arguments, the clone's configuration or gh are refused — and `init platform` prints the
   same list of settings and names it, where it printed a checklist and "arrives at stage 6"
   ([#125](https://github.com/pcaboor/idp-agent/pull/125)).
+
+**2026-10-01**
+
+- **The invariant changes: the pull request is always opened.** Whether its author may merge
+  it alone is the company's rule, not this tool's ("you can merge your own pull request if you
+  have the role on GitHub or GitLab; it all depends on the company's rules"). So `--submit`
+  opens the pull request whatever the base's rules, and when they let its author merge it
+  without another person's review — no approval required, a role that can bypass, classic
+  protection alone, a deploy key in the bypass list — it says so in one neutral line, `note: on
+  this repository the author may merge without another person's review`, on stderr and in the
+  pull request, and exits 0. idpa still never merges and never writes to `main`; the refusals
+  that protect the push itself stay (no gh, a clone configured to redirect the push); `idpa
+  protection` still answers 0 or 1. Task 6.3.4, after 6.3.3 and before ADR-0015: design §4.2
+  changes first, then `AGENTS.md`, `SECURITY.md`, `docs/submitting.md` and the note.
+- **The Supervisor proposes to open the pull request** (task 6.3.5): after the diff, in a
+  terminal and with no `--submit` typed, it proposes; the person's `y` authorises; the engine
+  opens it and prints its URL. The model never holds a tool that pushes without that answer;
+  a run with no terminal still needs `--submit`.
+- **What is in flight is read first:** before any model is paid, the open `idp-agent` pull
+  requests that touch the same service are read. The same content is named, `already proposed
+  by <login> in pull request #12`, and nothing is written; different content is shown beside
+  it, and only a complementary pull request on other files is proposed. Another person's pull
+  request is never edited or closed. It serves every road and stage 8's discovery.
+- **The queue gains** removing and changing an access, and company rules, after stage 8; the
+  discovery mode's Tab switch belongs to stage 7. GitLab and the proof of what was done after a
+  merge go to the discussion after stage 7. Temporary access and a CI or bot mode were offered
+  and not added.
 
 ## Known debts and open items
 
@@ -693,7 +742,8 @@ vocabulary), product-gap-6 (no offset and no system, lifecycle or tag criteria i
 - **Scope and documents.** docs-6 (a keyless `idpa tour`), docs-7 and product-gap-7 (what
   the tool produces and what it does not), docs-8 and architecture-7 (an extension guide;
   plugins after the foundation), product-gap-8 (the registry, closed for v1), docs-10 (the
-  audit report's unreachable commit), cli-ux-13 (`iacRepo`, required and never read).
+  audit report's unreachable commit), cli-ux-13's remainder (`iacRepo` is read since 6.3.1;
+  `plan --from` reads no `.idp-agent.yml`, and the file is looked for at a service's root only).
 - **Toolchain and release.** build-ci-10 (a linter and formatter), build-ci-9 (a dependency
   policy), build-ci-6 (reserving the npm name).
 

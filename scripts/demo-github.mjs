@@ -20,15 +20,22 @@
  *   5. plan --from … --submit: exit 0, the branch pushed and pull request #1
  *      opened;
  *   6. the same again: exit 0, pull request #1 named, nothing written;
- *   7. gh logged out, the same again: exit 2, nothing written.
+ *   7. gh logged out, the same again: exit 2, nothing written;
+ *   8. plan "<intent>" --submit, gh logged out: exit 2, before any model,
+ *      naming --local;
+ *   9. plan "<intent>" --submit, gh logged in: exit 2 on the model's
+ *      configuration, the road and gh's identity read first — the line naming
+ *      the road, then `no model configured`, in that order.
  *
- * What it runs cannot reach the person's GitHub: the binary's environment
- * loses every `IDP_*`, `*_API_KEY`, `GH_*`, `GITHUB_*` and `GIT_*` variable,
- * `SSH_AUTH_SOCK` and `SSH_ASKPASS`, and is given back only the fake ssh's
- * `GIT_SSH_COMMAND` and `GIT_SSH_VARIANT`; `HOME`, `XDG_CONFIG_HOME` and
+ * What it runs cannot reach the person's GitHub or spend their model key: the
+ * binary's environment loses every `IDP_*`, `*_API_KEY`, `GH_*`, `GITHUB_*`
+ * and `GIT_*` variable, `SSH_AUTH_SOCK` and `SSH_ASKPASS`, and is given back
+ * only the fake ssh's `GIT_SSH_COMMAND` and `GIT_SSH_VARIANT`; `HOME`,
+ * `XDG_CONFIG_HOME` (so no personal config.yml names a model) and
  * `GH_CONFIG_DIR` point into a scratch folder of this run, removed when it
  * ends; and an `ssh` that refuses to run sits beside the fake `gh`, first on
- * PATH. The one push goes to the bare repository in that folder.
+ * PATH. No model is configured, and a step of the intent road that finds one
+ * fails the demo. The one push goes to the bare repository in that folder.
  *
  * Run after `pnpm build`. The fake is TypeScript that Node runs as it is,
  * which needs Node 22.18 or later (`scripts/type-stripping.mjs`), and it is
@@ -232,8 +239,10 @@ function step(title, { state, expects, args, expected, checks = () => [] }) {
   if (state !== undefined) writeFileSync(STATE, JSON.stringify(state))
   console.log(`\n${bold(title)}`)
   console.log(`expects exit ${expected}: ${expects}`)
-  // A file of this repository is shown as a person in it would type it.
-  const typed = args.map((arg) => (arg.startsWith(`${ROOT}${path.sep}`) ? path.relative(ROOT, arg) : arg))
+  // A file of this repository is shown as a person in it would type it, and an intent quoted.
+  const typed = args.map((arg) =>
+    arg.startsWith(`${ROOT}${path.sep}`) ? path.relative(ROOT, arg) : arg.includes(' ') ? `"${arg}"` : arg,
+  )
   console.log(`$ node dist/cli/bin.js ${typed.join(' ')}`)
   const run = spawnSync(process.execPath, [BIN, ...args], {
     cwd: scratch,
@@ -319,6 +328,44 @@ step('7. gh logged out, the same again', {
     ],
   ],
 })
+// The intent road: the same clone, as far as the steps before the model.
+// Nothing configures one here, and a step that reached one fails the demo.
+const INTENT = JSON.parse(readFileSync(path.join(ROOT, 'examples/open-network.json'), 'utf8')).intent
+const DRAFT = ['plan', INTENT, '--repo', 'iac', '--submit']
+const NO_MODEL = /^no model configured: /m
+step('8. The intent road refuses a gh that is not logged in before any model', {
+  state: { ...fakeState(), session: undefined },
+  expects: 'gh to log in, or --local, before any model is configured',
+  args: DRAFT,
+  expected: 2,
+  checks: (run) => [
+    [
+      '"gh is not logged in to github.com", naming --local',
+      /gh is not logged in to github\.com.*or add --local to cut the branch in this clone only\. Nothing was written\.$/m.test(
+        run.stderr ?? '',
+      ),
+    ],
+    ['no word of the model, which comes after', !NO_MODEL.test(run.stderr ?? '')],
+    ['nothing written', ourBranches(CLONE) === before.clone && ourBranches(GITHUB) === before.github],
+  ],
+})
+step("9. The intent road reads the road and gh's identity before the model's configuration", {
+  state: { ...fakeState(), session: { login: 'ada' } },
+  expects: 'the line naming the road, then "no model configured"',
+  args: DRAFT,
+  expected: 2,
+  checks: (run) => {
+    const said = run.stderr ?? ''
+    const road = said.search(/^submitting to github\.com\/acme\/iac, into main \(origin, main's upstream\), as ada \(gh\)$/m)
+    const model = said.search(NO_MODEL)
+    return [
+      ['the line naming the road', road !== -1],
+      ['"no model configured", after it', model > road && road !== -1],
+      ['nothing written', ourBranches(CLONE) === before.clone && ourBranches(GITHUB) === before.github],
+    ]
+  },
+})
+
 // The clone's main, on both sides, where it was.
 if (readGit(CLONE, 'rev-parse', 'main') !== readGit(GITHUB, 'rev-parse', 'main')) {
   console.log('(main moved on one side; nothing here moves it)')

@@ -166,9 +166,47 @@ Each refusal, and its one fix:
 | a clone not level with GitHub | 1 | `git pull`, then run it again; a change already submitted is then named |
 | the rules gone, the base moved, or the clone's configuration changed, between the question and the push | 1 | nothing was written; run it again once they hold |
 
-`plan "<intent>" --submit`, `init --submit` and `idpa "<phrase>" --submit` follow in stage 6's next
-tasks. Until then, toward GitHub, `plan "<intent>" --submit` and `init --submit` are refused before
-any model and before gh (exit 2), naming `--local`; `idpa "<phrase>"` does not submit.
+## From a service: `plan "<intent>" --submit`
+
+```bash
+cd ~/my-service
+idpa plan "give component:default/billing-api read access to resource:default/orders-db-prod" --repo ~/my-iac --submit
+```
+
+A change drafted from your words takes the same road as a plan file, with the models in the middle,
+and nothing of GitHub is paid for by a model or shown to one. In this order:
+
+1. **The road and gh**, before the model is even configured: the clone, its branch's upstream, both
+   URLs of its remote, the clone's own configuration, gh's version and who it is logged in as. Each
+   refusal is exit 2, as for a plan file, and the `submitting to …` line is printed here.
+2. **The model's configuration** (`IDP_PROVIDER`, `IDP_MODEL`, the key): exit 2 when it is missing.
+3. **The service's `.idp-agent.yml`**, when one is read: its `iacRepo` is a cross-check, never a
+   source. A service that names another repository than the one your clone's branch tracks is
+   refused, exit 1, before anything more is read of either repository or of GitHub:
+
+   ```text
+   not submitted — .idp-agent.yml in /Users/you/my-service names github.com/acme/other-iac as this service's declarations repository, and /Users/you/my-iac's main tracks github.com/acme/iac: run this with --repo naming a clone of the repository it names, or change iacRepo in a reviewed change. Nothing was written.
+   ```
+
+   `iacRepo` is compared as GitHub compares a repository, owner and name in any case, written
+   `github.com/<owner>/<name>` behind an optional `https://` or `ssh://`, with or without `.git`; a
+   locator naming another host, or no repository at all, is refused the same way. It is read only on
+   the way to GitHub: a preview, `--local`, a clone that tracks nothing or another host, and a run
+   with no service inspected read none.
+4. **The working tree and the base**: a catalogue file that differs from `HEAD`, then the ruleset and
+   GitHub's tip, as for a plan file (exit 1) — all before the Inspector, the first model call.
+5. **The Inspector, the Architect, the four free gates and the Reviewer.** gh is asked nothing while
+   they run.
+6. **The diff, the question, and the moment of acting**, exactly as for a plan file: the rules read
+   again before the branch is cut and once more before the pull request is opened, which the closing
+   lines name.
+
+A run that ends on a question (exit 3) or stops at three attempts (exit 1) reads nothing more of
+GitHub and writes nothing. `--local` cuts the branch in the clone only and starts no gh.
+
+`init --submit` and `idpa "<phrase>" --submit` follow in stage 6's next tasks. Until then, toward
+GitHub, `init --submit` is refused before any model and before gh (exit 2), naming `--local`;
+`idpa "<phrase>"` does not submit.
 
 ## Push as gh's account
 

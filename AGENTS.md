@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 4690 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 4742 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -76,7 +76,8 @@ no copy kept that verifies, a submission
 refused — a catalogue that differs from `HEAD`, a plan writing into both repositories, a
 refusal at the moment of writing, git failing, a base on GitHub the rules do not protect, a
 clone not level with GitHub, a closed or reverted pull request, a pull request not opened, a
-push refused — or something failed unexpectedly · `2`
+push refused, a service whose `.idp-agent.yml` names another repository than the one a
+submission goes to — or something failed unexpectedly · `2`
 the arguments were refused — a bad flag, a plan file that is not a plan, a `--repo`, a
 `--project`, a configured repository or the directory `validate` or `init` is handed that is
 not a directory, a `--project` that is a declarations repository or the one the change is
@@ -96,8 +97,8 @@ refuses or holding a control, format or bidi character, `--submit` with `--demo`
 `idpa "<phrase>"`, `--local` without `--submit`, on a submission toward GitHub gh missing,
 logged out, expired, too old or not a person, a key of the clone's own configuration that
 would redirect the push or run a program, a remote URL with a credential or that does not
-parse, and `plan "<intent>" --submit` or `init --submit` toward GitHub until their roads
-open pull requests (stage 6 plan, 6.3) — or no
+parse, and `init --submit` toward GitHub until its road opens pull requests (stage 6
+plan, 6.3.2) — or no
 model, no key or no usable `IDP_TIMEOUT` or `IDP_SUPERVISOR_MODEL` is configured · `3` the
 request was understood and this build will not act on it: a change request put to `ask`
 (which names `idpa "<phrase>"` as the gesture that previews it), a question the model
@@ -134,7 +135,7 @@ registration**, which `init platform` writes with the path registry's folders as
 silence, fails on what Backstage would refuse or what reads outside the repository
 (`registration`, an error), and warns when no target reaches one of the registry's folders.
 
-## Current state — 2026-09-30
+## Current state — 2026-10-01
 
 `main` carries stages 0 through 5; history is linear, no merge commits. Each stage lands
 as a stack of branches, one per task of its plan in `docs/plans/`, rebased and merged
@@ -150,7 +151,7 @@ service's catalog-info and its `.idp-agent.yml` on one branch of its own reposit
 | 3 | `init platform` — scaffold, CI, CODEOWNERS, witnesses, `validate` | done |
 | 4 | Preview only — Inspector, Architect, `Plan`, diff; writes nothing | done |
 | 5 | Write + local branch — `ForgeProvider`, atomicity, idempotence | done |
-| 6 | GitHub pull request — the person's git and gh, the base's ruleset, the merge refused | in progress: `idpa protection`, `plan --from … --submit` |
+| 6 | GitHub pull request — the person's git and gh, the base's ruleset, the merge refused | in progress: `idpa protection`, `plan --from … --submit`, `plan "<intent>" --submit` |
 | 7 | Polish — Ink TUI, README, asciinema, npm publish | |
 
 The order is imposed by the doctrine: read first, validate before the first write,
@@ -202,8 +203,8 @@ idp-agent protection [--repo <dir>]  # through the person's gh, reads only; no m
 **`init platform` writes into the directory it was handed, and through no symbolic link
 under it. `plan … --submit` and
 `init --submit` write one new ref and the objects it reaches, and nothing else, and, on a
-GitHub road, `plan --from … --submit` pushes that one ref to the same name on github.com
-with your git and opens one pull request with your gh** — never `HEAD`, the index, the
+GitHub road, `plan --from … --submit` and `plan "<intent>" --submit` push that one ref to
+the same name on github.com with your git and open one pull request with your gh** — never `HEAD`, the index, the
 working tree or a ref that exists; every other road pushes nothing and opens no pull
 request. With
 `IDP_TRACE_DIR` set, `idpa "<phrase>"`, `plan "<intent>"`, `ask` and `init` also write one
@@ -337,7 +338,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 | `agents/` | the five agents, the bounded turn, the repair loop, the tool registries — reaches no disk, transitively |
 | `trace/` | the trace of one run: `createTraceBuilder` over the event stream and the model calls, the `traced` client decorator, and `toOtlpJson` — pure; `cli/trace-sink.ts` is how a trace leaves |
 | `scaffold/` | the `init platform` layout, the packaged templates, and `write.ts`, the writer for a repository being created |
-| `forge/` | where a submission becomes a branch: `provider.ts` — `ForgeProvider`, `Base`, `Submitted`, types only, with no merge, no delete and no caller-chosen name — `ForgeInputError`, a refusal that is the user's arguments — and `local/`, the local forge: `openLocalForge` for one repository, which writes git objects and one create-only ref, through the launcher, and never the working tree, the index or `HEAD` (ADR-0010) — and `github/`, which reads through both launchers and judges with `core/github/`: `readRoad`, the road a submission takes, `readIdentity`, who gh is, `githubApi`, GitHub through gh, `preflight.ts`'s `readProtection`, `preflight` and `readRules` (§ 8's reads), and `openGitHub`, the road then gh's identity, which `idpa protection` reaches — and `github/forge.ts`, the GitHub forge: the local forge (`acceptOlderBase`, `local/tree.ts`'s `treeFor`), then the person's own push of that very commit, create-only, a read-back through gh, the rules once more and one pull request whose body the engine writes, proved offline against the fake gh and a bare repository — and `open.ts`'s `openSubmissionForge`, what every submission opens: the local forge, the road, gh's identity, and on GitHub's road the GitHub forge, which only `plan --from` takes yet (the intent and `init` roads are refused toward GitHub until 6.3). `plan … --submit`, on either road, and `init --submit`, for the service's repository, reach it, through `cli/commands/submit.ts` |
+| `forge/` | where a submission becomes a branch: `provider.ts` — `ForgeProvider`, `Base`, `Submitted`, types only, with no merge, no delete and no caller-chosen name — `ForgeInputError`, a refusal that is the user's arguments — and `local/`, the local forge: `openLocalForge` for one repository, which writes git objects and one create-only ref, through the launcher, and never the working tree, the index or `HEAD` (ADR-0010) — and `github/`, which reads through both launchers and judges with `core/github/`: `readRoad`, the road a submission takes, `readIdentity`, who gh is, `githubApi`, GitHub through gh, `preflight.ts`'s `readProtection`, `preflight` and `readRules` (§ 8's reads), and `openGitHub`, the road then gh's identity, which `idpa protection` reaches — and `github/forge.ts`, the GitHub forge: the local forge (`acceptOlderBase`, `local/tree.ts`'s `treeFor`), then the person's own push of that very commit, create-only, a read-back through gh, the rules once more and one pull request whose body the engine writes, proved offline against the fake gh and a bare repository — and `open.ts`'s `openSubmissionForge`, what every submission opens: the local forge, the road, gh's identity, and on GitHub's road the GitHub forge, which both forms of `plan` take (the `init` road is refused toward GitHub until 6.3.2, the phrase's until 6.3.3). `plan … --submit`, on either road, and `init --submit`, for the service's repository, reach it, through `cli/commands/submit.ts` |
 | `confine/` | physical confinement: `confine.ts`'s `followInside`, `openToRead` (`O_NOFOLLOW`, checked once open), `makeFolders` and `createNew` (`O_CREAT \| O_EXCL \| O_NOFOLLOW`) — what `assertInsideRepo`, lexical, cannot see; `iac-fs` follows no link, `project-fs` follows one that stays inside, `init platform` writes through none |
 | `process/` | the one place a process is started: `git.ts`'s `gitIn` — hooks and fsmonitor off, `user.useConfigOnly`, every `GIT_*` scrubbed, started outside the repository, bounded — and `pushIn`, the one push form; `gh.ts`'s `ghIn`, gh in the same shape; each checks the finished vector against its grammar (`checkGitArgv`, `checkGhArgv`) before anything starts, and throws `LauncherRefusal` otherwise; and `environment.ts`'s `spawnedEnvironment`, the one builder of a child process's environment |
 
@@ -421,16 +422,18 @@ changing that section first.
 - The catalogue lags the repository by ~2 min: check the repository before proposing,
   **and again at the moment of writing**.
 
-## The trust boundary — built as far as a pull request, on `plan --from`
+## The trust boundary — built as far as a pull request, on both roads of `plan`
 
 Everything from the Supervisor to the unified diff runs, and on both roads of `plan` one
 step further: `plan … --submit` cuts the branch, locally — `plan
 "<intent>"` after all five gates, having refused a repository that cannot take it before any
 model was paid. `init --submit` does the same in the service's own repository, for its
-catalog-info and `.idp-agent.yml`. `plan --from … --submit` crosses it on a GitHub road —
-it pushes that branch with the person's git and opens one pull request with their gh, after
-the base's rules and its tip were read through gh, and again at the moment of acting; the
-intent, `init` and phrase roads cross it in 6.3 (`plan "<intent>"` and `init` cut the local
+catalog-info and `.idp-agent.yml`. Both roads of `plan … --submit` cross it on a GitHub
+road — they push that branch with the person's git and open one pull request with their gh,
+after the base's rules and its tip were read through gh, and again at the moment of acting;
+`plan "<intent>"` reads the road and gh before the model is configured and the rules before
+the first model call, and holds a service's `iacRepo` to the clone's repository as a
+cross-check. The `init` and phrase roads cross it in 6.3.2 and 6.3.3 (`init` cuts the local
 branch with `--local` meanwhile), and only `idpa "<phrase>"` still ends at the preview (D8).
 
 One object crosses **per direction of authority** (design §5.1, ADR-0007). The **`Plan`**

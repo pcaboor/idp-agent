@@ -44,6 +44,12 @@ const land = async (repo: string, change: Cleared, message: string): Promise<voi
   await git(repo, 'commit', '-q', '-m', message)
 }
 
+/**
+ * Real git processes and a bare repository per test: under 2 s alone, past
+ * vitest's 5 s default beside the rest of the suite (github-forge.test.ts).
+ */
+const GIT_HEAVY = 30_000
+
 describe('git objects, and never a ref', () => {
   it('computes the id git itself gives a blob', async () => {
     const repo = await clone()
@@ -212,7 +218,7 @@ describe('what the gates judged, against the base', () => {
   })
 })
 
-describe('submitting', () => {
+describe('submitting', { timeout: GIT_HEAVY }, () => {
   it('cuts one branch from HEAD, and nothing else a person can observe moves', async () => {
     const repo = await clone()
     const change = await clearedFor(repo)
@@ -740,7 +746,7 @@ describe('submitting', () => {
   })
 })
 
-describe('recognising a submission, before anyone is asked', () => {
+describe('recognising a submission, before anyone is asked', { timeout: GIT_HEAVY }, () => {
   /** Every git call the forge makes, kept: a read-only check must make no writing one. */
   const recording = (repo: string): { run: Git; calls: string[][] } => {
     const inner = gitIn(repo)
@@ -826,7 +832,7 @@ describe('recognising a submission, before anyone is asked', () => {
   })
 })
 
-describe('an older base, which only the GitHub forge accepts (stage 6 brief § 14)', () => {
+describe('an older base, which only the GitHub forge accepts (stage 6 brief § 14)', { timeout: GIT_HEAVY }, () => {
   /**
    * Our branch cut on `main`, then an unrelated commit on `main`: the branch
    * is now on an older `main`. Returns the old and the new commit of `main`.

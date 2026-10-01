@@ -895,8 +895,9 @@ it. The one a pasted clone URL could smuggle one into, `iacRepo`, refuses userin
 and a fragment, and says so without quoting the value. Writing the file is § 7.3's last clause, and writing arrives at stage 5: `init --submit`
 writes it, on the same branch as the service's catalog-info, from `--iac-repo` and
 `--environment` or from answers — never from the inspection, never with a `backstage:` —
-and never rewrites one that is committed. Nothing reads `iacRepo` before stage 6. A run
-that types neither flag is asked nothing about it and writes none; one that types either is
+and never rewrites one that is committed. `plan "<intent>" --submit` reads `iacRepo` as a
+cross-check, never a source: on a clone tracking github.com, a locator naming another
+repository refuses the submission, naming both (stage 6). A run that types neither flag is asked nothing about it and writes none; one that types either is
 asked for the other, at a terminal, before any model.
 
 What the read buys is `environments`, which seeds the vocabulary the deterministic gates

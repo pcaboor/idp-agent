@@ -316,17 +316,17 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   of them writes, and neither do plan and init without --submit. With it, plan cuts
   a branch idp-agent/… from HEAD in the declarations repository, which must
   be a git clone's root, for review. When the checked-out branch tracks one
-  on github.com, plan --from pushes that branch with your git and opens a
-  pull request into it with your gh, once gh is logged in and the base's
+  on github.com, both forms of plan push that branch with your git and open
+  a pull request into it with your gh, once gh is logged in and the base's
   ruleset keeps you from merging it unreviewed (idpa protection says whether
-  it does); --local keeps the branch in the clone. A change drafted from an
-  intent is not pushed yet. plan "<intent>" --submit crosses five
-  gates, the Reviewer last, and refuses a repository that cannot take the
-  branch before any model is paid; plan --from crosses four gates and no
-  Reviewer. Either way the merge authorises. Every model-backed command
-  also needs that provider's key (ANTHROPIC_API_KEY, MISTRAL_API_KEY or
-  OPENAI_API_KEY); IDP_TIMEOUT bounds each model call, in seconds, 120 by
-  default.
+  it does); --local keeps the branch in the clone. plan "<intent>" --submit
+  crosses five gates, the Reviewer last, and reads the road, gh and the
+  base's rules before any model is paid, refusing a repository that cannot
+  take the branch, or a service whose .idp-agent.yml names another
+  repository; plan --from crosses four gates and no Reviewer. Either way
+  the merge authorises. Every model-backed command also needs that
+  provider's key (ANTHROPIC_API_KEY, MISTRAL_API_KEY or OPENAI_API_KEY);
+  IDP_TIMEOUT bounds each model call, in seconds, 120 by default.
   IDP_SUPERVISOR_MODEL gives the Supervisor, which only classifies a phrase,
   another model of the same provider; unset, it uses IDP_MODEL.
 `
@@ -1513,20 +1513,23 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     // --submit's repository, opened on this side of the model too, and for
     // the same reason: a directory that cannot take a branch — not a clone's
     // root, nobody to commit as, a detached HEAD — is an argument, and is
-    // refused before the configuration is. Nobody is told to set a key only
-    // to learn the directory could never take the branch, and nothing is paid
+    // refused before the configuration is. So, where the checked-out branch
+    // tracks one on github.com, are the road and gh (stage 6 brief § 3, steps
+    // 2 and 3): a clone configured to redirect the push, a remote that does
+    // not parse, a gh missing, logged out, too old or not a person. Every
+    // exit 2 of a submission is said here, before the configuration, and the
+    // line naming the GitHub road with it. Nobody is told to set a key only to
+    // learn the directory could never take the branch, and nothing is paid
     // for a refusal. `runIntent` is handed this forge, reads its base again
     // and judges the working tree against it, before its Inspector.
     //
-    // Divergence is judged there, AFTER the configuration: it is not an
-    // argument but the repository's state, a negative answer (exit 1), and
-    // judging it here would read the catalogue before a model is known to
-    // exist. So a clone with an uncommitted catalogue file and no model
-    // configured answers "no model configured" first, and the divergence
-    // once one is. Neither order pays a model for a refusal.
-    //
-    // Toward GitHub, the intent road does not open a pull request yet, and
-    // says so here, before gh and before any model (stage 6 plan, 6.3.1).
+    // Divergence is judged there, AFTER the configuration, and so are the
+    // service's iacRepo and the base's rules (§ 8, § 13): none is an
+    // argument, each is a repository's state, a negative answer (exit 1), and
+    // judging it here would read the catalogue or GitHub before a model is
+    // known to exist. So a clone with an uncommitted catalogue file and no
+    // model configured answers "no model configured" first, and the
+    // divergence once one is. Neither order pays a model for a refusal.
     let submit: SubmitOptions | undefined
     if (command.submit === true) {
       const confirm = confirmOf(deps, command.json)

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { chmod, mkdir, writeFile } from 'node:fs/promises'
+import { chmod, cp, mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { openGitHubForge } from '../../src/forge/github/forge.js'
 import type { GitHubApi } from '../../src/forge/github/api.js'
@@ -9,8 +9,8 @@ import type { ForgeProvider, GhIdentity, GitHubRoad } from '../../src/forge/prov
 import type { GhProcess } from '../../src/process/gh.js'
 import { gitIn, type Git, type Push } from '../../src/process/git.js'
 import { fakeGitHub, protectedMain, type FakeGitHub, type FakeModel } from './fake-gh.js'
-import { clone } from './forge-fixture.js'
-import { git } from './git.js'
+import { clone, scratch } from './forge-fixture.js'
+import { committed, git } from './git.js'
 
 /**
  * A clone of `github.com/acme/iac` whose GitHub is on this machine (stage 6
@@ -78,7 +78,7 @@ export async function remoteRefs(bare: string): Promise<string> {
  * GitHub. Synchronous, so a test that counts the processes it starts through
  * a mocked `execFile` (`tests/contract/key-reach.test.ts`) counts none here.
  */
-export function requireUnrewritten(repo: string, env: NodeJS.ProcessEnv): void {
+export function requireUnrewritten(repo: string, env: NodeJS.ProcessEnv, url: string = GITHUB_URL): void {
   const launcherLike: NodeJS.ProcessEnv = {}
   for (const [name, value] of Object.entries(env)) {
     if (!name.toUpperCase().startsWith('GIT_')) launcherLike[name] = value
@@ -87,9 +87,9 @@ export function requireUnrewritten(repo: string, env: NodeJS.ProcessEnv): void {
     env: launcherLike,
     encoding: 'utf8',
   })
-  if (stdout.trim() !== GITHUB_URL) {
+  if (stdout.trim() !== url) {
     throw new Error(
-      `this machine's git configuration rewrites ${GITHUB_URL} (git config --system --list says where): ` +
+      `this machine's git configuration rewrites ${url} (git config --system --list says where): ` +
         'a push test would reach somewhere else, and does not run',
     )
   }
@@ -99,16 +99,33 @@ export function requireUnrewritten(repo: string, env: NodeJS.ProcessEnv): void {
  * The clone, the bare repository level with it, the fake ssh, and the fake gh
  * over `protectedMain` — `main` protected as `docs/submitting.md` says, `ada`
  * its administrator and logged in — with `model`'s changes.
+ *
+ * `source`, a directory whose files are the first commit on `main` (stage 5's
+ * `clone()`, `init platform`'s scaffold, when absent); `repository`,
+ * `'<owner>/<name>'` (`acme/iac` when absent), which names both the remote's
+ * URL and the repository the fake models; `login`, a person gh is logged in
+ * as instead of `ada`, the repository's administrator as she is — for a test
+ * that searches a prompt or a trace for the login, where `ada` is in every
+ * `metadata` and the search would find it there.
  */
-export async function githubClone(options: { readonly model?: FakeModel } = {}): Promise<GitHubClone> {
-  const repo = await clone()
+export async function githubClone(
+  options: {
+    readonly model?: FakeModel
+    readonly source?: string
+    readonly repository?: string
+    readonly login?: string
+  } = {},
+): Promise<GitHubClone> {
+  const [owner = 'acme', name = 'iac'] = (options.repository ?? 'acme/iac').split('/')
+  const url = `git@github.com:${owner}/${name}.git`
+  const repo = options.source === undefined ? await clone() : await copied(options.source)
   const root = path.dirname(repo)
   const bare = path.join(root, 'github.git')
   const home = path.join(root, 'home')
   await mkdir(home)
   await git(root, 'init', '-q', '--bare', bare)
   await git(repo, 'push', '-q', bare, 'main:refs/heads/main')
-  await git(repo, 'remote', 'add', 'origin', GITHUB_URL)
+  await git(repo, 'remote', 'add', 'origin', url)
   await git(repo, 'config', 'branch.main.remote', 'origin')
   await git(repo, 'config', 'branch.main.merge', 'refs/heads/main')
   const env: NodeJS.ProcessEnv = {
@@ -118,9 +135,53 @@ export async function githubClone(options: { readonly model?: FakeModel } = {}):
     GIT_SSH_COMMAND: await fakeSsh(root, bare),
     GIT_SSH_VARIANT: 'simple',
   }
-  requireUnrewritten(repo, env)
-  const gh = fakeGitHub({ repositories: [protectedMain({ bare })], ...options.model })
+  requireUnrewritten(repo, env, url)
+  const gh = fakeGitHub({ repositories: [protectedMain({ bare, owner, name })], ...options.model })
+  const { login } = options
+  if (login !== undefined) {
+    gh.state.accounts = [...gh.state.accounts, { login, type: 'User' }]
+    gh.state.repositories = gh.state.repositories.map((one) => ({
+      ...one,
+      permissions: { ...one.permissions, [login]: { admin: true, maintain: false, push: true } },
+    }))
+    gh.as(login)
+  }
   return { repo, bare, env, gh }
+}
+
+/** `source`'s files, committed on `main` in a clone of their own under `scratch`. */
+const copied = async (source: string): Promise<string> => {
+  const repo = path.join(await scratch('idp-forge-'), 'iac')
+  await cp(source, repo, { recursive: true })
+  await committed(repo)
+  return repo
+}
+
+/** Every ruleset gone from the fake's model: a base nothing protects, from the next gh call on. */
+export function unprotect(gh: FakeGitHub): void {
+  gh.state.repositories = gh.state.repositories.map((one) => ({ ...one, rulesets: [] }))
+}
+
+/**
+ * One commit on GitHub's `main` that the clone does not hold — somebody
+ * merged — made with the test's own git in the bare repository: `main`'s
+ * tree, `main` its parent, then `update-ref`.
+ */
+export async function moveGitHubBase(clone: GitHubClone): Promise<void> {
+  const ahead = await git(
+    clone.bare,
+    '-c',
+    'user.name=somebody else',
+    '-c',
+    'user.email=somebody@idp-agent.invalid',
+    'commit-tree',
+    'main^{tree}',
+    '-p',
+    'main',
+    '-m',
+    'somebody merged',
+  )
+  await git(clone.bare, 'update-ref', 'refs/heads/main', ahead)
 }
 
 /**

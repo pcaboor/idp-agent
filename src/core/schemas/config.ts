@@ -77,7 +77,11 @@ const carriesCredential = (locator: string): boolean =>
  * so the flag, the answer, the reader and `clearService` all refuse it.
  */
 export const repositoryConfigSchema = z.strictObject({
-  /** Where the declarations live. §7.0's own example is `github.com/org/iac-repo`. */
+  /**
+   * Where the declarations live. §7.0's own example is `github.com/org/iac-repo`.
+   * Read as a cross-check, never a source: `plan "<intent>" --submit` refuses a clone
+   * tracking another repository on github.com (`refuseOtherRepository`, stage 6).
+   */
   iacRepo: z
     .string()
     .min(1)

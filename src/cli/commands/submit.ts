@@ -1,6 +1,7 @@
 import type { PullRequestInput } from '../../core/github/pull-request.js'
-import { printedRepository } from '../../core/github/remote.js'
+import { locatorRepository, printedRepository, sameRepository } from '../../core/github/remote.js'
 import type { Cleared, ClearRefusal, Expectation, Repository } from '../../core/plan/clear.js'
+import { CONFIG_FILE, type RepositoryConfig } from '../../core/schemas/config.js'
 import type { GitHubApi } from '../../forge/github/api.js'
 import { preflight } from '../../forge/github/preflight.js'
 import { openSubmissionForge, type OpenedForge } from '../../forge/open.js'
@@ -8,7 +9,7 @@ import type { Base, ForgeProvider, GhIdentity, GitHubRoad, PullRequest, Road, Su
 import type { GhProcess } from '../../process/gh.js'
 import type { Attributes } from '../../trace/model.js'
 import { baseOf, closingLines, type PreviewStatus } from '../render/footer.js'
-import { inertLine } from '../render/plain.js'
+import { inert, inertLine } from '../render/plain.js'
 import { renderUnprotected } from '../render/protection.js'
 import type { CommandResult } from './result.js'
 
@@ -98,6 +99,31 @@ export interface Opened {
 
 /** One value of the repository or of GitHub, on one line, whatever it holds. */
 const one = (value: string): string => inertLine(value, Number.POSITIVE_INFINITY)
+
+/** How many gh calls the run has made through this forge: 0 on a local road. */
+const callsOf = (opened: Opened): number => opened.github?.api.calls() ?? 0
+
+/**
+ * A refusal before anything was previewed, in prose or as `--json`'s
+ * `submission` key alone, carrying where the submission would have gone for a
+ * traced run's root (stage 6 brief § 12). The attributes are computed here,
+ * when the result is returned, so the gh calls counted are every call made.
+ * The reasons quote a path, a branch or a file's `iacRepo`: `JSON.stringify`
+ * escapes a control character and not a bidi one, so each passes `inert`,
+ * as the prose does, its lines and their indentation kept.
+ */
+const refusedBefore = (
+  opened: Opened,
+  text: string,
+  reasons: readonly string[],
+  options: { readonly json?: boolean },
+): CommandResult => {
+  const submission: SubmissionReport = { outcome: 'refused', reasons: reasons.map(inert) }
+  const attributes = forgeAttributes(submission, opened.road, callsOf(opened))
+  return options.json === true
+    ? { text: JSON.stringify({ submission }, null, 2), found: false, attributes }
+    : { text, found: false, attributes }
+}
 
 /** The line that says, before the diff, where a submission goes and as whom. No role: the preflight reads it, after. */
 const submittingLine = (road: GitHubRoad, identity: GhIdentity): string =>
@@ -191,20 +217,50 @@ export async function refuseDivergence(
 ): Promise<CommandResult | undefined> {
   const divergent = await opened.forge.diverges(opened.base, expected)
   if (divergent.length === 0) return undefined
-  if (options.json === true) {
-    const submission: SubmissionReport = { outcome: 'refused', reasons: divergent }
-    return { text: JSON.stringify({ submission }, null, 2), found: false }
-  }
-  return {
-    text: [
-      `not submitted — the repository is not what ${baseOf(opened.base).at} holds:`,
-      // A path is a repository's own, and may hold what a terminal obeys.
-      ...cleaned(divergent).map((line) => `  ${line}`),
-      '',
-      'Commit or set those changes aside, and run this again. Nothing was previewed, and nothing was written.',
-    ].join('\n'),
-    found: false,
-  }
+  const text = [
+    `not submitted — the repository is not what ${baseOf(opened.base).at} holds:`,
+    // A path is a repository's own, and may hold what a terminal obeys.
+    ...cleaned(divergent).map((line) => `  ${line}`),
+    '',
+    'Commit or set those changes aside, and run this again. Nothing was previewed, and nothing was written.',
+  ].join('\n')
+  return refusedBefore(opened, text, divergent, options)
+}
+
+/**
+ * § 13: `iacRepo` is a cross-check, never a source. On a GitHub road, a service whose
+ * `.idp-agent.yml` names another repository than the one this clone would open the pull
+ * request on is refused, exit 1, naming both. No file, no road to GitHub: nothing to hold.
+ *
+ * A locator that names no repository on github.com is refused too, rather
+ * than passed over: a service that says its declarations live elsewhere is
+ * pointed at the wrong clone whatever the host. The locator is quoted, which
+ * is safe — the schema refused userinfo, a query and a fragment — through
+ * `inertLine`, like the paths and the branch: each is a file's or a clone's.
+ * Synchronous, and before anything more is read of either repository or of
+ * GitHub: `main` has asked gh only its version and who it is.
+ */
+export function refuseOtherRepository(
+  opened: Opened,
+  config: RepositoryConfig | undefined,
+  project: string,
+  options: { readonly json?: boolean } = {},
+): CommandResult | undefined {
+  const { road } = opened
+  if (config === undefined || road.kind !== 'github') return undefined
+  const named = locatorRepository(config.iacRepo)
+  // Compared as GitHub resolves a repository, owner and name in any case (6.1.2).
+  if (named !== undefined && sameRepository(named, road.repository)) return undefined
+  const reason =
+    `${CONFIG_FILE} in ${project} names ${config.iacRepo} as this service's declarations repository, ` +
+    `and ${opened.root}'s ${road.branch} tracks ${printedRepository(road.repository)}`
+  return refusedBefore(
+    opened,
+    `not submitted — ${one(reason)}: run this with --repo naming a clone of the repository it names, ` +
+      'or change iacRepo in a reviewed change. Nothing was written.',
+    [reason],
+    options,
+  )
 }
 
 /**
@@ -226,11 +282,33 @@ export async function refuseUnprotected(
   const { road, github } = opened
   if (road.kind !== 'github') return undefined
   if (github === undefined) throw new Error('a GitHub road opened without gh')
+  // Judged once per forge and base: a road that reads the preflight early
+  // (the phrase's, 6.3.3) is not read again by `runIntent`, and the run stays
+  // within `GITHUB_LIMITS.ghCalls`. A refusal ends the run, so only a pass is
+  // ever read back; a base that moved in between is judged again. Step 8's
+  // and step 11's reads are the forge's own, and never kept.
+  const kept = judged.get(opened.forge)
+  if (kept !== undefined && kept.commit === opened.base.commit) return kept.verdict
+  const verdict = unprotected(opened, road, github, options)
+  judged.set(opened.forge, { commit: opened.base.commit, verdict })
+  return verdict
+}
+
+/** The verdict `refuseUnprotected` reached for a forge, and the base commit it judged. */
+const judged = new WeakMap<ForgeProvider, { readonly commit: string; readonly verdict: Promise<CommandResult | undefined> }>()
+
+/** `refuseUnprotected`'s judgement, read from GitHub. */
+async function unprotected(
+  opened: Opened,
+  road: GitHubRoad,
+  github: NonNullable<Opened['github']>,
+  options: { readonly json?: boolean },
+): Promise<CommandResult | undefined> {
   const { verdict, level } = await preflight(github.api, road, opened.base)
   let text: string
   let reasons: string[]
   if (!verdict.holds) {
-    text = renderUnprotected(verdict, road, github.identity)
+    text = renderUnprotected(verdict, road)
     const lines = text.split('\n')
     reasons = [lines[0] ?? '', ...lines.filter((line) => line.startsWith('  missing: '))]
   } else if (level !== 'level') {
@@ -243,11 +321,7 @@ export async function refuseUnprotected(
   } else {
     return undefined
   }
-  if (options.json === true) {
-    const submission: SubmissionReport = { outcome: 'refused', reasons }
-    return { text: JSON.stringify({ submission }, null, 2), found: false }
-  }
-  return { text, found: false }
+  return refusedBefore(opened, text, reasons, options)
 }
 
 /**
@@ -375,7 +449,7 @@ export async function submit(input: {
   const { opened } = input
   const done = await submitting(input)
   // Where it went, for a traced run's root (stage 6 brief § 12).
-  const attributes = forgeAttributes(done.report, opened.road, opened.github?.api.calls() ?? 0)
+  const attributes = forgeAttributes(done.report, opened.road, callsOf(opened))
   return { report: done.report, result: { ...done.result, attributes } }
 }
 

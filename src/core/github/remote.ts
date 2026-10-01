@@ -184,3 +184,23 @@ export function sameRepository(a: GitHubRepository, b: GitHubRepository): boolea
 /** `github.com/<owner>/<name>`, as every sentence names a repository. */
 export const printedRepository = (repository: GitHubRepository): string =>
   `${repository.host}/${repository.owner}/${repository.name}`
+
+/**
+ * `.idp-agent.yml`'s `iacRepo` read as a repository on github.com, or undefined:
+ * `github.com/<owner>/<name>`, optionally behind `https://` or `ssh://`, optionally ending
+ * `.git` or `/`, the scheme and the host in any case (RFC 3986 § 3.1 and § 3.2.2). The schema has already refused userinfo, a query and
+ * a fragment (`carriesCredential`), so nothing here can hold a credential. The owner and the
+ * name are held to the grammar `parseRemoteUrl` holds them to. Anything else — another
+ * host, a path of one or three segments, a bare word — is undefined: a locator this build
+ * cannot compare with a remote, which the cross-check refuses rather than skips.
+ */
+export function locatorRepository(iacRepo: string): GitHubRepository | undefined {
+  if (HIDDEN.test(iacRepo)) return undefined
+  const unschemed = iacRepo.replace(/^(?:https|ssh):\/\//i, '')
+  const unslashed = unschemed.endsWith('/') ? unschemed.slice(0, -1) : unschemed
+  const segments = (unslashed.endsWith('.git') ? unslashed.slice(0, -'.git'.length) : unslashed).split('/')
+  if (segments.length !== 3) return undefined
+  const [host = '', owner = '', name = ''] = segments
+  if (host.toLowerCase() !== 'github.com' || !isOwner(owner) || !isName(name)) return undefined
+  return { host: 'github.com', owner, name }
+}
