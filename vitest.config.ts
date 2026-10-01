@@ -9,6 +9,11 @@ export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts'],
     environment: 'node',
+    // Many tests start git, gh's fake or node itself, in real repositories on disk. Alone each
+    // takes well under two seconds, but on a loaded laptop (a load average of 15, swap full)
+    // fourteen of them once went past vitest's default of 5 s in one run and passed in the next.
+    // A test that hangs still fails, after 20 s instead of 5.
+    testTimeout: 20_000,
     // Removes the run's temp directory, with everything the tests left in it.
     globalSetup: ['tests/setup/tmp.ts'],
     // The live test runs under its own configuration only (vitest.live.config.ts):
