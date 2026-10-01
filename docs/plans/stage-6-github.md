@@ -1,6 +1,6 @@
 # Stage 6 — a GitHub pull request, with the person's own git and gh
 
-**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
+**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2 built ([#130](https://github.com/pcaboor/idp-agent/pull/130)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
 § 19 (Q1–Q4) were settled on 2026-09-30, each as recommended, and this plan takes them as
 given; so were the four questions the plan itself asked, the same day ([Questions for the
 owner](#questions-for-the-owner)). Eleven stacked pull requests: ten, 6.1.1 to 6.4.2, then 6.4.3, the owner's step: every tape
@@ -5011,7 +5011,7 @@ and the forge's attributes on every result of `submit.ts`.
 forge — and, from `main`, the road and gh — the configuration's questions, the project's files,
 init's own verdicts on them, the divergence, **the preflight**, and only then the Inspector.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/unit/init-command.test.ts`, importing `githubClone`, `unprotect` and
 `moveGitHubBase` from `../support/github-fixture.js`, `type GhProcess` from
@@ -5235,7 +5235,7 @@ before the interim refusal is reached). The D6 case passes before the code too: 
 this task changes nothing of it; it is added here because its sentence points at `init
 --submit`, which this task makes reach GitHub.
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 ```bash
 df -h "$TMPDIR"
@@ -5244,7 +5244,7 @@ pnpm vitest run tests/unit/init-command.test.ts tests/unit/submit-github.test.ts
 
 Expected: FAIL — the GitHub-road cases on the interim exit 2; the D12 case on its sentence.
 
-- [ ] **Step 3: `runInitRepo`**
+- [x] **Step 3: `runInitRepo`**
 
 After `const refused = await refuseDivergence(opened, { files, scope: 'touched' })` and its
 return (`init.ts:910-911` on `2b2250e`), inside the same `if (opened !== undefined)`:
@@ -5268,7 +5268,7 @@ block byte for byte as 6.1.3 left it. Nothing else in `runInitRepo` moves:
 `forge.submit` — the re-check at step 8, the push, the read-back, the rules again, the pull
 request.
 
-- [ ] **Step 4: `main`**
+- [x] **Step 4: `main`**
 
 In `src/forge/open.ts`: `'init'` joins `OPENS_PULL_REQUESTS` and `NOT_YET.init` goes, with its
 sentence. In the `init` branch (`index.ts:1167-1185` on `2b2250e`, as 6.2.2 left it) nothing of
@@ -5278,13 +5278,13 @@ idp-agent/… cut from HEAD in the service's repository, which must be a git clo
 where its branch tracks one on github.com, a pull request is opened there; a service in a
 subfolder of its repository is not submitted yet."
 
-- [ ] **Step 5: D12's sentence**
+- [x] **Step 5: D12's sentence**
 
 `src/forge/local/forge.ts:94`: `'a service in a subfolder of its repository is not submitted by
 this build — init without --submit previews it'`. D12 is unchanged; only the stage it named is
 no longer the last one. The two expectations in `init-command.test.ts` follow.
 
-- [ ] **Step 6: The demo**
+- [x] **Step 6: The demo**
 
 `scripts/demo-github.mjs` builds a second clone, a service (a `package.json` and `CODEOWNERS`
 committed on `main`), its remote `git@github.com:acme/billing-api.git`, its own bare
@@ -5297,7 +5297,7 @@ steps, with the binary's environment holding no provider key, as 6.3.1's:
    `submitting to github.com/acme/billing-api, into main (origin, main's upstream), as … (gh)`,
    then `no model configured: …`.
 
-- [ ] **Step 7: Traceability and the documents**
+- [x] **Step 7: Traceability and the documents**
 
 - `CHANGELOG.md`, Unreleased → Added (below).
 - `docs/roadmap.md`: the stage 6 row names 6.3.2; decision 17 recorded as built.
@@ -5312,7 +5312,7 @@ steps, with the binary's environment holding no provider key, as 6.3.1's:
 
 **Architecture rules:** none added; 29.
 
-- [ ] **Step 8: Checks**
+- [x] **Step 8: Checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -5323,12 +5323,67 @@ pnpm typecheck && pnpm test && pnpm build && pnpm smoke
 git status --short tests/recordings tests/golden fixtures/si-demo
 ```
 
+**As built (6.3.2), where the code led.**
+- *The fixture.* `githubClone`'s `repository` option was already there (6.3.1 added it with
+  `source`), so `tests/support/github-fixture.ts` is unchanged. `unprotect` is synchronous, and the
+  tests call it without `await`.
+- *The configuration key.* The plan's `url.ssh://mirror.canary.example/.insteadOf git@github.com:`
+  rewrites origin's own URL, so `readRoad` reads the clone as another host's road, where nothing
+  is pushed and nothing judged (`road.test.ts`, *a local rewrite of github.com to another host is
+  read as that host*), and the run exits 0. The guard sets the same key to a value that matches
+  nothing of origin's (`git@nowhere.example:`), as `submit-github.test.ts`' case does: refused,
+  exit 2, the key and its scope named, the value nowhere in stdout or stderr. It passes before the
+  code, as the plan says.
+- *The interim refusal.* 6.3.1 had already taken the intent half out of `submit-github.test.ts`'s
+  interim test, so what was left of it was the `init` half alone: removed whole, its place taken by
+  the D6 case. `init-command.test.ts`' own interim case is removed; its `--local` neighbour stays.
+- *`github.com` in the init leg's trace.* `init`'s output is a diff that previews
+  `.idp-agent.yml`, `iacRepo: "github.com/acme/iac"` as the person typed it, and a trace keeps the
+  output. `heldToGitHub` gains `typed`, values the person typed that the output quotes, set aside
+  from the trace's and MLflow's search for `github.com` only — the provider is still held to never
+  seeing it. The leg passes `github.com/acme/iac`, which names the declarations repository, not
+  `acme/orders-api`, the one the pull request is opened on, so nothing GitHub answered is set
+  aside; it asserts the diff line is there. `submittingRun` takes the clone's source and
+  repository (`acme/iac` from the demo SI by default) and appends `--repo` as before, so the init
+  leg's vector carries `--repo` last.
+- *The demo.* The service clone's push URL is checked as the declarations clone's is, in a second
+  block, so `package-scripts.test.ts`' pin on the first stays as it is; the fake's model gains
+  `acme/billing-api` for steps 10 and 11 only.
+- *Two documents beyond the list.* `SECURITY.md`'s opening paragraph and its two GitHub rows of
+  *What leaves your machine* named only `plan`'s roads; they name `init --submit` too. The design
+  is unchanged (no section of it named the interim refusal).
+- *The pull request's provenance line* (review). 6.2.1's words for `init`, "written by idpa init in
+  the service's own repository, from what a person typed", reached GitHub for the first time
+  here, and were false: the Inspector reads the service's files and the Architect drafts the
+  Component, and only what the signature vouches for as typed is a person's; the fenced request
+  beside it quotes what the inspection read. And `Made ${…}.` read "Made written by…", as it
+  reads "Made drafted by…" on the intent and phrase roads. The block now says `This change was
+  ${…}.`, `from`'s words gain "made" in front, and `init`'s are "drafted by a model from the
+  service's own files and written by idpa init in its own repository: two gates, the schema and
+  the signature, every value the model chose either read by the inspection or typed by a person,
+  and no Reviewer" — `runInitRepo` runs no policy, no re-check and no Reviewer. The other roads'
+  words are unchanged. `pull-request-body.test.ts` pins the sentence on every road, and the init
+  describe of `init-command.test.ts` reads the POST's body. The wording is the plan's to change,
+  and is put to the owner with the pull request.
+- *The init refusal off the trace.* `key-reach.test.ts` holds the refusal on the rules of `init
+  --submit`, both misses, as 6.3.1 holds the intent road's: exit 1, no model call, `--local`
+  named, and neither the login nor a canary in the output, the trace or MLflow.
+- *The live step.* `init` configures the model before its preflight (`agentBacked`, then
+  `runInitRepo`), as demo step 11 shows, so the first run reaches the refusal only with the
+  model's key exported in that shell; without one it stops at `no model configured` (exit 2).
+  Run after the merge, the owner guide's live blocks begin with `cd ~/Documents/idp-agent-main`
+  and `pnpm build`, so `BIN` names that build whatever shell they are pasted into.
+- *Architecture rules.* None added; the plan's 29 is one short of the thirty AGENTS.md states
+  on the base.
+
 - [ ] **Step 9: The pull request** (after the owner's go-ahead)
 
 ```bash
 git add src/forge/open.ts src/cli/index.ts src/cli/commands/init.ts src/cli/commands/submit.ts src/cli/render/protection.ts src/forge/local/forge.ts src/cli/README.md \
+  src/core/github/pull-request.ts \
   tests/unit/init-command.test.ts tests/unit/protection-command.test.ts tests/unit/submit-github.test.ts tests/contract/key-reach.test.ts \
-  tests/support/github-fixture.ts scripts/demo-github.mjs \
+  tests/unit/pull-request-body.test.ts \
+  scripts/demo-github.mjs \
   docs/submitting.md SECURITY.md README.md AGENTS.md CHANGELOG.md docs/roadmap.md docs/plans/stage-6-github.md
 git commit -m "feat(cli): open a pull request on the service's own repository from init --submit"
 ```
@@ -5359,7 +5414,9 @@ Attendu :
   configured: …`, with it logged in.
 
 With the owner's gh and key: a throwaway service repository, first without its ruleset. From
-the worktree's root, so `BIN` is this branch's build and not a linked `idpa` (6.3.1):
+the worktree's root, so `BIN` is this branch's build and not a linked `idpa` (6.3.1), and with
+the model's key exported in that shell: `init` configures the model before its preflight, so
+without one the first run stops at `no model configured` (exit 2) and never reaches the refusal:
 
 ```bash
 OWNER=your-login

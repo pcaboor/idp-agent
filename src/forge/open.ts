@@ -32,7 +32,7 @@ export interface OpenedForge {
 }
 
 /** The roads that open a pull request in this build; the others are refused toward GitHub (stage 6 plan, 6.3). */
-const OPENS_PULL_REQUESTS: readonly PullRequestInput['road'][] = ['from', 'intent']
+const OPENS_PULL_REQUESTS: readonly PullRequestInput['road'][] = ['from', 'intent', 'init']
 
 /**
  * Why a road that does not open pull requests yet stops toward GitHub, before
@@ -41,9 +41,6 @@ const OPENS_PULL_REQUESTS: readonly PullRequestInput['road'][] = ['from', 'inten
  * each remove their entry, and the last removes both constants.
  */
 const NOT_YET: Readonly<Partial<Record<PullRequestInput['road'], string>>> = {
-  init:
-    "init opens a pull request on the service's repository from the next release; add --local to cut " +
-    'the branch in this clone only. Nothing was written.',
   phrase:
     'idpa "<phrase>" does not submit yet; a change is submitted with plan --from <plan.json> --submit. ' +
     'Nothing was written.',

@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { main } from '../../src/cli/index.js'
@@ -18,7 +18,7 @@ import type { GitHubRoad, LocalRoad, PullRequest } from '../../src/forge/provide
 import { GH_LIMITS, parseIncluded, type GhExit, type GhProcess } from '../../src/process/gh.js'
 import { REFUSED_EXIT } from '../../tools/fake-gh.js'
 import { confirmingEnvironment } from '../support/ask.js'
-import { INTENT, OPERATIONS, removeClones, scratch } from '../support/forge-fixture.js'
+import { INTENT, OPERATIONS, removeClones } from '../support/forge-fixture.js'
 import { DOORS, MODELLED_DOORS } from '../support/fake-gh.js'
 import {
   fakeSsh,
@@ -30,7 +30,7 @@ import {
   unprotect,
   type GitHubClone,
 } from '../support/github-fixture.js'
-import { committed, git, observable } from '../support/git.js'
+import { git, observable } from '../support/git.js'
 
 /**
  * `plan --from … --submit` to GitHub, through `main` (stage 6 brief § 3,
@@ -552,42 +552,58 @@ describe('plan --from --submit to GitHub', { timeout: RUNS }, () => {
     }
   })
 
-  it('refuses init --submit toward GitHub before any model and before gh, naming --local', async () => {
-    // The intent road opens pull requests since 6.3.1 (plan-intent.test.ts);
-    // init's waits for 6.3.2.
+  it('refuses a plan writing into both repositories by name on a GitHub road, pointing at init --submit, and pushes nothing (D6)', async () => {
+    // D6 is the clearance's, and this task changes nothing of it; its sentence
+    // points at init --submit, which reaches GitHub since 6.3.2.
     const clone = await githubClone()
-    const gh = untouchable()
-    const run = async (args: string[]) => {
-      const out: string[] = []
-      const err: string[] = []
-      const code = await main(args, {
-        out: (chunk) => void out.push(chunk),
-        err: (chunk) => void err.push(chunk),
-        env: clone.env,
-        gh,
-      })
-      return { code, out: out.join(''), err: err.join('') }
-    }
-
-    // A service's own repository, tracking a branch on github.com.
-    const service = path.join(await scratch('idp-service-'), 'billing-api')
-    await mkdir(service)
-    await writeFile(path.join(service, 'package.json'), '{ "name": "billing-api" }\n')
-    await committed(service)
-    await git(service, 'remote', 'add', 'origin', GITHUB_URL)
-    await git(service, 'config', 'branch.main.remote', 'origin')
-    await git(service, 'config', 'branch.main.merge', 'refs/heads/main')
-    const serviceBefore = await observable(service)
-
-    const init = await run(['init', '--repo', service, '--submit'])
-    expect(init.code).toBe(2)
-    expect(init.err).toContain(
-      "init opens a pull request on the service's repository from the next release; add --local to cut the branch " +
-        'in this clone only. Nothing was written.',
+    const file = path.join(path.dirname(clone.repo), 'both.json')
+    await writeFile(
+      file,
+      `${JSON.stringify(
+        {
+          intent: `${INTENT}, and billing-api as a production service in catalog-info.yaml`,
+          operations: [
+            ...OPERATIONS,
+            {
+              op: 'create-catalog-info',
+              repoPath: 'catalog-info.yaml',
+              entity: {
+                kind: 'Component',
+                metadata: { name: 'billing-api' },
+                spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
+              },
+            },
+          ],
+        },
+        null,
+        2,
+      )}\n`,
+      'utf8',
     )
-    expect(init.err).not.toContain('no model')
-    expect(gh.calls()).toBe(0)
-    expect(await observable(service)).toBe(serviceBefore)
+    const vectors: string[][] = []
+    const gh: GhProcess = async (argv, options) => {
+      vectors.push([...argv])
+      return clone.gh.process(argv, options)
+    }
+    const before = await state(clone)
+    const out: string[] = []
+    const err: string[] = []
+
+    const code = await main(['plan', '--from', file, '--repo', clone.repo, '--submit'], {
+      out: (chunk) => void out.push(chunk),
+      err: (chunk) => void err.push(chunk),
+      env: clone.env,
+      gh,
+      ask,
+    })
+
+    expect(code, err.join('')).toBe(1)
+    expect(out.join('')).toContain('plan --submit cuts a branch in the declarations repository only — submit it with init --submit')
+    expect(out.join('')).toContain('Nothing was written.')
+    expect(await git(clone.repo, 'for-each-ref', 'refs/heads/idp-agent/')).toBe('')
+    expect(await git(clone.bare, 'for-each-ref', 'refs/heads/idp-agent/')).toBe('')
+    expect(vectors.filter((argv) => argv.includes('POST'))).toEqual([])
+    expect(await state(clone)).toBe(before)
   })
 })
 

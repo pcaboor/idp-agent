@@ -68,6 +68,7 @@ import type { CommandResult } from './result.js'
 import {
   openForSubmission,
   refuseDivergence,
+  refuseUnprotected,
   submit,
   type Opened,
   type SubmitOptions,
@@ -805,13 +806,15 @@ export interface InitOptions {
 
 export async function runInitRepo(options: InitOptions): Promise<CommandResult> {
   // Everything free, and every question for a person, before the first model
-  // call — in this order (D12 and the owner's order of 2026-09-29): the forge,
-  // the configuration's questions, the project's files, init's own verdicts on
-  // them, the divergence, and only then the Inspector.
+  // call — in this order (D12 and the owner's order of 2026-09-29, one step
+  // added by stage 6): the forge — and, from `main`, the road and gh — the
+  // configuration's questions, the project's files, init's own verdicts on
+  // them, the divergence, the preflight, and only then the Inspector.
   //
   // First, before anything is read: a directory that cannot take a branch —
-  // not a clone's root (a service in a subfolder of its repository, at stage
-  // 5), nobody to commit as, a detached HEAD — is an argument, exit 2.
+  // not a clone's root (a service in a subfolder of its repository, which
+  // this build does not submit), nobody to commit as, a detached HEAD — is an
+  // argument, exit 2.
   const opened =
     options.submit === undefined
       ? undefined
@@ -908,6 +911,12 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
     files.set(CONFIG_FILE, read?.text)
     const refused = await refuseDivergence(opened, { files, scope: 'touched' })
     if (refused !== undefined) return refused
+    // § 8 on the service's own repository (decision 17): the same rules the declarations
+    // repository must hold, read before the Inspector is paid for a branch they would refuse,
+    // and refused "with --local named", which the declarations roads do not offer. `init` has
+    // no --json, so the refusal is prose. A local road reads nothing here.
+    const unprotected = await refuseUnprotected(opened, { offerLocal: true })
+    if (unprotected !== undefined) return unprotected
   }
 
   const facts = await inspect(options.client, snapshot, options.emit)

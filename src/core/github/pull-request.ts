@@ -59,17 +59,26 @@ const fileLine = (line: string): string => {
   return file === null ? line : `  ${file[1] ?? ''} ${codeSpan(file[2] ?? '')}`
 }
 
-/** How each road made the change, in D4's words. */
+/**
+ * How each road made the change, in D4's words, completing "This change was".
+ * `init` is drafted by a model too — the Inspector reads the service's files
+ * and the Architect proposes the Component — so it says so: what is a
+ * person's there is only what the signature vouches for as typed.
+ */
 const made = (road: PullRequestInput['road']): string => {
   switch (road) {
     case 'from':
-      return 'from a plan file: four gates, the schema, the signature, the policies and the re-check, and no Reviewer'
+      return 'made from a plan file: four gates, the schema, the signature, the policies and the re-check, and no Reviewer'
     case 'intent':
       return 'drafted by a model: five gates, the schema, the signature, the policies, the re-check and the Reviewer last'
     case 'phrase':
       return 'drafted by a model from a phrase idpa took for a change: five gates, the Reviewer last'
     case 'init':
-      return "written by idpa init in the service's own repository, from what a person typed"
+      return (
+        "drafted by a model from the service's own files and written by idpa init in its own repository: " +
+        'two gates, the schema and the signature, every value the model chose either read by the inspection ' +
+        'or typed by a person, and no Reviewer'
+      )
     default: {
       const _exhaustive: never = road
       return _exhaustive
@@ -100,7 +109,7 @@ export function pullRequestBody(input: PullRequestInput): { readonly title: stri
     '',
     '---',
     '',
-    `Made ${made(input.road)}.`,
+    `This change was ${made(input.road)}.`,
     '',
     `The branch \`${input.branch}\` is named by a digest of its files' paths and bytes: the same change always ` +
       'names the same branch, and any other change another.',
