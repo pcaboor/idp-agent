@@ -40,6 +40,7 @@ import { CLOSING, closingLines, type PreviewStatus } from '../render/footer.js'
 import {
   openForSubmission,
   refuseDivergence,
+  refuseOtherRepository,
   refuseUnprotected,
   submit,
   type Confirm,
@@ -1416,6 +1417,14 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
   // about everything, and charge a model round-trip for it. It lives in the
   // application repository (§7.0), so a run that inspects none has none.
   const config = options.project === undefined ? undefined : await readConfig(options.project)
+  if (opened !== undefined && options.project !== undefined) {
+    // § 13: the service says where its declarations live, the clone says where the pull
+    // request would go, and a service is never the one that chooses (decision 15). Held
+    // here, before either repository is read further and before any model: a service
+    // pointed at the wrong clone costs nothing.
+    const other = refuseOtherRepository(opened, config, options.project, { json: options.json === true })
+    if (other !== undefined) return other
+  }
   const snapshot = await readRepository(root)
   // Taken on this side of the line: `agents/` reaches no disk, so the bytes are
   // read here and handed over, with every exclusion and cap already applied.
@@ -1451,6 +1460,10 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
       { json: options.json === true },
     )
     if (refused !== undefined) return refused
+    // § 8, items 1 to 5 and the base level: the repository's state, judged where
+    // divergence is, after the configuration and before the Inspector, the first model call.
+    const unprotected = await refuseUnprotected(opened, { json: options.json === true })
+    if (unprotected !== undefined) return unprotected
   }
   const contexts = contextsOf(root, snapshot, contents, graph, {
     config,

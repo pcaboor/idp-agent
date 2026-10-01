@@ -79,7 +79,9 @@ const onTop = async (clone: GitHubClone, head: string): Promise<string> => {
   return commit
 }
 
-describe('the identity that opened the pull request cannot merge it', () => {
+// Real git processes and a bare repository per test: under 2 s alone, past
+// vitest's 5 s default beside the rest of the suite (github-forge.test.ts).
+describe('the identity that opened the pull request cannot merge it', { timeout: 30_000 }, () => {
   it('refuses every door to the identity that opened the pull request, and leaves it open and main where it was', async () => {
     const clone = await withModel((bare) =>
       protectedMain({ bare, permissions: { ada: { admin: true, maintain: false, push: true }, grace: GRACE } }),

@@ -412,7 +412,7 @@ the branch cannot reach the default one either way.
 `MainDeps.gh` and the road that drafted the change (`route`): the local forge, the road, and
 on GitHub's road gh's identity and the GitHub forge, `cli/` loading no launcher. A refused
 configuration key, a remote URL with a credential, a gh that is missing, logged out, too old
-or not a person, and — until 6.3 — the intent and `init` roads toward GitHub are
+or not a person, and — until 6.3.2 — the `init` road toward GitHub are
 `ForgeInputError`s, exit 2, before any model. On GitHub's road it says, once, on stderr,
 `submitting to github.com/<o>/<r>, into <base> (<remote>, <branch>'s upstream), as <login>
 (gh)`. `refuseUnprotected`, right after `refuseDivergence`, runs the preflight and refuses,
@@ -425,7 +425,22 @@ question from it, the local road's unchanged. The closing lines name the road
 (`pullRequestLines`); `--json`'s `submission` gains `pushed`, `pullRequest`, `olderBase`,
 `kept`, and the outcomes `pushed-without-pull-request` and `closed`, each a negative answer
 read from the result's own `found`. Every result `submit` returns carries
-`forgeAttributes` (`idp.forge.*`), which `agentBacked` sets on a traced run's root.
+`forgeAttributes` (`idp.forge.*`), which `agentBacked` sets on a traced run's root, and so
+does each refusal before the preview: `refuseDivergence`'s, `refuseUnprotected`'s and
+`refuseOtherRepository`'s.
+
+**The intent road's order** (6.3.1). `main` opens the forge before `agentBacked`, so the
+road, the clone's configuration and gh's identity are refused, exit 2, before the model is
+configured, and the `submitting to` line is said there; `runIntent` is handed that forge
+through `reopening`. After `readConfig`, `refuseOtherRepository` holds the service's
+`iacRepo` to the repository the clone's branch tracks — a cross-check, never a source,
+exit 1, naming both, before either repository is read further; a preview, `--local`, a
+road that is not GitHub's and a run that inspects no service read none. After
+`readContents`, `refuseDivergence` and then `refuseUnprotected` — the preflight, judged
+once per forge and base commit, so the phrase road's earlier read (6.3.3) is not read
+twice — before the Inspector, the first model call. The re-check, the push and the pull
+request are `forge.submit`'s, reached through `submit()` only after the Reviewer; a
+question or a stop never reaches it, and reads nothing more of GitHub.
 
 `plan "<intent>" --submit` moves the forge's opening earlier still: `main` opens it before the
 model is configured, so a directory that cannot take a branch is an argument error even with
@@ -452,7 +467,8 @@ key or a gh that is missing, logged out, too old or not a person is a `ForgeInpu
 which `failed()` prints in its own sentence, exit 1, as it does a `GhError` that escaped the
 forge (matched by name, as `isGitError` is). No model is chosen, so none can be called, and
 nothing is written. `renderUnprotected` is the same `missing:` lines as a submission's
-refusal, which `refuseUnprotected` prints.
+refusal, which `refuseUnprotected` prints — naming gh's account where `renderProtection` names
+its login, because the intent road's trace keeps a refusal as its output (stage 6 brief § 12).
 
 **Tracing.** `trace-sink.ts` is the only way a trace leaves the process: `mlflowSink` posts
 OTLP/JSON to `IDP_MLFLOW_TRACKING_URI`'s `/v1/traces` — never `MLFLOW_TRACKING_URI`'s, which

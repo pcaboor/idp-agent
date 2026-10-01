@@ -15,7 +15,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 4690, no API key" src="https://img.shields.io/badge/tests-4690%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 4742, no API key" src="https://img.shields.io/badge/tests-4742%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -350,9 +350,9 @@ flowchart LR
    Reviewer that never sees the Architect's reasoning.
 4. After three failed attempts it stops cleanly.
 5. With `--submit`, the engine, not the model, commits the diff to one new local branch,
-   `idp-agent/…`, cut from `HEAD`. On a clone tracking github.com, `plan --from` pushes it
-   with your git and opens the pull request with your gh; the merge is what authorises it.
-   The intent road pushes from the next release.
+   `idp-agent/…`, cut from `HEAD`. On a clone tracking github.com, both forms of `plan`
+   push it with your git and open the pull request with your gh; the merge is what
+   authorises it.
 
 The model decides *what to ask*. The deterministic engine answers, validates and renders.
 A reference the tools never returned is refused, not printed.
@@ -525,8 +525,20 @@ its `pullRequest` on GitHub; `declined`, `unchanged`, `refused` with its reasons
 have passed, the Reviewer last. Everything that would refuse the submission is found before
 any model is paid: a directory that cannot take a branch is refused before the model is even
 configured, and a catalogue that differs from `HEAD` once a model is configured, before the
-Inspector runs. It does not push yet: toward GitHub it is refused, exit 2, before any model
-and before gh, naming `--local` and `plan --from`.
+Inspector runs. In a clone whose `main` tracks a branch on github.com, the road and gh are
+read before the model is configured, and the base's rules before the Inspector; the rules
+are read again after the Reviewer, and the run ends as `plan --from` does:
+
+```console
+2 files · submitted as idp-agent/orders-db-prod-<digest> on top of main@<commit> · main untouched
+Pull request #1 opened on github.com/acme/iac: https://github.com/acme/iac/pull/1
+Merging it waits for one approval of its latest commit from someone other than you. No status check is required, so a system downstream could not refuse it (ADR-0012).
+Nothing is provisioned yet. The merge is what authorises it.
+```
+
+Run from a service whose `.idp-agent.yml` names another repository in `iacRepo` than the
+one the clone's branch tracks, it is refused, exit 1, naming both, before any model:
+`iacRepo` is a cross-check, never where the pull request goes.
 
 `plan --repo` names the **declarations** repository. `init --repo` names the
 **application** repository being declared. `graph`, `show`, `relations` and `ask` take the first kind;

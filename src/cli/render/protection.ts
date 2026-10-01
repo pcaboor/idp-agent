@@ -40,8 +40,12 @@ const RULESET_WOULD_HELP: ReadonlySet<Missing> = new Set([
   'classic-only',
 ])
 
-/** What each missing thing is, in one line after `missing: `. */
-function missingText(missing: Missing, verdict: ProtectionVerdict, road: GitHubRoad, login: string): string {
+/**
+ * What each missing thing is, in one line after `missing: `. `who` is the
+ * account gh acts as: its login in `idpa protection`'s answer, and
+ * `GH_ACCOUNT` in a submission's refusal, which a traced run keeps.
+ */
+function missingText(missing: Missing, verdict: ProtectionVerdict, road: GitHubRoad, who: string): string {
   switch (missing) {
     case 'pull-request':
       return 'a pull request rule requiring 1 approval'
@@ -54,7 +58,7 @@ function missingText(missing: Missing, verdict: ProtectionVerdict, road: GitHubR
     case 'deletion':
       return 'restrict deletions'
     case 'bypassable':
-      return `rules ${login} cannot bypass: a ruleset that supplies them lets gh's account bypass it`
+      return `rules ${who} cannot bypass: a ruleset that supplies them lets gh's account bypass it`
     case 'deploy-key': {
       const one = (verdict.deployKeys ?? []).length === 1
       return (
@@ -67,7 +71,7 @@ function missingText(missing: Missing, verdict: ProtectionVerdict, road: GitHubR
     case 'archived':
       return `a repository that is not archived: ${printedRepository(road.repository)} is`
     case 'no-push':
-      return `push access: ${login} cannot push to ${road.repository.owner}/${road.repository.name}`
+      return `push access: ${who} cannot push to ${road.repository.owner}/${road.repository.name}`
     case 'renamed':
       return (
         `the remote's name: GitHub answers ${verdict.renamedTo ?? 'another name'}, so the repository was renamed ` +
@@ -85,8 +89,8 @@ function missingText(missing: Missing, verdict: ProtectionVerdict, road: GitHubR
  * what is missing, each line shown — the list is the engine's own, and
  * printed as it is: `inertLine` would fold its aligned columns.
  */
-const refusal = (verdict: ProtectionVerdict, road: GitHubRoad, login: string): string[] => [
-  ...verdict.missing.map((missing) => shown(`  missing: ${missingText(missing, verdict, road, login)}`)),
+const refusal = (verdict: ProtectionVerdict, road: GitHubRoad, who: string): string[] => [
+  ...verdict.missing.map((missing) => shown(`  missing: ${missingText(missing, verdict, road, who)}`)),
   ...(verdict.missing.some((missing) => RULESET_WOULD_HELP.has(missing))
     ? [shown(`Add a ruleset on ${road.base} (Settings → Rules → Rulesets):`), ...protectionText()]
     : []),
@@ -188,14 +192,23 @@ export function renderProtection(verdict: ProtectionVerdict, road: GitHubRoad, i
 }
 
 /**
+ * Whom a submission's refusal names where `idpa protection` names gh's login.
+ * The refusal is a result, and on the intent road a traced run keeps its
+ * result as the trace's output, which never holds a login (stage 6 brief
+ * § 12); the "submitting to" line, on stderr, has already named it.
+ */
+const GH_ACCOUNT = "gh's account"
+
+/**
  * What a submission refused on the rules prints (stage 6 brief § 8): the same
  * `missing:` lines, the ruleset to add, and that nothing was written:
- * `refuseUnprotected`'s, on the GitHub road of a submission.
+ * `refuseUnprotected`'s, on the GitHub road of a submission. It names no
+ * login, in prose or in `--json`'s reasons, which are its lines.
  */
-export function renderUnprotected(verdict: ProtectionVerdict, road: GitHubRoad, identity: GhIdentity): string {
+export function renderUnprotected(verdict: ProtectionVerdict, road: GitHubRoad): string {
   return [
     shown(`not submitted — nothing on ${baseOf(road)} stops the person who would open this pull request from merging it:`),
-    ...refusal(verdict, road, identity.login),
+    ...refusal(verdict, road, GH_ACCOUNT),
     'Then run this again. Nothing was written.',
   ].join('\n')
 }

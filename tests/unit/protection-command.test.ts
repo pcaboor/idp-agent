@@ -540,13 +540,25 @@ describe('the blocks, rendered', () => {
       rulesets: new Map(),
       classic: false,
     })
-    expect(renderUnprotected(unprotected, ROAD, ADA)).toBe(
+    expect(renderUnprotected(unprotected, ROAD)).toBe(
       [
         "not submitted — nothing on github.com/acme/iac's main stops the person who would open this pull request from merging it:",
         ...UNPROTECTED.slice(1, -1),
         'Then run this again. Nothing was written.',
       ].join('\n'),
     )
+  })
+
+  it('names gh\'s account, never its login, in a submission\'s refusal: a traced run keeps it', () => {
+    // `idpa protection` writes no trace and names the login; a submission's
+    // refusal is the intent road's traced output (stage 6 brief § 12).
+    const bypassable = renderUnprotected(verdict({ bypass: 'always' }), ROAD)
+    expect(bypassable).toContain(
+      "\n  missing: rules gh's account cannot bypass: a ruleset that supplies them lets gh's account bypass it\n",
+    )
+    const pushless = renderUnprotected(verdict({ push: false }), ROAD)
+    expect(pushless).toContain("\n  missing: push access: gh's account cannot push to acme/iac\n")
+    for (const text of [bypassable, pushless]) expect(text).not.toContain(ADA.login)
   })
 
   it('passes every value it prints through inertLine', () => {

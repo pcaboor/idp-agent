@@ -1,6 +1,6 @@
 # Stage 6 — a GitHub pull request, with the person's own git and gh
 
-**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
+**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
 § 19 (Q1–Q4) were settled on 2026-09-30, each as recommended, and this plan takes them as
 given; so were the four questions the plan itself asked, the same day ([Questions for the
 owner](#questions-for-the-owner)). Eleven stacked pull requests: ten, 6.1.1 to 6.4.2, then 6.4.3, the owner's step: every tape
@@ -4105,7 +4105,7 @@ nothing or tracks another host, or with no application repository inspected (no
 `.idp-agent.yml` read), `refuseOtherRepository` answers `undefined`: nothing leaves the clone,
 or nothing states a repository, and a preview stays stage 4's byte for byte.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/unit/github-remote.test.ts`, beside 6.1.2's five forms:
 
@@ -4636,7 +4636,7 @@ before the code and are kept as guards: *refuses a key of the clone's own config
 (`readRoad` refuses it before the interim refusal is reached) and *cuts only the local branch
 with --local* (6.2.2's local road).
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 ```bash
 df -h "$TMPDIR"
@@ -4646,7 +4646,7 @@ pnpm vitest run tests/unit/github-remote.test.ts tests/unit/plan-intent.test.ts 
 Expected: FAIL — `locatorRepository` is not a function; the GitHub-road cases exit 2 with the
 interim sentence; the `iacRepo` mismatch is not refused.
 
-- [ ] **Step 3: `locatorRepository`**
+- [x] **Step 3: `locatorRepository`**
 
 In `src/core/github/remote.ts`: strip an optional `https://` or `ssh://`, one trailing `/`,
 then one trailing `.git`; split on `/`; exactly three segments; the first, lower-cased, is
@@ -4655,7 +4655,7 @@ owner and repository to (6.1.2), and the name is not `.` or `..`. Anything else 
 `undefined`. No new grammar: the owner and repository rules are the ones already held in
 agreement with `process/`'s copies by `grammar-agreement.test.ts`, which needs no new case.
 
-- [ ] **Step 4: `refuseOtherRepository`, and the forge on every result of `submit.ts`**
+- [x] **Step 4: `refuseOtherRepository`, and the forge on every result of `submit.ts`**
 
 In `src/cli/commands/submit.ts`:
 
@@ -4704,7 +4704,7 @@ does not read § 8's thirteen routes twice and stays inside `GITHUB_LIMITS.ghCal
 moved in between is judged again. A refusal ends the run, so only a pass is ever read back;
 step 8 and step 11 are the forge's own reads and are never cached.
 
-- [ ] **Step 5: `runIntent`**
+- [x] **Step 5: `runIntent`**
 
 Right after `const config = …readConfig(options.project)` (`plan.ts:1406` on `2b2250e`):
 
@@ -4733,7 +4733,7 @@ Nothing else in `runIntent` moves: the re-check at step 8, the push and the pull
 after the Reviewer. A question or a stop never reaches `submit()` and reads nothing more of
 GitHub.
 
-- [ ] **Step 6: `main`**
+- [x] **Step 6: `main`**
 
 In `src/forge/open.ts`: `'intent'` joins `OPENS_PULL_REQUESTS` and `NOT_YET.intent` goes, with
 its sentence. In the intent road's `--submit` block (`index.ts:1357-1368` on `2b2250e`, as 6.2.2
@@ -4748,7 +4748,7 @@ says both roads of `plan` push the branch and open a pull request where the chec
 tracks one on github.com, and that `plan "<intent>" --submit` reads the road, gh and the rules
 before any model is paid.
 
-- [ ] **Step 7: The demo**
+- [x] **Step 7: The demo**
 
 `scripts/demo-github.mjs` gains two steps after 6.2.2's, on the same clone of the demo SI and
 with the binary's environment holding **no provider key and no `IDP_*` variable** (the script
@@ -4764,7 +4764,7 @@ exported key is never spent by it):
    main's upstream), as <the fake's login> (gh)`, then `no model configured: …`. The step fails
    unless both lines are there, in that order.
 
-- [ ] **Step 8: Traceability and the documents this task makes true**
+- [x] **Step 8: Traceability and the documents this task makes true**
 
 - `CHANGELOG.md`, Unreleased → Added (below).
 - `docs/roadmap.md`: the stage 6 row names 6.3.1 and its pull request; the queue item says the
@@ -4804,7 +4804,7 @@ switches on `Road`, `SubmissionReport` and `PreviewStatus` are 6.2.2's and gain 
 still lists 29. `cli/` still names `GhProcess` by `import type` only, and reaches the launchers
 through `forge/open.ts` alone.
 
-- [ ] **Step 9: Checks**
+- [x] **Step 9: Checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -4818,12 +4818,56 @@ git status --short tests/recordings tests/golden fixtures/si-demo
 Expected: all green; `tests/scenarios/prompt-digests.test.ts` unchanged and green; 29
 architecture rules; the last command prints nothing.
 
+**As built (6.3.1), where the code led.**
+- *The login searches.* The fake's `ada` is a substring of every `metadata`, so "no prompt and no
+  trace holds the login" could never pass, whatever reached them. `githubClone` gains a fourth
+  option, `login` — a person gh is logged in as instead of `ada`, the repository's administrator
+  as she is — and the two `plan-intent.test.ts` cases and the key-reach leg that search for the
+  login log gh in as `canary-login-0e7a`, and assert the `submitting to` line names it.
+- *`github.com` in the trace.* A trace keeps the run's output on every road, and the output ends
+  on the engine-built line `Pull request #1 opened on github.com/<o>/<r>: https://…/pull/1`. So
+  `heldToGitHub` holds `github.com` to two places, not one: the root's `idp.forge.host` and that
+  line, which carries the host, the repository and the number the attributes already carry. The
+  MLflow requests are held the same way, the attribute in its OTLP form
+  (`{"key":"idp.forge.host","value":{"stringValue":"github.com"}}`).
+- *The key-reach mock.* `githubClone` builds its clone with the tests' promisified git, which
+  the file's mocked `execFile` answered with a bare string. The mock now carries
+  `promisify.custom` too, recording the call and answering `{ stdout, stderr }`; the record is
+  emptied before each run, as the plan says.
+- *Two tests beyond the plan.* `plan "<intent>" --submit and iacRepo` — *puts where a refusal
+  before any model would have gone on the trace's root* (the cross-check, the rules and the
+  divergence, each with `idp.forge.outcome: 'refused'` and the gh calls made), seen failing with
+  the attributes taken off `refusedBefore`; and `submit-github.test.ts`, `refuseUnprotected` —
+  *judges a forge and its base once, and judges a base that moved again*, seen failing with the
+  verdict not kept.
+- `unprotect` is synchronous (`void`), which the plan allowed; the three refusals before the
+  preview share one private builder, `refusedBefore`, which attaches `forgeAttributes`.
+- `pnpm demo:github`'s printed command quotes an argument holding a space, so the intent reads as
+  it is typed.
+- *Review fixes.* A refusal on the rules is the intent road's traced output, and its `bypassable`
+  and `no-push` lines named gh's login: `renderUnprotected` now names *gh's account* (with
+  `idpa protection`'s `renderProtection` keeping the login, since it writes no trace), and the
+  key-reach leg gains *keeps gh's login off the trace and MLflow when the rules refuse*, both
+  misses, in prose and `--json`, seen failing with the login in stdout and the trace. The commit
+  GitHub's base is at and a renamed repository's answered name stay in that text, each held to
+  its grammar; `SECURITY.md`'s MLflow row says so. `refusedBefore` passes `--json`'s reasons
+  through `inert` (a bidi character of `iacRepo` reached stdout raw); `locatorRepository` strips
+  the scheme in any case; the mismatch test leaves an unreadable file under `catalog/`, which
+  pins the cross-check ahead of `readContents` and `refuseDivergence` (moved after
+  `readContents`, it fails; the snapshot records such a file rather than refusing it, so a
+  cross-check after `readRepository` is not observable). `submit-github.test.ts` and
+  `github-forge.test.ts` call `unprotect` and `moveGitHubBase` where they had local copies, and
+  `merge-refused.test.ts`' and three of `local-forge.test.ts`' git-heavy describes take the
+  30 s timeout `github-forge.test.ts` uses: under 2 s alone (1.9 s and 1.3 s at most), each lost
+  one test to the 5 s default in a full run.
+
 - [ ] **Step 10: The pull request** (after the owner's go-ahead)
 
 ```bash
 git add src/core/github/remote.ts src/forge/open.ts src/cli/commands/submit.ts src/cli/commands/plan.ts src/cli/index.ts \
-  src/core/schemas/config.ts src/cli/README.md \
+  src/core/schemas/config.ts src/cli/render/protection.ts src/cli/README.md \
   tests/unit/github-remote.test.ts tests/unit/plan-intent.test.ts tests/unit/submit-github.test.ts tests/contract/key-reach.test.ts \
+  tests/unit/protection-command.test.ts tests/unit/github-forge.test.ts tests/unit/merge-refused.test.ts tests/unit/local-forge.test.ts \
   tests/support/github-fixture.ts scripts/demo-github.mjs \
   docs/submitting.md docs/design.md SECURITY.md README.md AGENTS.md CHANGELOG.md docs/roadmap.md \
   docs/reviews/2026-09-23-deep-review.md docs/plans/stage-6-github.md
@@ -4836,7 +4880,8 @@ Branch `feat/s6-intent-github`, base `feat/s6-plan-from-github`. CHANGELOG, `###
 >   gh's identity and the base's rules are read before any model is called, and the rules
 >   again after the Reviewer, at the moment of acting; a service whose `.idp-agent.yml` names
 >   another declarations repository than the one the clone's branch tracks is refused, naming
->   both — `iacRepo`'s first reader, a cross-check and never a source
+>   both — `iacRepo`'s first reader, a cross-check and never a source; a refusal on the
+>   base's rules names gh's account, never its login, since a traced run keeps it
 >   ([#PRNUM](https://github.com/pcaboor/idp-agent/pull/PRNUM)).
 
 **What changes that a person sees:** on a clone tracking github.com, `plan "<intent>" --submit`

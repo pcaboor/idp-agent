@@ -3,7 +3,14 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { main } from '../../src/cli/index.js'
 import type { Ask } from '../../src/cli/commands/plan.js'
-import { forgeAttributes, type Confirm, type SubmissionReport, type SubmissionSummary } from '../../src/cli/commands/submit.js'
+import {
+  forgeAttributes,
+  openForSubmission,
+  refuseUnprotected,
+  type Confirm,
+  type SubmissionReport,
+  type SubmissionSummary,
+} from '../../src/cli/commands/submit.js'
 import { closingLines, CLOSING, localRoadLine, pullRequestLines, type PreviewStatus } from '../../src/cli/render/footer.js'
 import { configRefusal } from '../../src/core/github/config.js'
 import { protectionText } from '../../src/core/github/protection.js'
@@ -12,8 +19,17 @@ import { GH_LIMITS, parseIncluded, type GhExit, type GhProcess } from '../../src
 import { REFUSED_EXIT } from '../../tools/fake-gh.js'
 import { confirmingEnvironment } from '../support/ask.js'
 import { INTENT, OPERATIONS, removeClones, scratch } from '../support/forge-fixture.js'
-import { DOORS, MODELLED_DOORS, type FakeGitHub } from '../support/fake-gh.js'
-import { fakeSsh, GITHUB_URL, githubClone, remoteRefs, requireUnrewritten, type GitHubClone } from '../support/github-fixture.js'
+import { DOORS, MODELLED_DOORS } from '../support/fake-gh.js'
+import {
+  fakeSsh,
+  GITHUB_URL,
+  githubClone,
+  moveGitHubBase,
+  remoteRefs,
+  requireUnrewritten,
+  unprotect,
+  type GitHubClone,
+} from '../support/github-fixture.js'
 import { committed, git, observable } from '../support/git.js'
 
 /**
@@ -89,13 +105,6 @@ const ourBranch = async (repo: string): Promise<string> => {
 /** The commit a branch is at on GitHub's side, or undefined. */
 const onGitHub = async (clone: GitHubClone, branch: string): Promise<string | undefined> =>
   git(clone.bare, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`).catch(() => undefined)
-
-/** `change` applied to the fake's one repository. */
-const changeRepository = (gh: FakeGitHub, change: Partial<FakeGitHub['state']['repositories'][number]>): void => {
-  const [repository] = gh.state.repositories
-  if (repository === undefined) throw new Error('the fake holds no repository')
-  gh.state.repositories = [{ ...repository, ...change }]
-}
 
 /**
  * Each run starts a dozen real git processes, a push and the read-back's
@@ -242,7 +251,7 @@ describe('plan --from --submit to GitHub', { timeout: RUNS }, () => {
 
   it('refuses an unprotected base before anything is written, and prints the ruleset to add', async () => {
     const clone = await githubClone()
-    changeRepository(clone.gh, { rulesets: [] })
+    unprotect(clone.gh)
     const before = await state(clone)
 
     const { code, out } = await submitting(clone)
@@ -273,8 +282,8 @@ describe('plan --from --submit to GitHub', { timeout: RUNS }, () => {
   it('refuses a clone that is not level with GitHub, naming both commits', async () => {
     const clone = await githubClone()
     const local = await git(clone.repo, 'rev-parse', 'main')
-    const ahead = await git(clone.repo, 'commit-tree', 'main^{tree}', '-p', 'main', '-m', 'somebody merged')
-    await git(clone.repo, 'push', '-q', clone.bare, `${ahead}:refs/heads/main`)
+    await moveGitHubBase(clone)
+    const ahead = await git(clone.bare, 'rev-parse', 'main')
     const before = await state(clone)
 
     const { code, out } = await submitting(clone)
@@ -446,7 +455,7 @@ describe('plan --from --submit to GitHub', { timeout: RUNS }, () => {
 
     const { code, out } = await submitting(clone, [], {
       confirm: async () => {
-        changeRepository(clone.gh, { rulesets: [] })
+        unprotect(clone.gh)
         return true
       },
     })
@@ -543,10 +552,11 @@ describe('plan --from --submit to GitHub', { timeout: RUNS }, () => {
     }
   })
 
-  it('refuses plan "<intent>" --submit and init --submit toward GitHub before any model and before gh, naming --local', async () => {
+  it('refuses init --submit toward GitHub before any model and before gh, naming --local', async () => {
+    // The intent road opens pull requests since 6.3.1 (plan-intent.test.ts);
+    // init's waits for 6.3.2.
     const clone = await githubClone()
     const gh = untouchable()
-    const before = await state(clone)
     const run = async (args: string[]) => {
       const out: string[] = []
       const err: string[] = []
@@ -558,15 +568,6 @@ describe('plan --from --submit to GitHub', { timeout: RUNS }, () => {
       })
       return { code, out: out.join(''), err: err.join('') }
     }
-
-    const intent = await run(['plan', INTENT, '--repo', clone.repo, '--submit'])
-    expect(intent.code).toBe(2)
-    expect(intent.err).toContain(
-      'the intent road opens pull requests from the next release; add --local to cut the branch in this clone only, ' +
-        'or submit a plan file with plan --from <plan.json> --submit. Nothing was written.',
-    )
-    expect(intent.err).not.toContain('no model')
-    expect(await state(clone)).toBe(before)
 
     // A service's own repository, tracking a branch on github.com.
     const service = path.join(await scratch('idp-service-'), 'billing-api')
@@ -587,6 +588,30 @@ describe('plan --from --submit to GitHub', { timeout: RUNS }, () => {
     expect(init.err).not.toContain('no model')
     expect(gh.calls()).toBe(0)
     expect(await observable(service)).toBe(serviceBefore)
+  })
+})
+
+describe('refuseUnprotected', { timeout: RUNS }, () => {
+  it('judges a forge and its base once, and judges a base that moved again', async () => {
+    // A road that reads the preflight early (the phrase's, 6.3.3) is not
+    // read again by runIntent: § 8's routes once per run, within the budget.
+    const clone = await githubClone()
+    const opened = await openForSubmission(clone.repo, 'declarations', {
+      env: clone.env,
+      gh: clone.gh.process,
+      route: 'intent',
+    })
+    expect(await refuseUnprotected(opened)).toBeUndefined()
+    const once = clone.gh.sent.length
+    expect(once).toBeGreaterThan(2)
+
+    expect(await refuseUnprotected(opened)).toBeUndefined()
+    expect(clone.gh.sent.length).toBe(once)
+
+    const moved = { ...opened, base: { ...opened.base, commit: '0'.repeat(40) } }
+    const refused = await refuseUnprotected(moved)
+    expect(clone.gh.sent.length).toBeGreaterThan(once)
+    expect(refused?.text).toContain('bring them level (git pull)')
   })
 })
 

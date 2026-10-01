@@ -10,7 +10,7 @@ import type { Submitted } from '../../src/forge/provider.js'
 import { GitError, gitIn, pushIn, type Git, type Push } from '../../src/process/git.js'
 import { clearedFor, removeClones, scratch } from '../support/forge-fixture.js'
 import { protectingRuleset } from '../support/fake-gh.js'
-import { fakeSsh, githubClone, githubForge, remoteRefs, type GitHubClone } from '../support/github-fixture.js'
+import { fakeSsh, githubClone, githubForge, remoteRefs, unprotect, type GitHubClone } from '../support/github-fixture.js'
 import { git, observable } from '../support/git.js'
 
 /**
@@ -384,7 +384,7 @@ describe('the moment of acting', { timeout: 30_000 }, () => {
   it('re-checks the rules at the moment of acting: a ruleset dropped after the confirmation leaves nothing on either side', async () => {
     const opened = await setUp()
     expect(await opened.forge.recognise(opened.change, opened.base)).toBeUndefined()
-    opened.clone.gh.state.repositories = opened.clone.gh.state.repositories.map((one) => ({ ...one, rulesets: [] }))
+    unprotect(opened.clone.gh)
     const before = await state(opened.clone)
 
     const result = await opened.forge.submit(opened.change, opened.base)
@@ -639,7 +639,7 @@ describe('races and failures', { timeout: 30_000 }, () => {
     const opened = await setUp(
       {
         push: async (request) => {
-          clone.gh.state.repositories = clone.gh.state.repositories.map((one) => ({ ...one, rulesets: [] }))
+          unprotect(clone.gh)
           return inner(request)
         },
       },

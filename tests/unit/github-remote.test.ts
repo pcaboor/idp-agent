@@ -3,6 +3,7 @@ import {
   baseOfMerge,
   isLogin,
   isRemoteName,
+  locatorRepository,
   parseRemoteUrl,
   printedRepository,
   sameRepository,
@@ -120,6 +121,44 @@ describe('parseRemoteUrl', () => {
         expect(parseRemoteUrl(url), JSON.stringify(url)).toEqual({ kind: 'unreadable' })
       }
     }
+  })
+})
+
+/**
+ * `.idp-agent.yml`'s `iacRepo`, read as the repository it names on github.com
+ * (stage 6 brief § 13): a cross-check of the clone a submission goes from,
+ * never a source. What names no repository there is undefined, and the
+ * cross-check refuses it rather than skips it.
+ */
+describe('locatorRepository', () => {
+  it.each([
+    ['github.com/acme/iac', 'acme', 'iac'],
+    ['https://github.com/acme/iac', 'acme', 'iac'],
+    ['https://github.com/acme/iac.git', 'acme', 'iac'],
+    ['ssh://github.com/acme/iac', 'acme', 'iac'],
+    ['GitHub.com/acme/iac/', 'acme', 'iac'],
+    // A scheme is case-insensitive (RFC 3986 § 3.1), as the host is.
+    ['HTTPS://github.com/acme/iac', 'acme', 'iac'],
+    ['Ssh://GITHUB.COM/acme/iac.git', 'acme', 'iac'],
+    ['github.com/acme/my.repo_1-x', 'acme', 'my.repo_1-x'],
+  ])('reads %s as github.com/%s/%s', (locator, owner, name) => {
+    expect(locatorRepository(locator)).toStrictEqual({ host: 'github.com', owner, name })
+  })
+
+  it.each([
+    'gitlab.example.com/acme/iac',
+    'www.github.com/acme/iac',
+    'github.com.evil.example/acme/iac',
+    'http://github.com/acme/iac',
+    'HTTP://github.com/acme/iac',
+    'github.com/acme',
+    'github.com/acme/iac/tree/main',
+    'github.com/-acme/iac',
+    'github.com/acme/..',
+    'x',
+    'acme/iac',
+  ])('reads no GitHub repository in %s', (locator) => {
+    expect(locatorRepository(locator)).toBeUndefined()
   })
 })
 

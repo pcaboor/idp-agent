@@ -1,11 +1,11 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { main, renderEvent } from '../../src/cli/index.js'
 import { runInitPlatform } from '../../src/cli/commands/init.js'
 import { runIntent } from '../../src/cli/commands/plan.js'
-import { reopening } from '../../src/cli/commands/submit.js'
+import { reopening, type SubmissionSummary } from '../../src/cli/commands/submit.js'
 import type { ForgeProvider } from '../../src/forge/provider.js'
 import { CONFIG_FILE } from '../../src/cli/config.js'
 import type { AgentEvent } from '../../src/agents/events.js'
@@ -24,6 +24,10 @@ import { confirmingEnvironment } from '../support/ask.js'
 import { ForgeInputError } from '../../src/forge/errors.js'
 import { clearedFor, clone, removeClones, scratch } from '../support/forge-fixture.js'
 import { committed, git, observable, show, stored } from '../support/git.js'
+import { githubClone, moveGitHubBase, unprotect, type GitHubClone } from '../support/github-fixture.js'
+import { memorySink, onlyTrace } from '../support/trace.js'
+import { GITHUB_LIMITS } from '../../src/forge/github/limits.js'
+import type { GhProcess } from '../../src/process/gh.js'
 
 /**
  * Replays a scripted sequence of model turns, keyed by AGENT.
@@ -1278,5 +1282,504 @@ describe('what a run looks like on a terminal', () => {
     expect(renderEvent({ type: 'attempt:start', attempt: 1 })).toBeUndefined()
     expect(renderEvent({ type: 'attempt:end', attempt: 1 })).toBeUndefined()
     expect(renderEvent({ type: 'gate:passed', attempt: 1, gate: 'zod' })).toBeUndefined()
+  })
+})
+
+// ------------------------------------------------- --submit to GitHub (6.3.1)
+
+/**
+ * Each run starts a dozen real git processes, a push over the fake ssh and
+ * the read-back's waits on a push that fails: seconds alone, more beside the
+ * rest of the suite.
+ */
+const PUSHING = 30_000
+
+/**
+ * Every gh call and every model call of one run, in the order they were made: what
+ * "before any model" and "after the Reviewer" are checked on. The fake answers; this only
+ * writes down what was asked of it.
+ */
+const watching = (clone: GitHubClone, inner: LlmClient) => {
+  const log: string[] = []
+  const gh: GhProcess = async (argv, options) => {
+    log.push(`gh ${argv.join(' ')}`)
+    return clone.gh.process(argv, options)
+  }
+  const client: LlmClient = {
+    generate: async (request) => {
+      log.push(`model ${request.agent}`)
+      return inner.generate(request)
+    },
+  }
+  return { log, gh, client }
+}
+
+/** `main` over the clone, its environment and its fake gh, unless `deps` says otherwise. */
+const run = async (clone: GitHubClone, args: string[], deps: Parameters<typeof main>[1] = {}) => {
+  const out: string[] = []
+  const err: string[] = []
+  const code = await main(args, {
+    env: clone.env,
+    gh: clone.gh.process,
+    ...deps,
+    out: (chunk) => void out.push(chunk),
+    err: (chunk) => void err.push(chunk),
+  })
+  return { code, out: out.join(''), err: err.join('') }
+}
+
+/** The idp-agent branches a repository holds, the clone's or GitHub's side. */
+const ours = async (dir: string): Promise<string[]> =>
+  (await git(dir, 'for-each-ref', '--format=%(refname)', 'refs/heads/idp-agent/'))
+    .split('\n')
+    .filter((line) => line !== '')
+
+/**
+ * Whom gh is logged in as where a test searches a prompt or a trace for the
+ * login: `ada`, the fixture's default, is in every `metadata`.
+ */
+const LOGIN = 'canary-login-0e7a'
+
+const submitting = (clone: GitHubClone, project: string, extra: string[] = []): string[] =>
+  ['plan', INTENT, '--repo', clone.repo, '--project', project, '--submit', ...extra]
+
+describe('plan "<intent>" --submit to GitHub', { timeout: PUSHING }, () => {
+  afterAll(removeClones)
+
+  it('opens a pull request after all five gates, and prints the URL the engine builds', async () => {
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+
+    const { code, out, err } = await run(clone, submitting(clone, project), {
+      gh,
+      client,
+      ask: answering('read'),
+    })
+
+    expect(code, err).toBe(0)
+    expect(err).toMatch(
+      /^submitting to github\.com\/acme\/iac, into main \(origin, main's upstream\), as [A-Za-z0-9-]+ \(gh\)$/m,
+    )
+    expect(out).toMatch(
+      /^2 files · submitted as idp-agent\/orders-db-prod-[0-9a-f]{8} on top of main@[0-9a-f]{7} · main untouched$/m,
+    )
+    expect(out).toContain('Pull request #1 opened on github.com/acme/iac: https://github.com/acme/iac/pull/1')
+    expect(out.trimEnd().endsWith(CLOSING)).toBe(true)
+    // The very commit the clone holds is the one GitHub holds: pushed, never rebuilt.
+    const [ref] = await ours(clone.repo)
+    expect(await ours(clone.bare)).toEqual([ref])
+    expect(await git(clone.bare, 'rev-parse', ref ?? '')).toBe(await git(clone.repo, 'rev-parse', ref ?? ''))
+    expect(log.filter((line) => line.startsWith('gh ') && line.includes('POST'))).toHaveLength(1)
+  })
+
+  it('reads the rules before the first model call, nothing of GitHub while the agents run, and the rules again after the Reviewer', async () => {
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+
+    await run(clone, submitting(clone, project), { gh, client, ask: answering('read') })
+
+    const first = log.findIndex((line) => line.startsWith('model '))
+    const reviewed = log.lastIndexOf('model reviewer')
+    expect(first).toBeGreaterThan(0)
+    // § 8 items 1 to 4 and the base level, before the Inspector.
+    expect(log.slice(0, first).some((line) => /rules\/branches\/main\b/.test(line))).toBe(true)
+    expect(log.slice(0, first).some((line) => /git\/ref\/heads\/main\b/.test(line))).toBe(true)
+    // Nothing of GitHub is asked while a model is: every line between is a model call.
+    expect(log.slice(first, reviewed + 1).every((line) => line.startsWith('model '))).toBe(true)
+    // Step 8 and step 11 after the last model call, and the pull request last.
+    expect(log.slice(reviewed + 1).filter((line) => /rules\/branches\/main\b/.test(line)).length).toBeGreaterThanOrEqual(2)
+    expect(log.at(-1)).toMatch(/POST/)
+  })
+
+  it('writes nothing on either side before the Reviewer has answered', async () => {
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    const inner = converging([CREATE_DATABASE, CREATE_ACCESS])
+    const seenAtReview: string[][] = []
+    const client: LlmClient = {
+      generate: async (request) => {
+        if (request.agent === 'reviewer') seenAtReview.push([...(await ours(clone.repo)), ...(await ours(clone.bare))])
+        return inner.generate(request)
+      },
+    }
+
+    const { code } = await run(clone, submitting(clone, project), { client, ask: answering('read') })
+
+    expect(code).toBe(0)
+    expect(seenAtReview).toEqual([[]])
+  })
+
+  it('refuses at the moment of acting when the rules go while the Reviewer reads, and writes nothing on either side', async () => {
+    // § 3 step 8: the preflight passed before the Inspector; the ruleset is removed while
+    // the last model call runs. The re-check is what refuses, before the local ref.
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    const inner = converging([CREATE_DATABASE, CREATE_ACCESS])
+    const client: LlmClient = {
+      generate: async (request) => {
+        if (request.agent === 'reviewer') unprotect(clone.gh)
+        return inner.generate(request)
+      },
+    }
+
+    const { code, out } = await run(clone, submitting(clone, project), { client, ask: answering('read') })
+
+    expect(code).toBe(1)
+    expect(out).toContain('Nothing was written.')
+    expect(await ours(clone.repo)).toEqual([])
+    expect(await ours(clone.bare)).toEqual([])
+  })
+
+  it('refuses a base whose rules let the opener merge, exit 1, before a single model call', async () => {
+    const clone = await githubClone()
+    unprotect(clone.gh)
+    const project = await application(CONFIGURED)
+    const inner = converging([CREATE_DATABASE, CREATE_ACCESS])
+
+    const { code, out } = await run(clone, submitting(clone, project), { client: inner, ask: answering('read') })
+
+    expect(code).toBe(1)
+    expect(out).toContain(
+      "not submitted — nothing on github.com/acme/iac's main stops the person who would open this pull request from merging it:",
+    )
+    expect(out).toContain('Add a ruleset on main (Settings → Rules → Rulesets):')
+    expect(inner.seen).toEqual([])
+    expect(await ours(clone.bare)).toEqual([])
+  })
+
+  it('refuses a clone that is not level with GitHub, exit 1, before a single model call', async () => {
+    const clone = await githubClone()
+    await moveGitHubBase(clone)
+    const project = await application(CONFIGURED)
+    const inner = converging([CREATE_DATABASE, CREATE_ACCESS])
+
+    const { code, out } = await run(clone, submitting(clone, project), { client: inner, ask: answering('read') })
+
+    expect(code).toBe(1)
+    expect(out).toContain('bring them level (git pull), then run this again.')
+    expect(inner.seen).toEqual([])
+  })
+
+  it.each([
+    ['gh not logged in', (clone: GitHubClone) => clone.gh.logout(), 'gh is not logged in to github.com'],
+    ['gh not installed', () => undefined, 'gh is not installed'],
+  ])('refuses with %s, exit 2, before the model is configured, naming --local', async (_, arrange, said) => {
+    const clone = await githubClone()
+    arrange(clone)
+    const project = await application(CONFIGURED)
+    const missing: GhProcess = async () => ({ code: 'ENOENT', stdout: Buffer.alloc(0), stderr: '', timedOut: false })
+    const before = await observable(clone.repo)
+
+    // No client, no key: the configuration would be refused next, and is not reached.
+    const { code, out, err } = await run(clone, submitting(clone, project), {
+      ...(said === 'gh is not installed' ? { gh: missing } : {}),
+    })
+
+    expect(code).toBe(2)
+    expect(err).toContain(said)
+    expect(err).toContain('add --local to cut the branch in this clone only')
+    expect(err).not.toContain('no model configured')
+    expect(out).toBe('')
+    expect(await observable(clone.repo)).toBe(before)
+  })
+
+  it('refuses a key of the clone’s own configuration that would redirect the push, exit 2, naming it and never its value', async () => {
+    const clone = await githubClone()
+    await git(clone.repo, 'config', 'credential.helper', 'store --file=/tmp/canary-credential-store')
+    const project = await application(CONFIGURED)
+
+    const { code, err } = await run(clone, submitting(clone, project))
+
+    expect(code).toBe(2)
+    expect(err).toContain("this clone's own configuration sets credential.helper (local), which would decide who pushes for you")
+    expect(err).not.toContain('canary-credential-store')
+    expect(err).not.toContain('no model configured')
+  })
+
+  it('cuts only the local branch with --local, starts no gh, and says so', async () => {
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+
+    const { code, out } = await run(clone, submitting(clone, project, ['--local']), { gh, client, ask: answering('read') })
+
+    expect(code).toBe(0)
+    expect(out).toContain('--local: nothing pushed by this run')
+    expect(await ours(clone.repo)).toHaveLength(1)
+    expect(await ours(clone.bare)).toEqual([])
+    expect(log.filter((line) => line.startsWith('gh '))).toEqual([])
+  })
+
+  it('names the open pull request on a second run, not asked, and writes nothing', async () => {
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    await run(clone, submitting(clone, project), { client: converging([CREATE_DATABASE, CREATE_ACCESS]), ask: answering('read') })
+    const before = await observable(clone.repo)
+    let asked = 0
+
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+    const { code, out } = await run(clone, submitting(clone, project), {
+      gh,
+      client,
+      ask: answering('read'),
+      confirm: async () => {
+        asked += 1
+        return true
+      },
+    })
+
+    expect(code).toBe(0)
+    expect(out).toMatch(/already submitted as idp-agent\/orders-db-prod-[0-9a-f]{8} · pull request #1 is open · nothing written/)
+    expect(asked).toBe(0)
+    expect(log.some((line) => line.includes('POST'))).toBe(false)
+    expect(await observable(clone.repo)).toBe(before)
+  })
+
+  it('asks the question of § 3 on a GitHub road, naming the push and the pull request', async () => {
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    const summaries: SubmissionSummary[] = []
+
+    await run(clone, submitting(clone, project), {
+      client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+      ask: answering('read'),
+      confirm: async (summary) => {
+        summaries.push(summary)
+        return false
+      },
+    })
+
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]?.github).toStrictEqual({ host: 'github.com', repository: 'acme/iac', base: 'main', pushedAlready: false })
+    expect(await ours(clone.bare)).toEqual([])
+  })
+
+  it('reports the pull request in --json, under the key --from pins (D11)', async () => {
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+
+    const { code, out } = await run(clone, submitting(clone, project, ['--json']), {
+      client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+      ask: answering('read'),
+    })
+
+    expect(code).toBe(0)
+    const { submission } = JSON.parse(out) as { submission: Record<string, unknown> }
+    expect(submission).toMatchObject({
+      outcome: 'created',
+      pushed: true,
+      pullRequest: {
+        host: 'github.com',
+        repository: 'acme/iac',
+        number: 1,
+        url: 'https://github.com/acme/iac/pull/1',
+        state: 'opened',
+        base: 'main',
+      },
+    })
+  })
+
+  it('sends every agent the bytes it sends without --submit: nothing of GitHub reaches a prompt', async () => {
+    const clone = await githubClone({ login: LOGIN })
+    const project = await application(CONFIGURED)
+    const previewing = converging([CREATE_DATABASE, CREATE_ACCESS])
+    await run(clone, ['plan', INTENT, '--repo', clone.repo, '--project', project], { client: previewing, ask: answering('read') })
+    const submittingClient = converging([CREATE_DATABASE, CREATE_ACCESS])
+    const { err } = await run(clone, submitting(clone, project), { client: submittingClient, ask: answering('read') })
+    const login = /as ([A-Za-z0-9-]+) \(gh/.exec(err)?.[1] ?? ''
+
+    expect(login).toBe(LOGIN)
+    expect(JSON.stringify(submittingClient.seen)).toBe(JSON.stringify(previewing.seen))
+    expect(JSON.stringify(submittingClient.seen)).not.toContain('github.com')
+    expect(JSON.stringify(submittingClient.seen)).not.toContain(login)
+  })
+
+  it('reads nothing more of GitHub and pushes nothing when the run ends on a question', async () => {
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+
+    // Nobody to ask: the level is a question, and the run ends on it (exit 3).
+    const { code } = await run(clone, submitting(clone, project), { gh, client })
+
+    expect(code).toBe(3)
+    const first = log.findIndex((line) => line.startsWith('model '))
+    expect(log.slice(first).filter((line) => line.startsWith('gh '))).toEqual([])
+    expect(await ours(clone.repo)).toEqual([])
+    expect(await ours(clone.bare)).toEqual([])
+  })
+
+  it('puts the forge on the trace’s root, never a login, and counts the gh calls it made', async () => {
+    const clone = await githubClone({ login: LOGIN })
+    const project = await application(CONFIGURED)
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+    const sink = memorySink()
+
+    const { code, err } = await run(clone, submitting(clone, project), { gh, client, ask: answering('read'), traceSinks: [sink] })
+
+    expect(code).toBe(0)
+    const trace = onlyTrace(sink)
+    const root = trace.spans[0]?.attributes ?? {}
+    const calls = log.filter((line) => line.startsWith('gh ')).length
+    expect(root).toMatchObject({
+      'idp.forge.kind': 'github',
+      'idp.forge.host': 'github.com',
+      'idp.forge.base': 'main',
+      'idp.forge.pull_request': 1,
+      'idp.forge.outcome': 'created',
+      'idp.forge.pushed': true,
+      'idp.forge.gh_calls': calls,
+    })
+    expect(calls).toBeLessThanOrEqual(GITHUB_LIMITS.ghCalls)
+    const login = /as ([A-Za-z0-9-]+) \(gh/.exec(err)?.[1] ?? ''
+    expect(login).toBe(LOGIN)
+    expect(JSON.stringify(trace, (_, value: unknown) => (typeof value === 'bigint' ? value.toString() : value))).not.toContain(login)
+  })
+})
+
+describe('plan "<intent>" --submit and iacRepo', { timeout: PUSHING }, () => {
+  afterAll(removeClones)
+
+  it('puts where a refusal before any model would have gone on the trace’s root: the forge, refused, the gh calls made', async () => {
+    // § 12: every result of a submission carries the forge, a refusal before
+    // the preview included — the cross-check, the divergence, the rules.
+    for (const arrange of [
+      async () => ({ clone: await githubClone(), config: 'iacRepo: github.com/acme/other-iac\nenvironments: [prod]\n' }),
+      async () => {
+        const clone = await githubClone()
+        unprotect(clone.gh)
+        return { clone, config: CONFIGURED }
+      },
+      async () => {
+        const clone = await githubClone()
+        await writeFile(path.join(clone.repo, 'catalog', 'databases', 'stray.yml'), '# stray\n', 'utf8')
+        return { clone, config: CONFIGURED }
+      },
+    ]) {
+      const { clone, config } = await arrange()
+      const project = await application(config)
+      const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+      const sink = memorySink()
+
+      const { code } = await run(clone, submitting(clone, project), { gh, client, ask: answering('read'), traceSinks: [sink] })
+
+      expect(code).toBe(1)
+      expect(log.filter((line) => line.startsWith('model '))).toEqual([])
+      expect(onlyTrace(sink).spans[0]?.attributes).toMatchObject({
+        'idp.forge.kind': 'github',
+        'idp.forge.repository': 'acme/iac',
+        'idp.forge.outcome': 'refused',
+        'idp.forge.gh_calls': log.filter((line) => line.startsWith('gh ')).length,
+      })
+    }
+  })
+
+  it('refuses a service whose iacRepo names another repository, exit 1, naming both, before any model and any read of GitHub', async () => {
+    const clone = await githubClone()
+    const project = await application('iacRepo: github.com/acme/other-iac\nenvironments: [dev, staging, prod]\n')
+    // An uncommitted file under catalog/ nobody can read: the read of the
+    // contents would refuse it (exit 2), and the divergence after it, so the
+    // iacRepo line printed alone says the cross-check ran before either. The
+    // snapshot records such a file rather than refusing it, so a cross-check
+    // after it is not something an output can tell.
+    const stray = path.join(clone.repo, 'catalog', 'databases', 'stray.yml')
+    await writeFile(stray, '# stray\n', 'utf8')
+    await chmod(stray, 0o000)
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+
+    const { code, out } = await run(clone, submitting(clone, project), { gh, client, ask: answering('read') })
+
+    expect(code).toBe(1)
+    // The two paths are printed as `main` resolved them; the sentence around them is pinned.
+    expect(out.startsWith('not submitted — .idp-agent.yml in ')).toBe(true)
+    expect(out).toContain("names github.com/acme/other-iac as this service's declarations repository, and ")
+    expect(out.trimEnd()).toMatch(
+      /'s main tracks github\.com\/acme\/iac: run this with --repo naming a clone of the repository it names, or change iacRepo in a reviewed change\. Nothing was written\.$/,
+    )
+    expect(out.trimEnd().split('\n')).toHaveLength(1)
+    expect(log.filter((line) => line.startsWith('model '))).toEqual([])
+    // gh's version and identity, read in main before the configuration; no route of the repository.
+    expect(log.filter((line) => /repos\//.test(line))).toEqual([])
+    expect(await ours(clone.bare)).toEqual([])
+  })
+
+  it('refuses a locator that names no repository on github.com, quoting it', async () => {
+    const clone = await githubClone()
+    const project = await application('iacRepo: gitlab.example.com/acme/iac\nenvironments: [prod]\n')
+
+    const { code, out } = await run(clone, submitting(clone, project), {
+      client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+      ask: answering('read'),
+    })
+
+    expect(code).toBe(1)
+    expect(out).toContain('names gitlab.example.com/acme/iac as this service')
+  })
+
+  it.each([
+    'https://github.com/acme/iac.git',
+    'github.com/ACME/IaC',
+    'ssh://github.com/acme/iac/',
+  ])('submits when iacRepo names the same repository, written as %s', async (locator) => {
+    const clone = await githubClone()
+    const project = await application(`iacRepo: ${locator}\nenvironments: [dev, staging, prod]\n`)
+
+    const { code, out } = await run(clone, submitting(clone, project), {
+      client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+      ask: answering('read'),
+    })
+
+    expect(code).toBe(0)
+    expect(out).toContain('Pull request #1 opened on github.com/acme/iac')
+  })
+
+  it('reads no iacRepo where nothing leaves the clone: --local, no --submit, a clone that tracks nothing', async () => {
+    const project = await application('iacRepo: github.com/acme/other-iac\nenvironments: [dev, staging, prod]\n')
+    const tracked = await githubClone()
+    const untracked = await clone()
+
+    for (const [repo, extra] of [
+      [tracked.repo, ['--submit', '--local']],
+      [tracked.repo, []],
+      [untracked, ['--submit']],
+    ] as const) {
+      const { code } = await run(tracked, ['plan', INTENT, '--repo', repo, '--project', project, ...extra], {
+        client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+        ask: answering('read'),
+      })
+      expect(code).toBe(0)
+    }
+  })
+
+  it('spells out a control or bidi character of iacRepo in --json\'s reasons, as in prose', async () => {
+    const clone = await githubClone()
+    const project = await application('iacRepo: "github.com/acme/\u202Eiac"\nenvironments: [prod]\n')
+
+    for (const extra of [[], ['--json']]) {
+      const { code, out } = await run(clone, submitting(clone, project, extra), {
+        client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+        ask: answering('read'),
+      })
+
+      expect(code).toBe(1)
+      expect(out).toContain('github.com/acme/')
+      expect(out).not.toContain('\u202E')
+    }
+  })
+
+  it('answers the mismatch in --json with the submission key alone', async () => {
+    const clone = await githubClone()
+    const project = await application('iacRepo: github.com/acme/other-iac\nenvironments: [prod]\n')
+
+    const { code, out } = await run(clone, submitting(clone, project, ['--json']), {
+      client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+      ask: answering('read'),
+    })
+
+    expect(code).toBe(1)
+    expect(Object.keys(JSON.parse(out) as object)).toEqual(['submission'])
+    expect(JSON.parse(out)).toMatchObject({ submission: { outcome: 'refused' } })
   })
 })

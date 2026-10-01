@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { main } from '../../src/cli/index.js'
 import { VERDICT_TOOL } from '../../src/agents/reviewer.js'
 import { REPORT_TOOL } from '../../src/agents/tools/project-tools.js'
@@ -13,7 +13,10 @@ import { catalogueOf } from '../../tools/fake-backstage.js'
 import { fakeBackstage, type Faults, type Sent as ToCatalogue } from '../support/fake-backstage.js'
 import { fakeGitHub, protectedMain } from '../support/fake-gh.js'
 import { CLOSED_PROXY, PROXY_VARIABLES } from '../setup/forge.js'
-import { fakeSsh, requireUnrewritten } from '../support/github-fixture.js'
+import { fakeSsh, githubClone, requireUnrewritten, type GitHubClone } from '../support/github-fixture.js'
+import type { GhProcess } from '../../src/process/gh.js'
+import { git } from '../support/git.js'
+import { removeClones } from '../support/forge-fixture.js'
 import { confirmingEnvironment } from '../support/ask.js'
 import { memorySink, onlyTrace } from '../support/trace.js'
 
@@ -29,15 +32,29 @@ const spawned = vi.hoisted(() => ({
 }))
 vi.mock('node:child_process', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:child_process')>()
-  const execFile = (...args: unknown[]): unknown => {
+  const { promisify } = await import('node:util')
+  const record = (args: unknown[]): void => {
     const options = args
       .slice(1)
       .find((arg): arg is { env?: unknown } => typeof arg === 'object' && arg !== null && !Array.isArray(arg))
     const env = options?.env ?? { ...process.env }
     spawned.environments.push(env)
     spawned.calls.push({ args: Array.isArray(args[1]) ? (args[1] as string[]) : [], env: env as NodeJS.ProcessEnv })
+  }
+  const execFile = (...args: unknown[]): unknown => {
+    record(args)
     return (original.execFile as (...all: unknown[]) => unknown)(...args)
   }
+  // Promisified, as the tests' own git is (tests/support/git.ts): recorded
+  // too, and answering `{ stdout, stderr }` as the original does, so a
+  // fixture can build a clone through it before a test empties the record.
+  const promised = (original.execFile as unknown as Record<symbol, (...all: unknown[]) => unknown>)[promisify.custom]
+  Object.assign(execFile, {
+    [promisify.custom]: (...args: unknown[]): unknown => {
+      record(args)
+      return promised?.(...args)
+    },
+  })
   return { ...original, execFile }
 })
 
@@ -841,4 +858,233 @@ describe('plan --from --submit, to GitHub', () => {
       for (const secret of secrets) expect(text).not.toContain(secret)
     }
   })
+})
+
+/**
+ * The submission legs (stage 6 brief § 5, § 12, § 16): a model-backed road
+ * that ends on GitHub, as a person runs it — the provider's key exported, gh
+ * logged in through `GH_TOKEN` and `GITHUB_TOKEN`, the clone's `main`
+ * tracking github.com. The model is reached through its real adapter, with
+ * only `fetch` replaced, as in the first block; gh is the fake, handed in as
+ * `MainDeps.gh` and recorded; git runs for real, through the mocked
+ * `execFile` above, and pushes to a bare repository over the fake ssh.
+ *
+ * Two places are sent different things, and each is held to its own (§ 12):
+ * the provider is sent nothing of GitHub; the trace says where the submission
+ * went, and never who made it or with what. gh and the push are handed the
+ * person's login variables unread, and nothing of idpa's.
+ */
+describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a submission to GitHub", (provider) => {
+  const wire = WIRES[provider]
+  const GH_CANARY = 'canary-gh-token-that-is-not-real-0123456789'
+  /** Whom gh is logged in as: a login no prompt holds by chance, as `ada` is in every `metadata`. */
+  const LOGIN = 'canary-login-0e7a'
+
+  interface Handed {
+    readonly argv: readonly string[]
+    readonly stdin: string
+    readonly env: NodeJS.ProcessEnv
+  }
+
+  interface Submitted {
+    code: number
+    out: string
+    err: string
+    toProvider: Sent[]
+    toMlflow: Sent[]
+    /** The trace the sink kept, serialised. */
+    trace: string
+    /** Its root's attributes. */
+    root: Record<string, unknown>
+    /** Every gh call: its vector, its standard input, its environment. */
+    toGh: Handed[]
+    /** The base's commit, which nothing of git's may carry to a prompt. */
+    base: string
+  }
+
+  afterAll(removeClones)
+
+  /** The first block's run, with the clone of the demo SI on github.com, the person's gh, and `--repo` appended. */
+  const submittingRun = async (
+    argv: string[],
+    word: Road['word'],
+    operations: unknown[],
+    arrange: (clone: GitHubClone) => void = () => {},
+  ): Promise<Submitted> => {
+    const clone = await githubClone({ source: FIXTURES, login: LOGIN })
+    arrange(clone)
+    const base = await git(clone.repo, 'rev-parse', 'main')
+    const toGh: Handed[] = []
+    const gh: GhProcess = async (vector, options) => {
+      toGh.push({ argv: [...vector], stdin: options.stdin?.toString('utf8') ?? '', env: { ...options.env } })
+      return clone.gh.process(vector, options)
+    }
+    const toProvider: Sent[] = []
+    const reply = answering(wire, word, operations)
+    vi.stubGlobal('fetch', keeping(toProvider, (body) => json(reply(JSON.parse(body) as Body))))
+    // As a real shell holds them: a child process that inherited the
+    // environment would carry all three.
+    vi.stubEnv(wire.key, KEY)
+    vi.stubEnv('GH_TOKEN', GH_CANARY)
+    vi.stubEnv('GITHUB_TOKEN', GH_CANARY)
+    for (const variable of wire.moves) vi.stubEnv(variable, undefined)
+    // The clone was built through the mocked execFile: none of it is the run's.
+    spawned.environments.length = 0
+    spawned.calls.length = 0
+
+    const toMlflow: Sent[] = []
+    const sink = memorySink()
+    const out: string[] = []
+    const err: string[] = []
+    const code = await main([...argv, '--repo', clone.repo], {
+      root: FIXTURES,
+      gh,
+      env: {
+        ...clone.env,
+        IDP_PROVIDER: provider,
+        IDP_MODEL: wire.model,
+        [wire.key]: KEY,
+        IDP_MLFLOW_TRACKING_URI: MLFLOW,
+        GH_TOKEN: GH_CANARY,
+        GITHUB_TOKEN: GH_CANARY,
+      },
+      fetch: keeping(toMlflow, () => new Response('{}', { status: 200 })),
+      traceSinks: [sink],
+      out: (chunk) => void out.push(chunk),
+      err: (chunk) => void err.push(chunk),
+      events: () => {},
+    })
+    // A run refused before the model writes no trace: `code` says why.
+    const kept = sink.traces.length === 0 ? undefined : onlyTrace(sink)
+    return {
+      code,
+      out: out.join(''),
+      err: err.join(''),
+      toProvider,
+      toMlflow,
+      trace: JSON.stringify(kept ?? null, (_, value: unknown) => (typeof value === 'bigint' ? value.toString() : value)),
+      root: { ...(kept?.spans[0]?.attributes ?? {}) },
+      toGh,
+      base,
+    }
+  }
+
+  /** What the provider, the trace, gh, git, stdout and stderr were each handed, held to § 12 and § 5. */
+  const heldToGitHub = (ran: Submitted, repository: string): void => {
+    const login = /as ([A-Za-z0-9-]+) \(gh\)$/m.exec(ran.err)?.[1] ?? ''
+    expect(login, ran.err).toBe(LOGIN)
+
+    // The provider: its URL, the key in its one header, and nothing of GitHub.
+    expect(ran.toProvider.length).toBeGreaterThan(0)
+    for (const sent of ran.toProvider) {
+      expect(sent.url).toBe(wire.url)
+      expect(sent.headers[wire.header]).toBe(wire.carrying(KEY))
+      const others = Object.entries(sent.headers).filter(([name]) => name !== wire.header)
+      expect(JSON.stringify(others)).not.toContain(KEY)
+      expect(sent.body).not.toContain(KEY)
+      const shown = JSON.stringify(sent)
+      for (const github of ['github.com', login, GH_CANARY, ran.base]) expect(shown, github).not.toContain(github)
+    }
+
+    // The trace: where the submission went, and never who or with what.
+    expect(ran.root).toMatchObject({
+      'idp.forge.kind': 'github',
+      'idp.forge.host': 'github.com',
+      'idp.forge.repository': repository,
+      'idp.forge.pull_request': 1,
+    })
+    // `github.com` is held to two places: the root's `idp.forge.host`, and the
+    // run's output, which a trace keeps on every road — whose one line naming
+    // GitHub is the engine-built pull request line, the host, the repository
+    // and the number the attributes already carry. Nothing else of GitHub's.
+    const opened = `Pull request #1 opened on github.com/${repository}: https://github.com/${repository}/pull/1`
+    expect(ran.out).toContain(opened)
+    const elsewhere = (text: string, attribute: string): string => text.replaceAll(attribute, '').replaceAll(opened, '')
+    expect(elsewhere(ran.trace, '"idp.forge.host":"github.com"')).not.toContain('github.com')
+    const shipped = '{"key":"idp.forge.host","value":{"stringValue":"github.com"}}'
+    expect(ran.toMlflow.some((sent) => sent.body.includes(shipped))).toBe(true)
+    for (const sent of ran.toMlflow) expect(elsewhere(sent.body, shipped)).not.toContain('github.com')
+    for (const text of [ran.trace, ...ran.toMlflow.map((sent) => JSON.stringify(sent))]) {
+      for (const secret of [login, GH_CANARY, KEY]) expect(text).not.toContain(secret)
+    }
+
+    // gh: the person's login variables unread, and no model key anywhere.
+    expect(ran.toGh.length).toBeGreaterThanOrEqual(8)
+    for (const call of ran.toGh) {
+      expect(call.env['GH_TOKEN']).toBe(GH_CANARY)
+      expect(call.env['GITHUB_TOKEN']).toBe(GH_CANARY)
+      expect(JSON.stringify(call.env)).not.toContain(KEY)
+      for (const secret of [KEY, GH_CANARY]) {
+        expect(JSON.stringify(call.argv)).not.toContain(secret)
+        expect(call.stdin).not.toContain(secret)
+      }
+    }
+    // The pull request's body went on standard input, so the search above is not vacuous.
+    expect(ran.toGh.some((call) => call.stdin !== '')).toBe(true)
+
+    // git, the push among them: no model key in any environment.
+    expect(spawned.calls.filter((call) => call.args.includes('push'))).toHaveLength(1)
+    for (const environment of spawned.environments) expect(JSON.stringify(environment)).not.toContain(KEY)
+
+    for (const text of [ran.out, ran.err]) {
+      for (const secret of [KEY, GH_CANARY]) expect(text).not.toContain(secret)
+    }
+  }
+
+  it('reaches its provider in its header, and nothing of GitHub reaches it, on plan "<intent>" --submit', async () => {
+    const example = JSON.parse(await readFile(EXAMPLE, 'utf8')) as { intent: string; operations: unknown[] }
+    const { project } = await repositories()
+    const ran = await submittingRun(['plan', example.intent, '--project', project, '--submit'], 'MUTATION', example.operations)
+
+    expect(ran.code, ran.err).toBe(0)
+    expect(ran.out).toContain('Pull request #1 opened on github.com/acme/iac')
+    heldToGitHub(ran, 'acme/iac')
+  }, 30_000)
+
+  it('keeps gh\'s login off the trace and MLflow when the rules refuse plan "<intent>" --submit, in prose and in --json', async () => {
+    // A refusal on the rules comes after the configuration, inside the traced
+    // run, and its text is the trace's output: the two misses that would name
+    // whom gh acts as, each ending the run before any model (§ 8, § 12).
+    const example = JSON.parse(await readFile(EXAMPLE, 'utf8')) as { intent: string; operations: unknown[] }
+    const { project } = await repositories()
+    const misses: readonly [string, (clone: GitHubClone) => void][] = [
+      [
+        'rules',
+        (clone) => {
+          clone.gh.state.repositories = clone.gh.state.repositories.map((one) => ({
+            ...one,
+            rulesets: one.rulesets.map((ruleset) => ({ ...ruleset, canBypass: 'always' })),
+          }))
+        },
+      ],
+      [
+        'push access',
+        (clone) => {
+          clone.gh.state.repositories = clone.gh.state.repositories.map((one) => ({
+            ...one,
+            permissions: { ...one.permissions, [LOGIN]: { admin: true, maintain: false, push: false } },
+          }))
+        },
+      ],
+    ]
+    for (const [missing, arrange] of misses) {
+      for (const json of [[], ['--json']]) {
+        const ran = await submittingRun(
+          ['plan', example.intent, '--project', project, '--submit', ...json],
+          'MUTATION',
+          example.operations,
+          arrange,
+        )
+
+        expect(ran.code, ran.err).toBe(1)
+        expect(ran.toProvider).toEqual([])
+        expect(ran.out).toContain(`missing: ${missing}`)
+        expect(ran.root).toMatchObject({ 'idp.forge.kind': 'github', 'idp.forge.outcome': 'refused' })
+        expect(ran.toMlflow.length).toBeGreaterThan(0)
+        for (const text of [ran.out, ran.trace, ...ran.toMlflow.map((sent) => JSON.stringify(sent))]) {
+          for (const secret of [LOGIN, GH_CANARY, KEY]) expect(text).not.toContain(secret)
+        }
+      }
+    }
+  }, 60_000)
 })
