@@ -1,9 +1,9 @@
 # Stage 6 — a GitHub pull request, with the person's own git and gh
 
-**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2 built ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3 built ([#131](https://github.com/pcaboor/idp-agent/pull/131)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
+**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2 built ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3 built ([#131](https://github.com/pcaboor/idp-agent/pull/131)); 6.3.4, 6.3.5 and 6.3.6 planned (the owner's three decisions of 2026-10-01, before 6.4); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
 § 19 (Q1–Q4) were settled on 2026-09-30, each as recommended, and this plan takes them as
 given; so were the four questions the plan itself asked, the same day ([Questions for the
-owner](#questions-for-the-owner)). Eleven stacked pull requests: ten, 6.1.1 to 6.4.2, then 6.4.3, the owner's step: every tape
+owner](#questions-for-the-owner)). Fourteen stacked pull requests (eleven at first; 6.3.4 to 6.3.6 were added on 2026-10-01): thirteen, 6.1.1 to 6.4.2, then 6.4.3, the owner's step: every tape
 recorded before 2026-09-30 re-recorded with the owner's key, never by an agent; on our side it is
 the scenario tests that pin the tapes (`prompt-digests.test.ts`'s `SENT` re-measured, its
 `FIRST_SENT` unchanged, two guards; Task 6.4.3 says why this is not documents only), the roadmap
@@ -104,6 +104,9 @@ bottom-up with `gh pr merge --rebase` once the owner says so. Worktrees under
 | 6.3.1 | `feat/s6-intent-github` | `plan "<intent>" --submit` to GitHub, the `iacRepo` cross-check, the forge's trace attributes |
 | 6.3.2 | `feat/s6-init-github` | `init --submit` to GitHub |
 | 6.3.3 | `feat/s6-phrase-submit` | `idpa "<phrase>" --submit` (D8 lifted) |
+| 6.3.4 | `feat/s6-always-open` | the pull request opened whatever the base's rules, and the `note:` where its author may merge it alone; design §4.2 first |
+| 6.3.5 | `feat/s6-propose` | at a terminal, a change previewed without `--submit` ends on the engine's proposal |
+| 6.3.6 | `feat/s6-in-flight` | the open idp-agent pull requests read before any model and again before writing: the same bytes named, a competing change refused, a complementary one proposed beside |
 | 6.4.1 | `test/s6-live-github` | the live test, its configuration, the recorded answers, the contract test, the minimum gh version |
 | 6.4.2 | `docs/s6-adr-0015` | ADR-0015 and every document the stage makes true |
 | 6.4.3 | `chore/s6-tapes` | the owner's re-recording; on our side the roadmap and CHANGELOG lines |
@@ -129,7 +132,8 @@ a task that cannot hold one is stopped and brought to the owner.
    outside `refs/heads/idp-agent/`, `fetch`, `pull`, `clone`, `gh pr …`, `gh auth …`, `gh repo …`,
    `PUT`, `PATCH`, `DELETE`, `/merges`, `/contents/`, `/reviews`, `/merge`, `/update-branch`,
    `/graphql`. `ForgeProvider` keeps no `merge`, no `delete`, no `approve`, no `close`, no way to
-   name a branch.
+   name a branch. *From 6.3.6:* exactly two GET templates more, the open pull requests into the
+   base (pages 1 to 3) and one pull request's files (one page); both reads.
 3. **The repository's configuration is hostile; the person's global and system configuration is
    theirs.** Every push carries § 4's pins; a key of § 7's refused list at the `local` or
    `worktree` scope is exit 2, before any model and again at step 8, naming the key and its scope,
@@ -139,12 +143,20 @@ a task that cannot hold one is stopped and brought to the owner.
    opened before the read-back and the second rules read of step 11 pass. Each system stays
    atomic on its own (ADR-0010 locally, one ref per push on GitHub); the two together are not
    claimed atomic, and every intermediate state is a row of § 4's table that the same command,
-   run again, completes.
+   run again, completes. *Amended by the owner on 2026-10-01, built by 6.3.4, which rewrites this
+   constraint in its pull request:* the second rules read of step 11 decides the note in the body,
+   never whether to open; nothing is opened before the read-back passes. *From 6.3.6:* step 8 also
+   reads again what is in flight, and nothing is written when it finds the same change or a
+   competing one.
 5. **The invariant, in the owner's words**, wherever a document states it: "the identity that
    opens a pull request cannot merge it until someone else has approved the exact commit that
    would merge, and idpa never submits against a base without those rules". A pull request is
    opened only when every ruleset supplying a required rule answers `current_user_can_bypass`
-   `never`; a base protected only by classic branch protection is refused.
+   `never`; a base protected only by classic branch protection is refused. *Amended by the owner on
+   2026-10-01, built by 6.3.4, which rewrites this constraint in its pull request:* the pull request
+   is always opened; where the base's rules let its author merge it alone, one neutral line says so
+   (`note: on this repository the author may merge without another person's review`), on stderr and
+   in the pull request; the push itself is still refused on § 8 item 1, and every exit 2 stays.
 6. **`pnpm test` reaches no network, no real gh, no real ssh and none of the developer's git or gh
    credentials** (§ 10's offline floor). `tests/setup/forge.ts` is loaded in every worker, even
    while a scenario records, and removes `NODE_USE_ENV_PROXY` there too, so the proxy it closes
@@ -163,7 +175,11 @@ a task that cannot hold one is stopped and brought to the owner.
    is 6.4.3, the owner's re-recording: the requests the code builds do not move (`FIRST_SENT`
    holds each agent's first request unchanged), but from each agent's second turn a request
    carries the recorded answers, so `SENT` is re-measured there. `tests/golden/` and
-   `fixtures/si-demo/` are unchanged by every task.
+   `fixtures/si-demo/` are unchanged by every task. *From 6.3.5 (2026-10-01):* on the proposal
+   road — a change previewed at a terminal without `--submit` — the forge, the road, gh's identity
+   and the preflight come **after** the last model call, so a preview's order before its diff is
+   unchanged; nothing of GitHub reaches a model on either road. *From 6.3.6:* on every `--submit`
+   road what is in flight is read with the preflight, before the first model call.
 8. **Output is parsed, never printed.** gh's `--include` status line is read, the body parsed as
    JSON within its bound against a schema of the fields a route needs; a push's output is its
    `--porcelain` flag line. git's and gh's stderr are read to classify a failure and never printed
@@ -187,11 +203,17 @@ a task that cannot hold one is stopped and brought to the owner.
    refusal, which `2b2250e` makes after the Supervisor's word (`index.ts:1610-1615`), is made
    before any model (6.3.3), and the one exit 2 left there is `2b2250e`'s own, a `.idp-agent.yml`
    that does not parse, which `runIntent` reads after the Supervisor's word on the phrase road
-   (`plan.ts:1406`). No new exit code.
+   (`plan.ts:1406`). No new exit code. *From 6.3.4 to 6.3.6 (2026-10-01):* rules missing,
+   bypassable or classic only become a note at `0`, item 1 staying at `1`; a proposal declined or
+   not made leaves the preview's `0`, and Ctrl-C at it is `130`; a change another person already
+   proposed byte for byte is `0`, and an idp-agent pull request in flight that changes a file this
+   change writes, differently, is `1`.
 10. **Bounds** (§ 15), in one constant each: 15 s per gh call and per local git call, 120 s for
     the push, 180 s per submission; 1 MiB per gh answer and per pull request body; at most ten
     rulesets per check; at most 48 gh calls per run; one pull request list page of 100; the
-    read-back at most three reads, 0.5 s then 1.5 s apart.
+    read-back at most three reads, 0.5 s then 1.5 s apart. *From 6.3.6:* at most three pages of open
+    pull requests and twenty file lists before the question, then one page and at most twenty file
+    lists again at step 8, so at most 92 gh calls per run.
 11. **Each pull request is green on its own**: `pnpm typecheck`, `pnpm test`, `pnpm build`,
     `pnpm smoke`. The suite leaves temporary directories and the disk was at 97 % when this plan
     was written: `df -h "$TMPDIR"` before a test-heavy step, targeted suites while developing.
@@ -209,7 +231,7 @@ a task that cannot hold one is stopped and brought to the owner.
     before handing it over. Keyless and offline where the slice allows it (a bare repository on
     disk as the remote, the fake gh through `pnpm demo:github`, targeted vitest files); commands
     that need the owner's gh only where the note puts them (6.1.3, 6.2.2, 6.3.1, 6.3.2, 6.3.3,
-    6.4.1). **No `#` comment inside a shell block** (the owner's zsh has no `interactive_comments`);
+    6.4.1; and, added on 2026-10-01, 6.3.4, 6.3.5 and 6.3.6, each after its offline steps). **No `#` comment inside a shell block** (the owner's zsh has no `interactive_comments`);
     expected output goes under the block as an "Attendu :" list; the owner's login is set once,
     `OWNER=your-login`, and read as `"$OWNER"`, never written `<owner>`.
 15. **Standing rules.** No commit, push or pull request without the owner's go-ahead. English
@@ -417,7 +439,7 @@ Nothing on the list reopens a decision of § 18 or § 19.
 | `src/cli/commands/init.ts` *(edit)* | 6.1.3, 6.2.2, 6.3.2 | `PROTECTION_SETTINGS` in place of `BRANCH_PROTECTION`; then `runInitRepo`'s own call with `route: 'init'`; then the preflight in `runInitRepo` |
 | `scripts/demo-github.mjs`, `package.json`, `scripts/smoke.mjs` *(edit)* | 6.1.3, 6.2.2, 6.3.x | `pnpm demo:github`, run by smoke |
 | `tests/unit/protection.test.ts`, `tests/unit/preflight.test.ts`, `tests/unit/protection-command.test.ts`, `tests/unit/init-command.test.ts` *(edit)*, `tests/contract/key-reach.test.ts` *(edit)*, `tests/unit/package-scripts.test.ts` *(edit)* | 6.1.3 | the judgement over every rule shape; the reads and their budget; the command's three exits; the list `init platform` prints; the protection leg; `pnpm demo:github` |
-| `docs/submitting.md` | 6.1.3, 6.2.2, 6.4.2 | the page a person follows |
+| `docs/submitting.md` | 6.1.3, 6.2.2, 6.3.4–6.3.6, 6.4.2 | the page a person follows |
 | `src/forge/local/objects.ts` *(edit)*, `src/forge/local/tree.ts` | 6.2.1 | `treeId`, `objectFormat`; `treeFor(git, parent, edits, format)` |
 | `src/forge/local/forge.ts` *(edit)* | 6.2.1, 6.3.2 | `acceptOlderBase`; the format read through `objectFormat`; then D12's sentence says "by this build" |
 | `src/core/plan/clear.ts` *(edit)* | 6.2.1 | `Cleared.request` |
@@ -436,6 +458,16 @@ Nothing on the list reopens a decision of § 18 or § 19.
 | `tests/unit/plan-intent.test.ts` *(edit)* | 6.3.1 | the intent road to the fake, the order before any model, the `iacRepo` cross-check |
 | `tests/unit/init-command.test.ts` *(edit)* | 6.3.2 | `init --submit` to the fake, D12's sentence |
 | `src/cli/commands/entry.ts`, `src/cli/commands/ask.ts` *(edit)*, `tests/unit/entry.test.ts` *(edit)* | 6.3.3 | the phrase road: `QUESTION_NOT_SUBMITTED`, `runEntry`'s `submit`, `classified`'s question road |
+| `src/core/github/protection.ts`, `src/core/github/pull-request.ts`, `src/forge/github/forge.ts`, `src/forge/provider.ts` *(edit)* | 6.3.4 | `MergeNote`, `consequenceOf`, `noteOf`, `refusesPush`, `MERGE_NOTE`, `unguardedNote`, `noteLine`, `LONGEST_NOTE`; the note in the body; steps 8 and 11 open whatever the rules; `created.note` |
+| `src/cli/commands/submit.ts`, `src/cli/render/protection.ts`, `src/cli/render/footer.ts`, `src/cli/index.ts`, `scripts/demo-github.mjs` *(edit)* | 6.3.4 | the note on stderr, once; the question and the closing lines where the author may merge alone; `renderUnprotected` for § 8 item 1 only, under a heading that says why; one demo step |
+| `tests/unit/{protection,pull-request-body,protection-command,plan-command,github-forge,merge-refused,submit-github,plan-intent,init-command,entry}.test.ts`, `tests/invariants/github-forge.test.ts`, `tests/contract/key-reach.test.ts` *(edit)* | 6.3.4 | each refusal on the rules turned into the opening it now is; the property: always opened, the note exactly when `judgeProtection` does not hold, and true where it says the author may merge alone |
+| `docs/design.md` §4.2, `AGENTS.md` *Authorisation*, `SECURITY.md`, `docs/stage-6-brief.md` §§ 8, 18 *(edit)* | 6.3.4 | the owner's decision of 2026-10-01, design first; the note amended by a dated paragraph, its record kept |
+| `src/cli/commands/submit.ts`, `src/cli/commands/plan.ts`, `src/cli/index.ts` *(edit)*, `tests/unit/proposal.test.ts` | 6.3.5 | `Proposal`, `Unproposed`, `unproposedLine`, `openToPropose`, `submit`'s `proposal`; `IntentOptions.propose`; `MainDeps.propose`, `proposeOf` (three terminals), `discardTypedAhead`, `confirmOnTerminal`'s `discard` |
+| `docs/design.md` §7.4 *(edit)* | 6.3.5 | the engine's proposal, design first |
+| `src/core/github/in-flight.ts`, `src/forge/github/in-flight.ts` | 6.3.6 | `judgeInFlight` and its types, `mergeReads`, `isSubmissionBranch`, `PATCH_LINES`; `readInFlight`, `rereadInFlight` |
+| `src/process/gh.ts`, `src/core/github/answers.ts`, `src/forge/github/api.ts`, `src/forge/github/limits.ts`, `src/forge/github/forge.ts`, `src/forge/open.ts`, `src/forge/provider.ts`, `src/core/plan/clear.ts`, `src/core/github/pull-request.ts` *(edit)* | 6.3.6 | two GET templates; `openPullsAnswer`, `pullFilesAnswer`, `openPulls`, `pullFiles`; `ghCalls: 92`; the forge's `login`, `ForgeProvider.inFlight`, step 8's second read, `already-proposed`; `relatedPaths`, `Cleared.related`; the body's `beside`, numbers without `#` |
+| `src/cli/commands/submit.ts`, `src/cli/commands/plan.ts`, `src/cli/commands/init.ts`, `src/cli/index.ts`, `src/cli/render/footer.ts` *(edit)* | 6.3.6 | `sayInFlight` and `serviceTarget` before any model on every `--submit` road; the verdict in `submitting()`; `InFlightReport`; `inFlightLines`; another person's login, branch and patch on stderr only |
+| `tools/fake-gh.ts`, `tests/support/fake-gh.ts`, `tests/support/github-fixture.ts` *(edit)*, `tests/unit/in-flight.test.ts`, `tests/unit/in-flight-read.test.ts`, `tests/unit/forge-types.test.ts` *(edit)* | 6.3.6 | the two routes in the fake, newest first, `head.repo`, `head.sha`, files from the bare repository; `pullRequestBy`; the judgement, the reads and their bounds, hostile answers; seven members on the GitHub forge |
 | `vitest.live.config.ts`, `tests/live/guard.ts`, `tests/live/setup.ts`, `tests/live/github/doors.ts`, `tests/live/github/submit.live.test.ts`, `tests/contract/github/answers-<date>.json`, `tests/contract/github-answers.test.ts`, `tests/support/github-answers.ts`, `tests/unit/github-answers.test.ts` | 6.4.1 | the live test, its guard and its doors, and what it records; the fake held to it |
 | `docs/adr/0015-a-submission-is-a-pull-request-the-rules-hold.md` and the documents of § 16's 6.4.2, `tests/unit/invariant-wording.test.ts` | 6.4.2 | ADR-0015; ADR-0006, -0010, -0012, -0003; design §4.2, §4.4, §5.1, §5.5, §7.0, §7.2, §7.4, §8, §9.2, §9.4, §10, §12.1; `SECURITY.md`; `docs/submitting.md`; README; `AGENTS.md`; `src/core/schemas/config.ts:7-8`; the invariant held word for word |
 | `tests/recordings/**` (the owner's), `tests/scenarios/plan-mode.test.ts`, `question-mode.test.ts`, `prompt-digests.test.ts` *(edit)* | 6.4.3 | every tape recorded before 2026-09-30, re-recorded by the owner with their key; every turn under the new digest, a stale question tape failing, `FIRST_SENT` split out and `SENT` re-measured |
@@ -483,6 +515,32 @@ that adds it, and is added here first when the plan changes.
 - 6.3.3: `QUESTION_NOT_SUBMITTED` and `runEntry`'s `submit?: boolean` (`cli/commands/entry.ts`); `classified(options, change, question?)` (`cli/commands/ask.ts`), the question road when the caller has another answer for one.
 - `Command` gains `{ name: 'protection'; repo?: string }`; `COMMANDS` gains `'protection'`; `plan` and `init` gain `local?: true` (6.2.2), `entry` gains `submit?: true` and `local?: true` (6.3.3).
 
+**Added on 2026-10-01 (6.3.4 to 6.3.6).** Each task's *Names this task adds* is the full list,
+with the exact lines; in short:
+- 6.3.4, `core/github/protection.ts`: `type MergeNote = 'author-may-merge' | 'base-unguarded'`;
+  `consequenceOf(missing: Missing): MergeNote | 'refused'` (exhaustive; `archived`, `no-push`,
+  `renamed` refused, `non-fast-forward`, `deletion` and `bypassable` `base-unguarded`, the rest
+  `author-may-merge`); `noteOf(verdict)`; `refusesPush(verdict)`; `MERGE_NOTE = "note: on this
+  repository the author may merge without another person's review"`; `unguardedNote(base,
+  missing)`; `noteLine(note, base, missing)`; `LONGEST_NOTE`. `PullRequestInput.note?`; `Submitted`'s `created.note?`;
+  `SubmissionSummary.github.authorMayMergeAlone`; `SubmissionReport`'s `created.note?`;
+  `PreviewStatus`'s `submitted.note?`; `refuseUnprotected`'s `notice`.
+- 6.3.5, `cli/commands/submit.ts`: `Unproposed`, `unproposedLine`, `Proposal`, `openToPropose`,
+  `submit`'s `proposal`; `IntentOptions.propose` (`plan.ts`); `MainDeps.propose`, `proposeOf`,
+  `Terminals`, `discardTypedAhead`, `confirmOnTerminal`'s `discard` (`index.ts`).
+- 6.3.6: `InFlightFile`, `InFlightPull`, `InFlightTarget`, `InFlightVerdict`, `judgeInFlight`,
+  `mergeReads`, `isSubmissionBranch`, `PATCH_LINES` (`core/github/in-flight.ts`); `relatedPaths`
+  (`core/plan/clear.ts`); `readInFlight`, `rereadInFlight` (`forge/github/in-flight.ts`);
+  `openGitHubForge`'s `login`; `GhRoute`'s `{ route: 'open-pulls'; owner; name; base; page }` and
+  `{ route: 'pull-files'; owner; name; number }`, `IN_FLIGHT_PAGES` (`process/gh.ts`);
+  `openPullsAnswer`, `pullFilesAnswer`; `GitHubApi.openPulls`, `.pullFiles`;
+  `GITHUB_LIMITS.inFlightPages = 3`, `.inFlightPulls = 20`, `.ghCalls = 92`;
+  `ForgeProvider.inFlight?`; `Submitted`'s and `SubmissionReport`'s `already-proposed`, `created`'s
+  `beside?`, `refused`'s `inFlight?`; `Cleared.related`; `PullRequestInput.beside?`;
+  `InFlightReport`, `sayInFlight`, `serviceTarget`; `PreviewStatus`'s `already-proposed` and
+  `beside`;
+  `inFlightLines`; `Unproposed`'s `in-flight`; `pullRequestBy` (test helper).
+
 **Exact lines** (engine sentences; every `<…>` passes `inertLine`).
 - stderr, the GitHub road: `submitting to github.com/<o>/<r>, into <base> (<remote>, <branch>'s upstream), as <login> (gh)`. No role: it is printed when the forge opens, before the preflight reads `permissions` (Choices); `idpa protection`'s block names the role.
 - stderr, `idpa protection`: `checking github.com/<o>/<r>'s <base> (<remote>, <branch>'s upstream), as <login> (gh)`.
@@ -501,7 +559,7 @@ that adds it, and is added here first when the plan changes.
 
 **Architecture rules** (exact titles). Renamed: *only the named modules write, and only process/git.ts and process/gh.ts start a process*. Unchanged titles, widened content: *every process src/ starts is given spawnedEnvironment* (both launchers; a `SPAWNS` entry names a list of environment functions, since `process/git.ts` makes two calls, `gitIn`'s with `gitEnvironment` and `pushIn`'s with `pushEnvironment`). New in 6.1.1: *nothing in src/ names a door the allow-list refuses*; *nothing in src/ reads a GitHub credential from the environment*; *in tests/, only tests/live/ and tests/support/fake-gh.ts name a door*. New in 6.1.2: *only forge/github/ loads the gh launcher* (`cli/` names `GhProcess` with `import type`, which is erased, as it names the forge's types today; `ghIn`'s default process is `spawnGh`, so no other module needs the launcher at run time). Their self-tests, in *the architecture rules themselves*: *refuses every way src/ can name a door*, *refuses every way src/ can read a GitHub credential*, *refuses every module but forge/github/ that loads the gh launcher*.
 
-**Scripts and variables.** `pnpm demo:github`; `pnpm test:live:github` (`vitest run --config vitest.live.config.ts`); `FAKE_GH_STATE`; `IDP_GITHUB_LIVE_REPO`, `IDP_GITHUB_LIVE_REVIEWER_GH_CONFIG_DIR` (read by `tests/live/` only); trace attributes `idp.forge.kind`, `idp.forge.host`, `idp.forge.repository`, `idp.forge.base`, `idp.forge.branch`, `idp.forge.pull_request`, `idp.forge.outcome`, `idp.forge.gh_calls`, `idp.forge.pushed`.
+**Scripts and variables.** `pnpm demo:github`; `pnpm test:live:github` (`vitest run --config vitest.live.config.ts`); `FAKE_GH_STATE`; `IDP_GITHUB_LIVE_REPO`, `IDP_GITHUB_LIVE_REVIEWER_GH_CONFIG_DIR` (read by `tests/live/` only); trace attributes `idp.forge.kind`, `idp.forge.host`, `idp.forge.repository`, `idp.forge.base`, `idp.forge.branch`, `idp.forge.pull_request`, `idp.forge.outcome`, `idp.forge.gh_calls`, `idp.forge.pushed`; from 6.3.5 `idp.forge.proposed`, from 6.3.6 `idp.forge.in_flight`.
 
 ---
 
@@ -3959,7 +4017,7 @@ this tool never closes it.
 
 ## Slice 6.3 — the three other roads
 
-Closed by 6.3.3: the intent road (6.3.1), `init` (6.3.2) and the phrase (6.3.3) each open a pull request, and each lifts its interim refusal.
+Closed by 6.3.3: the intent road (6.3.1), `init` (6.3.2) and the phrase (6.3.3) each open a pull request, and each lifts its interim refusal. Three tasks follow, the owner's decisions of 2026-10-01, before slice 6.4: the pull request always opened (6.3.4), the proposal (6.3.5), and what is in flight read first (6.3.6).
 
 ### Task 6.3.1: `plan "<intent>" --submit` to GitHub, and `iacRepo` as a cross-check
 
@@ -6024,6 +6082,2293 @@ Attendu :
 
 ---
 
+### Task 6.3.4: The pull request is always opened, and says when its author may merge it alone
+
+**Goal.** The owner's decision of 2026-10-01 (*Toujours ouvrir la PR*, the roadmap's decisions):
+whether the author of a pull request may merge it alone is the company's rule, not idpa's. So
+every road of `--submit` toward GitHub opens the pull request whatever the base's rules, and
+where the rules let its author merge it without another person's review it says so in one
+neutral line — `note: on this repository the author may merge without another person's review`
+— on stderr and in the pull request's body, and exits 0. idpa still never merges and never
+writes to the base. What protects **the push itself** stays refused: gh missing, logged out,
+expired, too old or not a person (exit 2); a clone whose own configuration would redirect the
+push (exit 2); a repository that is archived, that gh's account cannot push to, or that GitHub
+answers under another name (exit 1); a base not level with GitHub, a lease or a read-back that
+fails (exit 1, as today). `idpa protection` keeps answering 0 or 1: it is a diagnostic, and its
+exit-1 answer now ends on the line saying a submission opens the pull request all the same.
+Design §4.2 changes first, in this pull request, then `AGENTS.md`, `SECURITY.md`,
+`docs/submitting.md` and the note (a dated amendment). The merge-refused tests stay: they are the
+proof of what GitHub enforces where the rules exist. Scripted clients only; no prompt moves.
+
+Cites Global Constraints 1, 2, 4 and 5 (both rewritten here), 7, 8, 9, 11, 12, 13, 14 and 15.
+
+**Where this task starts.** On `851ef71`, `judgeProtection` (`src/core/github/protection.ts`)
+answers `holds: false` for any of the eleven `Missing` kinds, and three places act on it:
+`refuseUnprotected` (`src/cli/commands/submit.ts:280`), which returns `renderUnprotected`'s
+refusal, exit 1, before the preview (and, on the intent and phrase roads, before any model);
+the GitHub forge's step 8 (`src/forge/github/forge.ts`, `submit`: `if (!verdict.holds) return
+refused(unprotected(verdict))`), which refuses with nothing written; and its step 11
+(`opened`: `if (!again.holds) return stop(…)`), which leaves the branch pushed and opens
+nothing. `pullRequestLines` (`src/cli/render/footer.ts`) always says "Merging it waits for one
+approval of its latest commit from someone other than you", and `questionOf`
+(`src/cli/index.ts`) always ends the GitHub road's question on "Nothing is provisioned until
+someone else approves it and it is merged." Both would be false on a base whose rules let the
+author merge alone.
+
+**Which `Missing` kinds become a note, and which stay refusals.** One exhaustive switch,
+`consequenceOf(missing: Missing)` in `src/core/github/protection.ts`, decides it, and every
+caller reads it rather than a list of its own:
+
+| `Missing` | § 8 item | Consequence | Why |
+|---|---|---|---|
+| `pull-request` | 2 | note, `author-may-merge` | no binding rule asks for a pull request's approval |
+| `approvals` | 2 | note, `author-may-merge` | the binding rule asks for 0 approvals |
+| `last-push` | 2 | note, `author-may-merge` | the account that pushes last may approve, or an approval survives a push on top of it |
+| `bypassable` | 3 | note, `base-unguarded` — never a note of its own: the kind it explains decides | `judgeProtection` adds it only beside the required kind a ruleset gh's account bypasses supplies and nothing binding does (`protection.ts:209-211`), so that kind is always in `missing` too: a bypassed pull request rule is `pull-request`, which says `author-may-merge`; alone, `bypassable` can only explain `non-fast-forward` or `deletion` |
+| `deploy-key` | 3 | note, `author-may-merge` | a deploy key in a bypass list GitHub showed moves the base with a plain push |
+| `classic-only` | 4 | note, `author-may-merge` | classic protection's settings are not read, so nothing says the author cannot |
+| `non-fast-forward` | 2 | note, `base-unguarded` | nothing in the rules blocks a force push to the base |
+| `deletion` | 2 | note, `base-unguarded` | nothing in the rules blocks deleting the base |
+| `archived` | 1 | **refused**, exit 1 | there is nothing to open a pull request into |
+| `no-push` | 1 | **refused**, exit 1 | the push itself would be refused |
+| `renamed` | 1 | **refused**, exit 1 | the remote names a repository GitHub answers under another name: the push and the rules would go through a redirect; the remote is the person's to update |
+
+Why `bypassable` is `base-unguarded`: take a binding ruleset requiring a pull request with one
+approval and the last push's approval, and a second ruleset, which gh's account bypasses,
+supplying only `non_fast_forward`. `missing` is `[non-fast-forward, bypassable]`; the binding pull
+request rule still refuses the author's merge without another person's approval, so
+`author-may-merge` there would be false. Mapped to `base-unguarded`, `noteOf` takes the strongest
+consequence present, and the bypassed pull request rule still says `author-may-merge` through
+`pull-request`. `deploy-key` stays `author-may-merge` as the owner listed it: a deploy key in a
+bypass list moves the base without anybody's review, and gh cannot see who holds it.
+
+`repositoryMissing` (item 1) returns before the rules are read, so a verdict's `missing` is
+either all item 1 or all items 2 to 4: a submission is refused on the first, and goes on with a
+note on the second. Refusals that are not `Missing` stay as they are: every exit 2 of Global
+Constraint 9, a base not level with GitHub, more than ten supplying rulesets or a paginated
+rules answer (`GitHubAnswerError`, an answer past its bound), the road moved at step 8, the
+lease, the read-back, § 14's rows.
+
+**The note's exact wording.** One line, at most one per run, the first that applies:
+
+- `note: on this repository the author may merge without another person's review` — any
+  `author-may-merge` kind (the owner's words, approved on 2026-10-01: *note*, never *warning*);
+- only `base-unguarded` kinds: a fact about the rules, never about their effect, since a binding
+  pull request rule refuses a direct push — a force push included — by anyone it binds. "Binds"
+  is § 8 item 3's: a ruleset gh's account cannot bypass. One of three lines, by which rules no
+  binding ruleset supplies (`<base>` held to the branch grammar by `unguardedNote`, else `the
+  base`, the same bytes on stderr and in the body):
+  - `note: on this repository no rule on <base> that binds the author blocks force pushes`
+    (`non-fast-forward` only);
+  - `note: on this repository no rule on <base> that binds the author restricts deletions`
+    (`deletion` only);
+  - `note: on this repository no rule on <base> that binds the author blocks force pushes or
+    restricts deletions` (both).
+
+  The owner approved one wording; these exist because it would be false where a binding rule
+  does require another person's approval and only the force-push or deletion rule is missing or
+  bypassed. They are put to the owner ([Questions for the owner (2026-10-01
+  tasks)](#questions-for-the-owner-2026-10-01-tasks), question 2), and are built until the owner
+  answers otherwise; if refused, those kinds say no note at all (the approved line would be
+  false there, so it is never the fallback), and `idpa protection` keeps reporting them.
+
+The line goes to stderr (where the `submitting to` line goes, `SubmitOptions.notice`) and, the
+same text, into the pull request's body. It is never on stdout, so a traced run's output, which
+is its stdout, is unchanged by it, and `--json` stays one object: the report says it with a key
+(below).
+
+**What else changes where the note applies** (`author-may-merge` only; `base-unguarded` leaves
+the approval sentences true and unchanged):
+
+- the confirmation's last clause, `Nothing is provisioned until someone else approves it and it is
+  merged.`, becomes `Nothing is provisioned until it is merged.` — `SubmissionSummary.github`
+  gains `authorMayMergeAlone: boolean`; the clause with the approval is kept byte for byte where
+  it is false;
+- the closing line after `Pull request #<n> opened on …`: `Merging it waits for one approval of
+  its latest commit from someone other than you. No status check is required, so a system
+  downstream could not refuse it (ADR-0012).` becomes `No status check is required, so a system
+  downstream could not refuse it (ADR-0012).`, and `…from someone other than you, and for the
+  status checks <c1>, <c2>.` becomes `Merging it waits for the status checks <c1>, <c2>.`;
+- `CLOSING`, `Nothing is provisioned yet. The merge is what authorises it.`, is unchanged: it is
+  true whoever merges.
+
+The body may carry the longest of these lines: the bound of 1 MiB (Step 5) is checked on it.
+
+**When the rules are read, and which read decides.** The preflight (before the preview; on the
+intent and phrase roads before any model) decides whether the run says the note on stderr, once.
+Step 8 no longer refuses on a `Missing` of items 2 to 4. Step 11's read, the last before the pull
+request is opened, decides the body: the note is in the body exactly when step 11's verdict has an
+`author-may-merge` or `base-unguarded` kind, and the stderr line is said there, just above
+the closing lines, only when step 11 found a note the preflight did not (the rules weakened while
+the person read the diff); rules that strengthened in between leave a body without the note,
+which is true.
+`readRules` judges items 2 and 3 only, as before, so step 8 and step 11 can no longer refuse on
+`Missing` at all: they read the rules for the note and the status checks, and the base's tip
+(step 8) as before.
+
+**Files:**
+- Modify: `docs/design.md` (§4.2's second bullet, **first commit of the pull request**, before any
+  code: `AGENTS.md` requires the design to change before the invariant does)
+- Modify: `src/core/github/protection.ts` (`consequenceOf`, `MergeNote`, `noteOf`, `refusesPush`,
+  `MERGE_NOTE`, `unguardedNote`, `noteLine`, `LONGEST_NOTE`; `ProtectionVerdict` unchanged)
+- Modify: `src/core/github/pull-request.ts` (`PullRequestInput.note?: { kind: MergeNote; base:
+  string; missing: readonly Missing[] }`, the body's paragraph)
+- Modify: `src/forge/github/forge.ts` (step 8 no longer refuses on the rules — `readRules` never
+  holds an item-1 kind; step 11 opens with the note in the body; `created` carries `note`)
+- Modify: `src/forge/provider.ts` (`Submitted`'s `created` gains `note?: MergeNote`)
+- Modify: `src/cli/commands/submit.ts` (`refuseUnprotected` refuses item 1 and the level only, and
+  says the note through `notice`; `SubmissionSummary.github.authorMayMergeAlone`;
+  `SubmissionReport`'s `created` gains `note?`; the closing note when step 11 found a new one)
+- Modify: `src/cli/render/protection.ts` (`renderUnprotected` renders item 1 only, under a heading
+  that says why; the `renderProtection` exit-1 block gains its last line)
+- Modify: `src/cli/render/footer.ts` (`pullRequestLines` takes `note`; `PreviewStatus`'s
+  `submitted` gains `note?: MergeNote`)
+- Modify: `src/cli/index.ts` (`questionOf`'s last clause; `HELP`'s `--submit` paragraph)
+- Modify: `src/cli/commands/plan.ts`, `src/cli/commands/init.ts`, `src/cli/index.ts` (each
+  `refuseUnprotected` call hands `notice`; nothing else moves)
+- Modify (tests, each named below): `tests/unit/protection.test.ts`,
+  `tests/unit/pull-request-body.test.ts`, `tests/unit/protection-command.test.ts`,
+  `tests/unit/plan-command.test.ts` (its GitHub `SubmissionSummary` literal gains
+  `authorMayMergeAlone: false`, `:1752-1755`, or `pnpm typecheck` fails),
+  `tests/unit/github-forge.test.ts`, `tests/unit/merge-refused.test.ts`,
+  `tests/unit/submit-github.test.ts`, `tests/unit/plan-intent.test.ts`,
+  `tests/unit/init-command.test.ts`, `tests/unit/entry.test.ts`,
+  `tests/invariants/github-forge.test.ts`, `tests/contract/key-reach.test.ts`,
+  `tests/unit/package-scripts.test.ts` (the demo's pin, if it counts steps)
+- Modify: `scripts/demo-github.mjs` (one step)
+- Modify: `AGENTS.md` (*Authorisation*; the exit-code paragraph; the state line; the test count),
+  `SECURITY.md` (the *Guaranteed* row of the invariant; *Not guaranteed*), `docs/submitting.md`
+  (its opening invariant, *The ruleset on the base branch*, *`idpa protection`*, each road's
+  refusal on the rules), `docs/stage-6-brief.md` (a dated amendment at the head of § 8 and of
+  § 18; the record below it unchanged), `README.md` (where it quotes the refusal or the waiting
+  line), `src/cli/README.md` (*Submitting*), `src/forge/github/README.md`, `CHANGELOG.md`,
+  `docs/roadmap.md`, `docs/plans/stage-6-github.md` (Global Constraints 4 and 5, the Goal
+  paragraph, the *Exact lines* of the shared names, and the passages of 6.4.2 its head's dated
+  pointer names brought to the new wording; ticks)
+
+**Interfaces:**
+- Consumes: `judgeProtection`, `ProtectionVerdict`, `Missing`, `repositoryMissing`,
+  `PROTECTION_SETTINGS`, `protectionText` (6.1.3); `preflight`, `readRules` (6.1.3, 6.2.1);
+  `openGitHubForge`, `Submitted`, `PullRequest`, `pullRequestBody`, `PullRequestInput` (6.2.1);
+  `refuseUnprotected`, `refusedBefore`, `SubmissionSummary`, `SubmissionReport`,
+  `forgeAttributes`, `pullRequestLines`, `PreviewStatus`, `questionOf` (6.2.2, 6.3.1);
+  `githubClone`, `unprotect`, `githubForge` (6.2.1, 6.3.1).
+- Produces:
+
+```typescript
+// src/core/github/protection.ts
+/** What a missing rule does to a submission (the owner's decision of 2026-10-01). */
+export type MergeNote = 'author-may-merge' | 'base-unguarded'
+
+/** Exhaustive over `Missing`: a note, or a refusal of the push itself (§ 8 item 1). */
+export function consequenceOf(missing: Missing): MergeNote | 'refused'
+
+/**
+ * The one note a verdict carries, or none: `author-may-merge` when any missing kind is one,
+ * else `base-unguarded` when any is, else undefined. Undefined too when the verdict refuses:
+ * a caller reads `refusesPush` first.
+ */
+export function noteOf(verdict: ProtectionVerdict): MergeNote | undefined
+
+/** Whether a verdict refuses the submission: some missing kind's consequence is `refused`. */
+export function refusesPush(verdict: ProtectionVerdict): boolean
+
+/** The owner's words, on stderr and in the pull request's body. */
+export const MERGE_NOTE = "note: on this repository the author may merge without another person's review"
+
+/**
+ * The `base-unguarded` line, naming the rules no binding ruleset supplies among
+ * `non-fast-forward` and `deletion` (`missing`); `base` held to `isBranch`, else "the base".
+ */
+export function unguardedNote(base: string, missing: readonly Missing[]): string
+
+/** The line for a note, whichever it is. */
+export function noteLine(note: MergeNote, base: string, missing: readonly Missing[]): string
+
+/** The longest line `noteLine` can return for a base of 255 bytes: what the body's bound is checked with. */
+export const LONGEST_NOTE: string
+
+// src/core/github/pull-request.ts — PullRequestInput gains:
+  /** The note the rules read just before opening call for, if any: its line is a paragraph of the engine's block. */
+  readonly note?: { readonly kind: MergeNote; readonly base: string; readonly missing: readonly Missing[] }
+
+// src/forge/provider.ts — Submitted's `created` gains:
+  /** The note step 11's read called for: the body carries it, and the CLI says it if the preflight did not. */
+  readonly note?: MergeNote
+
+// src/cli/commands/submit.ts — SubmissionSummary.github gains:
+    /** The preflight found an `author-may-merge` kind: the question does not promise an approval. */
+    readonly authorMayMergeAlone: boolean
+// SubmissionReport's `created` gains `note?: MergeNote` (the `--json` key; never a login).
+// refuseUnprotected's options gain `notice?: (line: string) => void`, where the note goes.
+```
+
+`PreviewStatus`'s `submitted` gains `note?: MergeNote`, and `pullRequestLines(pullRequest,
+verdict: Pick<ProtectionVerdict['reported'], 'statusChecks'> & { readonly note?: MergeNote })`.
+
+**Names this task adds** (to *The names every task shares*): `MergeNote`, `consequenceOf`,
+`noteOf`, `refusesPush`, `MERGE_NOTE`, `unguardedNote`, `noteLine`, `LONGEST_NOTE`
+(`core/github/protection.ts`);
+`PullRequestInput.note`; `Submitted.created.note`; `SubmissionSummary.github.authorMayMergeAlone`;
+`SubmissionReport.created.note`; `PreviewStatus.submitted.note`; `refuseUnprotected`'s
+`notice`. Exact lines: the note lines above (the owner's, and the three `base-unguarded` ones);
+the item-1 refusal's heading, `not submitted — github.com/<o>/<r> cannot take a pull request from
+this run:`; `Nothing is provisioned until it is merged.
+[y/N] ` as the GitHub question's tail when `authorMayMergeAlone`; the two closing lines above;
+`idpa protection`'s new last line before `Then run idpa protection again.`: `A submission still
+opens its pull request here, and says: <the note line>` — said only when `noteOf(verdict)` is
+defined (an item-1 verdict refuses submissions, and the line would be false).
+
+**Each road's refusal on the rules, and what replaces it:**
+
+| Road | On `851ef71` | From this task |
+|---|---|---|
+| `plan --from … --submit` (`runPlan`) | `refuseUnprotected` → the ruleset block, exit 1, no preview | the note on stderr, the preview, the question, the pull request, exit 0 |
+| `plan "<intent>" --submit` (`runIntent`) | the same, before the Inspector | the note on stderr before the Inspector; the run goes on to the pull request |
+| `idpa "<phrase>" --submit` | the same, before the Supervisor | the note before the Supervisor; a question is still refused, exit 3, after it |
+| `init --submit` (`runInitRepo`) | the block ending `…or add --local…`, before the Inspector | the note before the Inspector; the service's pull request opened |
+| all four, step 8 | `refused(unprotected(verdict))`, nothing written | never on a rule: the run goes on |
+| all four, step 11 | `pushed-without-pull-request`, "no longer hold" | the pull request opened, its body carrying the note step 11's read calls for |
+| `idpa protection` | exit 1, the block | exit 1, the block, and the line saying a submission still opens its pull request |
+
+An item-1 verdict (`archived`, `no-push`, `renamed`) is refused on every road as today, by the
+same `renderUnprotected` — but its heading on `851ef71`, `not submitted — nothing on <base> stops
+the person who would open this pull request from merging it:` (`render/protection.ts:219`), is
+not why these are refused, and after the owner's decision it is not true of anything. It
+becomes `not submitted — github.com/<o>/<r> cannot take a pull request from this run:`, then the
+same `missing:` lines, then the same last line (`init`'s keeps `--local`). No ruleset is printed
+there, as on `851ef71` already: `RULESET_WOULD_HELP` (`render/protection.ts:32-41`) holds no item-1
+kind.
+
+- [ ] **Step 1: Design §4.2 first (its own commit)**
+
+`docs/design.md` §4.2's second bullet, the owner's invariant of 2026-09-30, is replaced by the
+owner's decision of 2026-10-01, in the wording put to the owner (question 1; recommended below,
+and used by every document of this task until the owner words it otherwise):
+
+> - **idpa never merges and never writes to the base: it opens a pull request, and the base's
+>   rules decide who may merge it.** Whether its author may merge it alone is the company's rule,
+>   not this tool's; where the rules allow it, idpa says so — `note: on this repository the
+>   author may merge without another person's review` — on stderr and in the pull request, and
+>   the pull request is opened all the same. Where the rules require someone else's approval of
+>   the exact commit that would merge, the identity that opens the pull request cannot merge it:
+>   on GitHub the right to push a branch is the right that merges, so no credential can be
+>   scoped out of merging, and what refuses the merge is the base's ruleset, which the tool
+>   reads before it writes anything and again at the moment of acting; a test asserts that the
+>   merge **fails** there: offline against a fake, live on a throwaway repository (the stage 6
+>   note, `docs/stage-6-brief.md` §§ 8 and 10, amended 2026-10-01).
+
+The first bullet ("The merge is the act of authorisation. The CLI opens a pull request; it never
+writes to the main branch.") and the third stay. The commit, before any other change of the
+branch:
+
+```bash
+git add docs/design.md
+git commit -m "docs(design): the pull request is always opened; the base's rules decide who may merge it"
+```
+
+- [ ] **Step 2: Write the failing tests**
+
+`tests/unit/protection.test.ts`:
+
+```typescript
+describe('consequenceOf', () => {
+  it.each([
+    ['pull-request', 'author-may-merge'],
+    ['approvals', 'author-may-merge'],
+    ['last-push', 'author-may-merge'],
+    ['bypassable', 'base-unguarded'],
+    ['deploy-key', 'author-may-merge'],
+    ['classic-only', 'author-may-merge'],
+    ['non-fast-forward', 'base-unguarded'],
+    ['deletion', 'base-unguarded'],
+    ['archived', 'refused'],
+    ['no-push', 'refused'],
+    ['renamed', 'refused'],
+  ] as const)('%s is %s', (missing, consequence) => {
+    expect(consequenceOf(missing)).toBe(consequence)
+  })
+})
+```
+
+and, over the verdicts this file already builds: *notes author-may-merge over base-unguarded
+when both are missing*; *notes nothing on a verdict that holds*; *refuses, and notes nothing,
+on any item-1 kind*; *notes base-unguarded, never author-may-merge, where a binding pull request
+rule requires another person's approval and only a bypassed ruleset blocks force pushes*
+(`judgeProtection` over that shape gives `[non-fast-forward, bypassable]`, and `noteOf` gives
+`base-unguarded`), and the same with `deletion`; *notes author-may-merge where the bypassed
+ruleset supplies the pull request rule* (`[pull-request, bypassable]`); *says the owner's words,
+and names in the base-unguarded line exactly the rules missing* (the three variants of
+`unguardedNote`; `unguardedNote('main‮', …)` says `the base`); *checks the body's bound with the
+longest line* (`LONGEST_NOTE.length` is the maximum of `noteLine` over every note, every
+`missing` and a base of 255 bytes). *Why they fail:* none of the names is exported.
+
+`tests/unit/pull-request-body.test.ts`: *puts the note in the engine's block, one paragraph,
+after how the change was made and before the provisioning sentence*, both notes, every road;
+*writes no note line when none is asked*, which pins the body of `851ef71` byte for byte for
+each road (the four bodies the file pins already). *Why:* `PullRequestInput` has no `note`.
+
+`tests/unit/protection-command.test.ts`: `renderUnprotected` over `archived`, `no-push` and
+`renamed` begins `not submitted — github.com/acme/iac cannot take a pull request from this run:`
+and never `stops the person who would open this pull request`, then keeps its `missing:` lines
+and its last line (and prints no ruleset, as on `851ef71`); `renderProtection` over each
+`author-may-merge` kind ends `A submission still opens its pull request here, and says: note: on
+this repository the author may merge without another person's review`, then `Then run idpa
+protection again.`; over `non-fast-forward` alone it quotes the `base-unguarded` line; over
+`no-push` it says neither. The exit-1 block's other lines are byte for byte 6.1.3's. *Why:* the
+heading on `851ef71` is the one about merging, and the closing line does not exist.
+
+`tests/unit/plan-command.test.ts`: *asks § 3's question on the GitHub road* hands
+`authorMayMergeAlone: false` and keeps its expectation byte for byte. *Why:* the field is
+required, so the literal does not typecheck without it.
+
+`tests/unit/github-forge.test.ts`, *the moment of acting*: the two tests that pin the old
+refusals change their expectation and their title (*re-checks the rules at the moment of
+acting: a ruleset dropped after the confirmation leaves nothing on either side* becomes
+*reads the rules again at the moment of acting, and a ruleset dropped after the confirmation
+opens the pull request with the note in its body*; *opens nothing when the rules stop holding
+during the push* becomes *opens the pull request with the note when the rules stop holding
+during the push*), each asserting `outcome: 'created'`, `note: 'author-may-merge'`, one pull
+request in the fake whose body holds `MERGE_NOTE` on a line of its own above `Nothing is
+provisioned yet.`, and `state` moved by exactly the branch on both sides. Item 1 is not read
+again at step 8, as on `851ef71` (`readRules`'s comment): an account that lost its push access
+meanwhile is refused by the push, as today. *Why they fail:* the forge refuses at step 8 and
+stops at step 11.
+
+`tests/unit/merge-refused.test.ts` (the proof of what GitHub enforces stays; what changes is who
+opens the pull request in the weak cases):
+
+- *lets the author merge unreviewed wherever the preflight refuses, and the preflight refuses
+  each* becomes *opens the pull request with the note wherever the rules let its author merge it
+  alone, and the author can merge it*: for each of the four weak models it keeps, the forge
+  itself submits (`forge.submit`, no pull request opened by hand through the fake any more) and
+  answers `created` with `note: 'author-may-merge'`; `noteOf(verdict)` from the preflight is
+  `'author-may-merge'`; then the same approval, push on top and merge as today, the merge
+  answering 200 — the note was true.
+- *refuses a deploy key it can see in the bypass list* becomes *notes a deploy key it can see in
+  the bypass list, and opens the pull request*: the fast-forward of `main` by the deploy key is
+  kept as the proof the note is true; the hidden list's verdict still holds, with no note.
+- The other three tests are unchanged, titles included: on the protected base the doors stay
+  refused, which is what `SECURITY.md` cites.
+
+*Why:* the forge refuses the four weak models, so `created` never comes.
+
+`tests/invariants/github-forge.test.ts`, a third `it` in its `describe`:
+
+```typescript
+it('opens the pull request on every shape of rules, and says the note exactly when judgeProtection does not hold', async () => {
+  // Every combination the fake models, not a sample: the pull request rule absent, with 0 or 1
+  // approvals, with and without the last-push rule; force pushes and deletions blocked or not;
+  // gh's account's bypass never, always, pull_requests_only or exempt; a deploy key in a list
+  // shown or hidden; classic protection alone. For each: one submission through the forge.
+  for (const model of RULE_SHAPES) {
+    const clone = await githubClone({ model: { accounts: ACCOUNTS } })
+    clone.gh.state.repositories = [model(clone.bare)]
+    const { forge, api, road } = await githubForge(clone, { wait: async () => {} })
+    const base = await forge.base()
+    const verdict = (await preflight(api, road, base)).verdict
+    const outcome = await forge.submit(await clearedFor(clone.repo), base)
+
+    expect(outcome.outcome, describeShape(model)).toBe('created')
+    expect(clone.gh.state.pulls ?? [], describeShape(model)).toHaveLength(1)
+    const body = clone.gh.state.pulls?.[0]?.body ?? ''
+    const noted = outcome.outcome === 'created' ? outcome.note : undefined
+    expect(noted !== undefined, describeShape(model)).toBe(!verdict.holds)
+    expect(noted, describeShape(model)).toBe(noteOf(verdict))
+    expect(body.includes(MERGE_NOTE), describeShape(model)).toBe(noted === 'author-may-merge')
+    if (!hasDeployKey(model)) {
+      const merged = await mergedAlone(clone, outcome)
+      expect(merged, describeShape(model)).toBe(noted === 'author-may-merge')
+    }
+    await discard(clone)
+  }
+}, 300_000)
+```
+
+`mergedAlone(clone, outcome)` (`grace` approves the head, the author pushes on top of it, the
+author merges through the fake; whether `main` moved) and `hasDeployKey(model)` are the file's
+own.
+
+`RULE_SHAPES` (local to the file, built with `protectedMain`, `protectingRuleset` and `repository`
+from `tests/support/fake-gh.ts`) holds every product the fake answers — among them the two that
+pin `bypassable`: a binding pull request rule (one approval, the last push's) beside a ruleset
+gh's account bypasses that alone supplies `non_fast_forward`, or `deletion` — and the test
+asserts it holds at least one shape per `author-may-merge` and `base-unguarded` kind, so the
+property is never vacuous.
+
+The property checks that the note is **true**, not only present: after the forge opens the pull
+request, `grace` approves its head, the author pushes a commit on top (`onTop`, as
+`merge-refused.test.ts` does), and the author asks the fake to merge. Where the note is
+`author-may-merge` the merge answers 200; where it is `base-unguarded` or absent it is refused,
+and `main` has not moved. The one exception is a `deploy-key` shape whose pull request rule binds
+the author: there the note is true of the deploy key, not of the author, and
+`merge-refused.test.ts` holds it by the deploy key's fast-forward of `main` (below); the property
+skips the merge for it and says so in `describeShape`.
+
+An item-1 shape is not in it: a fourth `it`, *refuses the push itself on every
+item-1 kind, and writes nothing on either side*, holds `archived`, `no-push` and `renamed` to
+`refused` with no ref and no pull request. *Why they fail:* the forge refuses every shape but
+the protected one.
+
+The road tests, each the refusal it pinned turned into the opening it now is (titles change
+accordingly, and each asserts the stderr note exactly once, no `Add a ruleset` on stdout, and
+the pull request's body holding the note):
+
+- `tests/unit/submit-github.test.ts`: *refuses an unprotected base before anything is written,
+  and prints the ruleset to add* → *opens the pull request on an unprotected base, says the note
+  on stderr and in its body, and exits 0* (prose and `--json`: `submission.note` is
+  `'author-may-merge'`, `Object.keys` of the report pinned with `note` added, stdout one JSON
+  object, stderr the note); *re-checks the rules after the confirmation, and writes nothing when
+  they are gone* → *reads the rules after the confirmation, and opens the pull request with the
+  note when they are gone* (the note said once more after the closing lines, since the
+  preflight found none); new: *asks without promising an approval where the author may merge
+  alone* (the `SubmissionSummary` handed to `confirm` has `authorMayMergeAlone: true`, and
+  `confirmOnTerminal` over it writes `… Nothing is provisioned until it is merged. [y/N] `);
+  *the closing lines of a submission* gains the two note variants of `pullRequestLines`; new:
+  *refuses a repository gh's account cannot push to, before anything is written* (item 1 stays).
+- `tests/unit/plan-intent.test.ts`: *refuses a base whose rules let the opener merge, exit 1,
+  before a single model call* → *says the note before a single model call, and opens the pull
+  request after the Reviewer* (the note on stderr precedes the first `model ` line of the
+  `watching` log); *refuses at the moment of acting when the rules go while the Reviewer reads,
+  and writes nothing on either side* → *opens the pull request with the note when the rules go
+  while the Reviewer reads*; *puts where a refusal before any model would have gone on the
+  trace's root* keeps its cross-check and divergence cases, and its rules case becomes the
+  `no-push` miss.
+- `tests/unit/init-command.test.ts`: *refuses a service repository whose rules let the opener
+  merge, exit 1, before the Inspector, naming --local* → *says the note before the Inspector, and
+  opens the service's pull request*; *refuses when the rules go while the Architect drafts…* →
+  *opens the pull request with the note when the rules go while the Architect drafts*; new:
+  *refuses a service repository gh's account cannot push to, before the Inspector, naming
+  --local*.
+- `tests/unit/entry.test.ts`: *refuses unprotected rules before the Supervisor, exit 1* → *says
+  the note before the Supervisor*; a question put to `--submit` on that base is still exit 3,
+  the note said before the Supervisor's word.
+- `tests/contract/key-reach.test.ts`: in both *keeps gh's login off the trace and MLflow when
+  the rules refuse …* legs, the `rules` miss becomes a submission that opens the pull request
+  (exit 0, the provider reached, `idp.forge.outcome: 'created'`), and the leg asserts that no
+  login, canary or key is in stdout, the trace, MLflow **or the pull request's body**, and that
+  the note is on stderr; the `push access` miss stays the refusal it is. The titles become
+  *keeps gh's login off the trace and MLflow when the rules let the author merge alone, or
+  refuse the push, …*.
+
+*Why they fail:* every road refuses on the rules.
+
+- [ ] **Step 3: Run them to verify they fail**
+
+```bash
+df -h "$TMPDIR"
+pnpm vitest run tests/unit/protection.test.ts tests/unit/pull-request-body.test.ts tests/unit/protection-command.test.ts tests/unit/plan-command.test.ts tests/unit/github-forge.test.ts tests/unit/merge-refused.test.ts
+pnpm vitest run tests/unit/submit-github.test.ts tests/unit/plan-intent.test.ts tests/unit/init-command.test.ts tests/unit/entry.test.ts tests/contract/key-reach.test.ts
+pnpm vitest run tests/invariants/github-forge.test.ts
+```
+
+Expected: FAIL — the missing exports; the four roads refusing with the ruleset block; the forge
+refusing at step 8 and stopping at step 11.
+
+- [ ] **Step 4: `core/github/`**
+
+`consequenceOf` is a `switch` over `Missing` with `const _exhaustive: never = missing` in
+`default`. `noteOf` returns undefined when `refusesPush(verdict)`, else the strongest note among
+`verdict.missing`'s consequences (`author-may-merge` over `base-unguarded`). `unguardedNote`
+picks its variant from whether `non-fast-forward` and `deletion` are in `missing` (one of them
+always is when the note is `base-unguarded`: `bypassable` never comes alone). `pullRequestBody`
+writes, when `input.note` is set, the paragraph `noteLine(note.kind, note.base, note.missing)`
+after `This change was …` and its blank line; the base reaches the body only through
+`unguardedNote`, which holds it to `isBranch` (`core/` cannot import `inertLine`): a base outside
+the grammar is written `the base`. No other line of the body moves.
+
+- [ ] **Step 5: The forge**
+
+In `submit`, step 8: `const verdict = await readRules(api, road)` stays (its status checks and,
+from step 11, the note are read from it); `if (!verdict.holds) return refused(unprotected(…))`
+is removed with `unprotected`. `readRules` judges items 2 and 3 only, as on `851ef71`, so a
+verdict read at step 8 or step 11 never holds an item-1 kind and the forge never refuses on a
+rule: no read is added, and § 15's budget of 48 is unchanged.
+
+Step 11, in `opened`: `const again = await readRules(api, road)`; `if (!again.holds) return
+stop(…)` is removed. The note is `noteOf(again)`; the body is rebuilt there, with it:
+`pullRequestBody({ …, note })`. The bound of 1 MiB is checked at step 8 on the body built with
+`LONGEST_NOTE` in place of the note (6.3.6 adds its `beside` paragraph at its own bound to that
+same worst case), so a body step 11 builds is never longer than the one step 8 checked; step 11
+checks the body it built against the bound once more, before the POST, and a body over it stops
+there with the branch pushed and nothing opened — a row of § 4's table that the same command,
+run again, completes. `created` carries `note` when there is one. `unprotected` and its sentence
+are deleted.
+
+- [ ] **Step 6: `cli/`**
+
+`refuseUnprotected` (`submit.ts`): `if (!verdict.holds)` becomes `if (refusesPush(verdict))`,
+then the level check as today; when `noteOf(verdict)` is defined, `options.notice?.(noteLine(…))`
+once — the verdict kept per forge and base (6.3.1) records that it was said, so the phrase
+road's early call and `runIntent`'s second call say it once. Every caller passes `notice` (the
+`plan`'s two roads and `init` from `SubmitOptions.notice`; the phrase from `toStderr(err)`).
+`submitting()` hands `authorMayMergeAlone: noteOf(verdict) === 'author-may-merge'` in the
+summary, reading the kept verdict. `outcomeOf`'s `created` carries `note` into the status and
+the report; when `note` is defined and the kept verdict had none, `outcomeOf` sends the note
+line through `notice` as it builds the result, so a terminal shows it just above the closing
+lines (tested by the order of the captured chunks), and never twice in a run.
+`pullRequestLines` drops the approval sentence when `note === 'author-may-merge'`, as *Exact
+lines* says. `questionOf`'s tail reads `authorMayMergeAlone`. `HELP`'s `--submit` paragraph: "the
+pull request is opened whatever the base's rules; where they let its author merge it alone, a
+note says so".
+
+`renderUnprotected` keeps its signature; it is only reached with an item-1 verdict now, and
+prints the heading `not submitted — <github.com/o/r> cannot take a pull request from this run:`
+(the repository through `printedRepository`), its `missing:` lines and its last line, and no
+ruleset. `renderProtection` gains its line.
+
+- [ ] **Step 7: The demo**
+
+`scripts/demo-github.mjs` gains, after the last step, on a fresh `world({})` (no ruleset) and a
+copy of `examples/open-network.json` whose entity is `orders-api-to-payments-alone`, written in the
+demo's scratch directory: *Submitted where the author may merge alone: opened, with the note* —
+exit 0, stderr holding `note: on this repository the author may merge without another person's
+review`, stdout `Pull request #1 opened on github.com/acme/iac: …/pull/1`, the fake's pull
+request #1 body holding the note. `package-scripts.test.ts`'s pin follows if it counts steps.
+
+- [ ] **Step 8: The documents this task makes true**
+
+- `AGENTS.md`, *Invariants*, **Authorisation**: the first bullet unchanged; the second becomes the
+  §4.2 bullet of Step 1, word for word, with `tests/unit/merge-refused.test.ts` and the owner's
+  live test named as the proof of what GitHub enforces where the rules require an approval; the
+  third unchanged. The exit-code paragraph: under `1`, "a base on GitHub the rules do not
+  protect" becomes "a repository on GitHub gh's account cannot push to, that is archived or that
+  answers under another name"; under `0`, "or a branch submitted, already submitted, or declined
+  at the confirmation" gains "— on GitHub whatever the base's rules, a note saying when its author
+  may merge it alone"; `idpa protection`'s three codes unchanged. The state line names 6.3.4; the
+  test count re-measured, and the README's badge.
+- `SECURITY.md`: the *Guaranteed* row that states the invariant is rewritten to Step 1's bullet,
+  its tests renamed as above (the three unchanged `merge-refused` titles first, then the
+  invariant property, the forge's two renamed tests, and each road's note test); *Not
+  guaranteed, by design* gains "where a base's rules let a pull request's author merge it
+  alone, idpa opens the pull request and says so; it does not stop the merge, which is the
+  company's rule (2026-10-01)".
+- `docs/submitting.md`: its opening invariant becomes Step 1's first sentence; *The ruleset on
+  the base branch* says the ruleset is what keeps the author from merging alone, and that without
+  it a submission opens the pull request with the note; *`idpa protection`* says its exit 1 is a
+  diagnostic and quotes its new last line; each road's section replaces its refusal on the rules
+  by the note, and keeps the item-1 refusals.
+- `docs/stage-6-brief.md`: at the head of § 8 and of § 18, one italic paragraph each:
+  "*Amended 2026-10-01 by the owner: the pull request is always opened; where the rules below
+  are missing, the run says so in one note and does not refuse (stage 6 plan, Task 6.3.4).
+  Decisions 1, 5 and 7 are amended accordingly; the section below is the record of
+  2026-09-30.*" Nothing below them is edited.
+- `docs/plans/stage-6-github.md`: Global Constraint 5 becomes Step 1's first sentence and "A pull
+  request is opened whatever the base's rules; the note says when its author may merge it
+  alone; the push itself is refused on § 8 item 1, and every exit 2 stays"; Global Constraint 4
+  becomes "Nothing is written on either side before the re-check at step 8 passes, and nothing is
+  opened before the read-back of step 11 passes; the second rules read of step 11 decides the
+  note in the body, never whether to open", the rest unchanged; the Goal's "they refuse to submit
+  where the base branch's ruleset would let the opener merge…" becomes "they open the pull request
+  whatever the base's rules, saying in one note when its author may merge it alone"; the *Exact
+  lines* "stdout, unprotected" entry names item 1 only, under its new heading, and the note lines
+  are added; every passage the dated pointer at 6.4.2's head names says Step 1's words, and the
+  pointer and its markers are removed. 6.4.1 is unchanged: its throwaway repository keeps the
+  ruleset, and its doors stay refused there.
+- `README.md`, `src/cli/README.md`, `src/forge/github/README.md`: wherever a refusal on the rules
+  or the waiting line is quoted.
+- `docs/roadmap.md`: the stage 6 row names 6.3.4; the first decision of 2026-10-01 recorded as
+  built.
+
+**Exhaustive switches:** `consequenceOf` over `Missing` (new). `pullRequestLines` and
+`questionOf` read `note` with an `if`; `MergeNote` is switched on in `noteLine` with its `never`.
+
+**Architecture rules:** none added; re-counted (`pnpm vitest run tests/architecture
+--reporter=verbose`, 30 on `851ef71`). No door, no route and no launcher shape moves: the forge
+opens through the one POST it already had.
+
+- [ ] **Step 9: Checks**
+
+```bash
+df -h "$TMPDIR"
+pnpm vitest run tests/unit/protection.test.ts tests/unit/pull-request-body.test.ts tests/unit/protection-command.test.ts tests/unit/plan-command.test.ts tests/unit/github-forge.test.ts tests/unit/merge-refused.test.ts tests/unit/submit-github.test.ts tests/unit/plan-intent.test.ts tests/unit/init-command.test.ts tests/unit/entry.test.ts tests/contract/key-reach.test.ts
+pnpm vitest run tests/invariants/github-forge.test.ts
+pnpm vitest run tests/scenarios
+pnpm vitest run tests/architecture --reporter=verbose
+pnpm typecheck && pnpm test && pnpm build && pnpm smoke
+git status --short tests/recordings tests/golden fixtures/si-demo
+```
+
+Expected: all green; `prompt-digests.test.ts` unchanged and green; the last command prints
+nothing.
+
+- [ ] **Step 10: The pull request** (after the owner's go-ahead)
+
+```bash
+git add src/core/github/protection.ts src/core/github/pull-request.ts src/forge/github/forge.ts src/forge/provider.ts \
+  src/cli/commands/submit.ts src/cli/commands/plan.ts src/cli/commands/init.ts src/cli/index.ts src/cli/render/protection.ts src/cli/render/footer.ts \
+  src/cli/README.md src/forge/github/README.md \
+  tests/unit/protection.test.ts tests/unit/pull-request-body.test.ts tests/unit/protection-command.test.ts tests/unit/plan-command.test.ts tests/unit/github-forge.test.ts tests/unit/merge-refused.test.ts \
+  tests/unit/submit-github.test.ts tests/unit/plan-intent.test.ts tests/unit/init-command.test.ts tests/unit/entry.test.ts \
+  tests/invariants/github-forge.test.ts tests/contract/key-reach.test.ts tests/unit/package-scripts.test.ts scripts/demo-github.mjs \
+  AGENTS.md SECURITY.md docs/submitting.md docs/stage-6-brief.md README.md CHANGELOG.md docs/roadmap.md docs/plans/stage-6-github.md
+git commit -m "feat(forge): open the pull request whatever the base's rules, and say when its author may merge it alone"
+```
+
+Two commits: Step 1's (`docs/design.md` alone), then this one. Branch `feat/s6-always-open`, base
+`main` (6.3.3 is merged, #131).
+CHANGELOG, `### Changed`:
+
+> - A submission toward GitHub opens the pull request whatever the base's rules: whether its
+>   author may merge it alone is the company's rule, not idpa's. Where the rules allow it, the
+>   run says so in one line, `note: on this repository the author may merge without another
+>   person's review`, on stderr and in the pull request, and exits 0; idpa still never merges
+>   and never writes to the base, and a repository gh's account cannot push to, that is
+>   archived or that answers under another name is still refused, as are gh and a clone
+>   configured to redirect the push; `idpa protection` still answers 0 or 1
+>   ([#PRNUM](https://github.com/pcaboor/idp-agent/pull/PRNUM)).
+
+**What changes that a person sees:** on a base without the ruleset, `--submit` opens the pull
+request where it refused, with one `note:` line on stderr and the same line in the pull
+request; the question and the closing lines stop promising an approval there; `idpa protection`
+adds one line to its exit-1 answer. On a protected base nothing moves, byte for byte.
+
+**What the owner can run.** Offline, from `~/Documents/idp-agent-main` once this is merged:
+
+```bash
+cd ~/Documents/idp-agent-main
+git pull --ff-only
+pnpm install
+pnpm build
+pnpm vitest run tests/unit/merge-refused.test.ts tests/unit/protection.test.ts --reporter=verbose
+pnpm demo:github
+```
+
+Attendu :
+- `merge-refused.test.ts` lists *refuses every door to the identity that opened the pull request,
+  and leaves it open and main where it was* and *opens the pull request with the note wherever
+  the rules let its author merge it alone, and the author can merge it*, among its six; `consequenceOf`'s
+  eleven cases pass; exit 0;
+- `pnpm demo:github` prints every earlier step as before, then *Submitted where the author may
+  merge alone: opened, with the note* — `(exit 0)`, and no line saying `this step expects`.
+
+With the owner's gh, against `~/idpa-live`, whose ruleset is switched off for the time of the
+check. First the preparation, from the main checkout (`BIN` names its build):
+
+```bash
+cd ~/Documents/idp-agent-main
+pnpm build
+BIN="$HOME/Documents/idp-agent-main/dist/cli/bin.js"
+sed 's/orders-api-to-payments/orders-api-to-payments-alone/g' examples/open-network.json > "$TMPDIR/idpa-alone.json"
+git -C ~/idpa-live pull --ff-only
+```
+
+Then, on GitHub, `idpa-live` → Settings → Rules → Rulesets → the ruleset on `main` → Enforcement
+status **Disabled** → Save. Then:
+
+```bash
+node "$BIN" protection --repo ~/idpa-live; echo "exit $?"
+```
+
+Attendu :
+- the block naming what is missing, then `A submission still opens its pull request here, and
+  says: note: on this repository the author may merge without another person's review`, then
+  `Then run idpa protection again.`; `exit 1`.
+
+Then one command, which asks:
+
+```bash
+node "$BIN" plan --from "$TMPDIR/idpa-alone.json" --repo ~/idpa-live --submit
+```
+
+Attendu :
+- stderr: `submitting to github.com/<your login>/idpa-live, into main (origin, main's
+  upstream), as <your login> (gh)`, then `note: on this repository the author may merge without
+  another person's review`;
+- the diff creating `dependencies/network/orders-api-to-payments-alone.yml`, then `Push
+  idp-agent/orders-api-to-payments-alone-<8 hex> to github.com/<your login>/idpa-live with your
+  git, and open a pull request into main with your gh? Nothing is provisioned until it is
+  merged. [y/N]` — answer `y`;
+- `1 file · submitted as idp-agent/orders-api-to-payments-alone-<8 hex> on top of main@<7 hex> ·
+  main untouched`, `Pull request #<n> opened on github.com/<your login>/idpa-live:
+  https://github.com/<your login>/idpa-live/pull/<n>`, `No status check is required, so a system
+  downstream could not refuse it (ADR-0012).`, `Nothing is provisioned yet. The merge is what
+  authorises it.`;
+- on GitHub, the pull request's body holds the note, and its page offers you the merge. Do not
+  merge it: close it on GitHub (idpa never closes one).
+
+```bash
+echo "exit $?"
+```
+
+Attendu :
+- `exit 0` (run right after the command above, in the same shell).
+
+Then switch the ruleset's Enforcement status back to **Active**, and:
+
+```bash
+node "$BIN" protection --repo ~/idpa-live; echo "exit $?"
+```
+
+Attendu :
+- the block saying `main` keeps a pull request from merging until someone other than its opener
+  approves its latest commit; `exit 0` — `~/idpa-live` is ready for 6.4.1 again.
+
+---
+
+---
+
+### Task 6.3.5: The Supervisor proposes to open the pull request
+
+**Goal.** The owner's decision of 2026-10-01 (*Modèle Claude Code*, the roadmap's decisions): at a
+terminal, a change previewed **without** `--submit` ends on a proposal — the diff, then the one
+question `--submit` asks, naming the push and the pull request; the person's `y` authorises it; the
+**engine** opens it, exactly as `--submit` would, and prints `Pull request #<n> opened on
+github.com/<o>/<r>: <url>`. Nothing pushes without that answer, and no model holds a tool that
+could: the proposal is the engine's question, written by the engine from the cleared plan, after
+the last model call. A run with no terminal — a pipe, a script, `--json`, a test that injects its
+streams — is never asked, and still needs `--submit`: the proposal is put only when stdin,
+stdout and stderr are all terminals, so the person who answers is the person who read the diff,
+and a line typed while the models ran is discarded before the question is written. On the
+phrase road and on `plan "<intent>"`; `plan --from` and `init` are unchanged. Scripted clients only; **no prompt changes, so no tape
+moves**.
+
+Cites Global Constraints 1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14 and 15.
+
+**Where this task starts.** On 6.3.4's branch, a change previewed without `--submit` ends on
+`renderOutcome`'s `render({ kind: 'preview' })` (`src/cli/commands/plan.ts`, the intent road, which
+the phrase's change road reaches through `runIntent`): the diff, `<n> file(s) · nothing written`,
+`CLOSING`, exit 0, and nothing of GitHub is read. `confirmOf` (`src/cli/index.ts`) hands
+`confirmOnTerminal` only to a run with `--submit`, at a TTY, with no injected stream. The
+Supervisor is one call that says `QUESTION` or `MUTATION` (`src/agents/supervisor.ts`); it holds
+no tool, and neither does any agent that reaches `forge/` (the architecture rule *only cli/
+reaches forge/ at run time*).
+
+**What "the Supervisor proposes" is, in this build.** The Supervisor's `MUTATION` is what sends a
+phrase down the change road; the proposal is the engine's question at the end of that road, after
+the Reviewer. No model writes a word of it, and no `›` line accompanies it: a model sentence there
+would need a prompt that asks for one — a new request byte in every change tape, so every
+plan-mode tape stale until 6.4.3 — and it could say nothing the engine does not already say,
+since the engine alone knows the road, the base, the rules and the branch. The question is
+`questionOf`'s, byte for byte the one `--submit` asks for the same summary, so a person learns one
+question, and a test holds the two to the same string. Whether the owner wants a model-written
+line later is [question 3](#questions-for-the-owner-2026-10-01-tasks).
+
+**Which roads propose:**
+
+| Road | At a terminal, no `--submit` | With `--submit` | No terminal, or `--json` |
+|---|---|---|---|
+| `idpa "<phrase>"`, a `MUTATION` | the diff, then the proposal | as 6.3.3 | the preview, as on 6.3.4's branch |
+| `idpa "<phrase>"`, a `QUESTION` | the answer; nothing proposed | refused, exit 3 (6.3.3) | as today |
+| `plan "<intent>"` | the diff, then the proposal | as 6.3.1 | the preview |
+| `plan --from <plan.json>` | the preview, unchanged | as 6.2.2 | the preview |
+| `init` | the preview, unchanged | as 6.3.2 | the preview |
+
+`plan --from` is the road with no model and none possible: a file somebody hands over is
+submitted by typing `--submit`, as a script would. `init`'s change lands in the service's own
+repository, not the declarations repository the owner's flow reviews, and stage 8's discovery,
+which writes the same files from any service repository, is where a proposal on that road
+belongs ([question 4](#questions-for-the-owner-2026-10-01-tasks)). Both keep `--submit`.
+
+**The order on the proposal road**, after the Reviewer and the diff, and why each step sits where it
+does:
+
+| # | What | When it does not go on |
+|---|---|---|
+| 1 | `renderOutcome` reaches a `planned` outcome with a diff that changes a byte, no `--submit`, no `--json`, and a `propose` handed in | the preview, as today |
+| 2 | `clearPlan` | `no pull request proposed — <its first reason>` |
+| 3 | `openForSubmission(root, 'declarations', { route, … })`: the local forge, the road, the configuration keys, gh's identity; the `submitting to …` line on a GitHub road | a `ForgeInputError` or a `GitHubAnswerError`: `no pull request proposed — <its first line>` |
+| 4 | the road | a local road: `no pull request proposed — <why>` (below) |
+| 5 | `refuseOtherRepository` (with an inspected project), `refuseDivergence`, `refuseUnprotected` (6.3.4: item 1 and the base level only; the note said here) | `no pull request proposed — <the refusal's first line>` |
+| 6 | `submit({ …, confirm, proposal })`: recognition, then the question | a recognised refusal or a closed pull request: `no pull request proposed — <its reason>`; already submitted: the preview, then its closing lines, not asked |
+| 7 | the person's answer | `n`, an empty line or Ctrl-D: declined, exit 0; Ctrl-C: exit 130 |
+| 8 | step 8 to step 11, the forge's, after `y` | as `--submit`: exit 1 on a refusal at the moment of acting |
+
+The reads of steps 3 to 6 come **before** the question, for two reasons. A question is only put
+when the engine can do what it says: the person is never asked to authorise a push that gh, the
+clone or the base would then refuse. And no exit 2 follows a model call (Global Constraint 9): a
+gh logged out is found before the question, and said as the line that no pull request is
+proposed, the preview standing at exit 0 — the person asked for a preview, and got it. They come
+**after** the last model call, so the order of a preview run before its diff is unchanged, byte for
+byte: nothing of GitHub reaches a model (Global Constraint 7), and no gh starts on a run that
+ends on questions, a refusal or a stop.
+
+Every `no pull request proposed — …` line is said once, on stderr, and the run's stdout is the
+preview's (the diff, `<n> file(s) · nothing written`, `CLOSING`), its exit code the preview's. A
+proposal that goes on to the question prints the diff through `confirmOnTerminal`, as `--submit`
+does, and the result is then the closing lines alone. A submission recognised before the question
+(row 6, already submitted) prints the whole preview with its closing lines: the person asked for
+a preview, and `--submit`'s habit of printing only the closing lines there is kept for `--submit`.
+
+**The order a person sees.** Every stderr line is written when it is said, and `main` prints a
+command's result only after the command returns. So at a terminal, after the agents' lines:
+where nothing is proposed, the `no pull request proposed — …` line comes first and the diff after
+it (the person reads why nothing will be asked before reading the diff); where the question is
+put, the `submitting to …` line and 6.3.4's note (when there is one) come first, then the diff,
+which `confirmOnTerminal` writes, then the question, then the closing lines. Both orders are
+pinned by the order of the captured chunks, as 6.3.4 pins its closing note.
+
+**Files:**
+- Modify: `src/cli/commands/submit.ts` (`Proposal`, `Unproposed`, `unproposedLine`, `openToPropose`;
+  `submit`'s `proposal`)
+- Modify: `src/cli/commands/plan.ts` (`IntentOptions.propose`; `renderOutcome` proposes)
+- Modify: `src/cli/index.ts` (`MainDeps.propose`, `proposeOf` (exported, with the terminals it
+  reads as a parameter), `discardTypedAhead`, `confirmOnTerminal`'s `discard` option; the intent
+  road and the phrase's change road hand `propose` when `--submit` was not typed; `HELP`)
+- Modify: `src/cli/commands/entry.ts` (the header comment; nothing else moves — the change road is
+  `runIntent`'s)
+- Create: `tests/unit/proposal.test.ts` (the lines, the reads before the question, the answers,
+  `proposeOf` and `discardTypedAhead` over fake streams)
+- Modify: `tests/unit/plan-intent.test.ts`, `tests/unit/entry.test.ts`,
+  `tests/unit/trace-wiring.test.ts`, `tests/contract/key-reach.test.ts`, `tests/unit/cli-args.test.ts`
+  (`HELP`)
+- Modify: `docs/design.md` (§7.4 step 7, the confirmation, gains the proposal; first commit, as
+  6.3.4's), `docs/submitting.md` (*Without `--submit`: the proposal*), `SECURITY.md`, `README.md`,
+  `src/cli/README.md`, `AGENTS.md` (the trust boundary, the write guarantees, the previews'
+  sentence, the exit-code paragraph's `0` and `130`, the state line, the test count),
+  `CHANGELOG.md`, `docs/roadmap.md`
+
+**Interfaces:**
+- Consumes: `openForSubmission`, `refuseOtherRepository`, `refuseDivergence`, `refuseUnprotected`
+  (and its `notice`, 6.3.4), `submit`, `Confirm`, `SubmissionSummary`, `confirmOnTerminal`,
+  `questionOf`, `submissionOf`, `InterruptedError`, `clearPlan`, `ClearInput`, `renderOutcome`,
+  `localRoadLine`, `ForgeInputError`, `GitHubAnswerError`, `forgeAttributes`.
+- Produces:
+
+```typescript
+// src/cli/commands/submit.ts
+/**
+ * Why a change previewed at a terminal ends without the question: what `--submit`
+ * would have refused with, said as the reason nothing is proposed.
+ */
+export type Unproposed =
+  | { readonly why: 'local-road'; readonly road: LocalRoad }
+  | { readonly why: 'refused'; readonly line: string }
+
+/** The one stderr line, at most once per run: `no pull request proposed — <reason>`. */
+export function unproposedLine(unproposed: Unproposed): string
+
+/** What `main` hands a change road previewed at a terminal without `--submit`. */
+export interface Proposal extends Pick<SubmitOptions, 'env' | 'gh' | 'notice'> {
+  /** The person at the keyboard: `--submit`'s question, asked after the diff. */
+  readonly confirm: Confirm
+  readonly route: 'intent' | 'phrase'
+}
+
+/**
+ * Steps 3 to 5 of the proposal road: the forge, the road, gh, the service's iacRepo,
+ * divergence and the base's rules — everything `--submit` checks before it previews —
+ * after the last model call. A refusal is never thrown here: it is why nothing is
+ * proposed. Anything else (a programming error, git failing unexpectedly) is thrown.
+ */
+export async function openToPropose(input: {
+  readonly root: string
+  readonly proposal: Proposal
+  readonly project?: string
+  readonly config?: RepositoryConfig
+  readonly contents: ReadonlyMap<string, string>
+}): Promise<Opened | Unproposed>
+
+// submit()'s input gains:
+  /**
+   * The person did not type --submit: a recognised refusal or closed pull request ends
+   * the run on the preview and `unproposedLine`, exit 0, and a submission recognised
+   * before the question prints the whole preview, not only its closing lines.
+   */
+  readonly proposal?: { readonly notice: (line: string) => void }
+
+// src/cli/commands/plan.ts — IntentOptions gains:
+  /** At a terminal, without --submit: the diff ends on the proposal. Never with `submit`. */
+  readonly propose?: Proposal
+
+// src/cli/index.ts — MainDeps gains:
+  /**
+   * How a proposal is answered (§7.4 step 7, 2026-10-01). Injected for the reason `confirm`
+   * is; left out, `proposeOf` decides from the terminals whether anyone is there.
+   */
+  propose?: Confirm
+
+/** The three streams a proposal needs to be terminals; `process`'s unless a test hands its own. */
+export interface Terminals {
+  readonly stdin: { readonly isTTY?: boolean }
+  readonly stdout: { readonly isTTY?: boolean }
+  readonly stderr: { readonly isTTY?: boolean }
+}
+
+/** Who answers a proposal, or nobody: exported for its test, as `confirmOnTerminal` is. */
+export function proposeOf(deps: MainDeps, json: boolean, terminals?: Terminals): Confirm | undefined
+
+/**
+ * Reads and discards what was typed before the question: raw mode on a terminal (so a line
+ * typed but not ended is discarded too), until the input has been quiet for 50 ms, at most
+ * 500 ms; a Ctrl-C among it is `InterruptedError`. Exported for its test.
+ */
+export async function discardTypedAhead(input: NodeJS.ReadableStream): Promise<void>
+
+// confirmOnTerminal(input, output, diff, options?: { readonly discard?: boolean }):
+// with `discard`, `discardTypedAhead(input)` runs after the diff is written and before the question.
+```
+
+`proposeOf(deps, json, terminals = process)` is `confirmOf`'s twin and reads only `deps.propose`:
+`undefined` with `--json`; `deps.propose` when injected; `undefined` when `out` or `err` is
+injected (every test that does not inject `propose`, and every scenario, so no tape and no golden
+sees a proposal); `confirmOnTerminal(process.stdin, process.stderr, process.stdout, { discard:
+true })` only when **stdin, stdout and stderr** are each a TTY. `confirmOf` keeps reading stdin
+alone: with `--submit` the person typed their consent on the command line, and the question is a
+second look; on the proposal road the `y` is the only consent, so the diff must reach the screen
+the question is on (`idpa "…" > out.txt` or `| tee` sends it elsewhere, and is never asked), and a
+`y` typed into the terminal while the models ran (a run can take tens of seconds) must not answer
+a question it was typed before. A separate seam rather than `deps.confirm`, so a test that
+injects a confirmation for `--submit` never meets a proposal it did not ask for.
+
+**Names this task adds** (to *The names every task shares*): `Unproposed`, `unproposedLine`,
+`Proposal`, `openToPropose`, `submit`'s `proposal`, `IntentOptions.propose`, `MainDeps.propose`,
+`proposeOf`, `Terminals`, `discardTypedAhead`, `confirmOnTerminal`'s `discard`; the trace attribute
+`idp.forge.proposed`. Exact lines:
+
+- `no pull request proposed — <branch> tracks no remote; --submit cuts the branch in this clone`
+- `no pull request proposed — the remote is on <host>, where this build opens no pull request;
+  --submit cuts the branch in this clone`
+- `no pull request proposed — <line>`, where `<line>` is the reason `--submit` would have printed
+  for the same refusal (`reasonOf`, below): its first line with a leading `not submitted — ` and a
+  trailing ` Nothing was written.` taken off (the preview wrote nothing either), and, when that
+  line ends on `:`, the `missing:` lines under it joined to it by `; ` — so 6.3.4's item-1 refusal
+  reads `no pull request proposed — github.com/acme/iac cannot take a pull request from this run:
+  missing: push access: gh's account cannot push to acme/iac`; or, e.g. `no pull request proposed — main tracks github.com/acme/iac, and gh is not
+  logged in to github.com, so idpa cannot read the rules that keep a pull request from merging
+  unreviewed. Run \`gh auth login --hostname github.com\`, then run this again; or add --local to
+  cut the branch in this clone only.`
+- the question: `questionOf`'s, unchanged (6.3.4's tail where the author may merge alone).
+
+Every `<…>` passes `inertLine`. `idp.forge.proposed`: `true` on a run that put the question (its
+outcome `created`, `declined`, or what step 8 to 11 answered), `false` on a run that said
+`no pull request proposed`, absent where nothing was proposed or submitted; never a login.
+
+- [ ] **Step 1: Design §7.4 first (its own commit)**
+
+`docs/design.md` §7.4 step 7 gains, after the confirmation's paragraph:
+
+> At a terminal, a change previewed without `--submit` ends on the same question (2026-10-01):
+> the engine reads what `--submit` would read before it asks — the road, gh, the base's rules,
+> the clone level with GitHub — after the last model call, and asks only when it could do what it
+> says; otherwise it says in one line why no pull request is proposed, and the preview stands.
+> The question is the engine's; no model writes it, and no agent holds a tool that pushes. A run
+> with no terminal is never asked, and submits only with `--submit`.
+
+The commit, before any other change of the branch:
+
+```bash
+git add docs/design.md
+git commit -m "docs(design): a change previewed at a terminal ends on the engine's proposal"
+```
+
+- [ ] **Step 2: Write the failing tests**
+
+`tests/unit/proposal.test.ts` (new): `unproposedLine` over each `LocalRoad['why']` but `asked`
+(`--local` is refused without `--submit`, so `asked` never reaches it: the test asserts it throws),
+over a `refused` line holding a bidi control and an ANSI escape (one line out, both spelled out);
+and, over a `githubClone()` and a `Cleared` from `clearedFor` (no CLI), `openToPropose`:
+
+```typescript
+describe('openToPropose', () => {
+  afterAll(removeClones)
+
+  it.each([
+    ['gh logged out', (clone: GitHubClone) => clone.gh.logout(), 'gh is not logged in to github.com'],
+    ['gh not a person', (clone: GitHubClone) => clone.gh.as('ci-bot'), 'not a person'],
+    ['no push access', (clone: GitHubClone) => readOnly(clone.gh), "cannot push"],
+    ['the base not level', (clone: GitHubClone) => moveGitHubBase(clone), 'bring them level'],
+  ] as const)('answers why nothing is proposed when %s, and writes nothing on either side', async (_, make, said) => {
+    const clone = await githubClone({ model: { accounts: ACCOUNTS } })
+    await make(clone)
+    const before = { here: await observable(clone.repo), there: await remoteRefs(clone.bare) }
+
+    const opened = await openToPropose({ root: clone.repo, proposal: proposal(clone), contents: await contentsOf(clone.repo) })
+
+    expect('why' in opened && opened.why).toBe('refused')
+    expect(unproposedLine(opened as Unproposed)).toContain(said)
+    expect(unproposedLine(opened as Unproposed)).not.toContain('Nothing was written.')
+    expect(await observable(clone.repo)).toBe(before.here)
+    expect(await remoteRefs(clone.bare)).toEqual(before.there)
+    expect(clone.gh.state.pulls ?? []).toEqual([])
+  })
+
+  it('answers the local road for a clone that tracks no remote, and starts no gh', async () => { /* … */ })
+  it('opens the forge, and says the submitting line and 6.3.4’s note, where it can propose', async () => { /* … */ })
+  it('throws what is not a refusal', async () => { /* a git that fails with a GitError other than the forge's own refusals */ })
+})
+```
+
+`ACCOUNTS` (`ada`, and `ci-bot` of type `Bot`), `readOnly` (the fake's permission set to `read`),
+`proposal(clone)` (`{ confirm: async () => false, route: 'intent', env: clone.env, gh:
+clone.gh.process, notice }`) and `contentsOf` are the file's own; `githubClone`,
+`moveGitHubBase` and `remoteRefs` come from `tests/support/github-fixture.ts`, `observable` and
+`removeClones` from stage 5's supports. The `no push access` case passes only because `reasonOf`
+joins the `missing:` line to 6.3.4's item-1 heading: the words `cannot push` are on that second
+line.
+
+In the same file, the terminal itself, with no process and no clone:
+
+```typescript
+describe('proposeOf', () => {
+  const tty = { isTTY: true }
+  const pipe = { isTTY: false }
+  it.each([
+    ['stdin is not a terminal', { stdin: pipe, stdout: tty, stderr: tty }],
+    ['stdout is not a terminal (the diff is piped or redirected)', { stdin: tty, stdout: pipe, stderr: tty }],
+    ['stderr is not a terminal (the question would go elsewhere)', { stdin: tty, stdout: tty, stderr: pipe }],
+  ] as const)('asks nobody when %s', (_, terminals) => {
+    expect(proposeOf({}, false, terminals)).toBeUndefined()
+  })
+  it('asks the person when all three are terminals, and never with --json', () => {
+    expect(proposeOf({}, false, { stdin: tty, stdout: tty, stderr: tty })).toBeTypeOf('function')
+    expect(proposeOf({}, true, { stdin: tty, stdout: tty, stderr: tty })).toBeUndefined()
+  })
+  it('asks nobody when a test injects a stream, and the injected answer when one is given', () => { /* … */ })
+})
+
+describe('confirmOnTerminal with discard', () => {
+  it('discards a y typed before the question, and reads the answer typed after it', async () => {
+    const input = new PassThrough()
+    input.write('y\n')
+    const output = new PassThrough()
+    const asked = confirmOnTerminal(input, output, new PassThrough(), { discard: true })(SUMMARY)
+    await questionWritten(output)
+    input.write('n\n')
+    expect(await asked).toBe(false)
+  })
+  it('declines when the input closes with only a typed-ahead y in it (Ctrl-D)', async () => {
+    const input = new PassThrough()
+    input.end('y\n')
+    expect(await confirmOnTerminal(input, new PassThrough(), new PassThrough(), { discard: true })(SUMMARY)).toBe(false)
+  })
+  it('stops the run on a Ctrl-C typed ahead, exit 130', async () => { /* `\x03` before the question: InterruptedError */ })
+  it('still submits on a y typed after the question', async () => { /* … */ })
+})
+```
+
+`SUMMARY` is a GitHub `SubmissionSummary`; `questionWritten` resolves once `output` has received the
+question's text.
+
+*Why they fail:* none of the names is exported, and `confirmOnTerminal` has no `discard`.
+
+`tests/unit/plan-intent.test.ts`, a `describe('plan "<intent>" at a terminal, without
+--submit', { timeout: PUSHING })` over the file's `watching`, `run`, `ours`, `converging`,
+`CREATE_DATABASE`, `CREATE_ACCESS`, `application(CONFIGURED)` and `answering`:
+
+```typescript
+  const proposing = (answer: boolean) => {
+    const asked: SubmissionSummary[] = []
+    const propose: Confirm = async (summary) => {
+      asked.push(summary)
+      return answer
+    }
+    return { asked, propose }
+  }
+
+  it('proposes after the diff, and the engine opens the pull request on y', async () => {
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+    const { asked, propose } = proposing(true)
+
+    const { code, out, err } = await run(clone, ['plan', INTENT, '--repo', clone.repo, '--project', project], {
+      gh, client, ask: answering('read'), propose,
+    })
+
+    expect(code, err).toBe(0)
+    expect(asked).toHaveLength(1)
+    expect(asked[0]?.github).toMatchObject({ host: 'github.com', repository: 'acme/iac', base: 'main', pushedAlready: false })
+    expect(out).toContain('Pull request #1 opened on github.com/acme/iac: https://github.com/acme/iac/pull/1')
+    expect(out.trimEnd().endsWith(CLOSING)).toBe(true)
+    // Nothing of GitHub before the last model call: the order of a preview is today's.
+    const reviewed = log.lastIndexOf('model reviewer')
+    expect(log.slice(0, reviewed).some((line) => line.startsWith('gh '))).toBe(false)
+    expect(log.filter((line) => line.includes('POST'))).toHaveLength(1)
+  })
+
+  it('asks the very question --submit asks for the same change', async () => {
+    // Two runs over two fresh clones: the summaries handed to `propose` and to `confirm`
+    // differ only by the clone's path, and `confirmOnTerminal` writes the same question.
+  })
+
+  it('writes nothing on either side when the proposal is declined', async () => {
+    // `propose` answers false: exit 0; `2 files · not submitted · nothing written`; no ref on
+    // either side; no POST. (Ctrl-D is a decline in `confirmOnTerminal`, proved there, above.)
+  })
+
+  it('throws when handed both a submission and a proposal', async () => {
+    // `runIntent` with `submit` and `propose`: a programming error, never a choice between them.
+  })
+
+  it('stops the run on Ctrl-C at the proposal, exit 130, nothing written', async () => {
+    // `propose` throws `new InterruptedError()`, as `confirmOnTerminal` does on SIGINT.
+  })
+
+  it('says why no pull request is proposed when gh is logged out, and the preview stands at exit 0', async () => {
+    const clone = await githubClone()
+    clone.gh.logout()
+    const { asked, propose } = proposing(true)
+    const { code, out, err } = await run(clone, ['plan', INTENT, '--repo', clone.repo, '--project', await application(CONFIGURED)], {
+      client: converging([CREATE_DATABASE, CREATE_ACCESS]), ask: answering('read'), propose,
+    })
+    expect(code).toBe(0)
+    expect(asked).toEqual([])
+    expect(err).toMatch(/^no pull request proposed — main tracks github\.com\/acme\/iac, and gh is not logged in/m)
+    expect(out).toMatch(/^2 files · nothing written$/m)
+    expect(await ours(clone.repo)).toEqual([])
+  })
+
+  it('says the line before the diff, and the submitting line before the diff it asks about', async () => {
+    // Through the file's capture of both streams in order: where gh is logged out, the
+    // `no pull request proposed` chunk precedes the diff's first chunk; where it proposes, the
+    // `submitting to` chunk follows the last `model reviewer` event, precedes the diff
+    // `confirmOnTerminal` writes, which precedes the question.
+  })
+
+  it('proposes nothing on a clone that tracks no remote, and says so', async () => { /* stage 5's `clone()`; no gh started */ })
+  it('proposes nothing in --json, nor with no terminal, and starts no gh', async () => {
+    // `--json`: the report as on 6.3.4's branch, byte for byte, `propose` never called;
+    // no `propose` injected and `out` injected: the same preview, no gh line in the log.
+  })
+  it('proposes nothing when the run ends on questions, a refusal or a stop', async () => { /* … */ })
+  it('names a submission already made, with the diff, and asks nothing', async () => {
+    // A first run with --submit opens #1; a second, without it, prints the whole preview and
+    // `2 files · already submitted as idp-agent/… · pull request #1 is open · nothing written`.
+  })
+  it('sends every agent the bytes it sends with no terminal', async () => {
+    // The same client script, once with `propose` and once without: `seen` equal byte for byte,
+    // and neither holds `github.com` or the canary login.
+  })
+```
+
+`tests/unit/entry.test.ts`, in a `describe('idpa "<phrase>" at a terminal, without --submit')`:
+*proposes after a change's diff, and opens the pull request on y* (the Supervisor's `MUTATION`,
+then the agents, then the gh reads, then the POST, in that order in the log); *answers a question
+and proposes nothing* (`propose` never called, no gh line); *says the note before the question
+where the author may merge alone* (6.3.4's line on stderr before the question's call).
+
+`tests/unit/trace-wiring.test.ts`: *puts idp.forge.proposed on the root of a run that proposed*
+(`true`, outcome `created`) and *of one that said why it did not* (`false`, no other
+`idp.forge.*`).
+
+`tests/contract/key-reach.test.ts`, 6.3.1's `describe.each` gains the proposal leg:
+`submittingRun([example.intent, '--project', project], 'MUTATION', example.operations, { propose:
+async () => true })`, exit 0, the pull request's line, and `heldToGitHub(ran, 'acme/iac')`: no
+provider request holds `github.com`, the login or the canary, and the trace's root carries
+`idp.forge.proposed: true` and no login.
+
+`tests/unit/cli-args.test.ts`, `HELP`: the `--submit` paragraph holds the sentence below.
+
+*Why they fail, before the code:* `MainDeps` has no `propose`; a run without `--submit` never
+reads GitHub, so no question is asked, no pull request is opened and no line is said; the new
+exports do not exist.
+
+- [ ] **Step 3: Run them to verify they fail**
+
+```bash
+df -h "$TMPDIR"
+pnpm vitest run tests/unit/proposal.test.ts tests/unit/plan-intent.test.ts tests/unit/entry.test.ts
+pnpm vitest run tests/unit/trace-wiring.test.ts tests/contract/key-reach.test.ts tests/unit/cli-args.test.ts
+```
+
+Expected: FAIL — the missing exports, `propose` an unknown key of `MainDeps` (a type error the
+typecheck reports, and at run time a preview that never asks).
+
+- [ ] **Step 4: `submit.ts`**
+
+`openToPropose`: `openForSubmission(root, 'declarations', { env, gh, notice, local: false, route })`
+inside a `try` whose `catch` turns a `ForgeInputError` or a `GitHubAnswerError` into `{ why:
+'refused', line: reasonOf(error.message) }` and rethrows anything else; a `LocalRoad` is `{ why:
+'local-road', road }`; then `refuseOtherRepository` (when `project` is given), `refuseDivergence`
+(`{ files: contents, scope: 'catalogue' }`) and `refuseUnprotected(opened, { notice })`, each
+returned `CommandResult`'s text becoming `{ why: 'refused', line: reasonOf(text) }`. `reasonOf`
+takes the text's first line, removes a leading `not submitted — ` and a trailing ` Nothing was
+written.`, and, when the line then ends on `:`, joins it to the `  missing: …` lines that follow,
+trimmed, by `; ` — never a line of the ruleset list, and never a login (6.3.4's item-1 block names
+`gh's account`). `unproposedLine` switches on `why` with its `never`; the local road's two
+sentences are built from `localRoadLine`'s values, not its text (its `: nothing pushed` would be
+false advice here), and `asked` throws.
+
+`submit`'s `proposal`: in `submitting`, a `known` that is `refused` or `closed` returns, when
+`proposal` is set, `{ report: …as today, result: { text: render({ kind: 'preview' }).text, found:
+true } }` after `proposal.notice(unproposedLine({ why: 'refused', line: <its reason's first line> }))`;
+`already-submitted` is said with `render(status).text` in place of `closingLines(…)`. Nothing else
+of `submitting` moves, so `--submit` is unchanged byte for byte (its tests unchanged).
+`submit()` adds `'idp.forge.proposed': true` to the attributes it returns when `proposal` is set.
+
+- [ ] **Step 5: `plan.ts`**
+
+`IntentOptions.propose`. `runIntent` throws when handed both `submit` and `propose` (`main` never
+hands both; a test asserts the throw). `renderOutcome`'s options gain
+`proposal?: { readonly propose: Proposal; readonly root: string; readonly project?: string;
+readonly config?: RepositoryConfig; readonly clear: ClearInput }`, built in `runIntent` beside
+`submission` and handed only when `options.propose !== undefined && options.json !== true`.
+In the human path of a `planned` outcome:
+
+```typescript
+    if (submission === undefined && options.proposal !== undefined && changed.length > 0) {
+      // 2026-10-01: at a terminal, the diff ends on the engine's proposal. Every read below
+      // comes after the last model call; a refusal is why nothing is proposed, and the
+      // preview stands.
+      const { propose, root, project, config, clear } = options.proposal
+      const notice = propose.notice ?? (() => {})
+      const said = (unproposed: Unproposed): CommandResult => {
+        notice(unproposedLine(unproposed))
+        return { ...render({ kind: 'preview' }), attributes: { 'idp.forge.proposed': false } }
+      }
+      const cleared = clearPlan(outcome.signed, clear)
+      if ('outcome' in cleared) return said({ why: 'refused', line: cleared.reasons[0] ?? 'the change cannot be cleared' })
+      const opened = await openToPropose({ root, proposal: propose, contents: clear.contents,
+        ...(project !== undefined ? { project } : {}), ...(config !== undefined ? { config } : {}) })
+      if ('why' in opened) return said(opened)
+      return (await submit({ opened, cleared, render, confirm: propose.confirm, proposal: { notice } })).result
+    }
+```
+
+`renderOutcome`'s other branches are untouched: a question, a stop and `--json` never propose.
+
+- [ ] **Step 6: `main`**
+
+`MainDeps.propose`; `proposeOf`, `Terminals` and `discardTypedAhead` beside `confirmOf`;
+`confirmOnTerminal` gains its `discard` option (left out, as `confirmOf` calls it, it behaves byte
+for byte as on 6.3.4's branch). On the intent road (`index.ts`, the block that
+builds `submit` today): when `command.submit !== true`, `const confirm = proposeOf(deps,
+command.json)`, and when it is defined, `propose: { confirm, route: 'intent', ...submissionOf(deps,
+false, err) }` is handed to `runIntent`. On the phrase's change road, the same with `route:
+'phrase'`, inside the `change` callback 6.3.3 wrote, so a `QUESTION` never builds one. `HELP`'s
+`--submit` paragraph gains: "At a terminal, a change previewed without --submit ends on the same
+question: the pull request is opened only on your y. A script, a pipe or --json is never asked.";
+and its sentence "None of them writes, and neither do a phrase, plan and init without --submit."
+(`index.ts:331-332`) becomes "None of them writes, and neither do a phrase, plan and init without
+--submit, unless you answer y to the proposal a change previewed at a terminal ends on."
+
+- [ ] **Step 7: The documents this task makes true**
+
+- `AGENTS.md`: *The trust boundary* — "`plan … --submit` cuts the branch" gains "and at a terminal a
+  change previewed without it ends on the engine's proposal, the same question; the person's `y`
+  is the authorisation, and nothing is read on GitHub before the last model call on that road"; the
+  exit-code paragraph's `0` gains "a proposal declined, or not made, the preview standing" and `130`
+  gains "or at a proposal"; the commands block's `idpa "<phrase>"` and `plan "<intent>"` lines are
+  unchanged (no flag added); the state line; the test count and the badge. Three sentences that
+  would otherwise be false, each rewritten to name the proposal and nothing more: the previews
+  "which write nothing to a repository — unless `plan`, `init` or a phrase is given `--submit`"
+  (`AGENTS.md:191`) gains "or, at a terminal, a person answers `y` to the engine's proposal a
+  change's preview ends on"; the bold write guarantee (`AGENTS.md:204-209`) names the same
+  commands and the same one ref, and its "every other road pushes nothing and opens no pull
+  request" becomes "and so do `idpa "<phrase>"` and `plan "<intent>"` without `--submit` when a
+  person answers `y` to that proposal at a terminal; every other road pushes nothing and opens no
+  pull request". The tests that hold them are named beside them: `plan-command.test.ts`'s *still
+  writes nothing — .git included — without --submit* and `plan-intent.test.ts`'s *leaves the
+  declarations repository byte-identical* (both unchanged: neither run has a terminal), and this
+  task's *writes nothing on either side when the proposal is declined* and *proposes nothing in
+  --json, nor with no terminal, and starts no gh*.
+- `docs/submitting.md`: a section *Without `--submit`: the proposal* — the roads table above, the
+  order table in prose, the `no pull request proposed` lines, and that a script still types
+  `--submit`.
+- `SECURITY.md`: *Guaranteed* gains "a pull request is opened without `--submit` only on a person's
+  `y` at a terminal — stdin, stdout and stderr each a terminal, and nothing typed before the
+  question counted — to the engine's question, after the last model call", with the proposal
+  tests, the `proposeOf` and `discardTypedAhead` cases and the key-reach proposal leg. The row *A
+  preview writes nothing* (`SECURITY.md:226`) states its condition: "without `--submit`, and
+  without a `y` to the proposal at a terminal", its tests unchanged plus the declined-proposal
+  test. *What leaves your machine* gains one sentence: the routes are the same, but the occasion
+  is new — a change previewed at a terminal, `--submit` not typed, starts gh after the last model
+  call and reads gh's identity, the repository, the base's rules and its tip on github.com, before
+  asking; a run whose stdout or stdin is not a terminal, or `--json`, reads none of it. Whether to
+  add a way to preview at a terminal with no GitHub read is [question
+  8](#questions-for-the-owner-2026-10-01-tasks).
+- `README.md`, `src/cli/README.md`: the phrase's paragraph ends on the proposal.
+- `docs/roadmap.md`: the stage 6 row names 6.3.5; the second decision of 2026-10-01 recorded as built.
+
+**Exhaustive switches:** `unproposedLine` over `Unproposed['why']`, and over `LocalRoad['why']`
+inside its `local-road` case; both with `const _exhaustive: never`.
+
+**Architecture rules:** none added (re-count, as every task: `pnpm vitest run tests/architecture
+--reporter=verbose`). The guarantee that no model holds a tool that pushes is *only cli/ reaches
+forge/ at run time* together with *agents/ reaches no disk, transitively*: the question, the
+forge and the launchers stay in `cli/`, `forge/` and `process/`, and `plan.ts` imports `submit.ts`
+as it does today.
+
+- [ ] **Step 8: Checks**
+
+```bash
+df -h "$TMPDIR"
+pnpm vitest run tests/unit/proposal.test.ts tests/unit/plan-intent.test.ts tests/unit/entry.test.ts tests/unit/trace-wiring.test.ts tests/contract/key-reach.test.ts tests/unit/cli-args.test.ts tests/unit/submit-github.test.ts
+pnpm vitest run tests/scenarios
+pnpm vitest run tests/architecture --reporter=verbose
+pnpm typecheck && pnpm test && pnpm build && pnpm smoke
+git status --short tests/recordings tests/golden fixtures/si-demo
+```
+
+Expected: all green; `prompt-digests.test.ts` green and unchanged (a scenario injects its streams,
+so it is never asked); the last command prints nothing. `pnpm smoke` and `pnpm demo:github` run the
+binary with no terminal on stdin, and their output does not move.
+
+- [ ] **Step 9: The pull request** (after the owner's go-ahead)
+
+```bash
+git add docs/design.md src/cli/commands/submit.ts src/cli/commands/plan.ts src/cli/commands/entry.ts src/cli/index.ts src/cli/README.md \
+  tests/unit/proposal.test.ts tests/unit/plan-intent.test.ts tests/unit/entry.test.ts tests/unit/trace-wiring.test.ts \
+  tests/contract/key-reach.test.ts tests/unit/cli-args.test.ts \
+  docs/submitting.md SECURITY.md README.md AGENTS.md CHANGELOG.md docs/roadmap.md docs/plans/stage-6-github.md
+git commit -m "feat(cli): end a change previewed at a terminal on the engine's proposal to open its pull request"
+```
+
+Two commits: Step 1's, then this one. Branch `feat/s6-propose`, base `feat/s6-always-open`.
+CHANGELOG, `### Added`:
+
+> - At a terminal, a change previewed without `--submit` — `idpa "<phrase>"` or `plan "<intent>"` —
+>   ends on a proposal: the same question `--submit` asks, naming the push and the pull request,
+>   put by the engine after the last model call once it has read what `--submit` reads; on `y`
+>   the engine opens the pull request and prints its URL. Where it could not open one, one line
+>   says why no pull request is proposed, and the preview stands at exit 0. No model writes the
+>   question or holds a tool that pushes; a script, a pipe or `--json` is never asked and still
+>   needs `--submit` ([#PRNUM](https://github.com/pcaboor/idp-agent/pull/PRNUM)).
+
+**What changes that a person sees:** at a terminal (stdin, stdout and stderr), `idpa "<phrase>"`
+and `plan "<intent>"` end a change's diff on the question, or say before the diff, in one `no pull
+request proposed — …` line on stderr, why it is not asked; `y` opens the pull request as
+`--submit` would. Without a terminal, with `--json`, on a question, and on
+`plan --from` and `init`, nothing moves, byte for byte.
+
+**What the owner can run.** Offline, from the main checkout once this is merged:
+
+```bash
+cd ~/Documents/idp-agent-main
+git pull --ff-only
+pnpm install
+pnpm build
+pnpm vitest run tests/unit/proposal.test.ts tests/unit/plan-intent.test.ts tests/unit/entry.test.ts --reporter=verbose
+pnpm demo:github
+```
+
+Attendu :
+- the three files pass; among the titles, *proposes after the diff, and the engine opens the pull
+  request on y*, *writes nothing on either side when the proposal is declined*, *says why no pull
+  request is proposed when gh is logged out, and the preview stands at exit 0*, *sends every agent
+  the bytes it sends with no terminal*, *asks nobody when stdout is not a terminal (the diff is
+  piped or redirected)*, *discards a y typed before the question, and reads the answer typed after
+  it*;
+- `pnpm demo:github` prints what it printed on 6.3.4's branch, step for step: it runs with no
+  terminal, so nothing proposes.
+
+With the owner's gh and key, in a terminal (the proposal needs one: no pipe and no redirection
+on the command), from 6.3.1's `~/idpa-live-app`. First the preparation, from the main checkout
+(`BIN` names its build):
+
+```bash
+cd ~/Documents/idp-agent-main
+pnpm build
+BIN="$HOME/Documents/idp-agent-main/dist/cli/bin.js"
+cd ~/idpa-live-app
+git -C ~/idpa-live pull --ff-only
+```
+
+Then, one command, which asks:
+
+```bash
+node "$BIN" "open the network flow billing-api-to-inpi from component:default/billing-api to resource:default/inpi-api, owned by group:default/tiger" --repo ~/idpa-live
+```
+
+Attendu, in this order:
+- `· mutation` and the agents' lines;
+- on stderr, `submitting to github.com/<your login>/idpa-live, into main (origin, main's
+  upstream), as <your login> (gh)` — after the last agent's line and before the diff;
+- the diff creating `dependencies/network/billing-api-to-inpi.yml`;
+- `Push idp-agent/billing-api-to-inpi-<8 hex> to github.com/<your login>/idpa-live with your
+  git, and open a pull request into main with your gh? Nothing is provisioned until someone else
+  approves it and it is merged. [y/N] ` — answer `n`;
+- `1 file · not submitted · nothing written`, `Nothing is provisioned yet. The merge is what
+  authorises it.`; `git -C ~/idpa-live branch --list 'idp-agent/billing-api-to-inpi-*'` prints
+  nothing.
+
+Then the same command again, which asks again:
+
+```bash
+node "$BIN" "open the network flow billing-api-to-inpi from component:default/billing-api to resource:default/inpi-api, owned by group:default/tiger" --repo ~/idpa-live
+```
+
+Attendu :
+- the same lines, in the same order, and the same question — answer `y`;
+- `1 file · submitted as idp-agent/billing-api-to-inpi-<8 hex> on top of main@<7 hex> · main
+  untouched`, `Pull request #<n> opened on github.com/<your login>/idpa-live:
+  https://github.com/<your login>/idpa-live/pull/<n>`, the merging line, `Nothing is provisioned
+  yet. The merge is what authorises it.`; echoing `$?` right after prints `0`. Close the pull
+  request on GitHub (idpa never closes one).
+
+And with no terminal, the same request piped:
+
+```bash
+node "$BIN" "open the network flow billing-api-to-inpi from component:default/billing-api to resource:default/inpi-api, owned by group:default/tiger" --repo ~/idpa-live < /dev/null; echo "exit $?"
+```
+
+Attendu :
+- the diff, `1 file · nothing written`, `Nothing is provisioned yet. The merge is what authorises
+  it.`; no question, no `submitting to` line; `exit 0`.
+
+And with the diff redirected to a file, at the terminal:
+
+```bash
+node "$BIN" "open the network flow billing-api-to-inpi from component:default/billing-api to resource:default/inpi-api, owned by group:default/tiger" --repo ~/idpa-live > "$TMPDIR/idpa-preview.txt"; echo "exit $?"
+```
+
+Attendu :
+- no question and no `submitting to` line on the terminal; `exit 0`; `"$TMPDIR/idpa-preview.txt"`
+  holds the diff and `1 file · nothing written`.
+
+---
+
+### Task 6.3.6: What is in flight is read first
+
+**Goal.** The owner's decision of 2026-10-01 (*Détecter ce qui est en vol*, the roadmap's
+decisions): before any model is paid, on every road of `--submit` toward GitHub, the open
+`idp-agent` pull requests into the base are read, with the files each changes; where the service
+is known before the model, the ones touching it are said then; and before anything is written
+the change is judged against them, and judged again at the moment of writing. One that proposes
+**the same bytes** is named — `already proposed by <login> in pull request #12` — and nothing is
+written, exit 0. One that changes **a file this change writes, differently**, is shown beside it,
+its patch for that file included, and this change is not submitted, exit 1: two pull requests on
+one file would compete at the merge. One that changes **other files of the same entities** is
+shown beside it, and this change, which is then complementary, is proposed: the question is asked
+and the pull request opened as before, its body naming the other by number. Another person's pull
+request is never edited, commented on or closed, and nothing this run posts links to it: the two
+routes this task adds are reads. Every road of `--submit` and 6.3.5's proposal take it, and stage
+8's discovery calls the same functions. Scripted clients only; no prompt changes.
+
+Cites Global Constraints 1, 2 (widened, below), 4, 6, 7, 8, 9, 10 (widened, below), 11, 12, 13,
+14 and 15.
+
+**Where this task starts.** On 6.3.5's branch, recognition (§ 14) reads the pull requests **from
+this change's own branch** (`api.pulls(branch)`, `head=<o>:<branch>&state=all`) and nothing else:
+another person's pull request on the same file is invisible until the two meet at the merge, and
+another person's run of the very same change, under other words, lands on the same branch name
+(`branchFor` is a digest of the paths and the bytes) and is refused by recognition as "carries a
+different change" (its commit message records other words), exit 1 — the wrong answer to a change
+that is already proposed. The gh grammar has eight GET templates (§ 6) and `GITHUB_LIMITS.ghCalls`
+is 48, with no slack (§ 15). The GitHub forge takes no identity (`forge.ts:80-85`: "nothing it
+decides reads one"); this task's judgement does, to leave gh's own pull request to recognition.
+
+**How "the same service, the same entities" is decided**, from paths, which is all a pull
+request's file list says, and never from a file's bytes on GitHub (`/contents/` is a door):
+
+- **writes**: the paths the cleared change writes, each with the blob id its bytes hash to
+  (`blobId(after, objectFormat)`, the id GitHub reports for the file at the head);
+- **related**: the paths of the files that declare an entity the plan names — the entity an
+  operation declares or amends, and every `kind:namespace/name` in its fields (a consumer, a
+  `dependsOn`, the thing a right is over) — read from the snapshot's files, which hold the entity
+  where it is declared (never computed from its type: §4.4's "an entity's location is read from the
+  entity"), the organisation's kinds left out (a team owns many services, and its file is not the
+  service's), and the writes left out. `relatedPaths(snapshot, refs, except)` in
+  `core/plan/clear.ts` computes them; `Cleared.related` carries them for a cleared change.
+- **the service, before the model**, on `plan "<intent>" --submit` and the phrase's change road,
+  where an application repository is inspected: the one Component its root `catalog-info.yaml` or
+  `.yml` declares (`ProjectRead.declarations`, the entry with no `workspace`, through
+  `identitiesOf` and `isComponent`, as `init` reads it); its paths are `relatedPaths(snapshot,
+  [that Component's ref], [])` — the file that declares it in the declarations repository and
+  every file whose entity names it. No Component, or more than one, and nothing is said before
+  the model: the service is not known.
+- **`init --submit`, before the model**: `catalog-info.yaml` and, when a configuration flag states
+  one, `.idp-agent.yml`, with no blob (the bytes are the Architect's), and `catalog-info.yml`: the
+  files a service's declaration can be in at its repository's root (`isApplicationRepository`'s
+  own list). After the Architect, the writes carry their blobs and `related` is
+  `['catalog-info.yml']` less the writes.
+
+**The candidates**: open pull requests into the base whose head is a branch **of this repository**
+(`head.repo.full_name` is `<o>/<r>`: a fork's branch is never one an idp-agent run pushed) whose
+name matches `idp-agent/<slug>-<8 hex>` (`SUBMISSION_BRANCH`). Only a candidate's `user.login` is
+held to `isLogin`, and a candidate whose login it refuses makes the read unreadable (exit 1,
+below): it is one of the pull requests this run must compare with. Every other pull request is
+not read further and its login is never validated — `dependabot[bot]`, which `isLogin` refuses,
+opens pull requests into many a base every week, and must not stop every submission into it. A
+pull request by a person, on any branch, is not read: the decision is about what idp-agent runs
+have in flight, and a person's own pull request meets this one at the merge, as design §4.3 says.
+One candidate is left to recognition: the pull request from this change's own branch opened by
+gh's own account — `already submitted` is § 14's answer, with its older-base line, and it stays
+recognition's.
+
+**The verdict**, `judgeInFlight`, in this order:
+
+| # | A candidate… | Verdict | Exit | Written |
+|---|---|---|---|---|
+| 1 | changes exactly the writes, each to the same blob id, removes nothing, its file list whole | `same`: the lowest such number is named | 0 | nothing |
+| 2 | changes (or renames from) a path of the writes, otherwise | `competing`: each such pull request shown, with its patch for those paths | 1 (`--submit`); the preview stands at 0 on 6.3.5's proposal | nothing |
+| 3 | changes a related path, and no path of the writes | `beside`: each shown; the change goes on, asked as before, and its pull request's body names them | as the submission | as the submission |
+| 4 | none of the above | `clear` | — | — |
+
+`same` wins over `competing`: a change somebody already proposed byte for byte adds nothing, so
+the person is pointed at the proposal they would be duplicating. A candidate whose file list runs
+past one page of 100 (an idp-agent plan writes at most 50, so somebody pushed more onto it) is
+judged on the 100 it lists and said to be longer: it can be `competing` or `beside`, never `same`.
+A write with no blob (`init` before the model) is never `same`: before the bytes exist the
+judgement can only say what is `beside` (below).
+
+**When it is read, said and judged, on each road:**
+
+| Road | Read | Said before the model | Judged | Read again |
+|---|---|---|---|---|
+| `plan --from … --submit` | `sayInFlight` right after `refuseUnprotected`, before the preview (no model on this road) | — | in `submitting()`, before recognition and the question | at step 8 |
+| `plan "<intent>" --submit` | `sayInFlight` right after `refuseUnprotected`, before the Inspector | the pull requests touching the inspected service's paths, when the service is known | in `submitting()`, after the Reviewer, from the kept read, at no gh call | at step 8 |
+| `idpa "<phrase>" --submit` | with the early preflight, before the Supervisor (`index.ts`, the callback 6.3.3 wrote) | in `runIntent`, before the Inspector, from the kept read: after the Supervisor's one word, which decides whether there is a change at all | as `plan "<intent>"` | at step 8 |
+| `init --submit` | `sayInFlight` right after `refuseUnprotected`, before the Inspector | the pull requests changing the service's catalog-info or configuration | in `submitting()`, once the Architect's bytes exist | at step 8 |
+| 6.3.5's proposal | in `submitting()`, inside `submit(…, proposal)`: after the last model call, as every GitHub read of that road | — | before the question; `same` and `competing` end on `no pull request proposed — …` and the preview, exit 0 | at step 8 |
+| `--local`, every road | not read: `--local` reads nothing on GitHub | — | — | — |
+
+Before the model nothing is refused for being in flight: before the bytes exist, `same` and
+`competing` cannot be told apart, and refusing there would turn away a change somebody already
+proposed byte for byte, which the owner wants named at exit 0. Said there, the person knows before
+paying a model that something touching the service is in flight, and the run goes on. A read that
+cannot be made whole (too many pull requests, an unreadable candidate) **is** refused there, exit 1,
+before any model: no judgement could follow it. Whether the read before the model should also stop
+the run is [question 5](#questions-for-the-owner-2026-10-01-tasks); whether the proposal road should
+read before its model too is [question 7](#questions-for-the-owner-2026-10-01-tasks).
+
+**Two reads per run.** The first read — every page of open pull requests and every candidate's
+files — is made once per GitHub forge, the first time `inFlight` is asked, and kept (as 6.3.1 keeps
+the preflight's verdict): every later judgement before the question reads it back, at no gh call.
+The second is the forge's, at step 8, the moment of acting (AGENTS.md, *Reconciliation*: check
+before proposing, **and again at the moment of writing**): page 1 of the open pull requests again —
+the hundred most recently created, so a pull request opened since the first read is on it — and
+the files of every candidate on it that the first read did not hold or whose head commit
+(`head.sha`) moved since. The change is judged again over the first read updated by the second;
+`same` then answers `already-proposed` and `competing` refuses, nothing written on either side, and
+`beside` puts the newest list in the body. What still escapes it: a pull request opened between
+step 8's read and the push, and one beyond the hundred most recent that was pushed to after the
+first read. What holds then is stage 6's own: the same bytes give the same branch name, so a second
+push of them is refused by the lease or recognised; two different changes on one file meet at the
+merge.
+
+**The routes it adds** (§ 6, amended: two GET templates beside the eight; Global Constraint 2's "no
+wider" is widened by exactly these, in this pull request):
+
+- `repos/<o>/<r>/pulls?state=open&base=<base>&sort=created&direction=desc&per_page=100&page=<p>`,
+  `<base>` held to the branch grammar and encoded whole as a query value, `<p>` one of `1`, `2`, `3`
+  and nothing else (`IN_FLIGHT_PAGES`, a copy in `process/gh.ts` held to
+  `GITHUB_LIMITS.inFlightPages` by `grammar-agreement.test.ts`). The order is stated in the path
+  rather than left to GitHub's default, so step 8's page 1 is the newest by construction. gh's
+  `--paginate` stays refused: the pages are asked one by one, and a fourth is never asked;
+- `repos/<o>/<r>/pulls/<number>/files?per_page=100`, `<number>` held to the positive-integer
+  grammar of `rulesets/<id>`. A second page of files is never asked.
+
+Neither path can be bent into a door: the grammar matches the whole path against these templates,
+so `pulls/1/merge`, `pulls/1/files?per_page=100&page=2`, `pulls/1/reviews` and a fourth page are
+refused before a process starts, and `launcher-doors.test.ts` says so.
+
+**The fields read**, each against a schema in `core/github/answers.ts`, and nothing else kept: of
+a listed pull request, `number`, `user.login` (a string within a length bound; `isLogin` is
+applied to candidates only), `head.ref`, `head.sha`, `head.repo.full_name` (or `null`),
+`base.ref`; of a file, `filename`, `status`, `sha`, `previous_filename` and `patch`. **A pull
+request's title and body are never parsed**: the schema does not name them, so they are dropped at
+the parse, and no sentence, trace or request can carry them.
+
+**Where each fact goes.** `main` records a command's result text — its stdout — as the trace
+root's output (`index.ts:2547`), which `IDP_TRACE_DIR` and MLflow receive; a line said through
+`notice` goes to stderr and to nothing else. So every line naming **another person's login, their
+branch, or their patch** is said on stderr, through `notice`, as the `submitting to … as <login>`
+line already is; stdout, and so the trace, holds only engine lines with numbers, URLs and **this
+change's own paths** — every path a verdict reports is the intersection of a candidate's changes
+with this change's writes or related paths, which are this repository's own and already in the
+diff or the snapshot. `--json` is stdout too: an `InFlightReport` carries the number, the URL and
+those paths, never a login, a branch of another run or a patch. A patch reaches no model, no
+trace, no pull request body and no `--json`.
+
+**The budget** (§ 15, amended): `GITHUB_LIMITS` gains `inFlightPages: 3` and `inFlightPulls: 20`,
+and `ghCalls` becomes **92** = 48 + the first read (3 pages + 20 file lists) + step 8's (1 page +
+20 file lists). More than 300 open pull requests into the base, or more than 20 candidates, is a
+read this build cannot make whole, and it is refused rather than judged on a part, as a catalogue
+is (exit 1 on `--submit`, the line below; `no pull request proposed — …` on a proposal). Whether to
+compare the 20 most recent instead and say so is
+[question 6](#questions-for-the-owner-2026-10-01-tasks).
+
+**Exact lines** (every `<…>` through `inertLine`; `<login>` held to `isLogin`, `<branch>` to
+`SUBMISSION_BRANCH`, `<path>` a repository path GitHub listed, spelled out where it holds a control,
+format or bidi character):
+
+- before the model, stderr (`sayInFlight`), per pull request, five at most, then `… and <m>
+  more`: `in flight on github.com/<o>/<r>, touching <what>: pull request #<k> by <login>
+  (<branch>), changing <path>[, <path>…]`, where `<what>` is the Component's reference or `the
+  service's catalog-info`; then once `this run drafts the change, then compares it with them before
+  anything is written`;
+- same, stderr: `already proposed by <login> in pull request #<k>` (the owner's words); stdout:
+  `<n> file(s) · already proposed in pull request #<k> on github.com/<o>/<r>:
+  https://github.com/<o>/<r>/pull/<k> · nothing written`, then `CLOSING`;
+- competing, stdout, as the `refused` status: `<n> file(s) · not submitted:`, then per pull request
+  `  pull request #<k> on github.com/<o>/<r> already changes <path>[, <path>…], differently:
+  https://github.com/<o>/<r>/pull/<k>`, then `Review it there, or run this again once it is merged
+  or closed. Nothing was written.` (`init`: `…once it is merged or closed, or add --local to cut
+  the branch in this clone only. Nothing was written.`) and `CLOSING`; stderr, said before the
+  result is printed: per pull request `pull request #<k> is by <login>, from <branch>`, then per
+  path `In pull request #<k>, <path>:` and at most 40 lines of its patch, each `    <line>`, at most
+  120 in all, `    … <m> more lines: https://github.com/<o>/<r>/pull/<k>/files` past the bound,
+  `    (GitHub shows no patch for it: https://github.com/<o>/<r>/pull/<k>/files)` where it gives
+  none;
+- beside, stdout, in the `pending` status (before the question) and the `submitted` one (after
+  it): `In flight beside it on github.com/<o>/<r>: pull request #<k>, changing <path>[, <path>…]`
+  per pull request, five at most, then `… and <m> more`; ` (more than 100 files; the first 100
+  compared)` after one whose list was cut; stderr, once, before the question: `pull request #<k> is
+  by <login>, from <branch>` per pull request shown;
+- the pull request's body, the engine's block, before `ENGINE_BLOCK_END`: `Opened beside pull
+  request <k>[ and pull request <k>…], open into <base>, which change other files of the same
+  entities.` — numbers and the base only, **no `#` and no URL**: GitHub turns `#<k>` or a pull
+  request's URL in a body into a cross-reference on pull request `<k>`'s timeline and may notify
+  its participants, which would be a visible trace on another person's pull request;
+- at step 8, when the verdict differs from the one shown before the question, stderr: `what is in
+  flight changed while you read the diff:` then the line of the new verdict above;
+- too many, stdout, exit 1: `github.com/<o>/<r> has more than 300 open pull requests into <base>,
+  more than this build reads, so what is in flight cannot be read whole. Nothing was written.` and
+  `github.com/<o>/<r> has <c> open idp-agent pull requests into <base>, more than the 20 this build
+  compares: review some of them, then run this again. Nothing was written.`;
+- the proposal (6.3.5), stderr: `no pull request proposed — already proposed by <login> in pull
+  request #<k>: <url>` and `no pull request proposed — pull request #<k> by <login> (<branch>)
+  already changes <path>[, …], differently: <url>`, then the patch block, on stderr.
+
+**Files:**
+- Create: `src/core/github/in-flight.ts` (`InFlightPull`, `InFlightFile`, `InFlightTarget`,
+  `InFlightVerdict`, `judgeInFlight`, `isSubmissionBranch`, `PATCH_LINES`, `mergeReads`)
+- Create: `src/forge/github/in-flight.ts` (`readInFlight`, `rereadInFlight`)
+- Modify: `src/process/gh.ts` (`GhRoute` gains `open-pulls` and `pull-files`; `pathOf`;
+  `checkGhArgv`'s two templates; `IN_FLIGHT_PAGES`)
+- Modify: `src/core/github/answers.ts` (`openPullsAnswer`, `pullFilesAnswer`)
+- Modify: `src/forge/github/api.ts` (`openPulls`, `pullFiles`; their sentences), `src/forge/github/limits.ts`
+  (`inFlightPages`, `inFlightPulls`, `ghCalls: 92`, the comment's sum)
+- Modify: `src/forge/provider.ts` (`ForgeProvider.inFlight?`; `Submitted` gains `already-proposed`,
+  `created.beside?`, `refused.inFlight?`; `Recognised` unchanged)
+- Modify: `src/forge/github/forge.ts` (`openGitHubForge`'s input gains `login`; `inFlight`, kept
+  per forge; step 8 reads again and judges; `submit`'s body names `beside`)
+- Modify: `src/forge/open.ts` (hands `identity.login` to `openGitHubForge`)
+- Modify: `src/core/github/pull-request.ts` (`PullRequestInput.beside?: readonly number[]`)
+- Modify: `src/core/plan/clear.ts` (`relatedPaths`; `Cleared.related`)
+- Modify: `src/cli/commands/submit.ts` (`sayInFlight`, `serviceTarget`; `submitting()` asks
+  `inFlight` first; `SubmissionReport` gains `already-proposed`, `created.beside?`,
+  `refused.inFlight?`; `forgeAttributes`' `idp.forge.in_flight`; 6.3.5's `Unproposed` gains
+  `in-flight`)
+- Modify: `src/cli/render/footer.ts` (`PreviewStatus` gains `already-proposed`; `pending` and
+  `submitted` gain `beside?`; `refused` gains `inFlight?`; `inFlightLines`)
+- Modify: `src/cli/commands/plan.ts` (`sayInFlight` after `refuseUnprotected` on both roads),
+  `src/cli/commands/init.ts` (the same, before the Inspector), `src/cli/index.ts` (the phrase's
+  early read, beside its early preflight)
+- Modify: `tools/fake-gh.ts` (the two routes; `FakePull.files?`, `FakePull.headRepository?`;
+  `head.repo` and `head.sha` in `pullJson`; files computed from the bare repository),
+  `tests/support/fake-gh.ts` (its grammar), `tests/support/github-fixture.ts` (`pullRequestBy`)
+- Create: `tests/unit/in-flight.test.ts` (the judgement, pure), `tests/unit/in-flight-read.test.ts`
+  (the reads, the bounds, hostile answers)
+- Modify: `tests/unit/process-gh.test.ts`, `tests/unit/launcher-doors.test.ts`,
+  `tests/unit/fake-gh.test.ts`, `tests/unit/grammar-agreement.test.ts`, `tests/unit/github-pulls.test.ts`,
+  `tests/unit/github-forge.test.ts` (the longest path within 92; step 8's read), `tests/unit/forge-types.test.ts`
+  (seven members on the GitHub forge, six on the local one), `tests/unit/submit-github.test.ts`,
+  `tests/unit/plan-intent.test.ts`, `tests/unit/init-command.test.ts`, `tests/unit/entry.test.ts`,
+  `tests/unit/proposal.test.ts`, `tests/unit/pull-request-body.test.ts`, `tests/unit/trace-wiring.test.ts`,
+  `tests/invariants/github-forge.test.ts`, `tests/contract/key-reach.test.ts`,
+  `tests/unit/package-scripts.test.ts` (the demo's pin, if it counts steps)
+- Modify: `scripts/demo-github.mjs` (two steps)
+- Modify: `docs/stage-6-brief.md` (a dated amendment at the head of § 6, § 14 and § 15),
+  `docs/design.md` (§7.4 steps 7 and 8, what a submission reads before it asks and again before it
+  writes; §9.2, the property *never writes another person's pull request*), `docs/submitting.md`
+  (*What is in flight*), `SECURITY.md` (*What leaves your machine*: two reads, twice; *Guaranteed*:
+  another person's pull request is never written to; *Not guaranteed*), `AGENTS.md` (the exit-code
+  paragraph; the state line; the test count), `README.md`, `src/forge/github/README.md`,
+  `src/cli/README.md`, `docs/stage-8-brief.md` (one line, below), `CHANGELOG.md`, `docs/roadmap.md`,
+  `docs/plans/stage-6-github.md` (Global Constraints 2, 9 and 10; *The names every task shares*;
+  6.4.1's recorded answers gain the two routes)
+
+**Interfaces:**
+- Consumes: `GitHubApi`, `GitHubAnswerError`, `GITHUB_LIMITS`, `printedRepository`, `sameRepository`,
+  `isBranch`, `isLogin`, `pullRequestUrl`, `blobId`, `objectFormat`, `clearPlan`, `Cleared`,
+  `identitiesOf`, `isComponent`, `ProjectRead`, `submitting`, `refusedBefore`, `forgeAttributes`,
+  `closingLines`, `Unproposed` (6.3.5), `inertLine`, `visible`.
+- Produces:
+
+```typescript
+// src/process/gh.ts — GhRoute gains:
+  | { readonly route: 'open-pulls'; readonly owner: string; readonly name: string; readonly base: string; readonly page: number }
+  | { readonly route: 'pull-files'; readonly owner: string; readonly name: string; readonly number: number }
+
+// src/core/github/in-flight.ts
+export interface InFlightFile {
+  readonly path: string
+  /** A rename's old path: a pull request that moves a file changes both. */
+  readonly previous?: string
+  /** The blob GitHub reports at the head; absent for a removed file. */
+  readonly blob?: string
+  readonly removed: boolean
+  /** GitHub's patch, as it gave it: printed only on stderr, in the competing block, never sent anywhere. */
+  readonly patch?: string
+}
+
+export interface InFlightPull {
+  readonly number: number
+  readonly by: string
+  readonly branch: string
+  /** The head commit: step 8 reads the files again only where it moved. */
+  readonly head: string
+  readonly files: readonly InFlightFile[]
+  /** False when the list ran past one page of 100. */
+  readonly complete: boolean
+}
+
+export interface InFlightTarget {
+  /** What this change writes; `blob` absent when the bytes are not drafted yet (`init`, before the model). */
+  readonly writes: readonly { readonly path: string; readonly blob?: string }[]
+  readonly related: readonly string[]
+  /** This change's branch and gh's login: the one candidate left to recognition. */
+  readonly branch?: string
+  readonly me: string
+}
+
+export type InFlightVerdict =
+  | { readonly kind: 'clear' }
+  | { readonly kind: 'same'; readonly pull: InFlightPull }
+  | { readonly kind: 'competing'; readonly pulls: readonly { readonly pull: InFlightPull; readonly paths: readonly string[] }[] }
+  | { readonly kind: 'beside'; readonly pulls: readonly { readonly pull: InFlightPull; readonly paths: readonly string[] }[] }
+
+/** Pure: the order of the verdict table, over every candidate, whatever order GitHub listed them in. */
+export function judgeInFlight(pulls: readonly InFlightPull[], target: InFlightTarget): InFlightVerdict
+
+/** The first read updated by step 8's: a pull request on page 1 replaces its older self; one closed since is gone. */
+export function mergeReads(first: readonly InFlightPull[], page: readonly InFlightPull[], newest: readonly number[]): readonly InFlightPull[]
+
+/** `idp-agent/<slug>-<8 hex>`: the names an idp-agent run pushes (core's copy of `SUBMISSION_BRANCH`). */
+export function isSubmissionBranch(name: string): boolean
+
+/** 40 lines of a patch per path, 120 per run. */
+export const PATCH_LINES = { perPath: 40, perRun: 120 } as const
+
+// src/core/plan/clear.ts
+/** The files of `snapshot` declaring one of `refs`, or an entity naming one of them, the organisation's kinds left out, less `except`; sorted. */
+export function relatedPaths(snapshot: RepositorySnapshot, refs: readonly string[], except: readonly string[]): readonly string[]
+// Cleared gains:
+  /** The files that declare an entity the plan names, but not the files it writes: what "the same entities" means in flight. */
+  readonly related: readonly string[]
+
+// src/forge/github/in-flight.ts
+/** The candidates, read whole or refused: at most three pages, then one file list each, at most twenty. */
+export async function readInFlight(api: GitHubApi, road: GitHubRoad): Promise<readonly InFlightPull[]>
+/** Step 8's: page 1 again, and the files of the candidates on it that are new or whose head moved. */
+export async function rereadInFlight(api: GitHubApi, road: GitHubRoad, first: readonly InFlightPull[]): Promise<readonly InFlightPull[]>
+
+// src/forge/github/api.ts — GitHubApi gains:
+  /** `GET …/pulls?state=open&base=<base>&sort=created&direction=desc&per_page=100&page=<p>`: one page, and whether GitHub links a next. */
+  openPulls(base: string, page: number): Promise<{ readonly pulls: readonly OpenPull[]; readonly more: boolean }>
+  /** `GET …/pulls/<n>/files?per_page=100`: one page, and whether it was the whole list. */
+  pullFiles(number: number): Promise<{ readonly files: readonly InFlightFile[]; readonly complete: boolean }>
+
+// src/forge/github/forge.ts — openGitHubForge's input gains:
+  /** gh's login, from `readIdentity`: only `judgeInFlight` reads it, to leave gh's own pull request to recognition. Never said, traced or posted. */
+  readonly login: string
+
+// src/forge/provider.ts — ForgeProvider gains (the GitHub forge's; the local forge has none):
+  /**
+   * What is in flight, judged for a change: read once per forge, then answered from what was
+   * read. `after` is an edit's bytes, hashed here to the blob id GitHub reports; absent when the
+   * bytes are not drafted yet (`init`, before the model). `submit` reads again at step 8 on its own.
+   */
+  readonly inFlight?: (target: {
+    readonly writes: readonly { readonly path: string; readonly after?: string }[]
+    readonly related: readonly string[]
+    readonly branch?: string
+  }) => Promise<InFlightVerdict>
+// Submitted gains:
+  | { readonly outcome: 'already-proposed'; readonly branch: string; readonly number: number; readonly url: string; readonly by: string }
+// `created` gains `beside?: readonly number[]`; `refused` gains `inFlight?: readonly InFlightPull[]`
+// (`by`, `branch` and the patches are for the stderr lines; the report and the status drop them).
+
+// src/cli/commands/submit.ts
+/** In `--json`, in the statuses and on a refusal: never a login, never another run's branch, never a patch, never a title. */
+export interface InFlightReport {
+  readonly number: number
+  readonly url: string
+  readonly paths: readonly string[]
+}
+/**
+ * Right after `refuseUnprotected`, before any model: makes the first read (kept by the forge),
+ * says on stderr the pull requests touching `about` when it is given, and refuses only a read that
+ * cannot be made whole. Nothing is refused for being in flight here: before the bytes exist,
+ * same and competing cannot be told apart.
+ */
+export async function sayInFlight(
+  opened: Opened,
+  about: { readonly what: string; readonly paths: readonly string[] } | undefined,
+  options: { readonly json?: boolean; readonly notice?: (line: string) => void },
+): Promise<CommandResult | undefined>
+/** The inspected service's paths in the declarations repository, or undefined when no single Component is declared at the project's root. */
+export function serviceTarget(project: ProjectRead, snapshot: RepositorySnapshot): { readonly what: string; readonly paths: readonly string[] } | undefined
+// SubmissionReport gains `{ outcome: 'already-proposed'; branch; number; url }` (no `by`),
+// `created`'s `beside?: readonly InFlightReport[]`, `refused`'s `inFlight?: readonly InFlightReport[]`.
+// Unproposed (6.3.5) gains `{ why: 'in-flight'; line: string }`.
+```
+
+**Names this task adds** (to *The names every task shares*): `InFlightFile`, `InFlightPull`,
+`InFlightTarget`, `InFlightVerdict`, `judgeInFlight`, `mergeReads`, `isSubmissionBranch`,
+`PATCH_LINES` (`core/github/in-flight.ts`); `relatedPaths`, `Cleared.related` (`core/plan/clear.ts`);
+`readInFlight`, `rereadInFlight` (`forge/github/in-flight.ts`); `openPullsAnswer`,
+`pullFilesAnswer`; `GitHubApi.openPulls`, `GitHubApi.pullFiles`; `GhRoute`'s `open-pulls` and
+`pull-files`; `IN_FLIGHT_PAGES`; `GITHUB_LIMITS.inFlightPages`, `.inFlightPulls`, `.ghCalls = 92`;
+`openGitHubForge`'s `login`; `ForgeProvider.inFlight`; `Submitted`'s `already-proposed`;
+`PullRequestInput.beside`; `InFlightReport`, `sayInFlight`, `serviceTarget`; `PreviewStatus`'s
+`already-proposed` and `beside`; `inFlightLines`; `Unproposed`'s `in-flight`; `pullRequestBy` (test
+helper); the trace attribute `idp.forge.in_flight` (the number of candidates judged same, competing
+or beside; never a login, a path or a branch).
+
+- [ ] **Step 1: Write the failing tests**
+
+`tests/unit/in-flight.test.ts` (pure, no process): one `it` per row of the verdict table, and:
+
+- *names the lowest-numbered of two identical proposals*;
+- *prefers same over competing*;
+- *counts a rename's old path as changed* (`previous` on a written path is `competing`);
+- *never calls a cut file list the same*, and *judges a cut list on the files it holds*;
+- *never calls a write with no blob the same*, and *says beside on `catalog-info.yml` while
+  `catalog-info.yaml` is written* (`init`'s target before the model);
+- *leaves this change's own branch, opened by gh's own login, to recognition*, while *the same branch
+  opened by another login is `same`* — the other person's run of the very same change;
+- *treats a removed written path as competing*;
+- *compares paths byte for byte* (a path differing only in case or by a trailing `​` is another
+  path: GitHub's paths are git's bytes);
+- *reports only this change's own paths* (every path in a verdict is one of the target's writes or
+  related paths, whatever else the candidate changes);
+- *merges step 8's page into the first read*: a candidate gone from page 1 because it closed is
+  gone, one whose head moved is replaced, a new one is added, one beyond page 1 is kept as read;
+- *never reads a title*: `InFlightPull` has no field for one (a type test, `expectTypeOf`).
+
+*Why they fail:* the module does not exist.
+
+`tests/unit/in-flight-read.test.ts`, over a `githubClone()` and `pullRequestBy` (a branch pushed to
+the bare repository by plumbing, as another account would, and a pull request the fake records as
+that account's):
+
+```typescript
+describe('readInFlight', () => {
+  afterAll(removeClones)
+
+  it('reads the open idp-agent pull requests into the base and their files, once, within budget', async () => {
+    const clone = await githubClone({ model: { accounts: ACCOUNTS } })
+    await pullRequestBy(clone, { login: 'grace', edits: { [ACCESS_PATH]: GRANT } })
+    await pullRequestBy(clone, { login: 'grace', branch: 'feature/by-hand', edits: { [ACCESS_PATH]: GRANT } })
+    await pullRequestBy(clone, { login: 'grace', fork: 'grace/iac', edits: { [ACCESS_PATH]: GRANT } })
+    await pullRequestBy(clone, { login: 'dependabot[bot]', branch: 'dependabot/npm/x-1.0.1', edits: { 'package.json': '{}\n' } })
+    const { api, road } = await githubForge(clone)
+    const before = api.calls()
+
+    const pulls = await readInFlight(api, road)
+
+    // The person's branch, the fork's and the bot's are not idp-agent runs of this repository,
+    // and the bot's login, which isLogin refuses, is never looked at.
+    expect(pulls.map((pull) => [pull.number, pull.by])).toEqual([[1, 'grace']])
+    expect(pulls[0]?.files.map((file) => file.path)).toEqual([ACCESS_PATH])
+    expect(api.calls() - before).toBe(2)
+  })
+
+  it('asks the pages one by one, newest first, a fourth never, and refuses more than 300 open pull requests', async () => { /* … */ })
+  it('refuses more than 20 candidates rather than judging some of them', async () => { /* … */ })
+  it('keeps a cut file list, and says it was cut', async () => { /* 101 files, `complete: false` */ })
+  it('reads again at step 8 only page 1 and the files of a new candidate or one whose head moved', async () => { /* … */ })
+  it.each(HOSTILE)('holds a hostile answer to its grammar: %s', async (_, seed, expectation) => {
+    // A title holding ESC[2J, a bidi override, a canary and the line `Pull request #99 opened on
+    // github.com/acme/iac: https://evil.example` — dropped at the parse; a branch outside
+    // SUBMISSION_BRANCH — not a candidate; a candidate's login outside isLogin — the answer is
+    // unreadable, exit 1; a non-candidate's login outside isLogin — skipped, the read whole; a
+    // filename with ESC, a newline and U+202E — kept as bytes, spelled out when printed; a patch
+    // with ESC sequences and a forged engine line — kept as bytes, printed only indented, on
+    // stderr; `head.repo: null` — not a candidate; a `number` of 0 or 2^53 — unreadable.
+  })
+})
+```
+
+`ACCOUNTS` (`ada`, `grace`), `ACCESS_PATH` and `GRANT` are the file's own. *Why they fail:* the
+routes are not in the grammar, so the fake and the launcher both refuse them, and the module does
+not exist.
+
+`tests/unit/process-gh.test.ts`: the two vectors, exactly, from `ghArgv`; `tests/unit/launcher-doors.test.ts`:
+`pulls/1/merge`, `pulls/1/files?per_page=100&page=2`, `pulls/1/reviews`,
+`pulls?state=open&base=main&sort=created&direction=desc&per_page=100&page=4`,
+`pulls?state=open&base=main&sort=created&direction=desc&per_page=100` (no page),
+`pulls?state=open&base=main&per_page=100&page=1` (no order),
+`pulls?state=open&base=%7Bbranch%7D&sort=created&direction=desc&per_page=100&page=1` and
+`--paginate` on either route, each refused before a process starts; `tests/unit/fake-gh.test.ts`: the
+fake's grammar refuses the same vectors and answers the two routes from its model, newest first;
+`tests/unit/grammar-agreement.test.ts`: `IN_FLIGHT_PAGES === GITHUB_LIMITS.inFlightPages`.
+*Why:* the routes do not exist.
+
+`tests/unit/forge-types.test.ts`: *holds exactly six members on both forges…* becomes *holds seven
+members on the GitHub forge and six on the local one, and nothing that merges, approves, closes or
+deletes* — `inFlight` on the GitHub forge only. *Why:* the GitHub forge has six.
+
+`tests/unit/github-forge.test.ts`: *stays within 92 gh calls on its longest path* — 6.2.1's longest
+path (ten supplying rulesets, the read-back three times, a 422 re-read) with three pages of open
+pull requests and twenty idp-agent candidates, then step 8's page 1 with twenty candidates moved;
+*answers already-proposed, and writes nothing on either side, when another account's pull request
+holds the same bytes on the same branch*; *refuses a competing pull request, and writes nothing*;
+*names beside pull requests in the body it opens*; *refuses at step 8 a competing pull request
+opened after the first read, and writes nothing on either side*; *answers already-proposed at step
+8 when another account opened the same change after the first read*.
+`tests/unit/pull-request-body.test.ts`: the `beside` paragraph, numbers only, before
+`ENGINE_BLOCK_END`, and *holds no `#<digits>` and no pull request URL of another pull request*; no
+paragraph without it (6.3.4's four bodies byte for byte); the body built with `LONGEST_NOTE` and
+the longest `beside` paragraph (twenty numbers, a 255-byte base) is what step 8 checks against the
+bound. `tests/invariants/github-forge.test.ts`: a property, *never writes another person's pull
+request*: over every verdict the fake can be seeded into, with a pull request opened by another
+account before the first read or between the two reads, the state of every pull request not
+opened by this run — its head ref, its commits, its body, its state, and every event the fake
+records on it — is the same after the run, and the POST, when made, names this change's branch as
+`head` and holds no `#<digits>`.
+
+The roads, each through `main`:
+
+- `tests/unit/submit-github.test.ts` (`plan --from --submit`): *names a change already proposed by
+  another account, exit 0, nothing written* (stderr holds `already proposed by grace in pull
+  request #1`; stdout holds `already proposed in pull request #1` and not `grace`; `--json`:
+  `{ outcome: 'already-proposed', number: 1, url, branch }`, `Object.keys` pinned, no `by`);
+  *refuses a change a pull request in flight already changes differently, shows its patch on
+  stderr, exit 1* (stdout's block names the number, the URL and the path, and no login and no
+  patch line; stderr's patch lines each start with four spaces; the forged engine line of the patch
+  is on such a line, on stderr, and nowhere else); *asks, and opens, beside a pull request on
+  another file of the same entities* (the `In flight beside it` line in the summary handed to
+  `confirm`, the body's paragraph); *reads nothing of what is in flight with --local*.
+- `tests/unit/plan-intent.test.ts`: *reads what is in flight before the Inspector, and says the
+  pull requests touching the inspected service* (in `watching`'s log, the `pulls?state=open` lines
+  after the preflight's and before the first `model ` line; stderr's `in flight on github.com/acme/iac,
+  touching component:default/billing-api: pull request #1 by grace (…)` before it too);
+  *reads it before the Inspector and says nothing when no application repository is inspected*;
+  *judges after the Reviewer from the read it kept, at no gh call*; the `same` and `competing`
+  cases end as on `--from`.
+- `tests/unit/init-command.test.ts`: *says a pull request in flight on the service's catalog-info
+  before the Inspector, and goes on* (no exit before the model; the line on stderr before the
+  first model call in the client's `seen`); *refuses after the Architect a pull request in flight
+  that changes catalog-info.yaml differently, naming --local, exit 1*; *names the same
+  catalog-info already proposed, exit 0*; *goes on beside a pull request that changes
+  catalog-info.yml* (the body's paragraph); *refuses before the Inspector a read that cannot be
+  made whole* (21 candidates, no model call).
+- `tests/unit/entry.test.ts`: *a phrase reads what is in flight before the Supervisor and says it
+  before the Inspector*, the `same` case at exit 0.
+- `tests/unit/proposal.test.ts`: *proposes nothing when the change is already proposed, and the
+  preview stands at exit 0*; *proposes nothing beside a competing pull request, and shows its patch
+  on stderr*; *proposes beside a pull request on another file*.
+- `tests/unit/trace-wiring.test.ts`: `idp.forge.in_flight` and the outcome `already-proposed` on the
+  root; *keeps another person's login, branch and patch off the root*: the root's `outputs.text`
+  and every attribute hold neither `grace`, nor the other run's branch, nor a line of its patch, in
+  the same, competing and beside cases.
+- `tests/contract/key-reach.test.ts`, the in-flight leg, on the intent road and on `init --submit`:
+  another account's pull request in flight, competing with this change, whose title, branch slug,
+  patch and a file name this change neither writes nor relates to each hold a canary; asserts that
+  no provider request holds any canary, gh's login, the other login or `github.com` (on both roads
+  the read is before the Inspector: what it read never reaches the Inspector's or the Architect's
+  request), that stdout, `--json`, the trace and MLflow hold none of them, that the title's and the
+  unrelated file name's canaries are nowhere — stdout, stderr, the pull request's body, the trace,
+  `--json` — and that the branch's and the patch's are on stderr only.
+
+*Why they fail:* nothing reads what is in flight, so the identical case is refused by recognition as
+"carries a different change", exit 1; the competing case opens a second pull request; the beside
+case opens one whose body names nothing; nothing is said before the model.
+
+- [ ] **Step 2: Run them to verify they fail**
+
+```bash
+df -h "$TMPDIR"
+pnpm vitest run tests/unit/in-flight.test.ts tests/unit/in-flight-read.test.ts tests/unit/process-gh.test.ts tests/unit/launcher-doors.test.ts tests/unit/fake-gh.test.ts tests/unit/grammar-agreement.test.ts tests/unit/forge-types.test.ts
+pnpm vitest run tests/unit/github-forge.test.ts tests/unit/pull-request-body.test.ts tests/invariants/github-forge.test.ts
+pnpm vitest run tests/unit/submit-github.test.ts tests/unit/plan-intent.test.ts tests/unit/init-command.test.ts tests/unit/entry.test.ts tests/unit/proposal.test.ts tests/unit/trace-wiring.test.ts tests/contract/key-reach.test.ts
+```
+
+Expected: FAIL — the modules and routes missing; the identical case exiting 1 on recognition's
+sentence; the competing case opening pull request #2.
+
+- [ ] **Step 3: The routes**
+
+`process/gh.ts`: the two `GhRoute` members, their `pathOf` cases (the switch keeps its `never`),
+and two templates in `checkGhArgv`, matched against the whole path:
+`^repos/<owner>/<name>/pulls\?state=open&base=<encoded branch>&sort=created&direction=desc&per_page=100&page=[1-3]$`
+and `^repos/<owner>/<name>/pulls/<id>/files\?per_page=100$`, each value held as the existing
+templates hold theirs. `tools/fake-gh.ts` and `tests/support/fake-gh.ts`: the same two in their own
+grammars, the fake answering them from its model (open pull requests filtered by base, newest
+first, 100 a page, a `Link` with `rel="next"` when more remain; files from `FakePull.files` when a
+test seeds them, else from the bare repository: `diff-tree -r -z --no-renames <base tip> <head
+tip>`, each blob id from `ls-tree`, each patch from `diff`), and `pullJson` gains `head.repo: {
+full_name }` (`null` for `headRepository: null`) and `head.sha`. `core/github/answers.ts`:
+`openPullsAnswer` and `pullFilesAnswer` naming exactly the fields above (`user.login` a bounded
+string; `head.sha` and a file's `sha` the object-id grammar, the latter or `null`; `status`
+GitHub's seven values). `api.ts`: `openPulls` reads `hasNext` as `more` instead of refusing it, and
+refuses any answer whose `base.ref` is not the base asked; `pullFiles` reads `hasNext` as
+`complete: false`; both spend from the budget as every route does. `limits.ts`: the two bounds and
+`ghCalls: 92`, the comment's sum written out.
+
+- [ ] **Step 4: `core/github/in-flight.ts`**
+
+`judgeInFlight` filters the candidates (this change's own branch by `me` left out), computes each
+one's changed paths (`path` and `previous`), then applies the table's rows in order over every
+candidate; the `competing` and `beside` lists are sorted by number, each with the paths that put it
+there — the intersection with the target's writes, or with its related paths — sorted.
+`mergeReads` is the first read updated by step 8's page. `isSubmissionBranch` is
+`SUBMISSION_BRANCH`'s copy, held to it by `grammar-agreement.test.ts`. No `switch` on a union here;
+the verdict is built, not matched. `readInFlight` (in `forge/github/in-flight.ts`) holds a
+candidate's `user.login` to `isLogin` once it is known to be a candidate, and never another's.
+
+- [ ] **Step 5: `clear.ts`, the forge, `submit.ts`**
+
+`relatedPaths` and `clearPlan`'s `related`: the refs every operation names (its subject, and every
+reference in its fields, the organisation's kinds left out), the snapshot's files that declare one
+of them or whose entity names one, minus the edit paths, sorted. No message, branch or edit moves.
+
+The GitHub forge's `inFlight(target)`: on its first call, `readInFlight(api, road)` (an error is a
+`GitHubAnswerError`, as every read's), kept; each call `judgeInFlight(kept, { ...target, me:
+input.login })`. In `submit`, step 8, after the re-check and before anything is written:
+`rereadInFlight(api, road, kept)`, `mergeReads`, then `judgeInFlight` for the very `Cleared` it
+submits (its edits' blobs, `related`, `branch`): `same` answers `already-proposed`, `competing`
+answers `refused` with `inFlight`, nothing written on either side; `beside` becomes
+`PullRequestInput.beside`, and the body's bound is checked as 6.3.4's Step 5 says, with the longest
+`beside` paragraph. A forge that was never asked `inFlight` before `submit` (the proposal road on a
+run that was refused before it, a test) makes the first read there. `open.ts` hands
+`identity.login` as `login`; the forge's comment saying it takes no identity says what reads it.
+
+`sayInFlight(opened, about, options)`: on a forge with no `inFlight` (the local roads) it answers
+`undefined`; otherwise `opened.forge.inFlight({ writes: [], related: about?.paths ?? [] })` — the
+first read — and a `beside` verdict is said on stderr as *Exact lines* says; a read that cannot be
+made whole is `refusedBefore` with its line, exit 1. `serviceTarget(project, snapshot)` is the
+Component and its paths as *How "the same service…"* says.
+
+`submitting()`, after the clearance and before `recognise`, on a forge with `inFlight`:
+
+```typescript
+  const flight = await opened.forge.inFlight?.({
+    writes: cleared.edits.map((edit) => ({ path: edit.path, after: edit.after })),
+    related: cleared.related,
+    branch: cleared.branch,
+  })
+  switch (flight?.kind) {
+    case undefined:
+    case 'clear':
+      break
+    case 'same':
+      return outcomeOf(alreadyProposed(flight.pull, opened.road), opened.base, opened.road, said, input.proposal)
+    case 'competing':
+      return outcomeOf(competing(flight.pulls, opened.road), opened.base, opened.road, said, input.proposal)
+    case 'beside':
+      beside = flight.pulls
+      break
+    default: {
+      const _exhaustive: never = flight
+      return _exhaustive
+    }
+  }
+```
+
+The forge turns each `after` into the blob id GitHub reports (`blobId` over the bytes, in the
+clone's `objectFormat`), so `cli/` hashes nothing itself and `judgeInFlight` compares ids. `beside`
+goes into the `pending` status the question prints and the `submitted` one after it, as
+`InFlightReport`s. `outcomeOf` says, through `notice`, the stderr lines of each verdict (the login,
+the branch, the patch) before it returns the result, whose text holds only the stdout lines;
+`outcomeOf`'s switch gains `already-proposed` (with its `never`); `forgeAttributes`' switch gains it
+too, setting `idp.forge.pull_request` to the other pull request's number and `idp.forge.pushed:
+false`, and every outcome gains `idp.forge.in_flight` when the forge was asked. A `created` or
+`refused` whose step-8 verdict differs from the one shown before the question is said in one line
+(*Exact lines*). 6.3.5's proposal reads `same` and `competing` as `Unproposed`'s `in-flight`.
+
+- [ ] **Step 6: The roads before the model**
+
+`plan --from` (`runPlan`, `plan.ts:1102`) and `runIntent` (`plan.ts:1465`), right after
+`refuseUnprotected`:
+
+```typescript
+    // 2026-10-01: what is in flight, read before any model. Said here only where the
+    // service is known; judged once the bytes exist, and again at the moment of writing.
+    const about = project === undefined ? undefined : serviceTarget(project, snapshot)
+    const flight = await sayInFlight(opened, about, { json: options.json === true, notice: options.notice })
+    if (flight !== undefined) return flight
+```
+
+(`runPlan` hands `undefined`.) `runInitRepo`, the same after its `refuseUnprotected`, with `about`
+`{ what: "the service's catalog-info", paths: ['catalog-info.yaml', 'catalog-info.yml',
+...(configStated ? [CONFIG_FILE] : [])] }`. The phrase road, in the callback 6.3.3 wrote in
+`index.ts`, right after the early `refuseUnprotected`: `sayInFlight(early, undefined, …)` — the
+read, before the Supervisor — and `runIntent`'s call then says the service's lines from the kept
+read, at no gh call.
+
+- [ ] **Step 7: The demo**
+
+`scripts/demo-github.mjs`, two steps after the last, on a fresh `world(PROTECTED)` whose accounts
+hold `grace` beside `ada`, both able to push:
+
+1. *Another account's identical proposal is named*: `SUBMIT` as `ada` answers with pull request #1
+   (its branch the one step 5 pushed, so only the pull request is opened); then, the fake's session
+   switched to `grace` (`{ ...fakeState(), session: { login: 'grace' } }`), the same command: stdout
+   `already proposed in pull request #1 on github.com/acme/iac`, stderr `already proposed by ada in
+   pull request #1`, exit 0, the bare repository holding one `idp-agent/` branch and the fake one
+   pull request.
+2. *A different change to the same file is refused, its patch shown*: as `grace`, a copy of the
+   plan file whose `dependencyOf` names `component:default/billing-api`, written in the demo's
+   scratch directory: exit 1, stdout `already changes dependencies/network/orders-api-to-payments.yml,
+   differently`, stderr `In pull request #1, dependencies/network/orders-api-to-payments.yml:` and
+   indented patch lines; still one pull request, one branch.
+
+`init --submit` before the model is not a demo step: the demo configures no model, so `init` stops
+at "no model configured" (exit 2) before its preflight, as 6.3.2's steps do; it is proved by
+`init-command.test.ts` and the key-reach leg. `package-scripts.test.ts`'s pin follows if it counts
+steps.
+
+- [ ] **Step 8: The documents this task makes true**
+
+- `docs/stage-6-brief.md`: one italic paragraph at the head of § 6 ("*Amended 2026-10-01 by the
+  owner: two GET templates are added, the open pull requests into the base, newest first, and one
+  pull request's files (stage 6 plan, Task 6.3.6); the section below is the record of
+  2026-09-30.*"), of § 14 (what is in flight is read before any model, judged before recognition,
+  and read again at step 8) and of § 15 (the budget is 92). Nothing below them is edited.
+- `docs/design.md` §7.4: step 7 gains "on GitHub, the open idp-agent pull requests into the base
+  are read before any model is paid; the same bytes already proposed are named and nothing is
+  written; a pull request changing a file this change writes, differently, is shown and this one is
+  not submitted; one on other files of the same entities is named in this one's body"; step 8
+  gains "and read again at the moment of writing". §9.2 gains the property *never writes another
+  person's pull request*.
+- `docs/submitting.md`: *What is in flight* — the candidates, the verdict table, the roads table,
+  the two reads, the bounds, what is never read (a title, a body, another person's branch by
+  hand), what goes to stderr and why, and that the body names another pull request by number
+  without `#`, so nothing appears on its timeline.
+- `SECURITY.md`: *What leaves your machine* gains the two reads (through gh, to github.com, no
+  write), made before any model on `--submit` and again at the moment of writing; *Guaranteed*
+  gains "another person's pull request is never edited, commented on, closed or cross-referenced,
+  and its login, branch and patch reach neither a model, a trace, `--json` nor a pull request
+  body" with the invariant property, the trace-wiring case, the key-reach leg and the
+  launcher-doors cases; *Not guaranteed*: "a pull request opened after the read at the moment of
+  writing, or one beyond the hundred most recent that was pushed to after the first read, is not
+  seen by that run; two different changes on one file then meet at the merge".
+- `AGENTS.md`: the exit-code paragraph — under `0`, "a change another person already proposed, byte
+  for byte, named"; under `1`, "an idp-agent pull request in flight that changes a file this change
+  writes, differently, or more of them than this build compares"; the state line; the test count and
+  the badge.
+- `docs/stage-8-brief.md`: one line where discovery submits — it says what is in flight on the
+  service's catalog-info before its model (`sayInFlight`, as `init --submit` does), and its drafted
+  dependency paths are judged after the model, in `submitting()`, and again at step 8.
+- `docs/plans/stage-6-github.md`: Global Constraint 2's "exactly § 6's, no wider" gains "and the two
+  reads of Task 6.3.6"; 9's `1` and `0` as `AGENTS.md`; 10's "at most 48 gh calls per run" becomes
+  92; *The names every task shares* as above; 6.4.1's recorded answers gain one answer of each new
+  route (`KEPT_KEYS` naming their fields), so the fake is held to GitHub on them too.
+- `README.md`, `src/forge/github/README.md`, `src/cli/README.md`: wherever the routes or what a
+  submission reads are listed.
+- `docs/roadmap.md`: the stage 6 row names 6.3.6; the third decision of 2026-10-01 recorded as
+  built, with questions 5 and 7 named as open (whether the read before the model stops the run,
+  and whether the proposal road reads before its model).
+
+**Exhaustive switches:** `pathOf` over `GhRoute` (two cases); `submitting()`'s over
+`InFlightVerdict['kind']`; `outcomeOf`, `forgeAttributes` and `closingLines` over the widened
+`Submitted`, `SubmissionReport` and `PreviewStatus`; 6.3.5's `unproposedLine` over `Unproposed`.
+Each keeps its `const _exhaustive: never`.
+
+**Architecture rules:** none added; re-counted. *nothing in src/ names a door the allow-list
+refuses* still holds: neither template names a door word, and `DOOR_WORDS` is unchanged. `core/`'s
+new module imports Zod-free `core/` only; `forge/github/in-flight.ts` imports `core/` and its
+siblings, as *forge/ imports core/, process/, node:crypto and node:path, and nothing else* requires.
+
+- [ ] **Step 9: Checks**
+
+```bash
+df -h "$TMPDIR"
+pnpm vitest run tests/unit/in-flight.test.ts tests/unit/in-flight-read.test.ts tests/unit/process-gh.test.ts tests/unit/launcher-doors.test.ts tests/unit/fake-gh.test.ts tests/unit/grammar-agreement.test.ts tests/unit/github-pulls.test.ts tests/unit/forge-types.test.ts
+pnpm vitest run tests/unit/github-forge.test.ts tests/unit/pull-request-body.test.ts tests/unit/submit-github.test.ts tests/unit/plan-intent.test.ts tests/unit/init-command.test.ts tests/unit/entry.test.ts tests/unit/proposal.test.ts tests/unit/trace-wiring.test.ts tests/contract/key-reach.test.ts
+pnpm vitest run tests/invariants/github-forge.test.ts
+pnpm vitest run tests/scenarios
+pnpm vitest run tests/architecture --reporter=verbose
+pnpm typecheck && pnpm test && pnpm build && pnpm smoke
+git status --short tests/recordings tests/golden fixtures/si-demo
+```
+
+Expected: all green; `prompt-digests.test.ts` unchanged; the last command prints nothing.
+
+- [ ] **Step 10: The pull request** (after the owner's go-ahead)
+
+```bash
+git add src/process/gh.ts src/core/github/in-flight.ts src/core/github/answers.ts src/core/github/pull-request.ts src/core/plan/clear.ts \
+  src/forge/github/in-flight.ts src/forge/github/api.ts src/forge/github/limits.ts src/forge/github/forge.ts src/forge/open.ts src/forge/provider.ts \
+  src/cli/commands/submit.ts src/cli/commands/plan.ts src/cli/commands/init.ts src/cli/index.ts src/cli/render/footer.ts src/forge/github/README.md src/cli/README.md \
+  tools/fake-gh.ts tests/support/fake-gh.ts tests/support/github-fixture.ts \
+  tests/unit/in-flight.test.ts tests/unit/in-flight-read.test.ts tests/unit/process-gh.test.ts tests/unit/launcher-doors.test.ts \
+  tests/unit/fake-gh.test.ts tests/unit/grammar-agreement.test.ts tests/unit/github-pulls.test.ts tests/unit/github-forge.test.ts tests/unit/forge-types.test.ts \
+  tests/unit/pull-request-body.test.ts tests/unit/submit-github.test.ts tests/unit/plan-intent.test.ts tests/unit/init-command.test.ts \
+  tests/unit/entry.test.ts tests/unit/proposal.test.ts tests/unit/trace-wiring.test.ts tests/unit/package-scripts.test.ts \
+  tests/invariants/github-forge.test.ts tests/contract/key-reach.test.ts scripts/demo-github.mjs \
+  docs/stage-6-brief.md docs/design.md docs/submitting.md docs/stage-8-brief.md SECURITY.md AGENTS.md README.md \
+  CHANGELOG.md docs/roadmap.md docs/plans/stage-6-github.md
+git commit -m "feat(forge): read the idp-agent pull requests in flight before any model and again before writing, and never compete with one"
+```
+
+Branch `feat/s6-in-flight`, base `feat/s6-propose`. CHANGELOG, `### Added`:
+
+> - What is in flight is read first: on every `--submit` toward GitHub, before any model, the open
+>   `idp-agent` pull requests into the base are read with their files, through two new gh reads,
+>   those touching the service are said, and the change is judged against them before anything is
+>   written and again at the moment of writing. The same bytes already proposed are named,
+>   `already proposed by <login> in pull request #12`, and nothing is written (exit 0); a pull
+>   request that changes a file this change writes, differently, is shown beside it with its patch
+>   and this one is not submitted (exit 1); one that changes other files of the same entities is
+>   shown, and this change is proposed beside it, its body naming the other by number. Another
+>   person's pull request is never edited, commented on, closed or linked to, its title is never
+>   read, and their login, branch and patch go to the terminal alone, never to a trace or `--json`
+>   ([#PRNUM](https://github.com/pcaboor/idp-agent/pull/PRNUM)).
+
+**What changes that a person sees:** a submission, or a proposal, of a change somebody already
+proposed names their pull request instead of refusing with "carries a different change"; one that
+would compete on a file is refused with the other's patch shown on stderr; one beside another says
+so before the question and in its body; before the Inspector, a submission that inspects a service
+says which idp-agent pull requests in flight touch it. With nothing in flight, nothing moves but
+the gh reads.
+
+**What the owner can run.** Offline, from the main checkout once this is merged:
+
+```bash
+cd ~/Documents/idp-agent-main
+git pull --ff-only
+pnpm install
+pnpm build
+pnpm vitest run tests/unit/in-flight.test.ts tests/unit/in-flight-read.test.ts tests/invariants/github-forge.test.ts --reporter=verbose
+pnpm demo:github
+```
+
+Attendu :
+- the three files pass, among them *never writes another person's pull request* and *holds a
+  hostile answer to its grammar* for each hostile case;
+- `pnpm demo:github` ends on the two new steps: `already proposed in pull request #1` and `already
+  proposed by ada in pull request #1`, `(exit 0)`; `already changes
+  dependencies/network/orders-api-to-payments.yml, differently`, `In pull request #1,
+  dependencies/network/orders-api-to-payments.yml:` and indented patch lines, `(exit 1)`; and no
+  line saying `this step expects`.
+
+With the owner's gh, against `~/idpa-live`: one pull request in flight, then a different change to
+the same file. First the preparation, from the main checkout (`BIN` names its build):
+
+```bash
+cd ~/Documents/idp-agent-main
+pnpm build
+BIN="$HOME/Documents/idp-agent-main/dist/cli/bin.js"
+sed 's/orders-api-to-payments/orders-api-to-payments-flight/g' examples/open-network.json > "$TMPDIR/idpa-flight.json"
+sed -e 's/orders-api-to-payments/orders-api-to-payments-flight/g' -e 's#component:default/orders-api#component:default/billing-api#g' examples/open-network.json > "$TMPDIR/idpa-flight-other.json"
+git -C ~/idpa-live pull --ff-only
+```
+
+Then one command, which asks:
+
+```bash
+node "$BIN" plan --from "$TMPDIR/idpa-flight.json" --repo ~/idpa-live --submit
+```
+
+Attendu :
+- the diff creating `dependencies/network/orders-api-to-payments-flight.yml`, the question —
+  answer `y`; `Pull request #<n> opened on github.com/<your login>/idpa-live: …/pull/<n>`.
+
+Then the different change, which asks nothing:
+
+```bash
+node "$BIN" plan --from "$TMPDIR/idpa-flight-other.json" --repo ~/idpa-live --submit; echo "exit $?"
+```
+
+Attendu :
+- no question; on stdout `1 file · not submitted:`, `  pull request #<n> on
+  github.com/<your login>/idpa-live already changes
+  dependencies/network/orders-api-to-payments-flight.yml, differently:
+  https://github.com/<your login>/idpa-live/pull/<n>`, `Review it there, or run this again once it
+  is merged or closed. Nothing was written.`; on stderr `pull request #<n> is by <your login>, from
+  idp-agent/orders-api-to-payments-flight-<8 hex>`, then `In pull request #<n>,
+  dependencies/network/orders-api-to-payments-flight.yml:` and its patch, indented; `exit 1`.
+
+```bash
+git -C ~/idpa-live branch --list 'idp-agent/*'
+```
+
+Attendu :
+- only the first run's branch.
+
+Close pull request #<n> on GitHub (idpa never closes one). The identical case needs a second
+account, which 6.4.1 sets up: it is proved offline here, and by 6.4.1's live run once that account
+exists.
+
+---
+
 ## Slice 6.4 — the live proof and the documents
 
 Closed by 6.4.1, the owner's live test; 6.4.2 records the decision and every document it makes true; 6.4.3 is the owner's re-recording, in the same session as the live test.
@@ -6605,6 +8950,17 @@ test (Global Constraint 5). No behaviour changes: the one file under `src/` is a
 
 Cites Global Constraints 5, 11, 12, 13, 14 and 15.
 
+*Amended 2026-10-01 (the owner's first decision of that day, built by 6.3.4):* every passage of
+this task that quotes "…and idpa never submits against a base without those rules" — Step 1's
+`INVARIANT`, Step 2's *Decision*, Step 3's ADR-0006 paragraph, Step 4's §4.2 bullet, Steps 5 and 8
+(`SECURITY.md` and `AGENTS.md`, which repeat the bullet) and Step 11's `CHANGELOG` line — states
+instead the bullet 6.3.4's Step 1 puts in
+design §4.2, word for word: "idpa never merges and never writes to the base: it opens a pull
+request, and the base's rules decide who may merge it", followed where the passage goes on by the
+note's line and the proof of what GitHub enforces where the rules require another person's
+approval. 6.3.4 brings each of those passages to that wording in its own pull request; they are
+marked below where they stand.
+
 Earlier tasks already made some of these true (the File Structure: design §4.2's invariant,
 `AGENTS.md`'s *Authorisation* bullets, `SECURITY.md`'s two rows and its two authorisation items
 in 6.2.2, `docs/submitting.md` from 6.1.3 and 6.2.2, the
@@ -6633,6 +8989,7 @@ complete.
 const INVARIANT =
   'the identity that opens a pull request cannot merge it until someone else has approved ' +
   'the exact commit that would merge, and idpa never submits against a base without those rules'
+// 2026-10-01: superseded by 6.3.4's Step 1 wording (see this task's head).
 
 describe('the invariant, in the owner’s words', () => {
   it.each([
@@ -6669,7 +9026,8 @@ ADR-0010, ADR-0011, ADR-0012. Sections:
   GitHub credential, "like Claude Code".
 - **Decision.** First, verbatim and in bold, the invariant: "**the identity that opens a pull
   request cannot merge it until someone else has approved the exact commit that would merge,
-  and idpa never submits against a base without those rules**". Then, one paragraph each: the
+  and idpa never submits against a base without those rules**" *(2026-10-01: 6.3.4's Step 1
+  wording instead; see this task's head)*. Then, one paragraph each: the
   person's git pushes the exact commit create-only (`--force-with-lease=<ref>:`, empty expected
   value, one refspec, to the URL `git remote get-url --push` printed, hooks off, § 4's pins);
   the person's gh reads and opens (eight `GET` templates and one `POST`, `--hostname github.com`
@@ -6717,7 +9075,8 @@ ADR-0010, ADR-0011, ADR-0012. Sections:
   GitHub credential can be scoped to, with the owner's invariant: the identity that opens a pull
   request cannot merge it until someone else has approved the exact commit that would merge,
   and idpa never submits against a base without those rules (ADR-0015)." The *Decision* section
-  is the record of 2026-09-21 and stays as written.
+  is the record of 2026-09-21 and stays as written. *(2026-10-01: the quoted invariant becomes
+  6.3.4's Step 1 wording; see this task's head.)*
 - **ADR-0010**, *Consequences*, one paragraph: "From stage 6 the same commit is pushed to the
   same name on GitHub, create-only as well: `--force-with-lease=<ref>:` with an empty expected
   value refuses a ref that exists, and the push names one refspec and a URL, never a remote.
@@ -6755,6 +9114,9 @@ ADR-0010, ADR-0011, ADR-0012. Sections:
   >   can be scoped out of merging; what refuses the merge is the base's ruleset, which the tool
   >   reads before it writes anything and again at the moment of acting, and a test asserts that
   >   the merge **fails**: offline against a fake, live on a throwaway repository (ADR-0015).
+
+  *(2026-10-01: 6.3.4 replaces this bullet with its Step 1 wording, and this step then only
+  replaces that bullet's closing reference to the note by "(ADR-0015)".)*
 
   (The first bullet's "merge request" became "pull request" in 6.2.2; the third stays.)
 - **§4.4**, *Declared is not provisioned*: "Refusal is caught before the merge by a required
@@ -6923,6 +9285,8 @@ Base `test/s6-live-github`. CHANGELOG, `### Documentation`:
 >   authorisation, configuration, journeys, failure and test sections, the README and `AGENTS.md`
 >   describe stage 6 as built, and `docs/submitting.md` is the page a person follows to submit
 >   ([#PRNUM](https://github.com/pcaboor/idp-agent/pull/PRNUM)).
+
+*(2026-10-01: the quoted invariant becomes 6.3.4's Step 1 wording; see this task's head.)*
 
 **What changes that a person sees:** documents only, and one comment in `src/`; every command's
 output is the same byte for byte.
@@ -7238,6 +9602,63 @@ that makes the invariant true, before `SECURITY.md` guarantees it.)
    `RepositoryArgumentError`: the note's "refused as today" (D8's refusal is exit 2), `AGENTS.md`
    keeping `3` for a boundary no typing moves, and a change with no repository, refused after the
    Supervisor's word, being exit 2 on `2b2250e`.
+
+### Questions for the owner (2026-10-01 tasks)
+
+All eight settled on 2026-10-01, each as recommended: the owner answered 2, 3, 4 and 7, and took
+the recommendation on 1, 5, 6 and 8, which were put to them as such (recorded in
+[`docs/roadmap.md`](../roadmap.md)'s decisions). The text below keeps each question as it was put.
+
+1. **Settled: design §4.2's new wording** (6.3.4, Step 1). Recommended: the bullet Step 1 quotes —
+   "idpa never merges and never writes to the base: it opens a pull request, and the base's rules
+   decide who may merge it", with the note's line and the negative test kept as the proof of what
+   GitHub enforces where the rules require an approval. It is the sentence `AGENTS.md`,
+   `SECURITY.md`, `docs/submitting.md` and 6.4.2's `INVARIANT` then repeat word for word, so it is
+   the owner's to word.
+2. **Settled: a second note where only force pushes or deletion are unguarded** (6.3.4). Where a binding
+   rule does require another person's approval but no binding ruleset blocks force pushes to the
+   base or restricts its deletion (absent, or supplied only by a ruleset gh's account bypasses),
+   the approved line ("the author may merge without another person's review") would be false.
+   Recommended: a second neutral line, a fact about the rules rather than their effect — `note: on
+   this repository no rule on <base> that binds the author blocks force pushes`, `… restricts
+   deletions`, or `… blocks force pushes or restricts deletions` — said only then. The
+   alternative is no note at all on those kinds (`idpa protection` still reports them); the
+   approved line is never said there, since it would be false.
+3. **Settled: no model-written line beside the proposal** (6.3.5). Recommended: none — the question is the
+   engine's, `--submit`'s byte for byte, and no prompt changes, so no tape moves. A `›` sentence
+   from the Supervisor would need a new prompt, a model call after the diff and a re-record of
+   every change tape (6.4.3), to say what the engine already says.
+4. **Settled: `init` and `plan --from` do not propose in stage 6** (6.3.5). Recommended: not in stage 6. `plan
+   --from` has no model and is the scripted road, where typing `--submit` is the point; `init`
+   writes into the service's own repository, and stage 8's discovery, which writes the same files
+   from any service repository, is where its proposal belongs. The alternative is the same
+   `propose` handed to both roads in 6.3.5, a small change.
+5. **Settled: what is in flight, read before the model, does not stop the run there** (6.3.6). 6.3.6
+   reads before any model on every `--submit` road and says the pull requests touching the
+   service, then goes on. Recommended: go on — before the bytes exist, a pull request with the
+   same change and one with a different change look alike, and stopping would turn away a change
+   already proposed byte for byte, which the decision wants named at exit 0. The alternative is to
+   ask there, `continue anyway? [y/N]`, when a pull request in flight touches a file the change
+   may write (at a terminal only; a script goes on).
+6. **Settled: more than twenty idp-agent pull requests in flight into one base are refused** (6.3.6). Recommended:
+   refuse (exit 1, nothing written), as a catalogue that cannot be read whole is never answered
+   from: a comparison of some of them could miss the one that competes. The alternative is to
+   compare the twenty most recently created and say on stderr that the rest were not compared;
+   either way the budget stays at 92 gh calls.
+7. **Settled: the proposal road reads what is in flight after the last model call** (6.3.5 with 6.3.6). Decision (C) says
+   before any model is paid; decision (B)'s proposal, as 6.3.5 builds it, reads nothing of GitHub
+   before the last model call, so the preview's order is today's and a phrase that turns out to
+   be a question starts no gh. Recommended: after the last model call, before the question, and
+   again at step 8 — the proposal is never put without the judgement, only the money spent before
+   it differs. The alternative is to read before the Inspector on every change previewed at a
+   terminal, which starts gh on every such preview, before the person said they want a pull
+   request.
+8. **Settled: no new flag to preview at a terminal without any GitHub read** (6.3.5). A change previewed at a
+   terminal without `--submit` now reads gh's identity, the repository, the rules and the base's
+   tip after the last model call, to know whether it can propose. Recommended: no new flag in
+   stage 6 — a preview whose stdout is not a terminal (`| cat`, `> file`) or `--json` is never
+   proposed and reads nothing, and `SECURITY.md` says so. The alternative is a key in the
+   personal `config.yml`, `propose: false`, read by `proposeOf`.
 
 ## Rejected alternatives
 
