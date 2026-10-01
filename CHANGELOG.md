@@ -332,6 +332,9 @@ Each pull request adds its line here.
 
 ### Fixed
 
+- The suite no longer fails on a loaded machine: a test may take 20 s instead of vitest's 5 s
+  default, since many start git or node in real repositories on disk, and fourteen once timed
+  out in one run and passed in the next ([#129](https://github.com/pcaboor/idp-agent/pull/129)).
 - The recording harness: a recording starts from an empty tape, so a re-record keeps nothing
   of the run before it, and a replayed run that succeeds having left a tape turn unplayed
   fails, naming it; the 16 turns no scenario replayed are pruned from three tapes, with no
