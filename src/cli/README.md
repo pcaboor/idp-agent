@@ -386,8 +386,12 @@ would pass — a separate grant at their level, for whom and over what as far as
 knows (`renderStopped`, `RepairOutcome.kept`).
 
 **Submitting (`--submit`).** `commands/submit.ts` holds every step a submission takes, in the
-order it takes them, so both roads of `plan` and `init` share one copy; `idpa "<phrase>"
---submit` is refused, exit 2, naming the two roads that do (D8).
+order it takes them, so both roads of `plan`, `init` and the phrase share one copy. `idpa
+"<phrase>" --submit` (D8 lifted) opens the forge in `main`, after `declarationsFor` and before
+the catalogue is requested, says the GitHub road's line once what the run reads has been said,
+runs `refuseUnprotected` before the Supervisor, and hands the forge to `runIntent` through
+`reopening` on a change; a question is refused after the Supervisor's word, exit 3
+(`entry.ts`'s `QUESTION_NOT_SUBMITTED`, through `classified`'s optional question road).
 `openForSubmission` opens the forge before anything is read: a root that is not a clone's,
 no `git`, no committer identity or a detached `HEAD` is a `ForgeInputError`, exit 2. The root
 is the one `declarationsFor`'s chain resolved, and stderr names what chose it as it does

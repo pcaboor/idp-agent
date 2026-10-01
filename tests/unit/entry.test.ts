@@ -1,9 +1,10 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { COMMANDS, HELP, main, parseArguments } from '../../src/cli/index.js'
 import { runInitPlatform } from '../../src/cli/commands/init.js'
+import { QUESTION_NOT_SUBMITTED } from '../../src/cli/commands/entry.js'
 import type { Ask } from '../../src/cli/commands/plan.js'
 import type { AgentEvent } from '../../src/agents/events.js'
 import { REPORT_TOOL } from '../../src/agents/tools/project-tools.js'
@@ -16,7 +17,13 @@ import type {
   GenerateResult,
   LlmClient,
 } from '../../src/llm/client.js'
+import type { GhProcess } from '../../src/process/gh.js'
 import { hashTree } from '../support/tree.js'
+import { fakeBackstage } from '../support/fake-backstage.js'
+import type { FakeGitHub } from '../support/fake-gh.js'
+import { removeClones } from '../support/forge-fixture.js'
+import { observable } from '../support/git.js'
+import { githubClone, unprotect } from '../support/github-fixture.js'
 import { confirmingEnvironment } from '../support/ask.js'
 
 /**
@@ -627,5 +634,215 @@ describe('ask on a change request', () => {
     })
     expect(code).toBe(3)
     expect(err).toContain('that is a change request; run it as idpa "<phrase>" to preview the plan')
+  })
+})
+
+/**
+ * D8 lifted (stage 6, decision 14): the one gesture submits. The forge, gh
+ * and the base's rules are read before the Supervisor, the first model call
+ * of this road; a change is then submitted as `plan "<intent>" --submit`
+ * submits one, and a question is refused after the Supervisor's one word.
+ */
+describe('idpa "<phrase>" --submit', () => {
+  afterAll(removeClones)
+
+  /** One log of what the run started, in order: each gh vector and each model call. */
+  const watching = (fake: FakeGitHub, inner: LlmClient) => {
+    const log: string[] = []
+    const gh: GhProcess = async (argv, options) => {
+      log.push(`gh ${argv.join(' ')}`)
+      return fake.process(argv, options)
+    }
+    const client: LlmClient = {
+      generate: async (request) => {
+        log.push(`model ${request.agent}`)
+        return inner.generate(request)
+      },
+    }
+    return { log, gh, client }
+  }
+
+  it('submits a change as plan "<intent>" --submit does, the forge, gh and the rules read before the Supervisor', async () => {
+    const clone = await githubClone()
+    const project = await application()
+    const { log, gh, client } = watching(clone.gh, changing())
+
+    const { code, out, err } = await run([INTENT, '--repo', clone.repo, '--project', project, '--submit'], {
+      env: clone.env,
+      gh,
+      client,
+      ask: answering('read'),
+    })
+
+    expect(code, err).toBe(0)
+    expect(err).toMatch(/^· mutation$/m)
+    expect(err).toMatch(/^submitting to github\.com\/acme\/iac, into main \(origin, main's upstream\), as ada \(gh\)$/m)
+    expect(out).toContain('Pull request #1 opened on github.com/acme/iac: https://github.com/acme/iac/pull/1')
+    // The road the forge was opened for, not the one `runIntent` would have named: D4's words for a phrase.
+    expect(clone.gh.state.pulls?.[0]?.body).toContain('This change was drafted by a model from a phrase idpa took for a change')
+    const supervisor = log.indexOf('model supervisor')
+    expect(supervisor).toBeGreaterThan(0)
+    expect(log.slice(0, supervisor).some((line) => /rules\/branches\/main\b/.test(line))).toBe(true)
+    // Read once before the Supervisor; step 8 and step 11 after the Reviewer; never a fourth.
+    expect(log.filter((line) => /rules\/branches\/main\b/.test(line))).toHaveLength(3)
+  })
+
+  it('says the road after the line naming what the run reads, never before it', async () => {
+    const clone = await githubClone()
+    const { err } = await run([INTENT, '--submit'], {
+      env: { ...clone.env, IDP_REPO: clone.repo },
+      gh: clone.gh.process,
+      client: changing(),
+      ask: answering('read'),
+      cwd: await temp(),
+    })
+
+    const read = err.search(/^reading the declarations repository .* \(IDP_REPO\)/m)
+    const road = err.search(/^submitting to github\.com\/acme\/iac/m)
+    expect(read, err).toBeGreaterThanOrEqual(0)
+    expect(road, err).toBeGreaterThan(read)
+  })
+
+  it.each([[[] as string[]], [['--json']]])(
+    'refuses a question after the Supervisor’s one word, exit 3 with %j: the Analyst is never called, nothing is written',
+    async (flags) => {
+      const clone = await githubClone()
+      const client = scripted({
+        supervisor: [saying('QUESTION')],
+        analyst: [turnCalling('answer', { outcome: 'nothing' })],
+      })
+      const before = await observable(clone.repo)
+
+      const { code, out, err } = await run(['which databases are in prod?', '--repo', clone.repo, '--submit', ...flags], {
+        env: clone.env,
+        gh: clone.gh.process,
+        client,
+      })
+
+      // The mirror of a change put to `ask`: understood, and not acted on, in prose and in --json alike.
+      expect(code, err).toBe(3)
+      expect(out).toBe('')
+      expect(err).toContain(QUESTION_NOT_SUBMITTED)
+      expect(err).not.toContain('--json applies to a change')
+      expect(agentsOf(client)).toEqual(['supervisor'])
+      expect(await observable(clone.repo)).toBe(before)
+      expect(clone.gh.state.pulls ?? []).toEqual([])
+    },
+  )
+
+  it('refuses unprotected rules before the Supervisor, exit 1', async () => {
+    const clone = await githubClone()
+    unprotect(clone.gh)
+    const client = changing()
+
+    const { code, out } = await run([INTENT, '--repo', clone.repo, '--submit'], {
+      env: clone.env,
+      gh: clone.gh.process,
+      client,
+    })
+
+    expect(code).toBe(1)
+    expect(out).toContain("not submitted — nothing on github.com/acme/iac's main stops the person")
+    expect(client.seen).toEqual([])
+  })
+
+  it('refuses gh logged out before the model is configured and before a catalogue is requested, exit 2', async () => {
+    const clone = await githubClone()
+    clone.gh.logout()
+    const catalogue = fakeBackstage({ entities: [] })
+
+    const { code, err } = await run([INTENT, '--submit'], {
+      env: { ...clone.env, IDP_REPO: clone.repo, IDP_BACKSTAGE_URL: 'http://127.0.0.1:7007/api/catalog' },
+      gh: clone.gh.process,
+      catalogueFetch: catalogue.fetch,
+      cwd: await temp(),
+    })
+
+    expect(code).toBe(2)
+    expect(err).toContain('gh is not logged in to github.com')
+    expect(err).not.toContain('no model configured')
+    expect(catalogue.sent).toEqual([])
+  })
+
+  it('refuses --submit with no declarations repository anywhere, before any model and before a catalogue is requested', async () => {
+    // A catalogue answers the read, never the change: one configured is no
+    // repository to submit to, and is not asked for anything on the way out.
+    const client = changing()
+    const catalogue = fakeBackstage({ entities: [] })
+    const { code, err } = await run([INTENT, '--submit'], {
+      client,
+      env: { IDP_BACKSTAGE_URL: 'http://127.0.0.1:7007/api/catalog' },
+      catalogueFetch: catalogue.fetch,
+      cwd: await temp(),
+    })
+    expect(code).toBe(2)
+    expect(err).toContain('idpa "<phrase>" --submit needs a declarations repository')
+    expect(client.seen).toEqual([])
+    expect(catalogue.sent).toEqual([])
+  })
+
+  it('cuts only the local branch with --local, and starts no gh', async () => {
+    const clone = await githubClone()
+    const { log, gh, client } = watching(clone.gh, changing())
+
+    const { code, out, err } = await run([INTENT, '--repo', clone.repo, '--submit', '--local'], {
+      env: clone.env,
+      gh,
+      client,
+      ask: answering('read'),
+    })
+
+    expect(code, err).toBe(0)
+    expect(out).toContain('--local: nothing pushed by this run')
+    expect(log.filter((line) => line.startsWith('gh '))).toEqual([])
+  })
+
+  it('refuses a service whose iacRepo names another repository, as plan "<intent>" does', async () => {
+    const clone = await githubClone()
+    const project = await application()
+    await writeFile(path.join(project, '.idp-agent.yml'), 'iacRepo: github.com/acme/other-iac\nenvironments: [prod]\n', 'utf8')
+    const client = changing()
+
+    const { code, out } = await run([INTENT, '--repo', clone.repo, '--project', project, '--submit'], {
+      env: clone.env,
+      gh: clone.gh.process,
+      client,
+      ask: answering('read'),
+    })
+
+    expect(code).toBe(1)
+    expect(out).toContain('names github.com/acme/other-iac as this service')
+    expect(agentsOf(client)).toEqual(['supervisor'])
+  })
+
+  it('sends the Supervisor, and every agent after it, the bytes it sends without --submit', async () => {
+    const clone = await githubClone()
+    const project = await application()
+    const previewing = changing()
+    await run([INTENT, '--repo', clone.repo, '--project', project], { env: clone.env, client: previewing, ask: answering('read') })
+    const submitting = changing()
+    const { code, err } = await run([INTENT, '--repo', clone.repo, '--project', project, '--submit'], {
+      env: clone.env,
+      gh: clone.gh.process,
+      client: submitting,
+      ask: answering('read'),
+    })
+
+    expect(code, err).toBe(0)
+    expect(agentsOf(submitting)).toEqual(['supervisor', 'inspector', 'architect', 'reviewer'])
+    expect(JSON.stringify(submitting.seen)).toBe(JSON.stringify(previewing.seen))
+    expect(JSON.stringify(submitting.seen)).not.toContain('github.com')
+  })
+
+  it('reports the pull request in --json on a change', async () => {
+    const clone = await githubClone()
+    const { code, out, err } = await run([INTENT, '--repo', clone.repo, '--submit', '--json'], {
+      env: clone.env,
+      gh: clone.gh.process,
+      client: changing(),
+      ask: answering('read'),
+    })
+    expect(code, err).toBe(0)
+    expect(JSON.parse(out)).toMatchObject({ submission: { outcome: 'created', pushed: true, pullRequest: { number: 1 } } })
   })
 })

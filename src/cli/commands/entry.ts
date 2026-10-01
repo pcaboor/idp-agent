@@ -33,20 +33,49 @@ import type { CommandResult } from './result.js'
  * as one, it is answered as `ask` answers, and one line on stderr, after the
  * classification that decided it, says the flag did nothing — a script
  * piping to a JSON parser learns why from the line, not from the parser.
+ *
+ * `--submit` (stage 6, D8 lifted): a change is submitted as `plan "<intent>"
+ * --submit` submits one — `change` is handed the forge `main` opened, and the
+ * base's rules were read before the Supervisor — and a question is refused
+ * after the Supervisor's one word, exit 3, as `ask` declines a change: the
+ * request is understood, and this build does not submit a question. The
+ * Analyst is never called, and the `--json` line is not said: nothing is
+ * answered, as text or otherwise. The Supervisor is sent exactly what it is
+ * sent without the flag.
  */
 export async function runEntry(
   options: AskOptions & {
     readonly json: boolean
     readonly change: () => Promise<CommandResult>
+    /** `--submit`: a question is refused rather than answered; a change is `change`'s to submit. */
+    readonly submit?: boolean
   },
 ): Promise<CommandResult> {
-  const emit: EventSink = options.json
-    ? (event) => {
-        options.emit(event)
-        if (event.type === 'classified' && event.classification === 'QUESTION') {
-          options.err('--json applies to a change; a question is answered as text\n')
+  const refusing = options.submit === true
+  const emit: EventSink =
+    options.json && !refusing
+      ? (event) => {
+          options.emit(event)
+          if (event.type === 'classified' && event.classification === 'QUESTION') {
+            options.err('--json applies to a change; a question is answered as text\n')
+          }
         }
-      }
-    : options.emit
-  return classified({ ...options, emit }, options.change)
+      : options.emit
+  return classified(
+    { ...options, emit },
+    options.change,
+    refusing
+      ? async () => {
+          // Understood, and declined: --submit submits a change. The mirror of
+          // `runAsk`'s refusal of a change, exit 3 in prose and in --json alike.
+          options.err(`${QUESTION_NOT_SUBMITTED}\n`)
+          return { text: '', found: false, unsupported: true }
+        }
+      : undefined,
+  )
 }
+
+/** A question put to `--submit`: refused after the Supervisor's one word, exit 3, as `ask` declines a change. */
+export const QUESTION_NOT_SUBMITTED =
+  'that is a question, and --submit submits a change: ask it again without --submit. ' +
+  'Nothing was answered, and nothing was written.'

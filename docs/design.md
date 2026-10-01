@@ -1139,7 +1139,9 @@ A branch that is already there is answered before that question, by a look that 
 nothing: this very submission is named and nothing is asked, and somebody else's branch of
 that name is refused. The local forge cuts the branch and says it opened no merge request,
 because there is no forge to open one on until stage 6. `plan --from … --submit` crosses
-four gates and no Reviewer; `idpa "<phrase>"` does not submit at stage 5.
+four gates and no Reviewer. `idpa "<phrase>" --submit` submits a change as `plan "<intent>"
+--submit` does, the forge, gh and the base's rules read before the Supervisor; a question
+with `--submit` is refused (stage 6).
 
 The two `--repo` flags on this page name two different repositories, and the difference is
 the whole reason the flag exists. `plan --repo` is the **declarations** repository, which

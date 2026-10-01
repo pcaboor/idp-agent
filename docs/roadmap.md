@@ -24,7 +24,7 @@ each:
 | 3 | `init platform` and `validate` | done |
 | 4 | Preview only: nothing is written | done |
 | 5 | Write + local branch | done ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)): task 1, `Cleared` for the declarations repository ([#105](https://github.com/pcaboor/idp-agent/pull/105)); task 2, `Cleared` for the service repository ([#106](https://github.com/pcaboor/idp-agent/pull/106)); task 3, the shared git launcher and the `forge/` types ([#107](https://github.com/pcaboor/idp-agent/pull/107)); task 4, the local forge — create-only, idempotent, atomic ([#108](https://github.com/pcaboor/idp-agent/pull/108)); task 5, `plan --from … --submit` ([#109](https://github.com/pcaboor/idp-agent/pull/109)); task 6, `plan "<intent>" --submit`, refused before a model is paid ([#110](https://github.com/pcaboor/idp-agent/pull/110)); task 7, `init --submit` and `.idp-agent.yml`, and a branch already there answered before the confirmation ([#111](https://github.com/pcaboor/idp-agent/pull/111)) |
-| 6 | GitHub pull request | in progress ([the plan](plans/stage-6-github.md)): slice 6.1 done: 6.1.1, the allow-list ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2, the remote and who gh is ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3, the preflight and `idpa protection` ([#125](https://github.com/pcaboor/idp-agent/pull/125)); slice 6.2 done: 6.2.1, the GitHub forge ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2, `plan --from … --submit` to GitHub ([#127](https://github.com/pcaboor/idp-agent/pull/127)); slice 6.3: 6.3.1, `plan "<intent>" --submit` to GitHub, and `iacRepo` as a cross-check ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2, `init --submit` to GitHub ([#130](https://github.com/pcaboor/idp-agent/pull/130)) |
+| 6 | GitHub pull request | in progress ([the plan](plans/stage-6-github.md)): slice 6.1 done: 6.1.1, the allow-list ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2, the remote and who gh is ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3, the preflight and `idpa protection` ([#125](https://github.com/pcaboor/idp-agent/pull/125)); slice 6.2 done: 6.2.1, the GitHub forge ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2, `plan --from … --submit` to GitHub ([#127](https://github.com/pcaboor/idp-agent/pull/127)); slice 6.3: 6.3.1, `plan "<intent>" --submit` to GitHub, and `iacRepo` as a cross-check ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2, `init --submit` to GitHub ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3, `idpa "<phrase>" --submit` ([#131](https://github.com/pcaboor/idp-agent/pull/131)), which closes slice 6.3 as the plan drew it |
 | 7 | Polish: Ink TUI, asciinema, npm publish | not started |
 | 8 | Discovery | designed ([the design note](stage-8-brief.md), [#76](https://github.com/pcaboor/idp-agent/pull/76)); not started |
 
@@ -86,7 +86,11 @@ here, one pull request each, each naming the check run together at the end.
    GitHub — a pull request on the service's own repository once it passes the same
    configuration check and the same preflight, refused with `--local` named when its rules
    would let the opener merge
-   ([#130](https://github.com/pcaboor/idp-agent/pull/130)); the phrase (6.3.3) is next.
+   ([#130](https://github.com/pcaboor/idp-agent/pull/130)); and so is 6.3.3, `idpa "<phrase>"
+   --submit` — D8 lifted: the forge, gh and the base's rules read before the Supervisor, a
+   change submitted as `plan "<intent>" --submit` submits it, a question refused after the
+   Supervisor's one word, exit 3 ([#131](https://github.com/pcaboor/idp-agent/pull/131)),
+   which closes slice 6.3 as the plan drew it.
    Three tasks the owner added on 2026-10-01 follow them, before
    6.4: 6.3.4, the pull request always opened whatever the base's rules, with a neutral `note:`
    when its author may merge it alone; 6.3.5, the Supervisor proposing to open the pull request
@@ -398,6 +402,14 @@ The owner's decisions, dated, each with where it is recorded.
   says, its last line naming `--local`. D6 and D12 stay refused by name, on the GitHub road
   too; `.idp-agent.yml`'s `iacRepo` names the declarations repository, another, so it is not
   held to the service's clone ([#130](https://github.com/pcaboor/idp-agent/pull/130)).
+- Stage 6's decision 14, built, and stage 5's D8 settled by it: `idpa "<phrase>" --submit`
+  submits a change as `plan "<intent>" --submit` does — the declarations repository, the
+  `--project`, the road and gh read before a catalogue is requested and before the model is
+  configured, the base's rules before the Supervisor — and a question put to `--submit` is
+  refused after the Supervisor's one word, exit 3, the Analyst never called and nothing written;
+  `--submit --demo` is refused at parse time. Divergence is judged after the Supervisor's word,
+  where `runIntent` reads the catalogue's bytes: one Supervisor turn is what a divergent tree
+  costs on this road ([#131](https://github.com/pcaboor/idp-agent/pull/131)).
 - **The queue gains** removing and changing an access, and company rules, after stage 8; the
   discovery mode's Tab switch belongs to stage 7. GitLab and the proof of what was done after a
   merge go to the discussion after stage 7. Temporary access and a CI or bot mode were offered
@@ -413,8 +425,6 @@ Each was checked against `main` at `3b642fa`.
   exit 2, on the GitHub road too, before gh starts: the forge cuts a branch at a clone's root,
   and the service's paths would need the folder's prefix. `init` without `--submit` previews
   one.
-- **`idpa "<phrase>" --submit`** (D8). Refused with exit 2, pointing at `plan "<intent>"
-  --submit`; when it comes, divergence is refused before the Supervisor.
 - **`.idp-agent.yml` for a service already declared.** It rides on the branch of the
   Component `init` adds; when the service's catalog-info already declares it, a typed
   configuration is said to be left unwritten, and is written by hand.

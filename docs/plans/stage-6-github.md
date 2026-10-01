@@ -1,6 +1,6 @@
 # Stage 6 — a GitHub pull request, with the person's own git and gh
 
-**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2 built ([#130](https://github.com/pcaboor/idp-agent/pull/130)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
+**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2 built ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3 built ([#131](https://github.com/pcaboor/idp-agent/pull/131)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
 § 19 (Q1–Q4) were settled on 2026-09-30, each as recommended, and this plan takes them as
 given; so were the four questions the plan itself asked, the same day ([Questions for the
 owner](#questions-for-the-owner)). Eleven stacked pull requests: ten, 6.1.1 to 6.4.2, then 6.4.3, the owner's step: every tape
@@ -5573,7 +5573,7 @@ with no repository, which a phrase learns after the Supervisor's word on `2b2250
 (`index.ts:1610-1615`), is refused at step 2, before any model. Step 7 writes the code into
 `AGENTS.md`'s exit-code paragraph, under `3`, and the tests below pin it.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `tests/unit/cli-args.test.ts`, the D8 test (`:160-175` on `2b2250e`) becomes:
 
@@ -5789,7 +5789,7 @@ and `--local` is an unknown option there; `QUESTION_NOT_SUBMITTED` is not export
 catalogue case exits 2 on D8 too, for the wrong reason (the assertion on gh's sentence fails);
 the new `cli-args` tests read the D8 error where they expect an `entry` command.
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 ```bash
 df -h "$TMPDIR"
@@ -5798,7 +5798,7 @@ pnpm vitest run tests/unit/cli-args.test.ts tests/unit/entry.test.ts tests/contr
 
 Expected: FAIL — D8's refusal, the missing export, the unknown `--local`.
 
-- [ ] **Step 3: The parser**
+- [x] **Step 3: The parser**
 
 In `parsePhrase`, `local: { type: 'boolean' }` beside `submit`; the D8 block (`:679-690`) and
 its comment become:
@@ -5822,7 +5822,7 @@ and the returned command gains `...(values.submit === true ? { submit: true as c
 and the same for `local`. `Command`'s `entry` member gains both, omitted when absent, as
 `plan`'s are.
 
-- [ ] **Step 4: `classified` and `runEntry`**
+- [x] **Step 4: `classified` and `runEntry`**
 
 `classified`'s `QUESTION` case becomes `return question === undefined ? answered(…) :
 question()`; its `switch` keeps `const exhaustive: never` in `default`. `runEntry`:
@@ -5851,7 +5851,7 @@ question()`; its `switch` keeps `const exhaustive: never` in `default`. `runEntr
 "<intent>" --submit` submits one, a question is refused after the Supervisor's word, exit 3 as
 `ask` declines a change, and the Supervisor is sent what it is sent without the flag.
 
-- [ ] **Step 5: `main`'s phrase road**
+- [x] **Step 5: `main`'s phrase road**
 
 Right after `declarationsFor` (`index.ts:1427-1436` on `2b2250e`), when
 `command.name === 'entry' && command.submit === true`:
@@ -5910,7 +5910,7 @@ callback, before `runEntry`:
 [--submit [--local]]`, and one sentence in the `--submit` paragraph: "A phrase takes --submit
 too: a change is submitted as plan "<intent>" --submit submits it, and a question is refused."
 
-- [ ] **Step 6: The demo**
+- [x] **Step 6: The demo**
 
 `scripts/demo-github.mjs`, two steps on the demo SI clone, no provider key in the binary's
 environment:
@@ -5920,7 +5920,7 @@ environment:
 2. *A phrase with --submit never writes to the demo SI*: `"<the open-network intent>" --submit
    --demo`: exit 2, the parse-time sentence and the phrase's usage.
 
-- [ ] **Step 7: Traceability and the documents**
+- [x] **Step 7: Traceability and the documents**
 
 - `CHANGELOG.md`, Unreleased → Added (below).
 - `docs/roadmap.md`: the stage 6 row names 6.3.3 and closes slice 6.3; decision 14 recorded as
@@ -5945,7 +5945,7 @@ default; nothing new is switched on.
 **Architecture rules:** none added; 29. `entry.ts` imports nothing new: the refusal is a
 returned `CommandResult`, as `runAsk`'s is.
 
-- [ ] **Step 8: Checks**
+- [x] **Step 8: Checks**
 
 ```bash
 df -h "$TMPDIR"

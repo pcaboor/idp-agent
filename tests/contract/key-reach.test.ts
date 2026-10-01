@@ -900,6 +900,8 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
     toGh: Handed[]
     /** The base's commit, which nothing of git's may carry to a prompt. */
     base: string
+    /** The pull requests the fake GitHub holds after the run. */
+    pulls: unknown
   }
 
   afterAll(removeClones)
@@ -907,7 +909,10 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
   /**
    * The first block's run, with a clone on github.com — the demo SI's as
    * `acme/iac` unless `cloned` names another source and repository — the
-   * person's gh, and `--repo` appended.
+   * person's gh, and `--repo` appended. Handed a `catalogue`, the run reads
+   * it instead, as a person configures one — `IDP_BACKSTAGE_URL` ahead of
+   * `IDP_REPO`, the token in `IDP_BACKSTAGE_TOKEN` — and the clone is named
+   * by `IDP_REPO`, with no `--repo`, so the catalogue is what is read.
    */
   const submittingRun = async (
     argv: string[],
@@ -915,6 +920,7 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
     operations: unknown[],
     arrange: (clone: GitHubClone) => void = () => {},
     cloned: { readonly source: string; readonly repository: string } = { source: FIXTURES, repository: 'acme/iac' },
+    catalogue?: ReturnType<typeof fakeBackstage>,
   ): Promise<Submitted> => {
     const clone = await githubClone({ ...cloned, login: LOGIN })
     arrange(clone)
@@ -932,6 +938,7 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
     vi.stubEnv(wire.key, KEY)
     vi.stubEnv('GH_TOKEN', GH_CANARY)
     vi.stubEnv('GITHUB_TOKEN', GH_CANARY)
+    if (catalogue !== undefined) vi.stubEnv('IDP_BACKSTAGE_TOKEN', TOKEN)
     for (const variable of wire.moves) vi.stubEnv(variable, undefined)
     // The clone was built through the mocked execFile: none of it is the run's.
     spawned.environments.length = 0
@@ -941,7 +948,7 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
     const sink = memorySink()
     const out: string[] = []
     const err: string[] = []
-    const code = await main([...argv, '--repo', clone.repo], {
+    const code = await main(catalogue === undefined ? [...argv, '--repo', clone.repo] : argv, {
       root: FIXTURES,
       gh,
       env: {
@@ -952,7 +959,11 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
         IDP_MLFLOW_TRACKING_URI: MLFLOW,
         GH_TOKEN: GH_CANARY,
         GITHUB_TOKEN: GH_CANARY,
+        ...(catalogue === undefined
+          ? {}
+          : { IDP_REPO: clone.repo, IDP_BACKSTAGE_URL: CATALOGUE, IDP_BACKSTAGE_TOKEN: TOKEN }),
       },
+      ...(catalogue === undefined ? {} : { catalogueFetch: catalogue.fetch }),
       fetch: keeping(toMlflow, () => new Response('{}', { status: 200 })),
       traceSinks: [sink],
       out: (chunk) => void out.push(chunk),
@@ -971,6 +982,7 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
       root: { ...(kept?.spans[0]?.attributes ?? {}) },
       toGh,
       base,
+      pulls: clone.gh.state.pulls ?? [],
     }
   }
 
@@ -1051,6 +1063,79 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
 
     expect(ran.code, ran.err).toBe(0)
     expect(ran.out).toContain('Pull request #1 opened on github.com/acme/iac')
+    heldToGitHub(ran, 'acme/iac')
+  }, 30_000)
+
+  it('reaches its provider in its header, and nothing of GitHub reaches it, on idpa "<phrase>" --submit', async () => {
+    // The phrase road: the forge, gh and the base's rules read before the
+    // Supervisor, whose request is among the provider's, held to the same.
+    const example = JSON.parse(await readFile(EXAMPLE, 'utf8')) as { intent: string; operations: unknown[] }
+    const { project } = await repositories()
+    const ran = await submittingRun([example.intent, '--project', project, '--submit'], 'MUTATION', example.operations)
+
+    expect(ran.code, ran.err).toBe(0)
+    expect(ran.out).toContain('Pull request #1 opened on github.com/acme/iac')
+    // The first request is the Supervisor's, and the only one: its
+    // instructions, the request it classifies, and no tool offered at all.
+    const supervisor = ran.toProvider.filter(({ body }) => body.includes('You classify a request about an infrastructure catalogue'))
+    expect(supervisor).toHaveLength(1)
+    expect(supervisor[0]).toBe(ran.toProvider[0])
+    expect(supervisor[0]?.body).toContain(JSON.stringify(`request: ${example.intent}`).slice(1, -1))
+    expect(wire.offered(JSON.parse(supervisor[0]?.body ?? '{}') as Body)).toEqual([])
+    heldToGitHub(ran, 'acme/iac')
+  }, 30_000)
+
+  it('sends the catalogue token to the catalogue alone when idpa "<phrase>" --submit reads one and opens a pull request', async () => {
+    // The one run shape new to this road: a change that reads a catalogue —
+    // the Supervisor is shown it — then starts gh and a push. The token goes
+    // in the catalogue's one header, and nowhere gh, git, the provider, the
+    // pull request, the trace or the terminal could carry it; nothing only
+    // the catalogue declares reaches gh either, the pull request included.
+    const example = JSON.parse(await readFile(EXAMPLE, 'utf8')) as { intent: string; operations: unknown[] }
+    const { project } = await repositories()
+    const catalogue = fakeBackstage({ entities: catalogueEntities(), token: TOKEN })
+    const ran = await submittingRun(
+      [example.intent, '--project', project, '--submit'],
+      'MUTATION',
+      example.operations,
+      () => {},
+      undefined,
+      catalogue,
+    )
+
+    expect(ran.code, ran.err).toBe(0)
+    expect(ran.err).toMatch(/^reading the Backstage catalogue at backstage\.canary\.example/m)
+    expect(ran.out).toContain('Pull request #1 opened on github.com/acme/iac')
+
+    // The catalogue was read, with the token in its one header and nowhere else of the request.
+    expect(catalogue.sent.length).toBeGreaterThan(0)
+    for (const sent of catalogue.sent) {
+      expect(Object.entries(sent.headers).filter(([, value]) => value.includes(TOKEN))).toEqual([
+        ['authorization', `Bearer ${TOKEN}`],
+      ])
+      expect(sent.url).not.toContain(TOKEN)
+    }
+    // What only the catalogue declares reached the Supervisor, so the searches below are not vacuous.
+    expect(ran.toProvider.some(({ body }) => body.includes(MARKER))).toBe(true)
+
+    for (const sent of [...ran.toProvider, ...ran.toMlflow]) expect(JSON.stringify(sent)).not.toContain(TOKEN)
+    for (const call of ran.toGh) {
+      expect(Object.keys(call.env).map((name) => name.toUpperCase()).filter((name) => name.startsWith('IDP_BACKSTAGE'))).toEqual([])
+      for (const handed of [JSON.stringify(call.env), JSON.stringify(call.argv), call.stdin]) {
+        expect(handed).not.toContain(TOKEN)
+        expect(handed).not.toContain(MARKER)
+        expect(handed).not.toContain('catalogue-only-canary')
+      }
+    }
+    expect(spawned.calls.filter((call) => call.args.includes('push'))).toHaveLength(1)
+    for (const call of spawned.calls) expect(JSON.stringify([call.args, call.env])).not.toContain(TOKEN)
+    for (const environment of spawned.environments) expect(JSON.stringify(environment)).not.toContain(TOKEN)
+    const pulls = JSON.stringify(ran.pulls)
+    expect(pulls).toContain('This change was drafted by a model from a phrase idpa took for a change')
+    for (const text of [pulls, ran.trace, ran.out, ran.err]) {
+      expect(text).not.toContain(TOKEN)
+    }
+    expect(pulls).not.toContain(MARKER)
     heldToGitHub(ran, 'acme/iac')
   }, 30_000)
 
