@@ -289,8 +289,9 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   previewed beside it — from what was typed or answered, never from the
   inspection, and never over a committed one that says otherwise. With
   --submit, both go on one branch idp-agent/… cut from HEAD in the service's
-  repository, which must be a git clone's root; a service in a subfolder of
-  its repository is not submitted yet.
+  repository, which must be a git clone's root, and, where its branch tracks
+  one on github.com, a pull request is opened there; a service in a subfolder
+  of its repository is not submitted yet.
 
   idpa is idp-agent. Every command but init and validate finds the
   declarations repository the same way: --repo, else the current directory
@@ -1301,8 +1302,9 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     // take a branch — not a clone's root, a service in a subfolder of its
     // repository (D12), nobody to commit as, a detached HEAD — is an argument,
     // refused before anyone is told to set a key. `runInitRepo` is handed this
-    // forge and reads its base again. Toward GitHub, init does not open a
-    // pull request yet, and says so here, before gh and before any model.
+    // forge and reads its base again. Toward GitHub, the road and who gh is
+    // are read here too, before any model, and the line naming the road is
+    // said on stderr; the preflight is `runInitRepo`'s, before the Inspector.
     let submit: SubmitOptions | undefined
     if (command.submit === true) {
       const confirm = confirmOf(deps, false)

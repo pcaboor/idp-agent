@@ -97,7 +97,7 @@ export async function openLocalForge(
         ? // D12: `init` previews a service in a subfolder, and its paths would
           // need the folder's prefix on a branch cut at the root — a follow-up.
           `${repo} is the folder ${prefix} of a git repository, not at its root; ` +
-            'a service in a subfolder of its repository is not submitted at stage 5 — ' +
+            'a service in a subfolder of its repository is not submitted by this build — ' +
             'init without --submit previews it'
         : `${repo} is the folder ${prefix} of a git repository, not at its root; ` +
             '--submit needs the root, or the branch would be cut in someone else’s repository',

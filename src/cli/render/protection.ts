@@ -204,11 +204,22 @@ const GH_ACCOUNT = "gh's account"
  * `missing:` lines, the ruleset to add, and that nothing was written:
  * `refuseUnprotected`'s, on the GitHub road of a submission. It names no
  * login, in prose or in `--json`'s reasons, which are its lines.
+ *
+ * `offerLocal`, `init --submit`'s (decision 17): the service's own repository
+ * is refused "with --local named", since a branch cut in the clone alone is
+ * still a way forward there; the declarations roads do not offer it, and
+ * their block is unchanged.
  */
-export function renderUnprotected(verdict: ProtectionVerdict, road: GitHubRoad): string {
+export function renderUnprotected(
+  verdict: ProtectionVerdict,
+  road: GitHubRoad,
+  options: { readonly offerLocal?: boolean } = {},
+): string {
   return [
     shown(`not submitted — nothing on ${baseOf(road)} stops the person who would open this pull request from merging it:`),
     ...refusal(verdict, road, GH_ACCOUNT),
-    'Then run this again. Nothing was written.',
+    options.offerLocal === true
+      ? 'Then run this again, or add --local to cut the branch in this clone only. Nothing was written.'
+      : 'Then run this again. Nothing was written.',
   ].join('\n')
 }

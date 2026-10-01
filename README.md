@@ -15,7 +15,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 4742, no API key" src="https://img.shields.io/badge/tests-4742%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 4758, no API key" src="https://img.shields.io/badge/tests-4758%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -477,7 +477,11 @@ a credential would sit), and the `environments` it runs in. With `--submit`, bot
 branch `idp-agent/init-<name>-<8 hex>` cut from `HEAD` in the service's own repository, as
 `plan --submit` cuts one; a service in a subfolder of its repository is not submitted yet. A
 service repository that cannot take the branch (not a clone's root, no committer identity)
-is refused with exit 2 before the model is even configured.
+is refused with exit 2 before the model is even configured. Where the service's `main`
+tracks a branch on github.com, the branch is pushed with your git and a pull request opened
+on the service's own repository with your gh, once that repository holds the same ruleset
+as the declarations repository — checked before the Inspector, and refused naming the
+ruleset to add and `--local` otherwise ([`docs/submitting.md`](docs/submitting.md)).
 
 | Command | What it does |
 |---|---|
@@ -771,9 +775,9 @@ before the pull request. Today **no preview writes anything** — the test suite
 `pnpm smoke` hash every byte around a full run to prove it — `init platform` writes
 only into the directory it is handed, and `plan … --submit` and `init --submit` write one
 local branch and nothing else, which the suite checks for both and `pnpm smoke` checks for
-`plan --from … --submit`; toward GitHub, `plan --from … --submit` pushes that one branch and
-opens one pull request, which the suite and `pnpm demo:github` check against a fake gh and a
-bare repository on disk.
+`plan --from … --submit`; toward GitHub, `plan … --submit` and `init --submit` push that one
+branch and open one pull request, which the suite checks against a fake gh and a bare
+repository on disk, and `pnpm demo:github` for `plan --from … --submit`.
 
 Next, in order: three batches from the review, `backstage-http` slice 2, stage 6, stage 8,
 and stage 7 last, the Claude-Code-like chat in the terminal that is the project's end goal.

@@ -904,14 +904,19 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
 
   afterAll(removeClones)
 
-  /** The first block's run, with the clone of the demo SI on github.com, the person's gh, and `--repo` appended. */
+  /**
+   * The first block's run, with a clone on github.com — the demo SI's as
+   * `acme/iac` unless `cloned` names another source and repository — the
+   * person's gh, and `--repo` appended.
+   */
   const submittingRun = async (
     argv: string[],
     word: Road['word'],
     operations: unknown[],
     arrange: (clone: GitHubClone) => void = () => {},
+    cloned: { readonly source: string; readonly repository: string } = { source: FIXTURES, repository: 'acme/iac' },
   ): Promise<Submitted> => {
-    const clone = await githubClone({ source: FIXTURES, login: LOGIN })
+    const clone = await githubClone({ ...cloned, login: LOGIN })
     arrange(clone)
     const base = await git(clone.repo, 'rev-parse', 'main')
     const toGh: Handed[] = []
@@ -969,8 +974,15 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
     }
   }
 
-  /** What the provider, the trace, gh, git, stdout and stderr were each handed, held to § 12 and § 5. */
-  const heldToGitHub = (ran: Submitted, repository: string): void => {
+  /**
+   * What the provider, the trace, gh, git, stdout and stderr were each handed,
+   * held to § 12 and § 5. `typed`: what the person typed that spells
+   * `github.com` and the run's output quotes — `init`'s `--iac-repo`, which
+   * the diff of `.idp-agent.yml` previews and a trace keeps with the output.
+   * It is the person's, not GitHub's, and is set aside from the search of the
+   * trace and of MLflow only; the provider is held to never seeing it.
+   */
+  const heldToGitHub = (ran: Submitted, repository: string, typed: readonly string[] = []): void => {
     const login = /as ([A-Za-z0-9-]+) \(gh\)$/m.exec(ran.err)?.[1] ?? ''
     expect(login, ran.err).toBe(LOGIN)
 
@@ -999,7 +1011,8 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
     // and the number the attributes already carry. Nothing else of GitHub's.
     const opened = `Pull request #1 opened on github.com/${repository}: https://github.com/${repository}/pull/1`
     expect(ran.out).toContain(opened)
-    const elsewhere = (text: string, attribute: string): string => text.replaceAll(attribute, '').replaceAll(opened, '')
+    const elsewhere = (text: string, attribute: string): string =>
+      typed.reduce((left, value) => left.replaceAll(value, ''), text.replaceAll(attribute, '').replaceAll(opened, ''))
     expect(elsewhere(ran.trace, '"idp.forge.host":"github.com"')).not.toContain('github.com')
     const shipped = '{"key":"idp.forge.host","value":{"stringValue":"github.com"}}'
     expect(ran.toMlflow.some((sent) => sent.body.includes(shipped))).toBe(true)
@@ -1039,6 +1052,51 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
     expect(ran.code, ran.err).toBe(0)
     expect(ran.out).toContain('Pull request #1 opened on github.com/acme/iac')
     heldToGitHub(ran, 'acme/iac')
+  }, 30_000)
+
+  it('reaches its provider in its header, and nothing of GitHub reaches it, on init --submit', async () => {
+    // The service's own repository on github.com, the Inspector and the
+    // Architect answered as the first block answers them. The flags answer
+    // every field FACTS leaves open — its forge handle is unknown — so
+    // nothing is asked of a run with no terminal, and it ends on exit 0.
+    const { project } = await repositories()
+    const ran = await submittingRun(
+      [
+        'init',
+        '--submit',
+        '--iac-repo',
+        'github.com/acme/iac',
+        '--environment',
+        'prod',
+        '--name',
+        'orders-api',
+        '--lifecycle',
+        'production',
+        '--owner',
+        'group:default/tiger',
+      ],
+      'MUTATION',
+      [
+        {
+          op: 'create-entity',
+          entity: {
+            kind: 'Component',
+            metadata: { name: 'orders-api' },
+            spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
+          },
+        },
+      ],
+      () => {},
+      { source: project, repository: 'acme/orders-api' },
+    )
+
+    expect(ran.code, ran.err).toBe(0)
+    expect(ran.out).toContain('Pull request #1 opened on github.com/acme/orders-api')
+    // The declarations repository the service names is another than the one
+    // the pull request is opened on, so setting its locator aside sets aside
+    // nothing GitHub answered about acme/orders-api.
+    expect(ran.out).toContain('+iacRepo: "github.com/acme/iac"')
+    heldToGitHub(ran, 'acme/orders-api', ['github.com/acme/iac'])
   }, 30_000)
 
   it('keeps gh\'s login off the trace and MLflow when the rules refuse plan "<intent>" --submit, in prose and in --json', async () => {
@@ -1084,6 +1142,52 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
         for (const text of [ran.out, ran.trace, ...ran.toMlflow.map((sent) => JSON.stringify(sent))]) {
           for (const secret of [LOGIN, GH_CANARY, KEY]) expect(text).not.toContain(secret)
         }
+      }
+    }
+  }, 60_000)
+
+  it("keeps gh's login off the trace and MLflow when the rules refuse init --submit, naming --local", async () => {
+    // init's refusal on the rules is the same renderer's, with --local offered
+    // (decision 17), inside the traced run like the intent road's: neither of
+    // the two misses that would name whom gh acts as reaches the trace.
+    const { project } = await repositories()
+    const misses: readonly [string, (clone: GitHubClone) => void][] = [
+      [
+        'rules',
+        (clone) => {
+          clone.gh.state.repositories = clone.gh.state.repositories.map((one) => ({
+            ...one,
+            rulesets: one.rulesets.map((ruleset) => ({ ...ruleset, canBypass: 'always' })),
+          }))
+        },
+      ],
+      [
+        'push access',
+        (clone) => {
+          clone.gh.state.repositories = clone.gh.state.repositories.map((one) => ({
+            ...one,
+            permissions: { ...one.permissions, [LOGIN]: { admin: true, maintain: false, push: false } },
+          }))
+        },
+      ],
+    ]
+    for (const [missing, arrange] of misses) {
+      const ran = await submittingRun(
+        ['init', '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'prod'],
+        'MUTATION',
+        [],
+        arrange,
+        { source: project, repository: 'acme/orders-api' },
+      )
+
+      expect(ran.code, ran.err).toBe(1)
+      expect(ran.toProvider).toEqual([])
+      expect(ran.out).toContain(`missing: ${missing}`)
+      expect(ran.out).toContain('or add --local to cut the branch in this clone only')
+      expect(ran.root).toMatchObject({ 'idp.forge.kind': 'github', 'idp.forge.outcome': 'refused' })
+      expect(ran.toMlflow.length).toBeGreaterThan(0)
+      for (const text of [ran.out, ran.trace, ...ran.toMlflow.map((sent) => JSON.stringify(sent))]) {
+        for (const secret of [LOGIN, GH_CANARY, KEY]) expect(text).not.toContain(secret)
       }
     }
   }, 60_000)

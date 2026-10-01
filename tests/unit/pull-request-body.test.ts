@@ -97,10 +97,20 @@ describe('pullRequestBody', () => {
       from: 'from a plan file: four gates, the schema, the signature, the policies and the re-check, and no Reviewer',
       intent: 'drafted by a model: five gates, the schema, the signature, the policies, the re-check and the Reviewer last',
       phrase: 'from a phrase idpa took for a change',
-      init: "written by idpa init in the service's own repository, from what a person typed",
+      // A model drafts init's catalog-info too: the Inspector reads the files and the
+      // Architect proposes the Component. Only what the signature vouches for is
+      // a person's, and that is what the words say.
+      init:
+        "drafted by a model from the service's own files and written by idpa init in its own repository: " +
+        'two gates, the schema and the signature, every value the model chose either read by the inspection ' +
+        'or typed by a person, and no Reviewer',
     }
     for (const [road, words] of Object.entries(said) as [PullRequestInput['road'], string][]) {
-      expect(pullRequestBody(input(change, change.request, road)).body, road).toContain(words)
+      const { body } = pullRequestBody(input(change, change.request, road))
+      expect(body, road).toContain(words)
+      // One sentence a person reads as English, whichever road.
+      expect(body, road).toMatch(/^This change was (made|drafted) [^\n]+\.$/m)
+      expect(body, road).not.toContain('from what a person typed')
     }
     expect(pullRequestBody(input(change, change.request, 'phrase')).body).toContain(
       'five gates, the Reviewer last',

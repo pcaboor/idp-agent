@@ -25,7 +25,12 @@
  *      naming --local;
  *   9. plan "<intent>" --submit, gh logged in: exit 2 on the model's
  *      configuration, the road and gh's identity read first — the line naming
- *      the road, then `no model configured`, in that order.
+ *      the road, then `no model configured`, in that order;
+ *  10. init --submit in a service's own clone, whose `main` tracks
+ *      `git@github.com:acme/billing-api.git`, gh logged out: exit 2, before
+ *      any model, naming --local;
+ *  11. the same, gh logged in: exit 2 on the model's configuration, the line
+ *      naming the service's repository first.
  *
  * What it runs cannot reach the person's GitHub or spend their model key: the
  * binary's environment loses every `IDP_*`, `*_API_KEY`, `GH_*`, `GITHUB_*`
@@ -95,6 +100,29 @@ fixtureGit('push', '-q', BARE, 'main:refs/heads/main')
 fixtureGit('remote', 'add', 'origin', 'git@github.com:acme/iac.git')
 fixtureGit('config', 'branch.main.remote', 'origin')
 fixtureGit('config', 'branch.main.merge', 'refs/heads/main')
+// A service's own repository, for init --submit: a package.json and a
+// CODEOWNERS committed on main, its upstream on github.com, and a bare
+// repository of its own for GitHub's side.
+const SERVICE = path.join(scratch, 'billing-api')
+const SERVICE_BARE = path.join(scratch, 'billing-api.git')
+mkdirSync(SERVICE)
+writeFileSync(path.join(SERVICE, 'package.json'), '{ "name": "billing-api" }\n')
+writeFileSync(path.join(SERVICE, 'CODEOWNERS'), '* @acme/platform\n')
+const serviceGit = (...args) =>
+  execFileSync('git', ['-C', SERVICE, ...args], {
+    env: { PATH: process.env['PATH'] ?? '', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
+    stdio: 'ignore',
+  })
+serviceGit('init', '-q', '-b', 'main')
+serviceGit('config', 'user.name', 'demo')
+serviceGit('config', 'user.email', 'demo@idp-agent.invalid')
+serviceGit('add', '-A')
+serviceGit('commit', '-q', '-m', 'a service to declare')
+serviceGit('init', '-q', '--bare', SERVICE_BARE)
+serviceGit('push', '-q', SERVICE_BARE, 'main:refs/heads/main')
+serviceGit('remote', 'add', 'origin', 'git@github.com:acme/billing-api.git')
+serviceGit('config', 'branch.main.remote', 'origin')
+serviceGit('config', 'branch.main.merge', 'refs/heads/main')
 /** A ref of either side, or nothing; `git -C` for the clone, `--git-dir` for the bare repository. */
 const readGit = (where, ...args) => {
   const run = spawnSync('git', [...where, ...args], {
@@ -173,6 +201,19 @@ if (pushUrl.status !== 0 || pushUrl.stdout.trim() !== 'git@github.com:acme/iac.g
   console.error(
     "this machine's git configuration rewrites git@github.com:acme/iac.git (git config --system --list says where): " +
       'the demo would push somewhere else, and does not run',
+  )
+  process.exit(1)
+}
+// The service's clone, held to the same: its steps push nothing, and a
+// rewrite would still put it on another road than the one they show.
+const servicePushUrl = spawnSync('git', ['-C', SERVICE, 'remote', 'get-url', '--push', 'origin'], {
+  env: Object.fromEntries(Object.entries(environment).filter(([name]) => !/^GIT_/i.test(name))),
+  encoding: 'utf8',
+})
+if (servicePushUrl.status !== 0 || servicePushUrl.stdout.trim() !== 'git@github.com:acme/billing-api.git') {
+  console.error(
+    "this machine's git configuration rewrites git@github.com:acme/billing-api.git (git config --system --list says " +
+      'where): the demo would show another road than its steps expect, and does not run',
   )
   process.exit(1)
 }
@@ -366,8 +407,69 @@ step("9. The intent road reads the road and gh's identity before the model's con
   },
 })
 
+// init's road: the service's own clone, as far as the steps before the model.
+// The fake now models acme/billing-api too, protected as docs/submitting.md
+// says, its refs the service's bare repository.
+const BILLING = {
+  owner: 'acme',
+  name: 'billing-api',
+  archived: false,
+  branches: { main: { protected: false } },
+  bare: SERVICE_BARE,
+  ...PROTECTED,
+}
+const withService = (session) => {
+  const { repositories, ...rest } = fakeState()
+  return {
+    ...rest,
+    session,
+    repositories: [...repositories.filter((one) => one.name !== 'billing-api'), BILLING],
+  }
+}
+const INIT = ['init', '--repo', 'billing-api', '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev', '--environment', 'prod']
+const SERVICE_CLONE = ['-C', SERVICE]
+const SERVICE_GITHUB = ['--git-dir', SERVICE_BARE]
+const serviceUntouched = () => ourBranches(SERVICE_CLONE) === '' && ourBranches(SERVICE_GITHUB) === ''
+step('10. init --submit refuses a gh that is not logged in before any model', {
+  state: withService(undefined),
+  expects: "gh to log in, or --local, before any model is configured, in the service's own clone",
+  args: INIT,
+  expected: 2,
+  checks: (run) => [
+    [
+      '"gh is not logged in to github.com", naming --local',
+      /gh is not logged in to github\.com.*or add --local to cut the branch in this clone only\. Nothing was written\.$/m.test(
+        run.stderr ?? '',
+      ),
+    ],
+    ['no word of the model, which comes after', !NO_MODEL.test(run.stderr ?? '')],
+    ['nothing written in the service', serviceUntouched()],
+  ],
+})
+step("11. init --submit reads the road and gh's identity before the model's configuration", {
+  state: withService({ login: 'ada' }),
+  expects: 'the line naming the service\'s repository, then "no model configured"',
+  args: INIT,
+  expected: 2,
+  checks: (run) => {
+    const said = run.stderr ?? ''
+    const road = said.search(
+      /^submitting to github\.com\/acme\/billing-api, into main \(origin, main's upstream\), as ada \(gh\)$/m,
+    )
+    const model = said.search(NO_MODEL)
+    return [
+      ['the line naming the road', road !== -1],
+      ['"no model configured", after it', model > road && road !== -1],
+      ['nothing written in the service', serviceUntouched()],
+    ]
+  },
+})
+
 // The clone's main, on both sides, where it was.
-if (readGit(CLONE, 'rev-parse', 'main') !== readGit(GITHUB, 'rev-parse', 'main')) {
+if (
+  readGit(CLONE, 'rev-parse', 'main') !== readGit(GITHUB, 'rev-parse', 'main') ||
+  readGit(SERVICE_CLONE, 'rev-parse', 'main') !== readGit(SERVICE_GITHUB, 'rev-parse', 'main')
+) {
   console.log('(main moved on one side; nothing here moves it)')
   failed = true
 }

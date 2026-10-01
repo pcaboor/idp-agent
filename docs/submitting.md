@@ -204,9 +204,50 @@ and nothing of GitHub is paid for by a model or shown to one. In this order:
 A run that ends on a question (exit 3) or stops at three attempts (exit 1) reads nothing more of
 GitHub and writes nothing. `--local` cuts the branch in the clone only and starts no gh.
 
-`init --submit` and `idpa "<phrase>" --submit` follow in stage 6's next tasks. Until then, toward
-GitHub, `init --submit` is refused before any model and before gh (exit 2), naming `--local`;
-`idpa "<phrase>"` does not submit.
+`idpa "<phrase>" --submit` follows in stage 6's next task; until then, `idpa "<phrase>"` does not
+submit.
+
+## A service's own repository: `init --submit`
+
+```bash
+cd ~/my-service
+idpa init --submit --iac-repo github.com/acme/iac --environment dev --environment prod
+```
+
+`init` declares a service in its own repository, so its branch is cut there and its pull request
+opened there: on `github.com/<you>/my-service`, into the branch your clone's `main` tracks — never on
+the declarations repository. The branch holds two files at most: the `catalog-info.yaml` it
+previews, and `.idp-agent.yml` when `--iac-repo` and `--environment` were typed, or answered at the
+terminal.
+
+The service's repository is held to exactly what the declarations repository is: the same clone
+configuration check, gh's identity, and **the same ruleset on its base branch**
+([above](#the-ruleset-on-the-base-branch)) — add it there too, and `idpa protection --repo
+~/my-service` checks it. In this order, every step before the Inspector, the first model call:
+
+1. **The road and gh**, before the model is configured: exit 2 on a refusal, and the `submitting to
+   github.com/<you>/my-service, …` line printed here.
+2. **The model's configuration**, then `.idp-agent.yml`'s questions, the service's files and
+   init's own verdicts on them.
+3. **The working tree, the ruleset and GitHub's tip.** A base whose rules would let you merge
+   unreviewed is refused, exit 1, naming the ruleset to add — and, since a branch in the clone alone
+   is still a way forward for a service, `--local`:
+
+   ```text
+   Then run this again, or add --local to cut the branch in this clone only. Nothing was written.
+   ```
+
+4. **The Inspector and the Architect**, then the diff, the question and the moment of acting, as
+   for a plan file.
+
+`iacRepo` is not held to the clone here, as it is on the intent road: there the clone *is* the
+repository it names; here the branch goes to the service, and `iacRepo` names the declarations
+repository, which is another by design.
+
+Still refused by name, on this road too: a service in a subfolder of its repository (exit 2, before
+gh starts — the branch is cut at a clone's root, and the service's paths would need the folder's
+prefix; `init` without `--submit` previews it), and a plan file writing into both repositories,
+which `plan --from` refuses pointing here.
 
 ## Push as gh's account
 

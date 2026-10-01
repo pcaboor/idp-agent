@@ -278,6 +278,14 @@ Each pull request adds its line here.
   both — `iacRepo`'s first reader, a cross-check and never a source; a refusal on the
   base's rules names gh's account, never its login, since a traced run keeps it
   ([#128](https://github.com/pcaboor/idp-agent/pull/128)).
+- `init --submit` opens a pull request on the service's own GitHub repository, holding the
+  catalog-info and `.idp-agent.yml`, once that repository passes the same configuration check
+  and the same ruleset check as the declarations repository, read before the Inspector is
+  paid; a base whose rules let the opener merge is refused with `--local` named, and a service
+  in a subfolder of its repository, and a plan writing into both repositories, are still
+  refused by name. The pull request's body says a model drafted the catalog-info from the
+  service's files, where it credited a person with it, and its engine block reads "This change
+  was …" on every road ([#130](https://github.com/pcaboor/idp-agent/pull/130)).
 
 ### Changed
 

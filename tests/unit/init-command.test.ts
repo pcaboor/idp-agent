@@ -29,6 +29,9 @@ import { CONFIG_FILE, serializeConfig } from '../../src/core/schemas/config.js'
 import { listDocumentNames } from '../../src/core/yaml/surgery.js'
 import { protectionText } from '../../src/core/github/protection.js'
 import type { GhProcess } from '../../src/process/gh.js'
+import type { SubmissionSummary } from '../../src/cli/commands/submit.js'
+import { removeClones } from '../support/forge-fixture.js'
+import { githubClone, moveGitHubBase, unprotect } from '../support/github-fixture.js'
 
 /** The line a preview of `init` ends on, in place of `plan`'s about the merge. */
 const INIT_CLOSING =
@@ -727,14 +730,14 @@ describe('init --submit', () => {
     expect(await git(project, 'diff', '--name-only', 'main', await submitted(project))).toBe('deploy/catalog-info.yaml')
   })
 
-  it('refuses a service in a subfolder of its repository, at stage 5, before a model call', async () => {
+  it('refuses a service in a subfolder of its repository, not submitted by this build, before a model call', async () => {
     // D12: the forge cuts a branch at a clone's root; prefixed paths are a follow-up.
     const root = await clonedApplication({ 'services/billing/package.json': '{ "name": "billing-api" }\n' })
     const client = drafting([COMPONENT])
     const before = await observable(root)
     const refused = runInitRepo({ project: path.join(root, 'services', 'billing'), client, emit: () => {}, submit: {} })
     await expect(refused).rejects.toThrow(/not at its root/)
-    await expect(refused).rejects.toThrow(/a service in a subfolder of its repository is not submitted at stage 5/)
+    await expect(refused).rejects.toThrow(/a service in a subfolder of its repository is not submitted by this build/)
     expect(client.seen).toEqual([])
     expect(await observable(root)).toBe(before)
   })
@@ -1038,22 +1041,6 @@ describe('init --submit through main', () => {
     return { root, gh, calls: () => calls }
   }
 
-  it('refuses init --submit toward GitHub until its road lands, before any model and before gh', async () => {
-    const { root, gh, calls } = await onGitHub()
-    const before = await observable(root)
-    const client = drafting([COMPONENT])
-    const { code, out, err } = await run(['init', '--repo', root, '--submit'], client, gh)
-    expect(code).toBe(2)
-    expect(err.trimEnd()).toBe(
-      "init opens a pull request on the service's repository from the next release; add --local to cut the branch " +
-        'in this clone only. Nothing was written.',
-    )
-    expect(out).toBe('')
-    expect(client.seen).toEqual([])
-    expect(calls()).toBe(0)
-    expect(await observable(root)).toBe(before)
-  })
-
   it("cuts init's branch with --local, and says nothing was pushed", async () => {
     const { root, gh, calls } = await onGitHub()
     const { code, out } = await run(['init', '--repo', root, '--submit', '--local'], drafting([COMPONENT]), gh)
@@ -1081,7 +1068,7 @@ describe('init --submit through main', () => {
     const client = drafting([COMPONENT])
     const { code, err } = await run(['init', '--repo', path.join(root, 'services', 'billing'), '--submit'], client)
     expect(code).toBe(2)
-    expect(err).toContain('not submitted at stage 5')
+    expect(err).toContain('not submitted by this build')
     expect(client.seen).toEqual([])
   })
 
@@ -1126,6 +1113,220 @@ describe('init --submit through main', () => {
     const second = await run(args, drafting([COMPONENT]))
     expect(second.code).toBe(0)
     expect(second.out).toMatch(/2 files · already submitted as idp-agent\/init-billing-api-[0-9a-f]{8} · nothing written/)
+  })
+})
+
+/**
+ * `init --submit` to GitHub (stage 6 plan, 6.3.2): the service's own clone,
+ * its `main` tracking `git@github.com:acme/billing-api.git`, a bare repository
+ * standing for GitHub's side, the fake ssh that serves it, and the fake gh
+ * handed in as `MainDeps.gh`, `main` protected as `docs/submitting.md` says.
+ * The service's repository passes the configuration check and the preflight
+ * the declarations repository does (decision 17); its `.idp-agent.yml` names
+ * the declarations repository, which is another, so no `iacRepo` is held to
+ * the clone.
+ */
+describe('init --submit to GitHub', { timeout: 30_000 }, () => {
+  const FLAGS = ['--iac-repo', 'github.com/acme/iac', '--environment', 'dev', '--environment', 'prod']
+  const made: string[] = []
+  afterAll(async () => {
+    await removeClones()
+    await Promise.all(made.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
+  })
+
+  /** A service committed on main, its remote git@github.com:acme/billing-api.git, level with GitHub. */
+  const service = async () => {
+    const source = await application()
+    made.push(source)
+    return githubClone({ source, repository: 'acme/billing-api' })
+  }
+
+  const run = async (
+    clone: Awaited<ReturnType<typeof githubClone>>,
+    args: string[],
+    deps: Parameters<typeof main>[1] = {},
+  ) => {
+    const io = capture()
+    const code = await main(['init', '--repo', clone.repo, '--submit', ...FLAGS, ...args], {
+      cwd: clone.repo,
+      env: clone.env,
+      gh: clone.gh.process,
+      ...deps,
+      out: (chunk) => void io.out.push(chunk),
+      err: (chunk) => void io.err.push(chunk),
+    })
+    return { code, out: io.out.join(''), err: io.err.join('') }
+  }
+
+  const ours = async (dir: string): Promise<string[]> =>
+    (await git(dir, 'for-each-ref', '--format=%(refname)', 'refs/heads/idp-agent/')).split('\n').filter((line) => line !== '')
+
+  it('opens a pull request on the service’s own repository, holding the catalog-info and the configuration', async () => {
+    const clone = await service()
+
+    const { code, out, err } = await run(clone, [], { client: drafting([COMPONENT]) })
+
+    expect(code, err).toBe(0)
+    expect(err).toMatch(/^submitting to github\.com\/acme\/billing-api, into main \(origin, main's upstream\), as [A-Za-z0-9-]+ \(gh\)$/m)
+    expect(out).toMatch(/^2 files · submitted as idp-agent\/init-billing-api-[0-9a-f]{8} on top of main@[0-9a-f]{7} · main untouched$/m)
+    expect(out).toContain('Pull request #1 opened on github.com/acme/billing-api: https://github.com/acme/billing-api/pull/1')
+    const [ref] = await ours(clone.bare)
+    expect(await git(clone.bare, 'diff', '--name-only', 'main', ref ?? '')).toBe(`${CONFIG_FILE}\ncatalog-info.yaml`)
+
+    // What the reviewer reads on GitHub: a model drafted the catalog-info, and
+    // the body says so rather than crediting a person with it (D4).
+    const posted = clone.gh.sent.filter(({ argv }) => argv.includes('POST'))
+    expect(posted).toHaveLength(1)
+    const { body } = JSON.parse(posted[0]?.stdin?.toString('utf8') ?? '{}') as { body?: string }
+    expect(body).toContain(
+      "This change was drafted by a model from the service's own files and written by idpa init in its own repository: " +
+        'two gates, the schema and the signature, every value the model chose either read by the inspection ' +
+        'or typed by a person, and no Reviewer.',
+    )
+    expect(body).not.toContain('from what a person typed')
+  })
+
+  it('holds no iacRepo to the repository it submits to: the service names the declarations repository, which is another', async () => {
+    // § 13's cross-check is the intent road's: there, the clone IS the repository iacRepo
+    // names. Here the branch goes to the service, and iacRepo names somewhere else by design.
+    const clone = await service()
+    const { code } = await run(clone, [], { client: drafting([COMPONENT]) })
+    expect(code).toBe(0)
+  })
+
+  it('names the open pull request on a second run, not asked, and writes nothing', async () => {
+    const clone = await service()
+    await run(clone, [], { client: drafting([COMPONENT]) })
+    const before = await observable(clone.repo)
+    let asked = 0
+
+    const { code, out } = await run(clone, [], {
+      client: drafting([COMPONENT]),
+      confirm: async () => {
+        asked += 1
+        return true
+      },
+    })
+
+    expect(code).toBe(0)
+    expect(out).toMatch(/2 files · already submitted as idp-agent\/init-billing-api-[0-9a-f]{8} · pull request #1 is open · nothing written/)
+    expect(asked).toBe(0)
+    expect(await observable(clone.repo)).toBe(before)
+  })
+
+  it('refuses a service repository whose rules let the opener merge, exit 1, before the Inspector, naming --local', async () => {
+    const clone = await service()
+    unprotect(clone.gh)
+    const client = drafting([COMPONENT])
+
+    const { code, out } = await run(clone, [], { client })
+
+    expect(code).toBe(1)
+    expect(out).toContain(
+      "not submitted — nothing on github.com/acme/billing-api's main stops the person who would open this pull request from merging it:",
+    )
+    expect(out).toContain('Then run this again, or add --local to cut the branch in this clone only. Nothing was written.')
+    expect(client.seen).toEqual([])
+    expect(await ours(clone.repo)).toEqual([])
+    expect(await ours(clone.bare)).toEqual([])
+  })
+
+  it('refuses a service clone that is not level with GitHub, exit 1, before the Inspector', async () => {
+    const clone = await service()
+    await moveGitHubBase(clone)
+    const client = drafting([COMPONENT])
+    const { code, out } = await run(clone, [], { client })
+    expect(code).toBe(1)
+    expect(out).toContain('bring them level (git pull)')
+    expect(client.seen).toEqual([])
+  })
+
+  it('refuses gh logged out, exit 2, before the model is configured, and --local cuts the branch in the clone only', async () => {
+    const clone = await service()
+    clone.gh.logout()
+
+    const refused = await run(clone, [])
+    expect(refused.code).toBe(2)
+    expect(refused.err).toContain('gh is not logged in to github.com')
+    expect(refused.err).not.toContain('no model configured')
+
+    const local = await run(clone, ['--local'], { client: drafting([COMPONENT]) })
+    expect(local.code).toBe(0)
+    expect(local.out).toContain('--local: nothing pushed by this run')
+    expect(await ours(clone.repo)).toHaveLength(1)
+    expect(await ours(clone.bare)).toEqual([])
+  })
+
+  it('refuses a key of the service clone’s own configuration, exit 2, naming it and its scope, never its value', async () => {
+    // A rewrite that does not match origin's URL: one that did would put the
+    // clone on another host's road, where nothing is pushed and nothing judged
+    // (road.test.ts). This one is refused for what it could do to a push.
+    const clone = await service()
+    await git(clone.repo, 'config', 'url.ssh://mirror.canary.example/.insteadOf', 'git@nowhere.example:')
+    const client = drafting([COMPONENT])
+
+    const { code, out, err } = await run(clone, [], { client })
+
+    expect(code).toBe(2)
+    expect(err).toContain('url.ssh://mirror.canary.example/.insteadof (local), which would decide where your push goes')
+    for (const text of [out, err]) expect(text).not.toContain('nowhere.example')
+    expect(err).not.toContain('no model configured')
+    expect(client.seen).toEqual([])
+  })
+
+  it('refuses when the rules go while the Architect drafts, at the moment of acting, and writes nothing on either side', async () => {
+    const clone = await service()
+    const inner = drafting([COMPONENT])
+    const client: LlmClient = {
+      generate: async (request) => {
+        if (request.agent === 'architect') unprotect(clone.gh)
+        return inner.generate(request)
+      },
+    }
+
+    const { code } = await run(clone, [], { client })
+
+    expect(code).toBe(1)
+    expect(await ours(clone.repo)).toEqual([])
+    expect(await ours(clone.bare)).toEqual([])
+  })
+
+  it('asks the question of § 3, naming the service’s repository', async () => {
+    const clone = await service()
+    const summaries: SubmissionSummary[] = []
+    await run(clone, [], {
+      client: drafting([COMPONENT]),
+      confirm: async (summary) => {
+        summaries.push(summary)
+        return false
+      },
+    })
+    expect(summaries[0]?.github).toStrictEqual({ host: 'github.com', repository: 'acme/billing-api', base: 'main', pushedAlready: false })
+  })
+
+  it('still refuses a service in a subfolder of its repository (D12), exit 2, before gh is started', async () => {
+    const root = await application()
+    made.push(root)
+    await mkdir(path.join(root, 'services', 'billing'), { recursive: true })
+    await writeFile(path.join(root, 'services', 'billing', 'package.json'), '{ "name": "billing-api" }\n')
+    const clone = await githubClone({ source: root, repository: 'acme/billing-api' })
+    const calls: string[] = []
+    const gh: GhProcess = async (argv, options) => {
+      calls.push(argv.join(' '))
+      return clone.gh.process(argv, options)
+    }
+
+    const io = capture()
+    const code = await main(['init', '--repo', path.join(clone.repo, 'services', 'billing'), '--submit', ...FLAGS], {
+      env: clone.env,
+      gh,
+      out: (chunk) => void io.out.push(chunk),
+      err: (chunk) => void io.err.push(chunk),
+    })
+
+    expect(code).toBe(2)
+    expect(io.err.join('')).toContain('a service in a subfolder of its repository is not submitted by this build')
+    expect(calls).toEqual([])
   })
 })
 

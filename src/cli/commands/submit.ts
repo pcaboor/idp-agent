@@ -273,11 +273,13 @@ export function refuseOtherRepository(
  * question asked. The rules are judged first, so a base that fails both is
  * told about its ruleset. A local road reads nothing here.
  *
- * With `json`, the refusal is the report, as `refuseDivergence`'s is.
+ * With `json`, the refusal is the report, as `refuseDivergence`'s is. With
+ * `offerLocal`, `init --submit`'s, the refusal on the rules names `--local`
+ * (decision 17).
  */
 export async function refuseUnprotected(
   opened: Opened,
-  options: { readonly json?: boolean } = {},
+  options: { readonly json?: boolean; readonly offerLocal?: boolean } = {},
 ): Promise<CommandResult | undefined> {
   const { road, github } = opened
   if (road.kind !== 'github') return undefined
@@ -302,13 +304,13 @@ async function unprotected(
   opened: Opened,
   road: GitHubRoad,
   github: NonNullable<Opened['github']>,
-  options: { readonly json?: boolean },
+  options: { readonly json?: boolean; readonly offerLocal?: boolean },
 ): Promise<CommandResult | undefined> {
   const { verdict, level } = await preflight(github.api, road, opened.base)
   let text: string
   let reasons: string[]
   if (!verdict.holds) {
-    text = renderUnprotected(verdict, road)
+    text = renderUnprotected(verdict, road, { offerLocal: options.offerLocal === true })
     const lines = text.split('\n')
     reasons = [lines[0] ?? '', ...lines.filter((line) => line.startsWith('  missing: '))]
   } else if (level !== 'level') {

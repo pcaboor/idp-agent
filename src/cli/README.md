@@ -412,7 +412,7 @@ the branch cannot reach the default one either way.
 `MainDeps.gh` and the road that drafted the change (`route`): the local forge, the road, and
 on GitHub's road gh's identity and the GitHub forge, `cli/` loading no launcher. A refused
 configuration key, a remote URL with a credential, a gh that is missing, logged out, too old
-or not a person, and — until 6.3.2 — the `init` road toward GitHub are
+or not a person, and — until 6.3.3 — the phrase's road toward GitHub are
 `ForgeInputError`s, exit 2, before any model. On GitHub's road it says, once, on stderr,
 `submitting to github.com/<o>/<r>, into <base> (<remote>, <branch>'s upstream), as <login>
 (gh)`. `refuseUnprotected`, right after `refuseDivergence`, runs the preflight and refuses,
@@ -449,6 +449,15 @@ other root. `runIntent` reads the base again and refuses divergence after the co
 and before the Inspector — no model is paid for either refusal — then crosses five gates,
 the Reviewer last, and submits only a `planned` outcome: a question and a stop answer as
 they do without `--submit`. `plan-intent.test.ts` counts zero model calls on each refusal.
+
+**The `init` road** (6.3.2) takes the same steps in the service's own clone: `main` opens
+its forge before `agentBacked` — the road and gh's identity included, the `submitting to`
+line said there — and `runInitRepo`, handed it through `reopening`, runs the configuration's
+questions, the project's files and init's own verdicts, then `refuseDivergence` and
+`refuseUnprotected` with `offerLocal`, whose refusal on the rules ends on `--local`
+(decision 17), before the Inspector. No `refuseOtherRepository`: the service's `iacRepo`
+names the declarations repository, never the clone the branch goes to. D12 is the local
+forge's refusal, before gh starts; D6 is the clearance's.
 
 **`idpa protection`.** `commands/protection.ts`'s `runProtection` checks, through the
 person's own gh and with `GET` only, whether the branch a clone tracks on github.com keeps a

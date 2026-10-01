@@ -549,6 +549,24 @@ describe('the blocks, rendered', () => {
     )
   })
 
+  it('offers --local on the last line of init --submit\'s refusal, and changes nothing else (decision 17)', () => {
+    const unprotected = judgeProtection({
+      expected: ROAD.repository,
+      repository: repositoryAnswer.parse({ full_name: 'acme/iac', archived: false, permissions: { admin: false, push: true } }),
+      rules: [],
+      rulesets: new Map(),
+      classic: false,
+    })
+    const declarations = renderUnprotected(unprotected, ROAD).split('\n')
+    expect(renderUnprotected(unprotected, ROAD, { offerLocal: true })).toBe(
+      [
+        ...declarations.slice(0, -1),
+        'Then run this again, or add --local to cut the branch in this clone only. Nothing was written.',
+      ].join('\n'),
+    )
+    expect(renderUnprotected(unprotected, ROAD, { offerLocal: false })).toBe(declarations.join('\n'))
+  })
+
   it('names gh\'s account, never its login, in a submission\'s refusal: a traced run keeps it', () => {
     // `idpa protection` writes no trace and names the login; a submission's
     // refusal is the intent road's traced output (stage 6 brief § 12).
