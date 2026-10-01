@@ -160,11 +160,16 @@ follows from the documentation of the tools involved.
 
 ### 4.2 Authorisation
 
-- **The merge is the act of authorisation.** The CLI opens a merge request; it never
+- **The merge is the act of authorisation.** The CLI opens a pull request; it never
   writes to the main branch. Confirming in the terminal means "I am submitting my
   request", not "I am authorising myself".
-- **Separate tokens per capability.** The token that opens a merge request cannot merge
-  it — and a test asserts that this action **fails**.
+- **The identity that opens a pull request cannot merge it until someone else has approved
+  the exact commit that would merge, and idpa never submits against a base without those
+  rules.** On GitHub the right to push a branch is the right that merges, so no credential
+  can be scoped out of merging; what refuses the merge is the base's ruleset, which the tool
+  reads before it writes anything and again at the moment of acting, and a test asserts that
+  the merge **fails**: offline against a fake, live on a throwaway repository (the stage 6
+  note, `docs/stage-6-brief.md` §§ 8 and 10).
 - Any check that guards against destruction is repeated engine-side, at the moment of
   acting. A control that only lives in the client controls nothing.
 

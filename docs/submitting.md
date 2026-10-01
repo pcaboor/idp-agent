@@ -2,8 +2,9 @@
 
 What a person needs before idpa can open a pull request on their behalf, and how to check it.
 Stage 6 builds the submission itself task by task ([`plans/stage-6-github.md`](plans/stage-6-github.md));
-what works today is `idpa protection`, the check a submission will make before it writes anything.
-The design is [`stage-6-brief.md`](stage-6-brief.md), § 5 to § 8.
+what works today is `idpa protection`, the check every submission makes before it writes anything,
+and [`plan --from … --submit`](#submitting-a-plan-file), which pushes and opens the pull request.
+The design is [`stage-6-brief.md`](stage-6-brief.md), § 3 to § 15.
 
 ## What you need
 
@@ -90,6 +91,84 @@ status checks, signed commits, a merge queue — and says what **no read can see
   request. idpa refuses a deploy key it can see; the bypass list is shown only to someone who may
   edit the ruleset;
 - whether GitHub Actions or an app may approve pull requests in the repository.
+
+## Submitting a plan file
+
+The invariant every submission keeps: the identity that opens a pull request cannot merge it until
+someone else has approved the exact commit that would merge, and idpa never submits against a base
+without those rules.
+
+```bash
+idpa plan --from examples/open-network.json --repo ~/my-iac --submit
+```
+
+In a clone whose checked-out branch tracks a branch on github.com, it runs in this order, and each
+step can end the run with nothing written:
+
+1. **The road and gh**, before anything is read: the branch's upstream, both URLs of its remote,
+   the clone's own configuration ([below](#the-clones-own-configuration)), then gh's version and
+   who it is logged in as. On stderr: `submitting to github.com/acme/iac, into main (origin,
+   main's upstream), as ada (gh)`.
+2. **The base**, before anything is previewed: the ruleset, as `idpa protection` reads it, and
+   whether GitHub's base is the commit your clone's is.
+3. **The diff**, and one question:
+
+   ```text
+   Push idp-agent/orders-api-to-payments-e9e6183f to github.com/acme/iac with your git, and open a pull request into main with your gh? Nothing is provisioned until someone else approves it and it is merged. [y/N]
+   ```
+
+   A script, a pipe or `--json` has `--submit` as its answer: the question was never the guard,
+   the ruleset is.
+4. **At the moment of acting**, the road, the clone's configuration, the rules and the base's tip
+   are read again; then the branch is cut in the clone, your git pushes that very commit to the
+   same name, create-only (a branch already there is never moved), gh reads it back, the rules are
+   read once more, and your gh opens one pull request whose body the engine writes.
+
+It ends on the pull request, at a URL the engine builds from the repository and the number, and on
+what merging it waits for:
+
+```text
+1 file · submitted as idp-agent/orders-api-to-payments-e9e6183f on top of main@3f9c2a1 · main untouched
+Pull request #1 opened on github.com/acme/iac: https://github.com/acme/iac/pull/1
+Merging it waits for one approval of its latest commit from someone other than you. No status check is required, so a system downstream could not refuse it (ADR-0012).
+Nothing is provisioned yet. The merge is what authorises it.
+```
+
+**Run it again** and it asks nothing and writes nothing: `1 file · already submitted as
+idp-agent/… · pull request #1 is open · nothing written`. A pull request on an older base is named
+too, and says GitHub shows whether it still merges cleanly.
+
+**When it stops halfway.** The two systems are not one transaction, and every state between them is
+completed by running the same command again. A push that failed leaves the branch in the clone and
+says so (`… was cut in this clone, and no pull request was opened.`, exit 1). A branch pushed whose
+pull request was not opened says why — `<branch> is on github.com/acme/iac, and the pull request was
+not opened: GitHub answered 502 through gh. Run the same command again to open it.` — and the next
+run asks only `Open a pull request from … into main on github.com/acme/iac with your gh? The branch
+was pushed by an earlier run.` and opens it.
+
+**A closed pull request** is not reopened, nor a merged one that was since reverted: the run says
+which, exit 1. Reopen it on GitHub, or change the request.
+
+**`--local`** cuts the branch in the clone only, reads nothing on GitHub and starts no gh; it ends on
+`--local: nothing pushed by this run`. A clone whose branch tracks nothing ends on `main tracks no
+remote: nothing pushed`, whatever the branch is named, and one whose remote is on another host on `the remote is on <host>, where
+this build opens no pull request: nothing pushed`. `--local` without `--submit` is refused (exit 2).
+
+Each refusal, and its one fix:
+
+| Refused | Exit | Fix |
+|---|---|---|
+| gh not installed, logged out or expired, older than 2.40.0, or logged in as a bot or an app | 2 | `gh auth login --hostname github.com` as yourself, or update gh; or `--local` |
+| a key of the clone's own configuration | 2 | move it to your global configuration ([below](#the-clones-own-configuration)) |
+| a remote URL carrying a credential, or one that does not parse | 2 | `git remote set-url origin https://github.com/<owner>/<name>` |
+| a checked-out branch that tracks one, named with a `%`, `{`, `}` or invisible character | 2 | `git branch -m <name>`; or `--local` |
+| a base whose rules would let you merge unreviewed | 1 | add the ruleset it prints ([above](#the-ruleset-on-the-base-branch)) |
+| a clone not level with GitHub | 1 | `git pull`, then run it again; a change already submitted is then named |
+| the rules gone, the base moved, or the clone's configuration changed, between the question and the push | 1 | nothing was written; run it again once they hold |
+
+`plan "<intent>" --submit`, `init --submit` and `idpa "<phrase>" --submit` follow in stage 6's next
+tasks. Until then, toward GitHub, `plan "<intent>" --submit` and `init --submit` are refused before
+any model and before gh (exit 2), naming `--local`; `idpa "<phrase>"` does not submit.
 
 ## Push as gh's account
 

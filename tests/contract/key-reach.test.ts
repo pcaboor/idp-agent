@@ -12,6 +12,9 @@ import { PROVIDER_NAMES, type ProviderName } from '../../src/llm/providers.js'
 import { catalogueOf } from '../../tools/fake-backstage.js'
 import { fakeBackstage, type Faults, type Sent as ToCatalogue } from '../support/fake-backstage.js'
 import { fakeGitHub, protectedMain } from '../support/fake-gh.js'
+import { CLOSED_PROXY, PROXY_VARIABLES } from '../setup/forge.js'
+import { fakeSsh, requireUnrewritten } from '../support/github-fixture.js'
+import { confirmingEnvironment } from '../support/ask.js'
 import { memorySink, onlyTrace } from '../support/trace.js'
 
 /**
@@ -19,14 +22,20 @@ import { memorySink, onlyTrace } from '../support/trace.js'
  * process's own, which is what a child is given when none is. Called through:
  * the Inspector's `git` runs as it always does.
  */
-const spawned = vi.hoisted(() => ({ environments: [] as unknown[] }))
+const spawned = vi.hoisted(() => ({
+  environments: [] as unknown[],
+  /** The same calls, with the argument vector each was handed beside its environment. */
+  calls: [] as { readonly args: readonly string[]; readonly env: NodeJS.ProcessEnv }[],
+}))
 vi.mock('node:child_process', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:child_process')>()
   const execFile = (...args: unknown[]): unknown => {
     const options = args
       .slice(1)
       .find((arg): arg is { env?: unknown } => typeof arg === 'object' && arg !== null && !Array.isArray(arg))
-    spawned.environments.push(options?.env ?? { ...process.env })
+    const env = options?.env ?? { ...process.env }
+    spawned.environments.push(env)
+    spawned.calls.push({ args: Array.isArray(args[1]) ? (args[1] as string[]) : [], env: env as NodeJS.ProcessEnv })
     return (original.execFile as (...all: unknown[]) => unknown)(...args)
   }
   return { ...original, execFile }
@@ -685,6 +694,151 @@ describe('idpa protection', () => {
 
     for (const text of [out.join(''), err.join('')]) {
       for (const secret of [GH_CANARY, KEY, TOKEN]) expect(text).not.toContain(secret)
+    }
+  })
+})
+
+/**
+ * The push leg (stage 6 brief § 5, § 16): `plan --from … --submit` on a
+ * GitHub road, the first road that pushes. gh reads its own login and git
+ * pushes with the person's — here `GH_TOKEN` and `GITHUB_TOKEN`, as a person
+ * may export them, which both are handed unread — and neither is handed
+ * anything of idpa's: no provider key, no catalogue token, and none of the
+ * inherited variables that would point gh at another host or repository, make
+ * it print its traffic, or move git's repository, configuration or askpass.
+ * The push keeps exactly the four variables of § 5 the person set. gh is the
+ * fake, handed in as `MainDeps.gh`; the remote is a bare repository on disk,
+ * reached through a fake ssh; every git call runs for real, through the
+ * mocked `execFile` above.
+ */
+describe('plan --from --submit, to GitHub', () => {
+  const GH_CANARY = 'canary-gh-token-that-is-not-real-0123456789'
+  const ENTERPRISE = 'enterprise-canary'
+  /** What the launchers must drop, each planted with a value of its own. */
+  const INHERITED = {
+    GIT_DIR: '/nonexistent/git-dir',
+    GIT_CONFIG_PARAMETERS: "'core.hooksPath'='/nonexistent'",
+    GIT_ASKPASS: '/nonexistent/askpass',
+    GH_HOST: 'evil.example',
+    GH_REPO: 'evil/repo',
+    GH_DEBUG: 'api',
+    GODEBUG: 'http2debug=2',
+    GH_ENTERPRISE_TOKEN: ENTERPRISE,
+  }
+  const gitVariables = (env: NodeJS.ProcessEnv): Record<string, string | undefined> =>
+    Object.fromEntries(Object.entries(env).filter(([name]) => name.toUpperCase().startsWith('GIT_')))
+
+  it("hands gh and the push nothing of idpa's, and passes the person's gh login unread, on plan --from --submit", async () => {
+    const base = await mkdtemp(path.join(tmpdir(), 'idp-key-reach-push-'))
+    temporary.push(base)
+    const repo = path.join(base, 'iac')
+    const bare = path.join(base, 'github.git')
+    const home = path.join(base, 'home')
+    await cp(FIXTURES, repo, { recursive: true })
+    await mkdir(home)
+    // The fixture's own git, synchronous: the mocked execFile above is the
+    // run's, and a clone built through it would be counted as the run's.
+    const isolated = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
+    const fixture = (...args: string[]): void =>
+      void execFileSync('git', ['-C', repo, ...args], { env: isolated, stdio: 'ignore' })
+    fixture('init', '-q', '-b', 'main')
+    fixture('config', 'user.name', 'key reach')
+    fixture('config', 'user.email', 'key-reach@idp-agent.invalid')
+    fixture('add', '-A')
+    fixture('commit', '-q', '-m', 'the demo catalogue')
+    execFileSync('git', ['init', '-q', '--bare', bare], { env: isolated, stdio: 'ignore' })
+    fixture('push', '-q', bare, 'main:refs/heads/main')
+    fixture('remote', 'add', 'origin', 'git@github.com:acme/iac.git')
+    fixture('config', 'branch.main.remote', 'origin')
+    fixture('config', 'branch.main.merge', 'refs/heads/main')
+    const ssh = await fakeSsh(base, bare)
+    const env: NodeJS.ProcessEnv = {
+      PATH: process.env['PATH'],
+      HOME: home,
+      XDG_CONFIG_HOME: path.join(home, '.config'),
+      // Built by hand, so the worker's closed proxy is carried over by hand.
+      ...Object.fromEntries(PROXY_VARIABLES.map((name) => [name, CLOSED_PROXY])),
+      GIT_SSH_COMMAND: ssh,
+      GIT_SSH_VARIANT: 'simple',
+      ...Object.fromEntries(PROVIDER_NAMES.map((name) => [WIRES[name].key, KEY])),
+      IDP_BACKSTAGE_URL: TOKEN,
+      IDP_BACKSTAGE_TOKEN: TOKEN,
+      GH_TOKEN: GH_CANARY,
+      GITHUB_TOKEN: GH_CANARY,
+      ...INHERITED,
+    }
+    // The push goes where the fake ssh serves, never to a URL this machine's
+    // git configuration rewrites github.com's into.
+    requireUnrewritten(repo, env)
+    spawned.environments.length = 0
+    spawned.calls.length = 0
+
+    const fake = fakeGitHub({ repositories: [protectedMain({ bare })] })
+    const out: string[] = []
+    const err: string[] = []
+    const code = await main(['plan', '--from', EXAMPLE, '--repo', repo, '--submit', '--json'], {
+      gh: fake.process,
+      ask: async (question) => (question.path.endsWith('.access') ? 'read' : confirmingEnvironment(question)),
+      env,
+      out: (chunk) => void out.push(chunk),
+      err: (chunk) => void err.push(chunk),
+    })
+
+    expect(code, err.join('')).toBe(0)
+    const submission = (JSON.parse(out.join('')) as { submission: { outcome: string; pushed: boolean; pullRequest?: unknown } })
+      .submission
+    expect(submission).toMatchObject({ outcome: 'created', pushed: true, pullRequest: { number: 1 } })
+    expect(fake.state.pulls).toHaveLength(1)
+
+    const secrets = [KEY, TOKEN, GH_CANARY, ENTERPRISE]
+    // gh: the person's login variables, unread; nothing of idpa's, nothing inherited that moves it.
+    expect(fake.sent.length).toBeGreaterThanOrEqual(8)
+    for (const sent of fake.sent) {
+      expect(sent.env['GH_TOKEN']).toBe(GH_CANARY)
+      expect(sent.env['GITHUB_TOKEN']).toBe(GH_CANARY)
+      expect(sent.env['GH_PROMPT_DISABLED']).toBe('1')
+      const names = Object.keys(sent.env).map((name) => name.toUpperCase())
+      for (const name of ['GH_HOST', 'GH_REPO', 'GH_DEBUG', 'GODEBUG', 'GH_ENTERPRISE_TOKEN', 'IDP_BACKSTAGE_URL', 'IDP_BACKSTAGE_TOKEN']) {
+        expect(names, name).not.toContain(name)
+      }
+      expect(names.filter((name) => name.startsWith('GIT_'))).toEqual([])
+      expect(names.filter((name) => name.endsWith('_API_KEY'))).toEqual([])
+      const environment = JSON.stringify(sent.env)
+      for (const secret of [KEY, TOKEN, ENTERPRISE]) expect(environment).not.toContain(secret)
+      const handed = JSON.stringify([sent.argv, sent.stdin?.toString('utf8') ?? ''])
+      for (const secret of secrets) expect(handed).not.toContain(secret)
+    }
+
+    // git: every call, the push among them.
+    const pushes = spawned.calls.filter((call) => call.args.includes('push'))
+    expect(pushes).toHaveLength(1)
+    expect(spawned.calls.length).toBeGreaterThan(pushes.length)
+    for (const call of spawned.calls) {
+      // The suite's closed proxy, which this hand-built environment carries
+      // as the worker's does (tests/setup/forge.ts): git over HTTPS goes nowhere.
+      for (const name of PROXY_VARIABLES) expect(call.env[name], name).toBe(CLOSED_PROXY)
+      expect(call.env['GH_TOKEN']).toBe(GH_CANARY)
+      expect(call.env['GITHUB_TOKEN']).toBe(GH_CANARY)
+      // The person's own variables are git's to read, unread by idpa (§ 5);
+      // nothing of idpa's is in them.
+      const environment = JSON.stringify(call.env)
+      for (const secret of [KEY, TOKEN]) expect(environment).not.toContain(secret)
+      for (const secret of secrets) expect(JSON.stringify(call.args)).not.toContain(secret)
+      expect(gitVariables(call.env)).toEqual(
+        call.args.includes('push')
+          ? {
+              GIT_SSH_COMMAND: ssh,
+              GIT_SSH_VARIANT: 'simple',
+              GIT_ASKPASS: INHERITED.GIT_ASKPASS,
+              GIT_OPTIONAL_LOCKS: '0',
+              GIT_TERMINAL_PROMPT: '0',
+            }
+          : { GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' },
+      )
+    }
+
+    for (const text of [out.join(''), err.join(''), JSON.stringify(fake.state.pulls)]) {
+      for (const secret of secrets) expect(text).not.toContain(secret)
     }
   })
 })

@@ -1,18 +1,28 @@
+import type { PullRequestInput } from '../../core/github/pull-request.js'
+import { printedRepository } from '../../core/github/remote.js'
 import type { Cleared, ClearRefusal, Expectation, Repository } from '../../core/plan/clear.js'
-import { openLocalForge } from '../../forge/local/forge.js'
-import type { Base, ForgeProvider, Submitted } from '../../forge/provider.js'
+import type { GitHubApi } from '../../forge/github/api.js'
+import { preflight } from '../../forge/github/preflight.js'
+import { openSubmissionForge, type OpenedForge } from '../../forge/open.js'
+import type { Base, ForgeProvider, GhIdentity, GitHubRoad, PullRequest, Road, Submitted } from '../../forge/provider.js'
+import type { GhProcess } from '../../process/gh.js'
+import type { Attributes } from '../../trace/model.js'
 import { baseOf, closingLines, type PreviewStatus } from '../render/footer.js'
 import { inertLine } from '../render/plain.js'
+import { renderUnprotected } from '../render/protection.js'
 import type { CommandResult } from './result.js'
 
 /**
  * `--submit`: a previewed plan becomes one new branch, cut from `HEAD`, for
- * review (ADR-0010). Everything a run decides about that lives here, in the
- * order it happens — open the forge before anything is read, refuse a
- * repository whose working tree is not `HEAD` before anything is previewed,
- * then clear, recognise a branch already there, confirm and submit — so both
- * roads of `plan`, and `init` after them, take the same steps rather than
- * three copies of them.
+ * review (ADR-0010) — and, where the checked-out branch tracks one on
+ * github.com, that branch pushed with the person's git and one pull request
+ * opened with their gh (stage 6 brief § 3). Everything a run decides about
+ * that lives here, in the order it happens — open the forge before anything
+ * is read, refuse a repository whose working tree is not `HEAD`, or a base on
+ * GitHub the rules do not protect, before anything is previewed, then clear,
+ * recognise a submission already made, confirm and submit — so both roads of
+ * `plan`, and `init` after them, take the same steps rather than three copies
+ * of them.
  *
  * Nothing here authorises anything. The branch is a request; the merge, which
  * nobody can perform from this terminal, is what authorises it (§4.2).
@@ -32,6 +42,18 @@ export interface SubmissionSummary {
   readonly files: readonly { readonly path: string; readonly change: 'create' | 'amend' }[]
   /** The preview as printed, `not yet submitted` tail included. */
   readonly preview: string
+  /**
+   * On GitHub's road: where the branch is pushed and the pull request opened,
+   * and whether an earlier run pushed the branch already, so only the pull
+   * request is left to ask about. Absent on a local road.
+   */
+  readonly github?: {
+    readonly host: 'github.com'
+    /** `acme/iac`: the host is its own field. */
+    readonly repository: string
+    readonly base: string
+    readonly pushedAlready: boolean
+  }
 }
 
 /**
@@ -51,31 +73,73 @@ export interface SubmitOptions {
   readonly confirm?: Confirm
   /**
    * Injected so a test can hand in a forge that fails where it chooses — and
-   * so `main` can hand `plan "<intent>"` the forge it opened before the model
-   * was configured, rather than open a second one.
+   * so `main` can hand `plan "<intent>"` and `init` the forge it opened before
+   * the model was configured, rather than open a second one.
    */
-  readonly open?: (root: string, repository: Repository) => Promise<ForgeProvider>
+  readonly open?: (root: string, repository: Repository) => Promise<OpenedForge>
+  /** `--local`: stage 5's branch, on purpose — nothing is read on GitHub and nothing is pushed. */
+  readonly local?: boolean
+  /** The person's environment, handed to every git and gh the submission starts; `process.env` when absent. */
+  readonly env?: NodeJS.ProcessEnv
+  /** The gh a test hands in (`MainDeps.gh`); the person's own otherwise. */
+  readonly gh?: GhProcess
+  /** Where the line naming the GitHub road goes: stderr, from `cli/index.ts`. */
+  readonly notice?: (line: string) => void
 }
 
 export interface Opened {
   readonly root: string
   readonly forge: ForgeProvider
   readonly base: Base
+  readonly road: Road
+  /** On GitHub's road: who gh is, and GitHub through it. */
+  readonly github?: { readonly identity: GhIdentity; readonly api: GitHubApi }
 }
+
+/** One value of the repository or of GitHub, on one line, whatever it holds. */
+const one = (value: string): string => inertLine(value, Number.POSITIVE_INFINITY)
+
+/** The line that says, before the diff, where a submission goes and as whom. No role: the preflight reads it, after. */
+const submittingLine = (road: GitHubRoad, identity: GhIdentity): string =>
+  `submitting to ${printedRepository(road.repository)}, into ${one(road.base)} (${one(road.remote)}, ` +
+  `${one(road.branch)}'s upstream), as ${one(identity.login)} (gh)`
 
 /**
  * Before anything is read and before any model is paid: a repository that
  * cannot take a branch — not a clone's root, no git, no committer identity, a
  * detached or unborn `HEAD` — is refused now, as an argument (exit 2), by
- * `ForgeInputError`.
+ * `ForgeInputError`; and so, on GitHub's road, are a clone configured to
+ * redirect the push and a gh that is missing, logged out, too old or not a
+ * person (stage 6 brief § 7, § 9). On that road the line naming it is said
+ * once, by the run that opened the forge.
  */
 export async function openForSubmission(
   root: string,
   repository: Repository,
-  options: SubmitOptions,
+  options: SubmitOptions & { readonly route: PullRequestInput['road'] },
 ): Promise<Opened> {
-  const forge = await (options.open ?? openLocalForge)(root, repository)
-  return { root, forge, base: await forge.base() }
+  const opened =
+    options.open !== undefined
+      ? await options.open(root, repository)
+      : await openSubmissionForge({
+          repo: root,
+          repository,
+          env: options.env ?? process.env,
+          ...(options.gh === undefined ? {} : { gh: options.gh }),
+          local: options.local === true,
+          route: options.route,
+        })
+  const base = await opened.forge.base()
+  if (options.open === undefined && opened.road.kind === 'github' && opened.github !== undefined) {
+    options.notice?.(submittingLine(opened.road, opened.github.identity))
+  }
+  return {
+    root,
+    forge: opened.forge,
+    base,
+    road: opened.road,
+    ...(opened.github === undefined ? {} : { github: opened.github }),
+  }
 }
 
 /**
@@ -87,10 +151,14 @@ export async function openForSubmission(
  * error, never a forge quietly reused.
  */
 export const reopening =
-  (forge: ForgeProvider, root: string, repository: Repository) =>
-  (asked: string, which: Repository): Promise<ForgeProvider> =>
+  (opened: OpenedForge, root: string, repository: Repository) =>
+  (asked: string, which: Repository): Promise<OpenedForge> =>
     asked === root && which === repository
-      ? Promise.resolve(forge)
+      ? Promise.resolve({
+          forge: opened.forge,
+          road: opened.road,
+          ...(opened.github === undefined ? {} : { github: opened.github }),
+        })
       : Promise.reject(new Error('a forge opened for one repository was asked for another repository'))
 
 /**
@@ -140,8 +208,55 @@ export async function refuseDivergence(
 }
 
 /**
- * What `--json` reports under `submission` (D11). Its shape is pinned by a
- * test in `plan-command.test.ts`; versioning the report is cli-ux-10's.
+ * On GitHub's road, after the divergence and before the preview: whether the
+ * base's rules keep a pull request from merging until someone other than its
+ * opener approves its latest commit, and whether GitHub's base is the commit
+ * this clone's is (stage 6 brief § 8). Either answered no is the
+ * repository's state, a negative answer (exit 1), with the ruleset to add or
+ * the commits to bring level; nothing was previewed, nothing written, and no
+ * question asked. The rules are judged first, so a base that fails both is
+ * told about its ruleset. A local road reads nothing here.
+ *
+ * With `json`, the refusal is the report, as `refuseDivergence`'s is.
+ */
+export async function refuseUnprotected(
+  opened: Opened,
+  options: { readonly json?: boolean } = {},
+): Promise<CommandResult | undefined> {
+  const { road, github } = opened
+  if (road.kind !== 'github') return undefined
+  if (github === undefined) throw new Error('a GitHub road opened without gh')
+  const { verdict, level } = await preflight(github.api, road, opened.base)
+  let text: string
+  let reasons: string[]
+  if (!verdict.holds) {
+    text = renderUnprotected(verdict, road, github.identity)
+    const lines = text.split('\n')
+    reasons = [lines[0] ?? '', ...lines.filter((line) => line.startsWith('  missing: '))]
+  } else if (level !== 'level') {
+    text =
+      `not submitted — ${printedRepository(road.repository)}'s ${one(road.base)} is at ${level.github.slice(0, 7)} and ` +
+      `this clone's ${one(opened.base.branch)} is at ${opened.base.commit.slice(0, 7)}: bring them level (git pull), ` +
+      'then run this again. If you submitted this change before, the next run names its pull request. ' +
+      'Nothing was written.'
+    reasons = [text]
+  } else {
+    return undefined
+  }
+  if (options.json === true) {
+    const submission: SubmissionReport = { outcome: 'refused', reasons }
+    return { text: JSON.stringify({ submission }, null, 2), found: false }
+  }
+  return { text, found: false }
+}
+
+/**
+ * What `--json` reports under `submission` (D11). Its shape is pinned by tests
+ * in `plan-command.test.ts` and `submit-github.test.ts`; versioning the report
+ * is cli-ux-10's. `pushed` is whether THIS run pushed the branch: false on a
+ * local road, on a pull request opened for a branch an earlier run pushed,
+ * and on every `already-submitted`. `kept` is the local branch a refusal after
+ * it was cut leaves in the clone.
  */
 export type SubmissionReport =
   | {
@@ -149,10 +264,95 @@ export type SubmissionReport =
       readonly branch: string
       readonly commit: string
       readonly base: Base
+      readonly pushed: boolean
+      readonly pullRequest?: PullRequest
+      readonly olderBase?: string
     }
   | { readonly outcome: 'unchanged' }
   | { readonly outcome: 'declined'; readonly branch: string }
-  | { readonly outcome: 'refused'; readonly reasons: readonly string[] }
+  | { readonly outcome: 'refused'; readonly reasons: readonly string[]; readonly kept?: string }
+  | {
+      readonly outcome: 'pushed-without-pull-request'
+      readonly branch: string
+      readonly commit: string
+      readonly reason: string
+    }
+  | {
+      readonly outcome: 'closed'
+      readonly branch: string
+      readonly number: number
+      readonly merged: boolean
+      readonly at: string
+    }
+
+/**
+ * Where a submission went, as root attributes of a traced run (stage 6 brief
+ * § 12): the forge's kind, the host and repository on GitHub's road (the host
+ * on another host's too), the base, the branch, the pull request's number, the
+ * outcome, how many gh calls the run made and whether it pushed. Never gh's
+ * login, nor anything a person typed.
+ */
+export function forgeAttributes(report: SubmissionReport, road: Road, calls: number): Attributes {
+  const where: Record<string, string | number | boolean> = {}
+  switch (road.kind) {
+    case 'github':
+      where['idp.forge.kind'] = 'github'
+      where['idp.forge.host'] = road.repository.host
+      where['idp.forge.repository'] = `${road.repository.owner}/${road.repository.name}`
+      where['idp.forge.base'] = road.base
+      break
+    case 'local':
+      where['idp.forge.kind'] = 'local'
+      if (road.why === 'other-host') where['idp.forge.host'] = road.host
+      break
+    default: {
+      const _exhaustive: never = road
+      return _exhaustive
+    }
+  }
+  // Whether this run pushed; a stop at step 12, or a refusal that kept the
+  // branch, does not say, and claims nothing.
+  let pushed: boolean | undefined = false
+  switch (report.outcome) {
+    case 'created':
+    case 'already-submitted':
+      if (road.kind !== 'github') where['idp.forge.base'] = report.base.branch
+      where['idp.forge.branch'] = report.branch
+      if (report.pullRequest !== undefined) where['idp.forge.pull_request'] = report.pullRequest.number
+      pushed = report.pushed
+      break
+    case 'declined':
+      where['idp.forge.branch'] = report.branch
+      break
+    case 'pushed-without-pull-request':
+      where['idp.forge.branch'] = report.branch
+      pushed = undefined
+      break
+    case 'closed':
+      where['idp.forge.branch'] = report.branch
+      where['idp.forge.pull_request'] = report.number
+      break
+    case 'refused':
+      // A kept branch may have been pushed before step 11 refused: unsaid.
+      if (report.kept !== undefined) {
+        where['idp.forge.branch'] = report.kept
+        pushed = undefined
+      }
+      break
+    case 'unchanged':
+      break
+    default: {
+      const _exhaustive: never = report
+      return _exhaustive
+    }
+  }
+  return {
+    ...where,
+    'idp.forge.outcome': report.outcome,
+    'idp.forge.gh_calls': calls,
+    ...(pushed === undefined ? {} : { 'idp.forge.pushed': pushed }),
+  }
+}
 
 /**
  * Clear, recognise, confirm, submit — in that order, and each one can end the
@@ -167,6 +367,20 @@ export type SubmissionReport =
  * exit 3 included — and never reaches a forge.
  */
 export async function submit(input: {
+  readonly opened: Opened
+  readonly cleared: Cleared | ClearRefusal
+  readonly render: (status: PreviewStatus) => CommandResult
+  readonly confirm?: Confirm
+}): Promise<{ readonly result: CommandResult; readonly report: SubmissionReport }> {
+  const { opened } = input
+  const done = await submitting(input)
+  // Where it went, for a traced run's root (stage 6 brief § 12).
+  const attributes = forgeAttributes(done.report, opened.road, opened.github?.api.calls() ?? 0)
+  return { report: done.report, result: { ...done.result, attributes } }
+}
+
+/** `submit`'s steps, before its result is given where it went. */
+async function submitting(input: {
   readonly opened: Opened
   readonly cleared: Cleared | ClearRefusal
   readonly render: (status: PreviewStatus) => CommandResult
@@ -193,13 +407,19 @@ export async function submit(input: {
 
   // Before anyone is asked: a branch that is already there is either this
   // very submission — nothing to confirm, and nothing to write — or somebody
-  // else's, which no answer at the prompt could make ours. The forge only
-  // reads to say so; `submit` below looks again at the moment of writing,
-  // for a branch created while the person read the diff.
+  // else's, which no answer at the prompt could make ours. On GitHub's road
+  // a closed pull request is answered here too; our branch pushed by an
+  // earlier run with no pull request is not the end of the run: only the
+  // pull request is left, and it is asked about (stage 6 brief § 14, row 2).
+  // The forge only reads to say so; `submit` below looks again at the moment
+  // of writing, for a branch created while the person read the diff.
   const known = await opened.forge.recognise(cleared, opened.base)
-  if (known !== undefined) return outcomeOf(known, opened.base, said)
+  if (known !== undefined && known.outcome !== 'pushed-without-pull-request') {
+    return outcomeOf(known, opened.base, opened.road, said)
+  }
 
   if (confirm !== undefined) {
+    const { road } = opened
     const yes = await confirm({
       root: opened.root,
       repository: cleared.repository,
@@ -210,6 +430,16 @@ export async function submit(input: {
         change: edit.before === undefined ? 'create' : 'amend',
       })),
       preview: render({ kind: 'pending', branch: cleared.branch }).text,
+      ...(road.kind === 'github'
+        ? {
+            github: {
+              host: road.repository.host,
+              repository: `${road.repository.owner}/${road.repository.name}`,
+              base: road.base,
+              pushedAlready: known?.outcome === 'pushed-without-pull-request',
+            },
+          }
+        : {}),
     })
     if (!yes) {
       return {
@@ -219,29 +449,49 @@ export async function submit(input: {
     }
   }
 
-  return outcomeOf(await opened.forge.submit(cleared, opened.base), opened.base, said)
+  return outcomeOf(await opened.forge.submit(cleared, opened.base), opened.base, opened.road, said)
 }
+
+/** A reason the forge ended on "Nothing was written.": the closing lines say it, or say what was kept. */
+const unwritten = (reason: string): string => reason.replace(/\s*Nothing was written\.$/, '')
 
 /**
  * What the forge said, as the run's result and its `--json` key — the same
  * words whether it said them before the prompt or at the moment of writing.
+ * A pull request not opened, and one closed, are negative answers (exit 1),
+ * as a refusal is.
  */
 function outcomeOf(
   submitted: Submitted,
   base: Base,
+  road: Road,
   said: (status: PreviewStatus) => string,
 ): { readonly result: CommandResult; readonly report: SubmissionReport } {
   switch (submitted.outcome) {
     case 'created':
     case 'already-submitted': {
+      const { pullRequest, olderBase } = submitted
+      const statusChecks = submitted.outcome === 'created' ? submitted.statusChecks : undefined
       const status: PreviewStatus = {
         kind: 'submitted',
         again: submitted.outcome === 'already-submitted',
         branch: submitted.branch,
         base,
+        road,
+        ...(pullRequest === undefined ? {} : { pullRequest }),
+        ...(olderBase === undefined ? {} : { olderBase }),
+        ...(statusChecks === undefined ? {} : { statusChecks }),
       }
       return {
-        report: { ...submitted, base },
+        report: {
+          outcome: submitted.outcome,
+          branch: submitted.branch,
+          commit: submitted.commit,
+          base,
+          pushed: submitted.pushed === true,
+          ...(pullRequest === undefined ? {} : { pullRequest }),
+          ...(olderBase === undefined ? {} : { olderBase }),
+        },
         result: { text: said(status), found: true },
       }
     }
@@ -249,17 +499,56 @@ function outcomeOf(
       return { report: submitted, result: { text: said({ kind: 'preview' }), found: true } }
     case 'refused': {
       // The forge's words quote refs and paths of the repository: cleaned.
-      const status: PreviewStatus = { kind: 'refused', reasons: cleaned([submitted.reason]) }
+      const { kept } = submitted
+      const status: PreviewStatus = {
+        kind: 'refused',
+        reasons: cleaned([unwritten(submitted.reason)]),
+        ...(kept === undefined ? {} : { kept: one(kept) }),
+      }
       return {
-        report: { outcome: 'refused', reasons: [submitted.reason] },
+        report: { outcome: 'refused', reasons: [submitted.reason], ...(kept === undefined ? {} : { kept }) },
         result: { text: said(status), found: false },
       }
     }
-    case 'pushed-without-pull-request':
-    case 'closed':
-      // Only the GitHub forge answers these, and no road opens it before
-      // stage 6 plan's 6.2.2, which replaces both cases.
-      throw new Error(`the local forge never answers ${submitted.outcome}`)
+    case 'pushed-without-pull-request': {
+      if (road.kind !== 'github') throw new Error('a local road never stops before a pull request')
+      const status: PreviewStatus = {
+        kind: 'pushed-without-pull-request',
+        branch: one(submitted.branch),
+        repository: printedRepository(road.repository),
+        reason: one(submitted.reason),
+      }
+      return {
+        report: {
+          outcome: 'pushed-without-pull-request',
+          branch: submitted.branch,
+          commit: submitted.commit,
+          reason: submitted.reason,
+        },
+        result: { text: said(status), found: false },
+      }
+    }
+    case 'closed': {
+      if (road.kind !== 'github') throw new Error('a local road never meets a pull request')
+      const status: PreviewStatus = {
+        kind: 'closed',
+        branch: one(submitted.branch),
+        number: submitted.number,
+        merged: submitted.merged,
+        at: one(submitted.at),
+        base: one(road.base),
+      }
+      return {
+        report: {
+          outcome: 'closed',
+          branch: submitted.branch,
+          number: submitted.number,
+          merged: submitted.merged,
+          at: submitted.at,
+        },
+        result: { text: said(status), found: false },
+      }
+    }
     default: {
       const _exhaustive: never = submitted
       return _exhaustive

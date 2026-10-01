@@ -189,8 +189,8 @@ export function renderProtection(verdict: ProtectionVerdict, road: GitHubRoad, i
 
 /**
  * What a submission refused on the rules prints (stage 6 brief § 8): the same
- * `missing:` lines, the ruleset to add, and that nothing was written. First
- * called by the GitHub road of `plan --from --submit` (stage 6 plan, 6.2.2).
+ * `missing:` lines, the ruleset to add, and that nothing was written:
+ * `refuseUnprotected`'s, on the GitHub road of a submission.
  */
 export function renderUnprotected(verdict: ProtectionVerdict, road: GitHubRoad, identity: GhIdentity): string {
   return [

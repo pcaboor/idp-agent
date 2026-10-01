@@ -81,7 +81,9 @@ const pull = (clone: GitHubClone, number: number) => {
   return found
 }
 
-describe('recognition, one test per row of § 14', () => {
+// Real git processes, a push and a bare repository per test: seconds alone,
+// past vitest's 5 s default beside the rest of the suite.
+describe('recognition, one test per row of § 14', { timeout: 30_000 }, () => {
   it('finds nothing to recognise when neither side holds the branch', async () => {
     const opened = await setUp()
     const before = await state(opened.clone)
@@ -378,7 +380,7 @@ describe('recognition, one test per row of § 14', () => {
   })
 })
 
-describe('the moment of acting', () => {
+describe('the moment of acting', { timeout: 30_000 }, () => {
   it('re-checks the rules at the moment of acting: a ruleset dropped after the confirmation leaves nothing on either side', async () => {
     const opened = await setUp()
     expect(await opened.forge.recognise(opened.change, opened.base)).toBeUndefined()
@@ -468,7 +470,7 @@ describe('the moment of acting', () => {
   })
 })
 
-describe('races and failures', () => {
+describe('races and failures', { timeout: 30_000 }, () => {
   it('never moves a branch a stranger pushed between the re-check and the push', async () => {
     const clone = await githubClone()
     const stranger = await git(clone.bare, 'rev-parse', 'main')

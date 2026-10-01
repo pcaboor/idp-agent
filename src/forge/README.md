@@ -5,8 +5,8 @@ cut through git's plumbing, and nothing else (ADR-0010). It holds its shapes, it
 the local forge; `plan … --submit`, on either road, and `init --submit`, for the service's own
 repository, reach it, through `cli/commands/submit.ts`; `idpa protection` reaches its GitHub
 half, which only reads, through `cli/commands/protection.ts`. The GitHub forge, which pushes
-that branch and opens one pull request, is built and tested offline; no command reaches it
-yet (stage 6 plan, 6.2.2 wires it).
+that branch and opens one pull request, is reached by `plan --from … --submit` on a clone whose
+branch tracks one on github.com, through `open.ts`.
 
 ## What lives here
 
@@ -14,6 +14,7 @@ yet (stage 6 plan, 6.2.2 wires it).
 |---|---|
 | `provider.ts` | `ForgeProvider` (`name: 'local' \| 'github'`, and no `merge`, `approve`, `close` or `delete`), `Base`, `Submitted` and `Recognised` — on GitHub also `pushed`, `pullRequest`, `olderBase`, `statusChecks`, a refusal's `kept`, and `pushed-without-pull-request` and `closed` — `PullRequest`, the road a submission takes (`Road`, `GitHubRoad`, `LocalRoad`) and who gh is (`GhIdentity`) — **types only**, like `llm/client.ts` |
 | `errors.ts` | `ForgeInputError` — the refusals that are the user's arguments, exit 2 |
+| `open.ts` | `openSubmissionForge({ repo, repository, env, gh?, local, route })` — what every submission opens, before anything is read: the local forge (stage 5's checks first), the road, and on GitHub's road gh's identity and the GitHub forge over a local forge with `acceptOlderBase`; `OpenedForge`. The roads that open no pull request yet (`OPENS_PULL_REQUESTS`) are refused toward GitHub before gh starts (`NOT_YET`, exit 2); `cli/` reaches the launchers only through this |
 | `local/objects.ts` | `blobId`, `treeId`, `objectFormat`, `treeOf`, `writeTree` — reading and writing git objects, never a ref; `buildTree`, the one walk `writeTree` and `treeFor` share |
 | `local/tree.ts` | `treeFor(git, parent, edits, format)` — the tree a change would have on `parent`, computed and never written: what the GitHub forge compares a commit this clone never made with (stage 6 brief § 4, § 14) |
 | `local/forge.ts` | `openLocalForge(repo, repository, git?, { acceptOlderBase? })` — `base`, `diverges`, `recognise`, `submit`, over a clone on this machine; `acceptOlderBase`, the GitHub forge's alone, takes our one commit on an ancestor of the base as ours on an older base |

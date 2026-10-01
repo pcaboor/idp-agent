@@ -916,7 +916,8 @@ describe('plan "<intent>" --submit', () => {
     expect(result.found).toBe(true)
     const report = JSON.parse(result.text) as { outcome: string; submission: Record<string, unknown> }
     expect(report.outcome).toBe('planned')
-    expect(Object.keys(report.submission).sort()).toEqual(['base', 'branch', 'commit', 'outcome'])
+    expect(Object.keys(report.submission).sort()).toEqual(['base', 'branch', 'commit', 'outcome', 'pushed'])
+    expect(report.submission['pushed']).toBe(false)
     expect(report.submission['outcome']).toBe('created')
     expect(report.submission['commit']).toBe(
       await git(repo, 'rev-parse', String(report.submission['branch'])),
@@ -968,9 +969,9 @@ describe('plan "<intent>" --submit', () => {
     // roots ever disagreed, the confirmation would name one directory while
     // the branch was cut in another; an opener that checks makes that an error.
     const forge = {} as ForgeProvider
-    const open = reopening(forge, '/somewhere/iac', 'declarations')
+    const open = reopening({ forge, road: { kind: 'local', why: 'asked' } }, '/somewhere/iac', 'declarations')
 
-    await expect(open('/somewhere/iac', 'declarations')).resolves.toBe(forge)
+    expect((await open('/somewhere/iac', 'declarations')).forge).toBe(forge)
     await expect(open('/somewhere/else', 'declarations')).rejects.toThrow(/another repository/)
     await expect(open('/somewhere/iac', 'service')).rejects.toThrow(/another repository/)
   })

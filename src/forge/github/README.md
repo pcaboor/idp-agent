@@ -5,8 +5,8 @@ Stage 6's road to a pull request, opened with the person's own git and gh
 credential: gh reads its own login and git pushes with the person's, and nothing here reads,
 stores or sends either. It is built task by task ([`docs/plans/stage-6-github.md`](../../../docs/plans/stage-6-github.md)):
 `idpa protection` reaches the reads; the forge, which pushes and opens a pull request, is
-reached by no command until 6.2.2, and is proved offline, against the fake gh and a bare
-repository on disk.
+reached by `plan --from … --submit` through `forge/open.ts`, and is proved offline, against the
+fake gh and a bare repository on disk.
 
 ## What lives here
 
@@ -18,7 +18,7 @@ repository on disk.
 | `preflight.ts` | `readProtection(api, road)` — § 8's reads, in order: the repository, stopping there when it is archived, renamed or not the account's to push to; the rules for the base; each ruleset that supplies a required rule, at most ten; the branch, only when none does — judged by `core/github/protection.ts`. `preflight(api, road, base)` adds the base's ref: whether GitHub's base is at the clone's commit. `readRules(api, road)` is items 2 and 3 alone, what the forge reads again at the moment of acting and before the pull request |
 | `push.ts` | `pushChange` — step 10, the person's own `git push` of the very commit the local forge cut, create-only, a push that did not say "created" read back, with step 11's waits, before anything is concluded, and a remote's refusal called a ruleset only where GitHub's words say so; `classifyPushFailure`, git's stderr read into a `PushFailure` and one engine sentence each, git's words never repeated |
 | `forge.ts` | `openGitHubForge` — the GitHub forge: the local forge's `base` and `diverges`; `recognise`, which reads the local branch, then the branch on GitHub, its commit and the pull requests from it (§ 14); `submit`, which re-reads the road, the clone's configuration, the rules, the base, the branch on GitHub and the pull requests from it at the moment of acting, cuts the local branch, pushes, reads the branch back, reads the rules once more and opens one pull request whose body the engine writes (`core/github/pull-request.ts`) |
-| `open.ts` | `openGitHub({ repo, env, gh?, local, purpose? })` — the clone's root, the road, and on GitHub's road gh's identity and the API: what `idpa protection` opens, and every submission will |
+| `open.ts` | `openGitHub({ repo, env, gh?, local, purpose? })` — the clone's root, the road, and on GitHub's road gh's identity and the API: what `idpa protection` opens, and every submission, through `forge/open.ts` |
 | `limits.ts` | `GITHUB_LIMITS` — what one run may spend (§ 15): 48 gh calls, which the brief's figures add up to exactly |
 
 ## How it decides

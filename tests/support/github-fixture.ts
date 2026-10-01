@@ -1,7 +1,6 @@
-import { execFile } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { chmod, mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { promisify } from 'node:util'
 import { openGitHubForge } from '../../src/forge/github/forge.js'
 import type { GitHubApi } from '../../src/forge/github/api.js'
 import { openGitHub } from '../../src/forge/github/open.js'
@@ -71,6 +70,32 @@ export async function remoteRefs(bare: string): Promise<string> {
 }
 
 /**
+ * The floor's sixth leg (tests/setup/forge.ts, tests/unit/offline.test.ts),
+ * for every clone a test pushes from: `origin`'s push URL, read as the
+ * launcher's git will read it — every GIT_* removed, so the system file too —
+ * must be the one the fake ssh serves. A configuration that rewrites it
+ * would send the push, and the machine's credential helper, to the real
+ * GitHub. Synchronous, so a test that counts the processes it starts through
+ * a mocked `execFile` (`tests/contract/key-reach.test.ts`) counts none here.
+ */
+export function requireUnrewritten(repo: string, env: NodeJS.ProcessEnv): void {
+  const launcherLike: NodeJS.ProcessEnv = {}
+  for (const [name, value] of Object.entries(env)) {
+    if (!name.toUpperCase().startsWith('GIT_')) launcherLike[name] = value
+  }
+  const stdout = execFileSync('git', ['-C', repo, 'remote', 'get-url', '--push', 'origin'], {
+    env: launcherLike,
+    encoding: 'utf8',
+  })
+  if (stdout.trim() !== GITHUB_URL) {
+    throw new Error(
+      `this machine's git configuration rewrites ${GITHUB_URL} (git config --system --list says where): ` +
+        'a push test would reach somewhere else, and does not run',
+    )
+  }
+}
+
+/**
  * The clone, the bare repository level with it, the fake ssh, and the fake gh
  * over `protectedMain` — `main` protected as `docs/submitting.md` says, `ada`
  * its administrator and logged in — with `model`'s changes.
@@ -93,29 +118,13 @@ export async function githubClone(options: { readonly model?: FakeModel } = {}):
     GIT_SSH_COMMAND: await fakeSsh(root, bare),
     GIT_SSH_VARIANT: 'simple',
   }
-  // The floor's sixth leg (tests/setup/forge.ts, tests/unit/offline.test.ts):
-  // the URL is read as the launcher's git reads it — every GIT_* removed, so
-  // the system file too — and must be the one the fake ssh serves.
-  const launcherLike: NodeJS.ProcessEnv = {}
-  for (const [name, value] of Object.entries(env)) {
-    if (!name.toUpperCase().startsWith('GIT_')) launcherLike[name] = value
-  }
-  const { stdout } = await promisify(execFile)('git', ['-C', repo, 'remote', 'get-url', '--push', 'origin'], {
-    env: launcherLike,
-    encoding: 'utf8',
-  })
-  if (stdout.trim() !== GITHUB_URL) {
-    throw new Error(
-      `this machine's git configuration rewrites ${GITHUB_URL} (git config --system --list says where): ` +
-        'a push test would reach somewhere else, and does not run',
-    )
-  }
+  requireUnrewritten(repo, env)
   const gh = fakeGitHub({ repositories: [protectedMain({ bare })], ...options.model })
   return { repo, bare, env, gh }
 }
 
 /**
- * What the stage 6 plan's 6.2.2 will open for a submission: `openGitHub` for
+ * What `openSubmissionForge` opens for a submission, piece by piece: `openGitHub` for
  * the road and gh's identity, the local forge with `acceptOlderBase`, then
  * the GitHub forge, the road `from`. `git`, `push` and `gh` are the fixture's
  * unless a test hands failing ones.

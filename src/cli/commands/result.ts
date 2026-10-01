@@ -1,3 +1,5 @@
+import type { Attributes } from '../../trace/model.js'
+
 /**
  * What a command produced, and whether it resolved what was asked for. The
  * commands state the fact; only `cli/index.ts` turns it into an exit code, so
@@ -17,4 +19,10 @@ export interface CommandResult {
    * Writing arrives at stage 5 and turns this branch into a plan.
    */
   unsupported?: boolean
+  /**
+   * What a traced run's root says beside what it printed — where a submission
+   * went (`forgeAttributes`). `cli/index.ts` merges it into the trace; nothing
+   * a person sees reads it.
+   */
+  attributes?: Attributes
 }

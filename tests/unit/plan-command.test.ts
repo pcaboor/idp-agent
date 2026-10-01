@@ -1091,7 +1091,8 @@ describe('plan --from --submit', () => {
     expect(out).toMatch(
       /2 files · submitted as idp-agent\/orders-db-prod-[0-9a-f]{8} on top of main@[0-9a-f]{7} · main untouched/,
     )
-    expect(out).toContain('Nothing is pushed. No merge request is opened: this build has no forge (stage 6).')
+    expect(out).toContain('main tracks no remote: nothing pushed')
+    expect(out).not.toContain('No merge request is opened')
     expect(out.trimEnd().endsWith(CLOSING)).toBe(true)
     expect(await git(repo, 'rev-parse', 'main')).toBe(main0)
     const [branch] = await branches(repo)
@@ -1354,8 +1355,9 @@ describe('plan --from --submit', () => {
     const report = JSON.parse(out) as { submission: Record<string, unknown> }
     // The key's shape is pinned (D11): cli-ux-10 versions the report later,
     // and a consumer written today must not be broken silently before then.
-    expect(Object.keys(report.submission).sort()).toEqual(['base', 'branch', 'commit', 'outcome'])
+    expect(Object.keys(report.submission).sort()).toEqual(['base', 'branch', 'commit', 'outcome', 'pushed'])
     expect(report.submission['outcome']).toBe('created')
+    expect(report.submission['pushed']).toBe(false)
     expect(report.submission['branch']).toMatch(/^idp-agent\//)
     expect(report.submission['commit']).toBe(await git(repo, 'rev-parse', String(report.submission['branch'])))
     expect(report.submission['base']).toEqual({ branch: 'main', commit: await git(repo, 'rev-parse', 'main') })
@@ -1498,9 +1500,12 @@ describe('plan --from --submit', () => {
     const from = await planFile(repo, CREATE_PLAN)
     const args = ['plan', '--from', from, '--repo', repo, '--submit']
 
+    // The branch tracks nothing, so the road is stage 5's whatever its name
+    // (stage 6 brief § 13), and the road's line spells the name out too.
     const submitted = await runWith(args, { ask: answering('read') })
     expect(submitted.code).toBe(0)
     expect(submitted.out).toContain('on top of safe\\u202egnp.exe@')
+    expect(submitted.out).toContain('safe\\u202egnp.exe tracks no remote: nothing pushed')
     expect(submitted.out + submitted.err).not.toContain('\u202e')
 
     await declare(repo, 'catalog/databases/stray.yml', '# stray\n')
@@ -1617,7 +1622,8 @@ describe('plan --from --submit', () => {
 
     const created = await submission()
     expect(created.code).toBe(0)
-    expect(Object.keys(created.submission).sort()).toEqual(['base', 'branch', 'commit', 'outcome'])
+    expect(Object.keys(created.submission).sort()).toEqual(['base', 'branch', 'commit', 'outcome', 'pushed'])
+    expect(created.submission['pushed']).toBe(false)
     expect(Object.keys(created.submission['base'] as object).sort()).toEqual(['branch', 'commit'])
 
     const again = await submission()
@@ -1723,5 +1729,48 @@ describe('the confirmation at a terminal', () => {
     const answered = confirmOnTerminal(input, output, diff)(SUMMARY)
     input.write('\u0003')
     await expect(answered).rejects.toBeInstanceOf(InterruptedError)
+  })
+
+  /** The question as the terminal showed it, once answered `n`. */
+  const asked = async (summary: SubmissionSummary): Promise<string> => {
+    const { input, output, diff } = terminal()
+    const shown: Buffer[] = []
+    output.on('data', (chunk: Buffer) => shown.push(chunk))
+    const answered = confirmOnTerminal(input, output, diff)(summary)
+    input.write('n\n')
+    expect(await answered).toBe(false)
+    return Buffer.concat(shown).toString('utf8')
+  }
+
+  it('asks the local road’s question byte for byte as before', async () => {
+    expect(await asked(SUMMARY)).toContain(
+      'Submit this for review as idp-agent/orders-db-prod-3f9c2a1b in /work/iac? ' +
+        'Nothing is provisioned until someone else merges it. [y/N] ',
+    )
+  })
+
+  it('asks § 3’s question on the GitHub road', async () => {
+    const shown = await asked({
+      ...SUMMARY,
+      github: { host: 'github.com', repository: 'acme/iac', base: 'main', pushedAlready: false },
+    })
+    expect(shown).toContain(
+      'Push idp-agent/orders-db-prod-3f9c2a1b to github.com/acme/iac with your git, and open a pull request into ' +
+        'main with your gh? Nothing is provisioned until someone else approves it and it is merged. [y/N] ',
+    )
+    expect(shown).not.toContain('Submit this for review')
+  })
+
+  it('asks only for the pull request when the branch was pushed', async () => {
+    expect(
+      await asked({
+        ...SUMMARY,
+        github: { host: 'github.com', repository: 'acme/iac', base: 'main', pushedAlready: true },
+      }),
+    ).toContain(
+      'Open a pull request from idp-agent/orders-db-prod-3f9c2a1b into main on github.com/acme/iac with your gh? ' +
+        'The branch was pushed by an earlier run. Nothing is provisioned until someone else approves it and it is ' +
+        'merged. [y/N] ',
+    )
   })
 })

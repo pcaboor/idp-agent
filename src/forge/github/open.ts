@@ -8,8 +8,8 @@ import { readRoad } from './road.js'
 
 /**
  * The GitHub side of a clone, opened: the road, and on GitHub's road who gh
- * is and the API through it. What `idpa protection` opens, and from the
- * stage 6 plan's 6.2.2 on, every submission after its local forge.
+ * is and the API through it. What `idpa protection` opens, and every
+ * submission after its local forge (`forge/open.ts`).
  */
 export interface GitHubSide {
   readonly road: Road
@@ -64,7 +64,7 @@ export async function openGitHub(input: {
   const purpose = input.purpose ?? 'submission'
   const git = input.git ?? gitIn(input.repo, { env: input.env })
   await requireCloneRoot(git, input.repo, purpose)
-  const road = await readRoad(git, { local: input.local })
+  const road = await readRoad(git, { local: input.local, purpose })
   if (road.kind === 'local') return { road }
   const gh = githubClient({ env: input.env, ...(input.gh === undefined ? {} : { run: input.gh }) })
   const identity = await readIdentity(gh, road, purpose)

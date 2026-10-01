@@ -267,23 +267,51 @@ describe('readRoad: the remote, refused before anything is read on GitHub', () =
     expect(await refusal(readRoad(clone.git, { local: false }))).toBe('HEAD is detached; check out the branch this request is for')
   })
 
-  it('a checked-out branch whose name GitHub would read as an escape', async () => {
+  /** HEAD on a new branch `name`, tracking origin's main when `tracked`. */
+  const onBranch = async (clone: { repo: string }, name: string, tracked: boolean): Promise<void> => {
+    await git(clone.repo, 'branch', name)
+    await git(clone.repo, 'symbolic-ref', 'HEAD', `refs/heads/${name}`)
+    if (!tracked) return
+    await git(clone.repo, 'config', `branch.${name}.remote`, 'origin')
+    await git(clone.repo, 'config', `branch.${name}.merge`, 'refs/heads/main')
+  }
+
+  it('a checked-out branch whose name GitHub would read as an escape, once it tracks a branch', async () => {
     const clone = await cloneWith(GITHUB)
-    await git(clone.repo, 'branch', 'a%b')
-    await git(clone.repo, 'symbolic-ref', 'HEAD', 'refs/heads/a%b')
+    await onBranch(clone, 'a%b', true)
     expect(await refusal(readRoad(clone.git, { local: false }))).toBe(
-      "a%b is a branch name this build does not read ('%' is read as an escape in GitHub's paths). Nothing was written.",
+      "a%b is a branch name this build does not read ('%' is read as an escape in GitHub's paths); rename it " +
+        '(git branch -m <name>), or add --local to cut the branch in this clone only. Nothing was written.',
     )
   })
 
-  it('a checked-out branch whose name this build does not read, unquoted', async () => {
+  it('a checked-out branch whose name this build does not read, unquoted, once it tracks a branch', async () => {
     const clone = await cloneWith(GITHUB)
-    await git(clone.repo, 'branch', 'a{b')
-    await git(clone.repo, 'symbolic-ref', 'HEAD', 'refs/heads/a{b')
+    await onBranch(clone, 'a{b', true)
     expect(await refusal(readRoad(clone.git, { local: false }))).toBe(
-      "the checked-out branch has a name this build does not read (no '{', '}', '%' or invisible character). " +
-        'Nothing was written.',
+      "the checked-out branch has a name this build does not read (no '{', '}', '%' or invisible character); " +
+        'rename it (git branch -m <name>), or add --local to cut the branch in this clone only. Nothing was written.',
     )
+  })
+
+  it('offers no --local to idpa protection, which takes none', async () => {
+    const clone = await cloneWith(GITHUB)
+    await onBranch(clone, 'a%b', true)
+    expect(await refusal(readRoad(clone.git, { local: false, purpose: 'protection' }))).toBe(
+      "a%b is a branch name this build does not read ('%' is read as an escape in GitHub's paths); rename it " +
+        '(git branch -m <name>). Nothing was written.',
+    )
+  })
+
+  // A branch that tracks nothing pushes nothing and is read on no GitHub
+  // path: stage 5's road, whatever its name, as it was before the road was
+  // read (the brief's § 13 table). Its name is printed, inert, by `cli/`.
+  it.each(['a%b', 'a{b', 'safe\u202egnp.exe'])('a branch that tracks nothing, whatever its name: no upstream (%j)', async (name) => {
+    const clone = await cloneWith(GITHUB)
+    await onBranch(clone, name, false)
+    expect(await readRoad(clone.git, { local: false })).toEqual({ kind: 'local', why: 'no-upstream', branch: name })
+    await git(clone.repo, 'config', `branch.${name}.remote`, 'origin')
+    expect(await readRoad(clone.git, { local: false })).toEqual({ kind: 'local', why: 'no-upstream', branch: name })
   })
 })
 

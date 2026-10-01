@@ -815,7 +815,7 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
   const opened =
     options.submit === undefined
       ? undefined
-      : await openForSubmission(options.project, 'service', options.submit)
+      : await openForSubmission(options.project, 'service', { ...options.submit, route: 'init' })
   // Read before a single agent runs. A committed file that does not parse is
   // not a repository that declared nothing, and this one is about to be
   // rewritten by §7.3 — answering a typo by ignoring it is the worst of both.

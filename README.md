@@ -6,15 +6,16 @@
   Ask it a question in plain words and the engine answers from those declarations, or from
   a running Backstage's catalogue; ask it for a change and it returns a checked plan,
   rendered as a unified diff of the YAML it would add. With <code>--submit</code> the diff
-  becomes a local git branch for review. Nothing is pushed yet: the pull request, whose
-  merge is the approval, is stage 6.
+  becomes a git branch for review, and, from a clone whose branch tracks one on github.com,
+  <code>plan --from … --submit</code> pushes it with your own git and opens the pull
+  request, whose merge is the approval, with your own gh.
 </p>
 
 <p align="center">
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 4648, no API key" src="https://img.shields.io/badge/tests-4648%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 4690, no API key" src="https://img.shields.io/badge/tests-4690%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -125,7 +126,7 @@ At a terminal it shows the diff above, then asks before it writes:
 Nothing is provisioned yet. The merge is what authorises it.
 Submit this for review as idp-agent/orders-api-to-payments-e9e6183f in /tmp/demo-iac? Nothing is provisioned until someone else merges it. [y/N] y
 1 file · submitted as idp-agent/orders-api-to-payments-e9e6183f on top of main@<commit> · main untouched
-Nothing is pushed. No merge request is opened: this build has no forge (stage 6).
+main tracks no remote: nothing pushed
 Nothing is provisioned yet. The merge is what authorises it.
 ```
 
@@ -134,6 +135,24 @@ The branch is named after the bytes it holds, so running the same command again 
 `already submitted as idp-agent/orders-api-to-payments-e9e6183f · nothing written`, without
 asking. With no committer identity it writes nothing, says to set `user.name` and
 `user.email`, and exits 2.
+
+In a clone whose `main` tracks a branch on github.com, with gh logged in as you and the
+base protected as [`docs/submitting.md`](docs/submitting.md) says, the same command pushes
+that branch with your git and opens the pull request with your gh. It says where it goes
+on stderr, shows the diff, and asks:
+
+```console
+submitting to github.com/acme/iac, into main (origin, main's upstream), as ada (gh)
+…
+Push idp-agent/orders-api-to-payments-e9e6183f to github.com/acme/iac with your git, and open a pull request into main with your gh? Nothing is provisioned until someone else approves it and it is merged. [y/N] y
+1 file · submitted as idp-agent/orders-api-to-payments-e9e6183f on top of main@<commit> · main untouched
+Pull request #1 opened on github.com/acme/iac: https://github.com/acme/iac/pull/1
+Merging it waits for one approval of its latest commit from someone other than you. No status check is required, so a system downstream could not refuse it (ADR-0012).
+Nothing is provisioned yet. The merge is what authorises it.
+```
+
+Run again, it names the same pull request and writes nothing. `pnpm demo:github` runs all
+of it offline, against a fake gh and a bare repository on disk.
 
 ## With your own key
 
@@ -171,7 +190,8 @@ phrase names what the access is over by its reference in full — and the diff f
 Neither writes anything. To submit a change for review, make the copy a git clone
 (`git init`, `git add -A`, `git commit`) and run `idpa plan "<change>" --submit`: after the
 five gates and a `[y/N]`, it cuts one local branch, `idp-agent/…`, from `HEAD`, and moves
-nothing else. Nothing is pushed and no pull request is opened (stage 6); a directory that
+nothing else. A change drafted from words is not pushed yet: toward GitHub it is refused
+before any model, and `--submit --local` keeps the branch in the clone; a directory that
 cannot take the branch is refused before any model is paid ([details](#commands)).
 `idpa "<phrase>"` itself never submits. The CLI reads its environment and never loads a
 `.env` file: [`.env.example`](.env.example) lists every variable it reads, for
@@ -197,7 +217,8 @@ idp-agent sits between the two:
 - 🗣️ **Natural language in, YAML out.** "Give billing-api read access to orders-db" becomes
   the exact entities to add, in your repository's own layout.
 - 🔒 **The merge is the approval.** The agent proposes, as a diff or with `--submit` a
-  local branch, and a human reviews. Nothing is provisioned until someone else merges it.
+  branch and a pull request, and a human reviews. Nothing is provisioned until someone else
+  approves it and merges it.
 - 🕸️ **Every relation, without a key.** What breaks if a server fails, who reaches a
   database and with which right, what a team owns: read from your files or from a running
   Backstage.
@@ -315,7 +336,7 @@ flowchart LR
     A --> G["Five gates<br/>shape · provenance · policy<br/>re-check · blind Reviewer"]
     G -- pass --> D["Unified diff"]
     D -->|"with --submit"| B["Local branch<br/>idp-agent/…"]
-    B --> PR["Pull request<br/><i>stage 6</i>"]
+    B --> PR["Pull request<br/><i>your git and gh</i>"]
     G -. refused, up to 3 attempts .-> A
     G -. value nobody vouches for .-> Q["Question to you<br/>a prompt, or exit 3"]
 ```
@@ -329,8 +350,9 @@ flowchart LR
    Reviewer that never sees the Architect's reasoning.
 4. After three failed attempts it stops cleanly.
 5. With `--submit`, the engine, not the model, commits the diff to one new local branch,
-   `idp-agent/…`, cut from `HEAD`. Nothing is pushed, and the merge is what authorises it;
-   opening the pull request is stage 6.
+   `idp-agent/…`, cut from `HEAD`. On a clone tracking github.com, `plan --from` pushes it
+   with your git and opens the pull request with your gh; the merge is what authorises it.
+   The intent road pushes from the next release.
 
 The model decides *what to ask*. The deterministic engine answers, validates and renders.
 A reference the tools never returned is refused, not printed.
@@ -427,17 +449,17 @@ idp-agent ask "<question>" [--repo <dir> | --demo | --backstage] [--refresh | --
 idp-agent validate <directory>                     # what the generated CI runs
 idp-agent init platform <dir> --owner @org/team    # writes the directory it is handed
 idp-agent plan --from <plan.json> [--repo <dir>]   # no model, and none is possible
-    [--json] [--submit]                            # --submit: a local branch, for review
+    [--json] [--submit [--local]]                  # a branch, pushed and a pull request on github.com
 idp-agent plan "<intent>" [--repo <dir>] [--json]  # needs IDP_PROVIDER, IDP_MODEL and its key
     [--project <dir>]                              # the service's repository, if not where you stand
-    [--submit]                                     # a local branch, after all five gates
+    [--submit [--local]]                           # a local branch, after all five gates
 idp-agent protection [--repo <dir>]                # through your gh, reads only; no model
 idp-agent init [--repo <dir>]                      # needs IDP_PROVIDER, IDP_MODEL and its key
     [--name <name>]                                # what its files do not state; asked at a terminal
     [--lifecycle experimental|production|deprecated]
     [--owner group:<namespace>/<name>]
     [--iac-repo <locator>] [--environment <name>]… # its .idp-agent.yml, from what you type
-    [--submit]                                     # both on a local branch of the service's repository
+    [--submit [--local]]                           # both on a local branch of the service's repository
 idp-agent version                                  # or --version, -v
 idp-agent <command> --help                         # its usage; -h or --help alone, every one
 ```
@@ -467,7 +489,7 @@ is refused with exit 2 before the model is even configured.
 | `init` | Drafts the `catalog-info.yaml` of the service you stand in, or adds to the one it keeps, and its `.idp-agent.yml` from `--iac-repo` and `--environment`. It previews a diff; with `--submit` it cuts a local branch in the service's repository. Needs a model. |
 | `protection` | Checks, through your own gh and with reads only, that the branch your clone tracks on github.com keeps a pull request from merging until someone other than its opener approves its latest commit; prints the ruleset to add when it does not ([`docs/submitting.md`](docs/submitting.md)). Exit 0 when the rules hold, 1 when they do not, 2 when gh or the clone is refused. No model, nothing written. |
 | `validate` | Checks a repository against the schemas. This is what the scaffolded CI runs. |
-| `plan` | Turns an intent, or a `Plan` file, into a checked and previewed diff. With `--submit`, either form makes it a local branch `idp-agent/…`, for review. |
+| `plan` | Turns an intent, or a `Plan` file, into a checked and previewed diff. With `--submit`, either form makes it a local branch `idp-agent/…`, for review; `plan --from` also pushes it and opens a pull request when the clone tracks github.com. |
 
 `plan --from … --submit` writes one new branch, `idp-agent/<file>-<8 hex>`, cut from `HEAD`
 in the declarations repository, and nothing else: not the branch you are on, not the index,
@@ -476,21 +498,35 @@ identity configured. The name is the first file the plan changes, in path order,
 of the bytes, so the same plan always names the same branch. At a terminal it shows the
 diff and asks `[y/N]`; a script or `--json` has `--submit` as its answer. Submitting the
 same plan again names the branch it already cut before asking to confirm — any question
-that decides the bytes, such as a level, is still asked.
-Nothing is pushed and no merge request is opened (stage 6): the plan crossed four gates and
-no Reviewer, and the merge is what authorises it. A catalogue file that differs from `HEAD`
+that decides the bytes, such as a level, is still asked. The plan crossed four gates and no
+Reviewer, and the merge is what authorises it.
+
+Toward GitHub — the checked-out branch tracks one on github.com — the same command reads
+gh's identity before anything, then the base's ruleset and its tip before anything is
+written: a base that would let you merge without someone else approving the latest commit
+is refused with the ruleset to add, and a clone not level with GitHub with both commits
+named, exit 1. It asks `Push … with your git, and open a pull request into main with your
+gh? [y/N]`, reads the rules again at the moment of acting, pushes that very commit
+create-only to the same name with your git, and opens one pull request with your gh,
+printing its URL, which the engine builds. Run again, it names the same pull request and
+writes nothing. Without gh, or with gh logged out, too old or not a person, nothing is
+pushed: exit 2, and `--local` named, which cuts the branch in the clone only and says
+`--local: nothing pushed by this run`. A clone with no upstream, or one on another host,
+takes that road on its own and says why ([`docs/submitting.md`](docs/submitting.md)). A catalogue file that differs from `HEAD`
 — uncommitted, untracked or ignored — refuses the submission, naming the files, with exit 1
 and before anything is previewed. A directory that cannot take a branch (not a clone's
 root, no committer identity, a detached `HEAD`) is exit 2, and answering N is exit 0 with
 nothing written. With `--json`, the report carries a `submission` key: `created` or
-`already-submitted` with the branch, its commit and its base, `declined`, `unchanged`, or
-`refused` with its reasons.
+`already-submitted` with the branch, its commit, its base, whether this run `pushed`, and
+its `pullRequest` on GitHub; `declined`, `unchanged`, `refused` with its reasons,
+`pushed-without-pull-request` with the reason, or `closed`.
 
 `plan "<intent>" --submit` cuts the same branch from a drafted plan, once all five gates
 have passed, the Reviewer last. Everything that would refuse the submission is found before
 any model is paid: a directory that cannot take a branch is refused before the model is even
 configured, and a catalogue that differs from `HEAD` once a model is configured, before the
-Inspector runs.
+Inspector runs. It does not push yet: toward GitHub it is refused, exit 2, before any model
+and before gh, naming `--local` and `plan --from`.
 
 `plan --repo` names the **declarations** repository. `init --repo` names the
 **application** repository being declared. `graph`, `show`, `relations` and `ask` take the first kind;
@@ -687,10 +723,12 @@ it ([`tools/backstage/README.md`](tools/backstage/README.md#removing-it)).
 
 The full doctrine is in [`docs/design.md`](docs/design.md) §4, and it isn't negotiable:
 
-- **The merge is the act of authorisation.** Today `--submit` commits a change on a new
-  local branch, `idp-agent/…`, cut from `HEAD`, and never moves the main branch
-  ([ADR-0010](docs/adr/0010-a-submission-is-a-create-only-ref.md)); stage 6 pushes it and
-  opens the pull request. A merged declaration is authorised, not provisioned
+- **The merge is the act of authorisation.** `--submit` commits a change on a new local
+  branch, `idp-agent/…`, cut from `HEAD`, and never moves the main branch
+  ([ADR-0010](docs/adr/0010-a-submission-is-a-create-only-ref.md)); `plan --from … --submit`
+  pushes it and opens the pull request on github.com, where the identity that opens it
+  cannot merge it until someone else has approved its latest commit, and the other roads
+  follow. A merged declaration is authorised, not provisioned
   ([ADR-0012](docs/adr/0012-declared-is-not-provisioned.md), proposed).
 - **Textual surgery, never a reparse.** A reviewer must see an added line, not a
   reformatted file.
@@ -711,7 +749,7 @@ firewall automation and ticketing) and adds the multi-agent layer that system ne
 | 3 | `init platform` + `validate` | ✅ |
 | 4 | Preview only: Inspector, Architect, `Plan`, diff; writes nothing | ✅ |
 | 5 | Write + local branch: `--submit` cuts one create-only branch, idempotent and atomic ([the check](docs/stage-5-check.md)) | ✅ |
-| 6 | [GitHub pull request](docs/stage-6-brief.md): your own git pushes, your own gh opens the pull request, the base's ruleset checked; designed, not started | |
+| 6 | [GitHub pull request](docs/stage-6-brief.md): your own git pushes, your own gh opens the pull request, the base's ruleset checked; `idpa protection` and `plan --from … --submit` done, the intent, `init` and phrase roads next | 🚧 |
 | 6b | [Read the live catalogue](docs/backstage-http-brief.md) (`backstage-http`): questions and relations against a running Backstage, the organisation included (slices 1 and 3, done); large catalogues answered in part and a read kept five minutes (slice 2, done); both sources side by side and namespaces (slices 4–5) with stage 8. No Backstage needed to use the tool | 🚧 |
 | 7 | Polish: Ink TUI, asciinema, npm publish | |
 | 8 | [Discovery](docs/stage-8-brief.md): catalogue an existing service and its dependencies; designed, not started; preview-only until stage 6 lands, submission after it | |
@@ -721,7 +759,9 @@ before the pull request. Today **no preview writes anything** — the test suite
 `pnpm smoke` hash every byte around a full run to prove it — `init platform` writes
 only into the directory it is handed, and `plan … --submit` and `init --submit` write one
 local branch and nothing else, which the suite checks for both and `pnpm smoke` checks for
-`plan --from … --submit`.
+`plan --from … --submit`; toward GitHub, `plan --from … --submit` pushes that one branch and
+opens one pull request, which the suite and `pnpm demo:github` check against a fake gh and a
+bare repository on disk.
 
 Next, in order: three batches from the review, `backstage-http` slice 2, stage 6, stage 8,
 and stage 7 last, the Claude-Code-like chat in the terminal that is the project's end goal.
@@ -738,7 +778,8 @@ What comes next and the owner's decisions: [`docs/roadmap.md`](docs/roadmap.md).
 **Is this a Backstage plugin?**
 No. It's a standalone CLI that reads Backstage-compatible `catalog-info` YAML in a Git
 repository, previews what it would add and, with `--submit`, commits that on a new local
-branch for review; pushing it and opening the pull request are stage 6. It doesn't need a
+branch for review, which `plan --from` pushes and opens as a pull request on github.com with
+your own git and gh. It doesn't need a
 running Backstage instance, and reads one's catalogue when you configure it
 ([above](#read-a-backstage-catalogue)); it never writes to it.
 
@@ -749,8 +790,9 @@ default.
 **Can the AI change my infrastructure on its own?**
 No. It drafts a structure, and the engine signs, gates and serialises it; at most the
 result is a diff. Asked with `--submit`, and confirmed at a terminal, the engine commits
-that diff on a new local branch: never on the main branch, never pushed. Once stage 6 opens
-the pull request, a human merges it, and the merge authorises the change; provisioning it
+that diff on a new branch, never on the main branch; `plan --from` pushes it with your git
+and opens the pull request with your gh, which you cannot merge until someone else approves
+it. A human merges it, and the merge authorises the change; provisioning it
 stays a downstream system's job ([ADR-0012](docs/adr/0012-declared-is-not-provisioned.md)).
 
 **Do I need an API key to try it?**
