@@ -24,7 +24,9 @@ import type { Road } from '../provider.js'
  * hostile, so every value is held to its grammar before it reaches a process
  * or a sentence: a value outside one is refused and not quoted. What a
  * sentence names — a branch, a remote's name, a repository — has passed its
- * grammar, and `cli/` still prints it through `inertLine`. Every refusal is
+ * grammar, and `cli/` still prints it through `inertLine`; the one exception is
+ * a branch that tracks nothing, whose name no process is handed and which the
+ * local road's line prints inert, as stage 5 printed it. Every refusal is
  * the user's to fix, exit 2 (`ForgeInputError`), and nothing was written: this
  * only reads.
  *
@@ -42,6 +44,9 @@ const NOTHING = 'Nothing was written.'
 const SET_UPSTREAM =
   '; idpa pushes to a named remote. Set its upstream to one (git branch --set-upstream-to <remote>/<branch>), ' +
   `then run this again. ${NOTHING}`
+
+/** Who reads the road: a submission, or `idpa protection`, which takes no `--local`. */
+type Purpose = 'submission' | 'protection'
 
 /** The user's to fix: exit 2. */
 function refuse(message: string): never {
@@ -76,7 +81,7 @@ const configValue = async (git: Git, key: string): Promise<string | undefined> =
   }
 }
 
-/** The branch HEAD names, held to the grammar a base and a submission's branch are held to. */
+/** The branch HEAD names, as git holds it: its grammar is judged by `readRoad`. */
 const checkedOut = async (git: Git): Promise<string> => {
   let head: string
   try {
@@ -88,16 +93,34 @@ const checkedOut = async (git: Git): Promise<string> => {
     throw error
   }
   if (!head.startsWith('refs/heads/')) return refuse('HEAD is detached; check out the branch this request is for')
-  const branch = head.slice('refs/heads/'.length)
-  if (isBranch(branch)) return branch
+  return head.slice('refs/heads/'.length)
+}
+
+/**
+ * A checked-out branch outside the grammar a base and a submission's branch
+ * are held to, which tracks a branch: refused, its name unquoted when it is
+ * not otherwise clean. `idpa protection` takes no `--local`, so its sentence
+ * leaves that offer out.
+ */
+const refuseBranch = (branch: string, purpose: Purpose): never => {
+  const local = purpose === 'submission' ? ', or add --local to cut the branch in this clone only' : ''
+  const remedy = `; rename it (git branch -m <name>)${local}. ${NOTHING}`
   // git takes '%' in a branch name; GitHub's paths read it as an escape. Such
   // a name is otherwise clean, and naming it is how the person finds it.
   if (isBranch(branch.replaceAll('%', '_'))) {
-    return refuse(`${branch} is a branch name this build does not read ('%' is read as an escape in GitHub's paths). ${NOTHING}`)
+    return refuse(`${branch} is a branch name this build does not read ('%' is read as an escape in GitHub's paths)${remedy}`)
   }
-  return refuse(
-    `the checked-out branch has a name this build does not read (no '{', '}', '%' or invisible character). ${NOTHING}`,
-  )
+  return refuse(`the checked-out branch has a name this build does not read (no '{', '}', '%' or invisible character)${remedy}`)
+}
+
+/**
+ * Whether a branch outside the grammar tracks one: both keys set, in any
+ * scope. Read from the keys git lists, never their values, because the
+ * launcher reads no key named after such a branch (`process/git.ts`).
+ */
+const tracksAnything = async (git: Git, branch: string): Promise<boolean> => {
+  const keys = new Set(parseConfigListing(await git(['config', '--list', '--show-scope', '-z'])).map((entry) => entry.key))
+  return keys.has(`branch.${branch}.remote`) && keys.has(`branch.${branch}.merge`)
 }
 
 /** `branch.<branch>.remote` names a remote this build reads, or the run stops here. */
@@ -183,16 +206,27 @@ const holdConfiguration = async (git: Git): Promise<void> => {
 }
 
 /**
- * The road, read in this order: HEAD's branch; `branch.<b>.remote` (unset:
+ * The road, read in this order: HEAD's branch, and outside its grammar no
+ * upstream, or a refusal when it tracks a branch; `branch.<b>.remote` (unset:
  * no upstream) and its grammar, then git's own rule for a remote's name;
  * `branch.<b>.merge` (unset: no upstream), `baseOfMerge`, then `git
  * check-ref-format --branch`; the fetch URL and the push URL, one each; both
  * parsed, and compared; on the GitHub road, the clone's own configuration.
  * `--local` reads nothing.
  */
-export async function readRoad(git: Git, options: { readonly local: boolean }): Promise<Road> {
+export async function readRoad(
+  git: Git,
+  options: { readonly local: boolean; readonly purpose?: Purpose },
+): Promise<Road> {
   if (options.local) return { kind: 'local', why: 'asked' }
   const branch = await checkedOut(git)
+  // The grammar guards the sentences that quote the branch and what GitHub's
+  // paths read; a branch that tracks nothing is read on no path, and takes
+  // stage 5's road whatever its name, as it did before the road was read.
+  if (!isBranch(branch)) {
+    if (await tracksAnything(git, branch)) refuseBranch(branch, options.purpose ?? 'submission')
+    return { kind: 'local', why: 'no-upstream', branch }
+  }
 
   const remote = await configValue(git, `branch.${branch}.remote`)
   if (remote === undefined) return { kind: 'local', why: 'no-upstream', branch }

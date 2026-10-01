@@ -3,11 +3,13 @@
 The project's whole point is to change an infrastructure repository on someone's behalf,
 so the threat model is stated here rather than left to be asked about.
 
-**Where it stands: stage 5 of 7.** It reads, it asks a model, and it previews; asked with
-`--submit`, it writes one new branch per submission, in the repository named, and holds no
-forge token until stage 6; it does not yet push or open a pull request. This file separates what is **guaranteed and
-tested today** from what is **designed and not yet built**, and names what is **known to
-be incomplete**. A guarantee that is not enforced by a test is not claimed here: each one
+**Where it stands: stage 6 of 7, as far as `plan --from`.** It reads, it asks a model, and
+it previews; asked with `--submit`, it writes one new branch per submission, in the
+repository named, and on a clone whose branch tracks one on github.com, `plan --from …
+--submit` pushes that branch with your own git and opens one pull request with your own gh.
+It holds no GitHub credential. `plan "<intent>"`, `init` and `idpa "<phrase>"` do not push
+yet. This file separates what is **guaranteed and tested today** from what is **not
+guaranteed, by design**, and names what is **known to be incomplete**. A guarantee that is not enforced by a test is not claimed here: each one
 names the test that fails if it stops being true.
 
 ## What the tool does today
@@ -46,8 +48,13 @@ names the test that fails if it stops being true.
   the re-check — and **no Reviewer**, since no model drafted the plan. Either way its branch
   cannot reach the default branch. `init --submit` reaches it for the service's own
   repository: the catalog-info `init` previews and, when a person typed or answered it,
-  `.idp-agent.yml` — never with a `backstage:`, never over a committed one. Nothing is
-  pushed and no merge request is opened; the merge is what authorises (ADR-0006).
+  `.idp-agent.yml` — never with a `backstage:`, never over a committed one. On a clone whose
+  checked-out branch tracks one on github.com, `plan --from … --submit` then pushes that
+  very branch, create-only, to the same name on GitHub with your own git, and opens one pull
+  request into the tracked branch with your own gh — once gh is logged in as a person and
+  the base's rules keep you from merging it unreviewed; `--local` keeps the branch in the
+  clone. Every other road pushes nothing and opens no pull request; the merge is what
+  authorises (ADR-0006).
 
 ## What leaves your machine
 
@@ -56,8 +63,9 @@ names the test that fails if it stops being true.
 | the configured Backstage catalogue | a run that reads one (`IDP_BACKSTAGE_URL` or `backstage:`, and no `--repo`) | `IDP_BACKSTAGE_TOKEN`, in one `authorization` header when it is set; `GET` on `entities/by-query` and `entity-facets` under the configured base, with kind filters and paging parameters (`limit`, `cursor`, `fields`), and nothing else — no redirect is followed |
 | the model provider | a model-backed command | your request; the agents' instructions; a summary of the source read — the declarations repository, or the catalogue (kinds, types, environments, owners in use; to the Supervisor and the Analyst, at most 30 of each list, the most frequent); the entities the agents' tools read from it — catalogue content included, for the Supervisor and the Analyst, never the Architect; for a change or `init`, the files the Inspector reads from the application repository — only the files git tracks when it is a git repository, at most 200 files, 64 KiB each, 1 MiB in all, minus what `project-fs` withholds (below); and your key, in the header that provider reads it from |
 | the model provider, of people | a question over a source that holds an organisation — Groups, Users, Systems or Domains, read from a catalogue or from a declarations repository's files | what the Analyst's tools read of it (backstage-http slice 3, 3.3; the owner's decision, 2026-09-28): a Group's name, type, parent, children and members; a System's and a Domain's name, type, owner and parts; what each owns; and a **User's name and the groups it is a member of** — the summary counts them. Nothing else of a person: a User's profile (display name, email, picture) is never requested and is dropped on arrival, and its annotations and title are never requested and dropped by the reader. What a document writes where a reference goes and that is no `kind:namespace/name` — an email among a Group's members, an address as a System's owner — is never sent either: a tool result counts it and says it is not shown. A User's name can be an email in disguise: Backstage's Microsoft Graph provider names `ada.lovelace@acme.com` the User `ada.lovelace_acme.com`, and that name is sent as it is. Over a source that holds none, nothing of the kind is sent |
-| github.com, through your gh | `idpa protection` | the reads it makes, `GET` only: who gh acts as (`GET user`), the repository, the rules for the base branch, each ruleset that supplies a required rule, and — only when none does — the branch. Before them, `gh --version` runs on your machine and sends nothing. idpa holds no GitHub credential: gh authenticates as it always does for you, and your environment reaches gh unread, minus the variables that would point it at another host and every provider key and catalogue variable (`tests/contract/key-reach.test.ts`, *idpa protection*) |
-| an MLflow server | `IDP_MLFLOW_TRACKING_URI` is set | one trace per model-backed run, holding the full prompts and answers above, catalogue content included, and where a catalogue was read (`idp.source.*`) — never the key or the catalogue token |
+| github.com, through your own git | `plan --from … --submit` in a clone whose branch tracks one on github.com, without `--local` | one commit (the files the diff shows, your git identity as author and committer, the request as recorded with the plan) under one new `idp-agent/…` branch, pushed with your credentials and your git configuration, never the clone's own. idpa itself opens no connection to GitHub |
+| github.com, through your own gh | `idpa protection`; and `plan --from … --submit` in a clone whose branch tracks one on github.com, without `--local` | `GET` reads only, for `idpa protection`: who gh acts as (`GET user`), the repository, the rules for the base branch, each ruleset that supplies a required rule, and — only when none does — the branch. A submission reads the same, and the base's and the branch's refs, one commit and the pull requests from the branch, and makes one `POST` opening the pull request: its title, the commit's body, the request in a fenced block, and the engine's block. Before them, `gh --version` runs on your machine and sends nothing. idpa holds no GitHub credential: gh authenticates as it always does for you, idpa never reads its login, and your environment reaches gh unread, minus the variables that would point it at another host and every provider key and catalogue variable (`tests/contract/key-reach.test.ts`, *idpa protection* and *plan --from --submit, to GitHub*). idpa itself opens no connection to GitHub |
+| an MLflow server | `IDP_MLFLOW_TRACKING_URI` is set | one trace per model-backed run, holding the full prompts and answers above, catalogue content included, where a catalogue was read (`idp.source.*`) and, on a submission, where it went (`idp.forge.*`: the kind, the base, the branch, the outcome) — never the key or the catalogue token |
 
 The endpoint is the SDK's default for that provider, unless `ANTHROPIC_BASE_URL` or
 `OPENAI_BASE_URL` is set in your environment: the SDK reads those itself, and the key then
@@ -241,6 +249,9 @@ Inspector.
 | A kept catalogue is opened only by its account, never through a link, and read again through the reader: a copy that does not verify is not used, and a store open to others is refused and never repaired | `tests/unit/backstage-cache.test.ts` — *refuses the store when backstage/ or idp-agent/ is a link, and never reads or writes the folder it leads to*, *refuses a copy that is a link, for a read and a write: the link kept, its target untouched, no temporary file left*, *refuses a copy moved into another key’s folder: the MAC covers the key*; `tests/unit/backstage-provider-cache.test.ts` — *runs the pre-pass and the reader on a copy …*; `tests/unit/backstage-cache-read.test.ts` — *says a store others may open was not used, and changes nothing* |
 | Nothing kept reaches a plan, and no token is at rest: a kept owner is still asked, and no name or byte under the cache root holds the token, its sha256 or its base64 | `tests/unit/backstage-read.test.ts` — *lets nothing kept vouch either: an owner only the kept copy holds is asked, exit 3, nothing sent*; `tests/contract/key-reach.test.ts` — *reaches the catalogue only, in one header, on a question and on a change*, *keys a copy by the token under the secret …* |
 | What a catalogue serves reaches the terminal with nothing a terminal obeys, and no grouped line past its bound | `tests/unit/read-commands-hostile.test.ts` — *what a catalogue served, as the read commands print it*, *holds each grouped line to the bounds catalogue-read.ts states …* |
+| The identity that opens a pull request cannot merge it until someone else has approved the exact commit that would merge, and idpa never submits against a base without those rules: the base's rules and each supplying ruleset's `current_user_can_bypass` are read through your gh before anything is written, and again at the moment of acting and before the pull request is opened — as long as the ruleset stands and binds every credential you push with (below) | `tests/unit/merge-refused.test.ts` — *refuses every door to the identity that opened the pull request, and leaves it open and main where it was*, *refuses the author's merge after a push on top of an approved head, and lets it through once someone else approves the new head*, *lets the author merge unreviewed wherever the preflight refuses, and the preflight refuses each*; `tests/unit/github-forge.test.ts` — *re-checks the rules at the moment of acting: a ruleset dropped after the confirmation leaves nothing on either side*, *opens nothing when the rules stop holding during the push*; `tests/unit/submit-github.test.ts` — *refuses an unprotected base before anything is written, and prints the ruleset to add*, *tries every door after a submission through main, and each is refused*; on GitHub itself, the owner's live test (stage 6 plan, 6.4.1) |
+| idpa runs no git or gh command outside its list — no merge, approval, review, close, reopen, forced push, deletion, push outside `refs/heads/idp-agent/`, no `PUT`, `PATCH` or `DELETE` — checked on the final argument vector before any process starts, and in the source; the forge has no method that merges, approves, closes or deletes | `tests/unit/launcher-doors.test.ts`; `tests/architecture/dependencies.test.ts` — *nothing in src/ names a door the allow-list refuses*, *only the named modules write, and only process/git.ts and process/gh.ts start a process*; `tests/unit/forge-types.test.ts` |
+| idpa reads, stores and sends no GitHub credential: git and gh are handed your environment unread, minus what the stage 6 note's § 5 removes, and no credential reaches an argument, standard input, stdout, stderr, a trace or a pull request body | `tests/contract/key-reach.test.ts` — *hands gh and the push nothing of idpa's, and passes the person's gh login unread, on plan --from --submit*; `tests/architecture` — *nothing in src/ reads a GitHub credential from the environment* |
 | No test reaches the network, or reads a key or a model setting from the contributor's shell: `fetch`, `node:http`, `node:https`, `node:net`, `node:tls` and `WebSocket` throw, and every `IDP_` variable but `IDP_TRACE_DIR` and every `*_API_KEY` are removed, but in a scenario being recorded — where a catalogue's two variables are removed still, so no tape holds what a catalogue serves; recordings replay offline | `tests/setup/offline.ts` and `tests/setup/shell.ts`, asserted by `tests/unit/offline.test.ts` — *refuses a network call from inside the suite*, *refuses every other way out: http, https, net, tls and WebSocket*, *is set aside: every IDP_ variable but IDP_TRACE_DIR, and every key*, *records only in a scenario: a unit test never writes a tape*, *keeps a catalogue from every run, a recording included …* |
 
 ## What the architecture rules are, and are not
@@ -316,16 +327,6 @@ open.
 - **What the agents read from the declarations repository is sent as written.** Nothing
   there is filtered: it is the catalogue the question is about.
 
-## Designed, not yet built
-
-Claimed by `docs/design.md`, not by the code. Do not rely on them today.
-
-- **The merge is the act of authorisation.** The CLI will open a merge request (stage 6).
-  Today `plan … --submit`, on either road, and `init --submit` cut a local branch and never
-  write to the main branch (stage 5), and nothing opens a merge request for it.
-- **One token per capability.** The token that opens a merge request will not be able to
-  merge it, and a test will assert that this action *fails* (stage 6).
-
 ## Not guaranteed, by design
 
 - **Content proposed by the model may be wrong.** The signature says where a value came
@@ -338,6 +339,14 @@ Claimed by `docs/design.md`, not by the code. Do not rely on them today.
   merge request, where CI runs, rather than by the hook.
 - **The catalogue lags the repository** by about two minutes. The repository, not the
   catalogue, is the source of truth at write time.
+- **The rules hold only while they stand, and only for what idpa can see.** An
+  administrator can edit or disable the ruleset, or add themselves to its bypass list,
+  outside idpa, and then merge: GitHub's ruleset history and audit log record it, and a
+  ruleset set at the organisation level cannot be changed by a repository administrator.
+  idpa cannot read the bypass of the credential you push with: a deploy key it can see in
+  the bypass list is refused, and one it cannot see is not. And an approval by a workflow
+  or an app counts as someone else's, so *Allow GitHub Actions to create and approve pull
+  requests* should be off.
 
 ## Reporting a vulnerability
 

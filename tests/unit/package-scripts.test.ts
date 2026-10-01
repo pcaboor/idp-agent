@@ -100,10 +100,31 @@ describe('pnpm demo:github', () => {
   it('hands what it runs no GitHub token, and puts its own gh and ssh first on PATH', () => {
     expect(demo).toMatch(/delete environment\['GH_TOKEN'\]/)
     expect(demo).toMatch(/delete environment\['GITHUB_TOKEN'\]/)
-    expect(demo).toMatch(/program\('gh', `exec "\$\{process\.execPath\}" --disable-warning=ExperimentalWarning "\$\{path\.join\(ROOT, 'tools\/fake-gh\.ts'\)\}" "\$@"`\)/)
+    // Each start of the fake counted, so the --local step can say gh never started (6.2.2).
+    expect(demo).toMatch(
+      /program\(\s*'gh',\s*`echo started >> "\$\{CALLS\}"\\nexec "\$\{process\.execPath\}" --disable-warning=ExperimentalWarning "\$\{path\.join\(ROOT, 'tools\/fake-gh\.ts'\)\}" "\$@"`,?\s*\)/,
+    )
     expect(demo).toMatch(/program\('ssh', /)
     expect(demo).toMatch(/PATH: `\$\{BIN_DIR\}\$\{path\.delimiter\}/)
     expect(demo).toMatch(/GH_CONFIG_DIR: path\.join\(scratch, /)
+  })
+
+  it('pushes only to a bare repository of its own, through a fake ssh it names', () => {
+    // The two variables of § 5 git keeps, given back after every GIT_* was removed.
+    expect(demo).toMatch(/GIT_SSH_COMMAND: SSH,/)
+    expect(demo).toMatch(/GIT_SSH_VARIANT: 'simple',/)
+    expect(demo).toMatch(/exec git receive-pack '\$\{BARE\}'/)
+    expect(demo).toMatch(/const BARE = path\.join\(scratch, /)
+  })
+
+  it('pushes nothing where this machine\'s git rewrites github.com, read as the binary\'s git reads it', () => {
+    // A system file with `url."https://github.com/".insteadOf git@github.com:`
+    // would send the push, and the machine's credential helper, to the real
+    // GitHub: the launcher removes every GIT_*, so GIT_CONFIG_NOSYSTEM too.
+    expect(demo).toMatch(/'remote', 'get-url', '--push', 'origin'/)
+    expect(demo).toMatch(/!\/\^GIT_\/i\.test\(name\)/)
+    expect(demo).toContain("!== 'git@github.com:acme/iac.git'")
+    expect(demo.indexOf("'get-url', '--push'")).toBeLessThan(demo.indexOf("step('1."))
   })
 
   it('removes its scratch directory however it ends', () => {

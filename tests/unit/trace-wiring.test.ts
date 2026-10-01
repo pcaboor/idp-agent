@@ -11,6 +11,7 @@ import { main, type MainDeps } from '../../src/cli/index.js'
 import type { AgentName, GenerateResult, LlmClient } from '../../src/llm/client.js'
 import { disagreements, memorySink, onlyTrace, skeletonOf } from '../support/trace.js'
 import { confirmingEnvironment } from '../support/ask.js'
+import { committed } from '../support/git.js'
 
 const FIXTURES = path.resolve(import.meta.dirname, '../../fixtures/si-demo')
 
@@ -464,6 +465,34 @@ describe('tracing plan "<intent>"', () => {
       await realpath(project),
     )
     expect(root?.attributes).not.toHaveProperty('idp.inspector')
+  })
+})
+
+describe('tracing a submission', () => {
+  it('puts the forge’s attributes on the root of a submitted run', async () => {
+    const { parent, repo } = await declarations()
+    await committed(repo)
+    const sink = memorySink()
+
+    const { code, out } = await running(['plan', INTENT, '--repo', repo, '--submit', '--local'], {
+      client: changing(),
+      // PATH, so the launcher finds git; nothing else of the shell's.
+      env: { PATH: process.env['PATH'] },
+      cwd: parent,
+      traceSinks: [sink],
+    })
+    const root = onlyTrace(sink).spans[0]
+
+    expect(code, out).toBe(0)
+    expect(out).toContain('--local: nothing pushed by this run')
+    expect(root?.attributes).toMatchObject({
+      'idp.inspector': 'skipped',
+      'idp.forge.kind': 'local',
+      'idp.forge.outcome': 'created',
+      'idp.forge.pushed': false,
+      'idp.forge.gh_calls': 0,
+      'idp.exit_code': 0,
+    })
   })
 })
 

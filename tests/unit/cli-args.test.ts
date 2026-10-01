@@ -174,6 +174,44 @@ describe('parseArguments: --submit', () => {
     }
   })
 
+  it('parses --local beside --submit on plan and init', () => {
+    expect(parseArguments(['plan', '--from', 'plan.json', '--submit', '--local'])).toStrictEqual({
+      name: 'plan',
+      source: { from: 'plan.json' },
+      json: false,
+      submit: true,
+      local: true,
+    })
+    expect(parseArguments(['plan', 'give billing-api read access', '--submit', '--local'])).toStrictEqual({
+      name: 'plan',
+      source: { intent: 'give billing-api read access' },
+      json: false,
+      submit: true,
+      local: true,
+    })
+    expect(parseArguments(['init', '--submit', '--local'])).toStrictEqual({
+      name: 'init',
+      answers: {},
+      submit: true,
+      local: true,
+    })
+    expect(parseArguments(['plan', '--from', 'plan.json', '--submit'])).not.toHaveProperty('local')
+    expect(parseArguments(['init', '--submit'])).not.toHaveProperty('local')
+  })
+
+  it('refuses --local without --submit', () => {
+    for (const argv of [
+      ['plan', '--from', 'plan.json', '--local'],
+      ['plan', 'give billing-api read access', '--local'],
+      ['init', '--local'],
+    ]) {
+      expect(parseArguments(argv), argv.join(' ')).toStrictEqual({
+        name: 'error',
+        message: '--local says where --submit cuts its branch, and there is no --submit here: add --submit, or leave --local out',
+      })
+    }
+  })
+
   it('is refused with --demo only because plan knows no --demo: no write meets the demo SI', () => {
     // Not a --submit rule: plan reads a declarations repository and never the
     // demo SI, so the parser refuses the option whatever else is typed.
@@ -202,7 +240,9 @@ describe('HELP: --refresh and --cached', () => {
 
 describe('HELP: --submit', () => {
   it('is in the usage plan prints, and HELP says what it writes and by which route', () => {
-    expect(usageOf('plan')).toContain('idp-agent plan --from <plan.json> [--repo <directory>] [--json] [--submit]')
+    expect(usageOf('plan')).toContain(
+      'idp-agent plan --from <plan.json> [--repo <directory>] [--json] [--submit [--local]]',
+    )
     // The sentence stage 4 said, whatever its case and however it is wrapped.
     expect(HELP.replace(/\s+/g, ' ').toLowerCase()).not.toContain('none of them writes.')
     expect(HELP.replace(/\s+/g, ' ')).toContain('None of them writes, and neither do plan and init without --submit.')
@@ -212,7 +252,7 @@ describe('HELP: --submit', () => {
 
   it('names --submit on the intent road, and the five gates that road crosses', () => {
     expect(usageOf('plan')).toContain(
-      'idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json] [--submit]',
+      'idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json] [--submit [--local]]',
     )
     expect(HELP.replace(/\s+/g, ' ')).toContain('plan "<intent>" --submit crosses five gates, the Reviewer last')
   })
@@ -318,7 +358,7 @@ describe('parseArguments: init --submit and its configuration', () => {
   it('is in the usage init prints', () => {
     expect(usageOf('init')).toContain(
       'idp-agent init [--repo <directory>] [--name <name>] [--lifecycle experimental|production|deprecated] ' +
-        '[--owner group:<namespace>/<name>] [--submit] [--iac-repo <locator>] [--environment <name>]...',
+        '[--owner group:<namespace>/<name>] [--submit [--local]] [--iac-repo <locator>] [--environment <name>]...',
     )
   })
 })

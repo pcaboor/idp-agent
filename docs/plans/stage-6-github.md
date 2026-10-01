@@ -1,6 +1,6 @@
 # Stage 6 — a GitHub pull request, with the person's own git and gh
 
-**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
+**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
 § 19 (Q1–Q4) were settled on 2026-09-30, each as recommended, and this plan takes them as
 given; so were the four questions the plan itself asked, the same day ([Questions for the
 owner](#questions-for-the-owner)). Eleven stacked pull requests: ten, 6.1.1 to 6.4.2, then 6.4.3, the owner's step: every tape
@@ -1577,6 +1577,12 @@ over each, a `switch` over `RemoteUrl['kind']` with `const _exhaustive: never`; 
 repositories compared; on the GitHub road, `config --list --show-scope -z`, then
 `refusedConfigKeys`. Every value a refusal names has passed its grammar first (a branch, a remote's name, a base,
 an owner and a name), or is not named; the CLI's `inertLine` still cleans each at print.
+
+*Changed by 6.2.2*: the branch's grammar is judged only once the branch tracks one (both keys
+in `config --list --show-scope -z`'s listing); a branch that tracks nothing is the no-upstream
+road whatever its name, as stage 5 cut it, and the `a%b` refusal, set up with an upstream, ends
+`; rename it (git branch -m <name>), or add --local to cut the branch in this clone only.
+Nothing was written.` (`idpa protection`'s without the `--local` clause).
 
 - [x] **Step 3: Who gh is, failing first** (`tests/unit/gh-identity.test.ts`)
 
@@ -3415,7 +3421,7 @@ The `--local` line says what this run did and nothing about GitHub (the owner's 
 2026-09-30): `--local` starts no gh and reads nothing there, so it cannot know whether an earlier
 run without it pushed the same branch, and `nothing pushed by this run` is true either way.
 
-- [ ] **Step 1: Write the failing tests — `plan --from --submit` to the fake, through `main`**
+- [x] **Step 1: Write the failing tests — `plan --from --submit` to the fake, through `main`**
 
 `tests/unit/submit-github.test.ts`. Each test runs `main([...], { out, err, env: clone.env, gh:
 clone.gh.process, ask, confirm? })` over `githubClone()` and a plan file written beside the
@@ -3460,10 +3466,23 @@ clone from stage 5's `INTENT` and `OPERATIONS`, answered by `answering('read')`.
   is the first pull request in which `main` reaches `openGitHub`, so it is the one that proves
   the path `openSubmissionForge` → `ForgeInputError` → `failed()` → `inertLine` → exit 2 end to
   end, rather than leaving it to 6.3.1 and 6.3.2.
+  *As built*, the second row's value is `git@nowhere.example:`, not `git@github.com:`: a local
+  rewrite of `git@github.com:` takes the other-host road, which pushes nothing (exit 0, as
+  6.1.2's `road.test.ts` pins), so it could not be this refusal; `url.git@evil.example:.insteadOf`
+  of any other prefix is still the key refused, and `git@nowhere.example:` stands for
+  `git@github.com:` among what neither stream holds.
 - *takes stage 5's road where no pull request can be opened, and never starts gh* — three rows:
   no upstream (the remote's configuration removed), another host
   (`git@gitlab.example.com:acme/iac.git`), `--local`: exit 0, the local road's line, the bare
-  repository unchanged, and a `GhProcess` that throws if called was never called.
+  repository unchanged, and a `GhProcess` that throws if called was never called. *As built*,
+  beside it, *takes stage 5's road on a branch that tracks nothing, whatever its name*
+  (`wip%20`, no upstream): exit 0, `wip%20 tracks no remote: nothing pushed`. `readRoad` holds
+  the checked-out branch to § 13's grammar only once it tracks a branch (both keys set, read
+  from `git config --list`'s keys, since the launcher reads no key named after such a branch),
+  and that refusal names `git branch -m` and, on a submission, `--local`; a branch that tracks
+  nothing takes stage 5's road whatever its name, as it did before the road was read, and
+  `plan-command.test.ts`'s *spells out a bidi control in the base branch's name* keeps its
+  stage 5 expectation without `--local`.
 - *re-checks the rules after the confirmation, and writes nothing when they are gone* — a
   `confirm` that removes the ruleset from the fake, then answers yes: exit 1, the refused
   lines with `Nothing was written.`, nothing on either side.
@@ -3488,7 +3507,7 @@ unprotected and not-level runs submit; the "no gh" runs and the configuration-ke
 on the local road; `--local` is an unknown option (exit 2 for the wrong reason, which the
 assertion on stderr's text catches).
 
-- [ ] **Step 2: Write the failing tests — the report, the closing lines, the question, the
+- [x] **Step 2: Write the failing tests — the report, the closing lines, the question, the
   attributes**
 
 In `tests/unit/plan-command.test.ts`:
@@ -3540,7 +3559,7 @@ pushed*.
 Why they fail: the report has no `pushed`; `closingLines` prints `NO_FORGE`; `SubmissionSummary`
 has no `github`; `forgeAttributes` does not exist; `--local` is not an option.
 
-- [ ] **Step 3: Write the failing test — the key-reach leg for `--from`**
+- [x] **Step 3: Write the failing test — the key-reach leg for `--from`**
 
 In `tests/contract/key-reach.test.ts`, under the `vi.mock` of `node:child_process` the file
 already holds (it records the environment of every `execFile`, so of every git call, the push
@@ -3576,7 +3595,7 @@ included):
 
 Why it fails: `plan --from --submit` starts neither gh nor a push before this task.
 
-- [ ] **Step 4: Run the tests, see them fail**
+- [x] **Step 4: Run the tests, see them fail**
 
 ```bash
 df -h "$TMPDIR"
@@ -3586,7 +3605,7 @@ pnpm vitest run tests/unit/init-command.test.ts tests/unit/trace-wiring.test.ts 
 
 Expected: FAIL for the reasons above.
 
-- [ ] **Step 5: `forge/open.ts`**
+- [x] **Step 5: `forge/open.ts`**
 
 ```typescript
 /** The roads that open a pull request in this build; the others are refused toward GitHub (6.3). */
@@ -3618,7 +3637,7 @@ local: older, road, api, env, git, route })` (no `identity`: 6.2.1 built the for
 6.3.1, 6.3.2 and 6.3.3 each add their road to `OPENS_PULL_REQUESTS` and remove its entry
 from `NOT_YET`.
 
-- [ ] **Step 6: `submit.ts`**
+- [x] **Step 6: `submit.ts`**
 
 - `openForSubmission(root, repository, options)`: `options.open` when given, else
   `openSubmissionForge({ repo: root, repository, env: options.env ?? process.env, ...(gh), local:
@@ -3642,7 +3661,7 @@ from `NOT_YET`.
   `statusChecks` in the status; `refused` carries `kept`. A `switch` with a `never` default over
   `Submitted`; `forgeAttributes` switches over `SubmissionReport` and `Road` the same way.
 
-- [ ] **Step 7: `footer.ts`**
+- [x] **Step 7: `footer.ts`**
 
 `NO_FORGE` removed. `closingLines` over the widened `PreviewStatus` (a `never` default):
 `submitted` on a local road prints its first line, `localRoadLine(status.road)`, `CLOSING`; on a
@@ -3651,7 +3670,7 @@ status.statusChecks ?? [] })` for the opened ones, and throws when a GitHub road
 no pull request. `localRoadLine(road)` switches over `why` with a `never` default.
 `pullRequestLines` prints the URL as `PullRequest.url` holds it, which `pullRequestUrl` built.
 
-- [ ] **Step 8: `plan.ts`, `init.ts`, `index.ts`, `result.ts`**
+- [x] **Step 8: `plan.ts`, `init.ts`, `index.ts`, `result.ts`**
 
 - `result.ts`: `attributes?: Attributes` (a type from `trace/model.ts`, imported as a type).
 - `runPlan`: `openForSubmission(root, 'declarations', { ...options.submit, route: 'from' })`;
@@ -3674,7 +3693,7 @@ no pull request. `localRoadLine(road)` switches over `why` with a `never` defaul
   unreviewed (idpa protection says whether it does); --local keeps the branch in the clone. A
   change drafted from an intent is not pushed yet."
 
-- [ ] **Step 9: Run the tests**
+- [x] **Step 9: Run the tests**
 
 ```bash
 df -h "$TMPDIR"
@@ -3689,7 +3708,7 @@ the architecture block still 29 rules (this task adds none; `forge/open.ts` impo
 `core/` and `process/git.ts`, and *only forge/github/ loads the gh launcher* holds because it
 names `GhProcess` with `import type`).
 
-- [ ] **Step 10: The binary — `pnpm demo:github` and `pnpm smoke`**
+- [x] **Step 10: The binary — `pnpm demo:github` and `pnpm smoke`**
 
 `scripts/demo-github.mjs` (6.1.3) gains four steps after `protection`'s three, each stating what
 it expects before it runs, over a fresh copy of its clone and bare repository, the fake gh first
@@ -3724,7 +3743,7 @@ pnpm smoke
 Expected: every step and check passes; the totals are printed, and `AGENTS.md`'s smoke count,
 if it states one, is corrected in this commit.
 
-- [ ] **Step 11: The documents this task makes true**
+- [x] **Step 11: The documents this task makes true**
 
 This is the pull request that makes the owner's invariant true of a road, so it is the one that
 changes it, design §4 first, as `AGENTS.md` requires and decision 1 repeats ("Changed in design

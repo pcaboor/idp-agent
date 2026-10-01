@@ -129,7 +129,7 @@ plugin.
 
 ## Status
 
-Updated 2026-09-30.
+Updated 2026-10-01.
 
 Not part of the review as delivered: this section tracks what later pull requests did about
 it, and the review around it is left as it was. The pull request that closes a priority or
@@ -240,7 +240,14 @@ Review ids that a later pull request names as fixed, outside the ids the priorit
 
 Named as left open, and still open: runtime-probe-15, `plan --repo` resolved against
 `process.cwd()` rather than `MainDeps.cwd` ([#46](https://github.com/pcaboor/idp-agent/pull/46);
-the comment where `plan`'s source is resolved in `src/cli/index.ts` says so).
+the comment where `plan`'s source is resolved in `src/cli/index.ts` says so); and cli-ux-10, a
+versioned `--json`, whose `submission` key stage 6 widened
+([#127](https://github.com/pcaboor/idp-agent/pull/127)): `pushed` on `created` and
+`already-submitted`, `pullRequest` (`host`, `repository`, `number`, `url`, `state`, `base`),
+`olderBase`, `kept` on `refused`, and the outcomes `pushed-without-pull-request` (`branch`,
+`commit`, `reason`) and `closed` (`branch`, `number`, `merged`, `at`) — pinned by
+`plan-command.test.ts` and `submit-github.test.ts`, and still unversioned, which is the id's
+subject.
 
 ### The sweep (2026-09-27)
 

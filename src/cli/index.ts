@@ -47,7 +47,13 @@ import {
 } from '../core/schemas/query.js'
 import { runValidate } from './commands/validate.js'
 import { PlanInputError, questionLines, runIntent, runPlan, type Ask } from './commands/plan.js'
-import { openForSubmission, reopening, type Confirm, type SubmitOptions } from './commands/submit.js'
+import {
+  openForSubmission,
+  reopening,
+  type Confirm,
+  type SubmissionSummary,
+  type SubmitOptions,
+} from './commands/submit.js'
 import { ForgeInputError } from '../forge/errors.js'
 import { GitHubAnswerError } from '../forge/github/api.js'
 import type { GitError } from '../process/git.js'
@@ -187,6 +193,8 @@ export type Command =
        * does: absent is stage 4's preview, byte for byte.
        */
       submit?: true
+      /** `--local`: the branch stays in the clone, whatever the road; only beside `--submit`. */
+      local?: true
     }
   /**
    * `idpa protection`: absent `repo` is found as `plan` finds it, never the
@@ -206,6 +214,8 @@ export type Command =
       answers: InitAnswers
       /** `--submit`: the preview becomes a branch in the service's repository. Omitted when absent. */
       submit?: true
+      /** `--local`: the branch stays in the clone, whatever the road; only beside `--submit`. */
+      local?: true
       /**
        * `--iac-repo` and `--environment`, what `.idp-agent.yml` says — omitted
        * when neither was typed. No `backstage`: init has no --backstage option,
@@ -247,10 +257,10 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   idp-agent relations <name-or-reference> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-reference>] [--depth <n>] [--repo <directory> | --demo | --backstage] [--refresh | --cached]
   idp-agent ask "<question>" [--repo <directory> | --demo | --backstage] [--refresh | --cached] [--quiet]
   idp-agent validate <directory>
-  idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json] [--submit]
-  idp-agent plan --from <plan.json> [--repo <directory>] [--json] [--submit]
+  idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json] [--submit [--local]]
+  idp-agent plan --from <plan.json> [--repo <directory>] [--json] [--submit [--local]]
   idp-agent protection [--repo <directory>]
-  idp-agent init [--repo <directory>] [--name <name>] [--lifecycle experimental|production|deprecated] [--owner group:<namespace>/<name>] [--submit] [--iac-repo <locator>] [--environment <name>]...
+  idp-agent init [--repo <directory>] [--name <name>] [--lifecycle experimental|production|deprecated] [--owner group:<namespace>/<name>] [--submit [--local]] [--iac-repo <locator>] [--environment <name>]...
   idp-agent init platform <directory> --owner @org/team
   idp-agent version
 
@@ -305,8 +315,12 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   A phrase, ask, plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL. None
   of them writes, and neither do plan and init without --submit. With it, plan cuts
   a branch idp-agent/… from HEAD in the declarations repository, which must
-  be a git clone's root, for review; nothing else moves, nothing is pushed,
-  and no merge request is opened. plan "<intent>" --submit crosses five
+  be a git clone's root, for review. When the checked-out branch tracks one
+  on github.com, plan --from pushes that branch with your git and opens a
+  pull request into it with your gh, once gh is logged in and the base's
+  ruleset keeps you from merging it unreviewed (idpa protection says whether
+  it does); --local keeps the branch in the clone. A change drafted from an
+  intent is not pushed yet. plan "<intent>" --submit crosses five
   gates, the Reviewer last, and refuses a repository that cannot take the
   branch before any model is paid; plan --from crosses four gates and no
   Reviewer. Either way the merge authorises. Every model-backed command
@@ -316,6 +330,10 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   IDP_SUPERVISOR_MODEL gives the Supervisor, which only classifies a phrase,
   another model of the same provider; unset, it uses IDP_MODEL.
 `
+
+/** `--local` alone: it says where a submission's branch goes, and nothing is submitted. */
+const LOCAL_WITHOUT_SUBMIT =
+  '--local says where --submit cuts its branch, and there is no --submit here: add --submit, or leave --local out'
 
 export function parseArguments(argv: string[]): Command {
   const [commandName, ...rest] = argv
@@ -358,6 +376,7 @@ export function parseArguments(argv: string[]): Command {
             lifecycle: { type: 'string' },
             owner: { type: 'string' },
             submit: { type: 'boolean' },
+            local: { type: 'boolean' },
             // Several, so a second is refused rather than kept in silence (`configFlagsOf`).
             'iac-repo': { type: 'string', multiple: true },
             environment: { type: 'string', multiple: true },
@@ -371,6 +390,7 @@ export function parseArguments(argv: string[]): Command {
         if ('refused' in answers) return { name: 'error', message: answers.refused }
         const config = configFlagsOf(values)
         if ('refused' in config) return { name: 'error', message: config.refused }
+        if (values.local === true && values.submit !== true) return { name: 'error', message: LOCAL_WITHOUT_SUBMIT }
         // Omitted rather than passed as undefined: exactOptionalPropertyTypes
         // draws the distinction, and "the directory I am standing in" is an
         // absence rather than a value main has to invent here.
@@ -379,6 +399,7 @@ export function parseArguments(argv: string[]): Command {
           ...(values.repo !== undefined ? { repo: values.repo } : {}),
           answers: answers.answers,
           ...(values.submit === true ? { submit: true as const } : {}),
+          ...(values.local === true ? { local: true as const } : {}),
           ...(Object.keys(config.flags).length > 0 ? { flags: config.flags } : {}),
         }
       } catch (error) {
@@ -437,6 +458,7 @@ export function parseArguments(argv: string[]): Command {
           project: { type: 'string' },
           json: { type: 'boolean' },
           submit: { type: 'boolean' },
+          local: { type: 'boolean' },
         },
         // The intent is a positional: §7.4's daily gesture is a sentence in
         // quotes, not a flag.
@@ -474,6 +496,7 @@ export function parseArguments(argv: string[]): Command {
           message: `an intent is limited to ${PLAN_LIMITS.maxIntentLength} characters`,
         }
       }
+      if (values.local === true && values.submit !== true) return { name: 'error', message: LOCAL_WITHOUT_SUBMIT }
       // No --repo is not refused here: IDP_REPO or the personal configuration
       // may name one, and parsing reads neither (`sourceOf`, in main).
       const repo = values.repo
@@ -487,6 +510,7 @@ export function parseArguments(argv: string[]): Command {
         ...(repo !== undefined ? { repo } : {}),
         json: values.json === true,
         ...(values.submit === true ? { submit: true as const } : {}),
+        ...(values.local === true ? { local: true as const } : {}),
       }
     } catch (error) {
       return { name: 'error', message: (error as Error).message }
@@ -1277,15 +1301,19 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     // take a branch — not a clone's root, a service in a subfolder of its
     // repository (D12), nobody to commit as, a detached HEAD — is an argument,
     // refused before anyone is told to set a key. `runInitRepo` is handed this
-    // forge and reads its base again.
+    // forge and reads its base again. Toward GitHub, init does not open a
+    // pull request yet, and says so here, before gh and before any model.
     let submit: SubmitOptions | undefined
     if (command.submit === true) {
       const confirm = confirmOf(deps, false)
       try {
-        const { forge } = await openForSubmission(project, 'service', {})
+        const opened = await openForSubmission(project, 'service', {
+          ...submissionOf(deps, command.local === true, err),
+          route: 'init',
+        })
         submit = {
           ...(confirm !== undefined ? { confirm } : {}),
-          open: reopening(forge, project, 'service'),
+          open: reopening(opened, project, 'service'),
         }
       } catch (error) {
         return failed(error, err)
@@ -1428,8 +1456,10 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
       // re-check — and no Reviewer, and its branch still cannot reach the
       // default one: the merge authorises (ADR-0006, D4).
       const confirm = confirmOf(deps, command.json)
-      const submit =
-        command.submit === true ? { ...(confirm !== undefined ? { confirm } : {}) } : undefined
+      const submit: SubmitOptions | undefined =
+        command.submit === true
+          ? { ...(confirm !== undefined ? { confirm } : {}), ...submissionOf(deps, command.local === true, err) }
+          : undefined
       let result: CommandResult
       try {
         result = await runPlan({
@@ -1494,14 +1524,20 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     // exist. So a clone with an uncommitted catalogue file and no model
     // configured answers "no model configured" first, and the divergence
     // once one is. Neither order pays a model for a refusal.
+    //
+    // Toward GitHub, the intent road does not open a pull request yet, and
+    // says so here, before gh and before any model (stage 6 plan, 6.3.1).
     let submit: SubmitOptions | undefined
     if (command.submit === true) {
       const confirm = confirmOf(deps, command.json)
       try {
-        const { forge } = await openForSubmission(roots.repo, 'declarations', {})
+        const opened = await openForSubmission(roots.repo, 'declarations', {
+          ...submissionOf(deps, command.local === true, err),
+          route: 'intent',
+        })
         submit = {
           ...(confirm !== undefined ? { confirm } : {}),
-          open: reopening(forge, roots.repo, 'declarations'),
+          open: reopening(opened, roots.repo, 'declarations'),
         }
       } catch (error) {
         return failed(error, err)
@@ -2140,22 +2176,54 @@ export const confirmOnTerminal = (
     const interrupted = new Promise<never>((_resolve, reject) => {
       reader.once('SIGINT', () => reject(new InterruptedError()))
     })
-    const said = await Promise.race([
-      reader.question(
-        // The root and the branch come from the repository and its files:
-        // one line each, whatever they hold.
-        `Submit this for review as ${inertLine(summary.branch, Number.POSITIVE_INFINITY)} in ` +
-          `${inertLine(summary.root, Number.POSITIVE_INFINITY)}? ` +
-          'Nothing is provisioned until someone else merges it. [y/N] ',
-      ),
-      closed,
-      interrupted,
-    ])
+    const said = await Promise.race([reader.question(questionOf(summary)), closed, interrupted])
     return said !== undefined && /^(y|yes)$/i.test(said.trim())
   } finally {
     reader.close()
   }
 }
+
+/**
+ * The question itself. The root, the branch, the base and the repository come
+ * from the repository, its files and its remote: one line each, whatever they
+ * hold. On GitHub's road it names both acts and whose they are — the push
+ * with the person's git, the pull request with their gh — or, when an earlier
+ * run pushed the branch, the pull request alone (stage 6 brief § 3); the
+ * local road's is stage 5's, byte for byte.
+ */
+const questionOf = (summary: SubmissionSummary): string => {
+  const one = (value: string): string => inertLine(value, Number.POSITIVE_INFINITY)
+  const { github } = summary
+  if (github === undefined) {
+    return (
+      `Submit this for review as ${one(summary.branch)} in ${one(summary.root)}? ` +
+      'Nothing is provisioned until someone else merges it. [y/N] '
+    )
+  }
+  const where = `${github.host}/${one(github.repository)}`
+  const provisioned = 'Nothing is provisioned until someone else approves it and it is merged. [y/N] '
+  return github.pushedAlready
+    ? `Open a pull request from ${one(summary.branch)} into ${one(github.base)} on ${where} with your gh? ` +
+        `The branch was pushed by an earlier run. ${provisioned}`
+    : `Push ${one(summary.branch)} to ${where} with your git, and open a pull request into ${one(github.base)} ` +
+        `with your gh? ${provisioned}`
+}
+
+/**
+ * What every submission's opener is handed from `main`: `--local`, the
+ * person's environment for git and gh, the gh a test injects, and stderr for
+ * the line naming the GitHub road.
+ */
+const submissionOf = (
+  deps: MainDeps,
+  local: boolean,
+  err: (chunk: string) => void,
+): Pick<SubmitOptions, 'local' | 'env' | 'gh' | 'notice'> => ({
+  ...(local ? { local: true } : {}),
+  env: deps.env ?? process.env,
+  ...(deps.gh === undefined ? {} : { gh: deps.gh }),
+  notice: toStderr(err),
+})
 
 /**
  * Who confirms a submission. A person at a terminal gets the prompt; a
@@ -2385,8 +2453,10 @@ async function agentBacked(
   let code: number
   let outputs: unknown
   let thrown: string | undefined
+  let said: Attributes | undefined
   try {
     const result = await execute(client, emit)
+    said = result.attributes
     // Recording in memory and never writing it down is the whole run wasted,
     // and it is silent: the turns are there, the file never appears.
     await session.save()
@@ -2405,7 +2475,8 @@ async function agentBacked(
   if (builder !== undefined) {
     const trace = builder.finish({
       outputs,
-      attributes: { 'idp.exit_code': code },
+      // What the command said of its run — where a submission went — beside its exit.
+      attributes: { ...said, 'idp.exit_code': code },
       ...(thrown !== undefined ? { error: thrown } : {}),
     })
     await exportTrace(trace, sinks, err)

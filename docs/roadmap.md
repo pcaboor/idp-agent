@@ -72,9 +72,13 @@ here, one pull request each, each naming the check run together at the end.
    preflight and `idpa protection` ([#125](https://github.com/pcaboor/idp-agent/pull/125)),
    which closes slice 6.1. 6.2.1, the GitHub forge — recognition, the re-check, the
    create-only push, the read-back and the one pull request, proved offline against the fake gh
-   and a bare repository and reached by no command yet — is on `main`
-   ([#126](https://github.com/pcaboor/idp-agent/pull/126)). 6.2.2, `plan --from --submit`
-   to GitHub, is next.
+   and a bare repository — is on `main`
+   ([#126](https://github.com/pcaboor/idp-agent/pull/126)); so is 6.2.2, `plan --from …
+   --submit` to GitHub — gh's identity before anything, the ruleset and the base's tip before
+   anything is written, one question naming the push and the pull request, the closing lines
+   with the engine-built URL, `--local`, and the intent and `init` roads refused toward GitHub
+   until theirs land ([#127](https://github.com/pcaboor/idp-agent/pull/127)), which closes
+   slice 6.2. Slice 6.3, the intent, `init` and phrase roads, is next.
 2. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence.
@@ -660,6 +664,11 @@ vocabulary), product-gap-6 (no offset and no system, lifecycle or tag criteria i
   `commit` and `base` (`branch`, `commit`) on a branch cut or found, `outcome` alone when
   nothing changes, `outcome` and `reasons` on a refusal, and for a repository that is not
   `HEAD` a report holding that key alone — every shape pinned by `plan-command.test.ts` (D11);
+  and stage 6's keys ([#127](https://github.com/pcaboor/idp-agent/pull/127), pinned by
+  `submit-github.test.ts`): `pushed` on `created` and `already-submitted`, `pullRequest`
+  (`host`, `repository`, `number`, `url`, `state`, `base`), `olderBase`, `kept` on `refused`,
+  and the outcomes `pushed-without-pull-request` (`branch`, `commit`, `reason`) and `closed`
+  (`branch`, `number`, `merged`, `at`);
   architecture-9 and product-gap-13, a session ADR, which the check found no blocker for the
   confirmation (D5).
 - **The environment annotation and namespaces.** core-plan-8, domain-backstage-6,

@@ -444,15 +444,28 @@ const mainBefore = fixtureGit('rev-parse', 'main')
 const worktreeBefore = hashTree(SUBMITTED, { skipGit: true })
 const OPEN_NETWORK = path.join(ROOT, 'examples/open-network.json')
 
+// No remote: stage 5's road, which says so in place of a pull request.
 check({
   args: ['plan', '--from', OPEN_NETWORK, '--repo', 'submitted', '--submit'],
   code: 0,
-  stdout: /^1 file · submitted as idp-agent\/[a-z0-9-]+-[0-9a-f]{8} on top of main@[0-9a-f]{7} · main untouched$/m,
+  stdout:
+    /^1 file · submitted as idp-agent\/[a-z0-9-]+-[0-9a-f]{8} on top of main@[0-9a-f]{7} · main untouched\nmain tracks no remote: nothing pushed$/m,
 })
 check({
   args: ['plan', '--from', OPEN_NETWORK, '--repo', 'submitted', '--submit'],
   code: 0,
   stdout: /^1 file · already submitted as idp-agent\/[a-z0-9-]+-[0-9a-f]{8} · nothing written$/m,
+})
+// --local asks for that road on purpose, and says what this run did.
+check({
+  args: ['plan', '--from', OPEN_NETWORK, '--repo', 'submitted', '--submit', '--local'],
+  code: 0,
+  stdout: /^--local: nothing pushed by this run$/m,
+})
+check({
+  args: ['plan', '--from', OPEN_NETWORK, '--repo', 'submitted', '--local'],
+  code: 2,
+  stderr: /--local says where --submit cuts its branch/,
 })
 assert('--submit left main where it was', fixtureGit('rev-parse', 'main') === mainBefore, '--submit moved main')
 assert(
@@ -728,7 +741,8 @@ check({
 
 // `pnpm demo:github`: idpa protection's three answers against the fake gh,
 // put first on PATH by the demo itself, over a clone whose upstream is on
-// github.com. The fake is TypeScript Node runs as it is, and a shell script
+// github.com, then plan --from --submit with --local, to a pull request, again,
+// and with gh logged out; the one push goes to the demo's bare repository. The fake is TypeScript Node runs as it is, and a shell script
 // on PATH: where this Node or this system cannot, it is skipped and said to
 // be, and the smoke goes on.
 {
@@ -755,7 +769,12 @@ check({
       /^\(exit 1\)$/m,
       /^\(exit 0\)$/m,
       /^\(exit 2\)$/m,
-      /^Done\. No model was called, nothing was pushed, and the only gh this ran was the fake\.$/m,
+      /^--local: nothing pushed by this run$/m,
+      /^submitting to github\.com\/acme\/iac, into main \(origin, main's upstream\), as ada \(gh\)$/m,
+      /^Pull request #1 opened on github\.com\/acme\/iac: https:\/\/github\.com\/acme\/iac\/pull\/1$/m,
+      /^1 file · already submitted as idp-agent\/[a-z0-9-]+-[0-9a-f]{8} · pull request #1 is open · nothing written$/m,
+      /^main tracks github\.com\/acme\/iac, and gh is not logged in to github\.com/m,
+      /^Done\. No model was called, the one push went to a bare repository in a scratch folder, and the only gh this ran was the fake\.$/m,
     ]) {
       if (!shown.test(out)) failures.push(`pnpm demo:github: stdout ${shown}`)
     }

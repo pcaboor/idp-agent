@@ -261,6 +261,16 @@ Each pull request adds its line here.
   engine writes, the request in a fence and each file's path as code. Offline tests against a fake gh and a bare repository try every door as the
   pull request's author, refuse a hostile clone's configuration, and fail every git and gh
   call of a submission in turn ([#126](https://github.com/pcaboor/idp-agent/pull/126)).
+- `plan --from … --submit` in a clone whose branch tracks one on github.com pushes the branch
+  with your own git and opens a pull request into it with your own gh, printing the pull
+  request's URL, which the engine builds; run again, it names the same pull request and
+  writes nothing. Before anything is written it refuses a base whose ruleset would let you
+  merge without someone else approving the latest commit (printing the ruleset to add) and a
+  clone not level with GitHub, and it reads the rules again at the moment of acting. Without
+  gh, or with gh logged out or not a person, nothing is pushed (exit 2, `--local` named).
+  `--submit --local` cuts the branch in the clone only. `--json`'s `submission` gains `pushed`
+  and `pullRequest`, and the outcomes `pushed-without-pull-request` and `closed`
+  ([#127](https://github.com/pcaboor/idp-agent/pull/127)).
 
 ### Changed
 
@@ -306,6 +316,12 @@ Each pull request adds its line here.
   file — whatever the question side reads, so a Backstage can be read for questions while
   changes stay decided in Git; no behaviour changes today
   ([#93](https://github.com/pcaboor/idp-agent/pull/93)).
+- A submission's closing line says which road it took, "main tracks no remote: nothing
+  pushed" among them, where it said "this build has no forge (stage 6)"; `plan "<intent>"
+  --submit` and `init --submit` toward GitHub are refused before any model, `--local` named,
+  until their roads open pull requests. A branch that tracks nothing takes stage 5's road
+  whatever its name; one named with a `%`, `{`, `}` or invisible character that tracks a
+  branch is refused (exit 2), naming `git branch -m` and `--local` ([#127](https://github.com/pcaboor/idp-agent/pull/127)).
 
 ### Fixed
 

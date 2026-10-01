@@ -386,8 +386,8 @@ would pass — a separate grant at their level, for whom and over what as far as
 knows (`renderStopped`, `RepairOutcome.kept`).
 
 **Submitting (`--submit`).** `commands/submit.ts` holds every step a submission takes, in the
-order it takes them, so both roads of `plan` share one copy, and `init` will when it submits;
-until then `idpa "<phrase>" --submit` is refused, exit 2, naming the two roads that do (D8).
+order it takes them, so both roads of `plan` and `init` share one copy; `idpa "<phrase>"
+--submit` is refused, exit 2, naming the two roads that do (D8).
 `openForSubmission` opens the forge before anything is read: a root that is not a clone's,
 no `git`, no committer identity or a detached `HEAD` is a `ForgeInputError`, exit 2. The root
 is the one `declarationsFor`'s chain resolved, and stderr names what chose it as it does
@@ -405,6 +405,27 @@ its diff; without `--submit` they are stage 4's, byte for byte. `--json` carries
 under `submission`, its shape pinned by `plan-command.test.ts` (D11), and the intent road
 answers under the same key. `plan --from … --submit` crosses four gates and no Reviewer;
 the branch cannot reach the default one either way.
+
+**Toward GitHub (stage 6).** `openForSubmission` opens the forge through
+`forge/open.ts`'s `openSubmissionForge`, handed `--local`, the person's environment
+(`MainDeps.env`, else `process.env`, which every git and gh of the submission is given),
+`MainDeps.gh` and the road that drafted the change (`route`): the local forge, the road, and
+on GitHub's road gh's identity and the GitHub forge, `cli/` loading no launcher. A refused
+configuration key, a remote URL with a credential, a gh that is missing, logged out, too old
+or not a person, and — until 6.3 — the intent and `init` roads toward GitHub are
+`ForgeInputError`s, exit 2, before any model. On GitHub's road it says, once, on stderr,
+`submitting to github.com/<o>/<r>, into <base> (<remote>, <branch>'s upstream), as <login>
+(gh)`. `refuseUnprotected`, right after `refuseDivergence`, runs the preflight and refuses,
+exit 1, a base the rules do not protect (`renderUnprotected`, the ruleset to add) or a clone
+not level with GitHub, before the preview. `submit` takes a `pushed-without-pull-request`
+recognised as the pull request left to open, and asks only about it; `Confirm`'s
+`SubmissionSummary` carries `github`, and `confirmOnTerminal` asks the GitHub road's
+question from it, the local road's unchanged. The closing lines name the road
+(`localRoadLine`) or the pull request at the engine-built URL and what merging it waits for
+(`pullRequestLines`); `--json`'s `submission` gains `pushed`, `pullRequest`, `olderBase`,
+`kept`, and the outcomes `pushed-without-pull-request` and `closed`, each a negative answer
+read from the result's own `found`. Every result `submit` returns carries
+`forgeAttributes` (`idp.forge.*`), which `agentBacked` sets on a traced run's root.
 
 `plan "<intent>" --submit` moves the forge's opening earlier still: `main` opens it before the
 model is configured, so a directory that cannot take a branch is an argument error even with
@@ -431,7 +452,7 @@ key or a gh that is missing, logged out, too old or not a person is a `ForgeInpu
 which `failed()` prints in its own sentence, exit 1, as it does a `GhError` that escaped the
 forge (matched by name, as `isGitError` is). No model is chosen, so none can be called, and
 nothing is written. `renderUnprotected` is the same `missing:` lines as a submission's
-refusal, for stage 6's next step.
+refusal, which `refuseUnprotected` prints.
 
 **Tracing.** `trace-sink.ts` is the only way a trace leaves the process: `mlflowSink` posts
 OTLP/JSON to `IDP_MLFLOW_TRACKING_URI`'s `/v1/traces` — never `MLFLOW_TRACKING_URI`'s, which

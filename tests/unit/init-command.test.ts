@@ -28,6 +28,7 @@ import { ConfigError, readConfig } from '../../src/cli/config.js'
 import { CONFIG_FILE, serializeConfig } from '../../src/core/schemas/config.js'
 import { listDocumentNames } from '../../src/core/yaml/surgery.js'
 import { protectionText } from '../../src/core/github/protection.js'
+import type { GhProcess } from '../../src/process/gh.js'
 
 /** The line a preview of `init` ends on, in place of `plan`'s about the merge. */
 const INIT_CLOSING =
@@ -1007,7 +1008,7 @@ describe('init --submit through main', () => {
     await Promise.all(made.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
   })
 
-  const run = async (args: string[], client?: LlmClient) => {
+  const run = async (args: string[], client?: LlmClient, gh?: GhProcess) => {
     const io = capture()
     const cwd = await temp()
     made.push(cwd)
@@ -1016,9 +1017,51 @@ describe('init --submit through main', () => {
       out: (chunk) => void io.out.push(chunk),
       err: (chunk) => void io.err.push(chunk),
       ...(client !== undefined ? { client } : {}),
+      ...(gh !== undefined ? { gh } : {}),
     })
     return { code, out: io.out.join(''), err: io.err.join('') }
   }
+
+  /** A committed service whose `main` tracks a branch on github.com, and a gh nobody may start. */
+  const onGitHub = async (): Promise<{ readonly root: string; readonly gh: GhProcess; readonly calls: () => number }> => {
+    const root = await application()
+    made.push(root)
+    await committed(root)
+    await git(root, 'remote', 'add', 'origin', 'git@github.com:acme/billing-api.git')
+    await git(root, 'config', 'branch.main.remote', 'origin')
+    await git(root, 'config', 'branch.main.merge', 'refs/heads/main')
+    let calls = 0
+    const gh: GhProcess = async () => {
+      calls += 1
+      throw new Error('gh was started')
+    }
+    return { root, gh, calls: () => calls }
+  }
+
+  it('refuses init --submit toward GitHub until its road lands, before any model and before gh', async () => {
+    const { root, gh, calls } = await onGitHub()
+    const before = await observable(root)
+    const client = drafting([COMPONENT])
+    const { code, out, err } = await run(['init', '--repo', root, '--submit'], client, gh)
+    expect(code).toBe(2)
+    expect(err.trimEnd()).toBe(
+      "init opens a pull request on the service's repository from the next release; add --local to cut the branch " +
+        'in this clone only. Nothing was written.',
+    )
+    expect(out).toBe('')
+    expect(client.seen).toEqual([])
+    expect(calls()).toBe(0)
+    expect(await observable(root)).toBe(before)
+  })
+
+  it("cuts init's branch with --local, and says nothing was pushed", async () => {
+    const { root, gh, calls } = await onGitHub()
+    const { code, out } = await run(['init', '--repo', root, '--submit', '--local'], drafting([COMPONENT]), gh)
+    expect(code).toBe(0)
+    expect(out).toMatch(/1 file · submitted as idp-agent\/init-billing-api-[0-9a-f]{8} on top of main@[0-9a-f]{7} · main untouched/)
+    expect(out).toContain('--local: nothing pushed by this run')
+    expect(calls()).toBe(0)
+  })
 
   it('refuses a directory that is not a clone as an argument, before a model is even configured', async () => {
     const project = await application()

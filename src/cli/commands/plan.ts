@@ -40,6 +40,7 @@ import { CLOSING, closingLines, type PreviewStatus } from '../render/footer.js'
 import {
   openForSubmission,
   refuseDivergence,
+  refuseUnprotected,
   submit,
   type Confirm,
   type Opened,
@@ -1079,7 +1080,7 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
   const opened =
     options.submit === undefined
       ? undefined
-      : await openForSubmission(root, 'declarations', options.submit)
+      : await openForSubmission(root, 'declarations', { ...options.submit, route: 'from' })
   const snapshot = await readRepository(root)
   const loaded = await loadPlan(options.from)
 
@@ -1094,6 +1095,11 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
       { json: options.json === true },
     )
     if (refused !== undefined) return refused
+    // And on GitHub's road, the base's rules and its tip, read through gh:
+    // a base that would let the opener merge unreviewed, or that this clone
+    // is not level with, takes no branch, and nothing is previewed or asked.
+    const unprotected = await refuseUnprotected(opened, { json: options.json === true })
+    if (unprotected !== undefined) return unprotected
   }
   const previewing = {
     ...options,
@@ -1246,12 +1252,18 @@ async function previewPlan(
     // answer as they do without --submit, and ask no forge anything.
     const settledAll = !refused && questions.length === 0
     if (options.opened !== undefined && settledAll && changed.length > 0) {
-      const { report: submission } = await submit({
+      const { report: submission, result } = await submit({
         opened: options.opened,
         cleared: cleared(),
         render: (status) => renderPreview({ signed, edits, dropped, recheck, status }),
       })
-      return { text: asJson({ ...report, submission }), found: submission.outcome !== 'refused' }
+      // `found` is the submission's own: a pull request not opened, or one
+      // closed, is a negative answer as a refusal is.
+      return {
+        text: asJson({ ...report, submission }),
+        found: result.found,
+        ...(result.attributes === undefined ? {} : { attributes: result.attributes }),
+      }
     }
     if (options.opened !== undefined && settledAll && !didNothing(signed, changed, recheck)) {
       return { text: asJson({ ...report, submission: { outcome: 'unchanged' } }), found: true }
@@ -1397,7 +1409,7 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
   const opened =
     options.submit === undefined
       ? undefined
-      : await openForSubmission(root, 'declarations', options.submit)
+      : await openForSubmission(root, 'declarations', { ...options.submit, route: 'intent' })
   // Read before a single agent runs, and before the project is walked. A
   // committed file that does not parse is not a repository that declared
   // nothing: falling back would answer a typo with a run that silently asks
@@ -1654,8 +1666,12 @@ async function renderOutcome(
       const nothing = didNothing(outcome.signed, changed, outcome.recheck)
       if (submission !== undefined && cleared !== undefined) {
         // A program reads --json, and a program is never asked.
-        const { report: submitted } = await submit({ opened: submission.opened, cleared, render })
-        return { text: asJson({ ...report, submission: submitted }), found: submitted.outcome !== 'refused' }
+        const { report: submitted, result } = await submit({ opened: submission.opened, cleared, render })
+        return {
+          text: asJson({ ...report, submission: submitted }),
+          found: result.found,
+          ...(result.attributes === undefined ? {} : { attributes: result.attributes }),
+        }
       }
       if (submission !== undefined && !nothing) {
         // The repository already says it: the same key `--from` answers with.
