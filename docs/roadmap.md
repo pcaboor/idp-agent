@@ -414,6 +414,16 @@ The owner's decisions, dated, each with where it is recorded.
   discovery mode's Tab switch belongs to stage 7. GitLab and the proof of what was done after a
   merge go to the discussion after stage 7. Temporary access and a CI or bot mode were offered
   and not added.
+- Stage 6's three added tasks are planned (6.3.4, 6.3.5, 6.3.6, [the plan](plans/stage-6-github.md),
+  [#132](https://github.com/pcaboor/idp-agent/pull/132)), and the owner settled the eight
+  questions they raised, each as recommended: the proposal to open a pull request is the
+  engine's question alone, with no line from a model and no prompt changed; `init` and `plan
+  --from` keep `--submit` in stage 6, `init`'s proposal coming with stage 8's discovery; a
+  proposal reads what is in flight after the last model call, while `--submit` and `init` read it
+  before any model and again at the moment of writing; a base that requires an approval but leaves
+  force pushes or deletion unguarded gets a second, precise note; more than twenty `idp-agent`
+  pull requests in flight into one base are refused rather than compared in part; no new flag for
+  a preview with no GitHub read; and design §4.2 takes the bullet 6.3.4's Step 1 quotes.
 
 ## Known debts and open items
 

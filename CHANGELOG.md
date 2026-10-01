@@ -513,6 +513,11 @@ Each pull request adds its line here.
 
 ### Documentation
 
+- Stage 6's three added tasks are planned: the pull request always opened, with a neutral note
+  when its author may merge it alone (6.3.4); the engine proposing to open it after the diff, the
+  person's `y` authorising it (6.3.5); and the open `idp-agent` pull requests read first, so two
+  people never open competing ones (6.3.6). With the owner's eight answers of 2026-10-01
+  ([#132](https://github.com/pcaboor/idp-agent/pull/132)).
 - Stage 6 is planned ([the plan](docs/plans/stage-6-github.md)): eleven stacked pull requests,
   from the git and gh launchers and their allow-list to the owner's live test and re-recording,
   each test first, with the owner's four answers of 2026-09-30; stage 6's ADR is numbered 0015
