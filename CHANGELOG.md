@@ -286,6 +286,12 @@ Each pull request adds its line here.
   refused by name. The pull request's body says a model drafted the catalog-info from the
   service's files, where it credited a person with it, and its engine block reads "This change
   was …" on every road ([#130](https://github.com/pcaboor/idp-agent/pull/130)).
+- `idpa "<phrase>" --submit`: a change typed as one phrase is submitted as `plan "<intent>"
+  --submit` submits it — the forge, gh and the base's rules read before the Supervisor, a
+  pull request opened on a clone tracking github.com, `--local` for the clone only — and a
+  question put to `--submit` is refused after the Supervisor's one word, exit 3 as `ask`
+  declines a change, nothing answered and nothing written (D8 lifted)
+  ([#131](https://github.com/pcaboor/idp-agent/pull/131)).
 
 ### Changed
 

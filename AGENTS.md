@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 4758 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 4777 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -90,17 +90,19 @@ is not on this machine or holding a character a header cannot carry, `--backstag
 configured, `--refresh` and `--cached` together, beside `--repo` or `--demo`, or against a
 source that is not a catalogue, `--cached` where no copy is kept (`IDP_BACKSTAGE_CACHE=off`,
 no home, Windows, root), an `IDP_BACKSTAGE_CACHE` other than `off`, a declarations repository `--submit` cannot cut a branch in (not a git clone's
-root, no `git`, no committer identity, a detached or unborn `HEAD` — on `plan "<intent>"`
-and `init`, refused before the model is configured), `init --submit` for a service in a
+root, no `git`, no committer identity, a detached or unborn `HEAD` — on `plan "<intent>"`,
+`idpa "<phrase>" --submit` and `init`, refused before the model is configured), `init --submit` for a service in a
 subfolder of its repository, an `--iac-repo` or `--environment` the configuration's schema
-refuses or holding a control, format or bidi character, `--submit` with `--demo` or on
-`idpa "<phrase>"`, `--local` without `--submit`, on a submission toward GitHub gh missing,
+refuses or holding a control, format or bidi character, `--submit` with `--demo`,
+`idpa "<phrase>" --submit` with no declarations repository (refused before any model),
+`--local` without `--submit`, on a submission toward GitHub gh missing,
 logged out, expired, too old or not a person, a key of the clone's own configuration that
 would redirect the push or run a program, a remote URL with a credential or that does not
 parse — or no
 model, no key or no usable `IDP_TIMEOUT` or `IDP_SUPERVISOR_MODEL` is configured · `3` the
 request was understood and this build will not act on it: a change request put to `ask`
-(which names `idpa "<phrase>"` as the gesture that previews it), a question the model
+(which names `idpa "<phrase>"` as the gesture that previews it), a question put to
+`idpa "<phrase>" --submit` (which names the same phrase without `--submit`), a question the model
 refused, a plan holding values nobody can vouch for, **asked rather than guessed**, or a
 plan that produces no bytes while the repository does not already declare what it states —
 in prose and in `--json` alike · `130` Ctrl-C at a question or at `--submit`'s
@@ -150,7 +152,7 @@ service's catalog-info and its `.idp-agent.yml` on one branch of its own reposit
 | 3 | `init platform` — scaffold, CI, CODEOWNERS, witnesses, `validate` | done |
 | 4 | Preview only — Inspector, Architect, `Plan`, diff; writes nothing | done |
 | 5 | Write + local branch — `ForgeProvider`, atomicity, idempotence | done |
-| 6 | GitHub pull request — the person's git and gh, the base's ruleset, the merge refused | in progress: `idpa protection`, `plan --from … --submit`, `plan "<intent>" --submit`, `init --submit` |
+| 6 | GitHub pull request — the person's git and gh, the base's ruleset, the merge refused | in progress: `idpa protection`, `plan --from … --submit`, `plan "<intent>" --submit`, `init --submit`, `idpa "<phrase>" --submit` |
 | 7 | Polish — Ink TUI, README, asciinema, npm publish | |
 
 The order is imposed by the doctrine: read first, validate before the first write,
@@ -186,12 +188,12 @@ from a catalogue alike, which `show` prints and the overview counts (`backstage-
 own?", "who is in tiger?", "which system is billing-api in?", answered with the relation
 block `relations` prints (`backstage-http` slice 3.3; recorded and replayed with no key in
 `tests/scenarios/backstage-mode.test.ts`, with slice 1's question); and stage 4's two
-previews, which write nothing to a repository — unless `plan` or `init` is given `--submit`,
+previews, which write nothing to a repository — unless `plan`, `init` or a phrase is given `--submit`,
 stage 5's writes, a local branch for review; a branch already there is named, or refused,
 before anyone is asked to confirm:
 
 ```bash
-idpa "<phrase>" [--repo <dir> | --demo | --backstage] [--refresh | --cached] [--project <dir>] [--json] [--quiet]  # question or change
+idpa "<phrase>" [--repo <dir> | --demo | --backstage] [--refresh | --cached] [--project <dir>] [--json] [--quiet] [--submit [--local]]  # question or change
 idp-agent relations <name-or-ref> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-ref>] [--depth <n>] [--repo <dir> | --demo | --backstage] [--refresh | --cached]  # no model
 idp-agent plan --from <plan.json> --repo <dir> [--submit [--local]]  # no model, and none is possible
 idp-agent plan "<intent>" --repo <dir> [--json] [--submit [--local]]  # Inspector, Architect, five gates
@@ -200,9 +202,9 @@ idp-agent protection [--repo <dir>]  # through the person's gh, reads only; no m
 ```
 
 **`init platform` writes into the directory it was handed, and through no symbolic link
-under it. `plan … --submit` and
+under it. `plan … --submit`, `idpa "<phrase>" --submit` and
 `init --submit` write one new ref and the objects it reaches, and nothing else, and, on a
-GitHub road, `plan --from … --submit`, `plan "<intent>" --submit` and `init --submit` push that
+GitHub road, `plan --from … --submit`, `plan "<intent>" --submit`, `idpa "<phrase>" --submit` and `init --submit` push that
 one ref to the same name on github.com with your git and open one pull request with your gh** — never `HEAD`, the index, the
 working tree or a ref that exists; every other road pushes nothing and opens no pull
 request. With
@@ -337,7 +339,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 | `agents/` | the five agents, the bounded turn, the repair loop, the tool registries — reaches no disk, transitively |
 | `trace/` | the trace of one run: `createTraceBuilder` over the event stream and the model calls, the `traced` client decorator, and `toOtlpJson` — pure; `cli/trace-sink.ts` is how a trace leaves |
 | `scaffold/` | the `init platform` layout, the packaged templates, and `write.ts`, the writer for a repository being created |
-| `forge/` | where a submission becomes a branch: `provider.ts` — `ForgeProvider`, `Base`, `Submitted`, types only, with no merge, no delete and no caller-chosen name — `ForgeInputError`, a refusal that is the user's arguments — and `local/`, the local forge: `openLocalForge` for one repository, which writes git objects and one create-only ref, through the launcher, and never the working tree, the index or `HEAD` (ADR-0010) — and `github/`, which reads through both launchers and judges with `core/github/`: `readRoad`, the road a submission takes, `readIdentity`, who gh is, `githubApi`, GitHub through gh, `preflight.ts`'s `readProtection`, `preflight` and `readRules` (§ 8's reads), and `openGitHub`, the road then gh's identity, which `idpa protection` reaches — and `github/forge.ts`, the GitHub forge: the local forge (`acceptOlderBase`, `local/tree.ts`'s `treeFor`), then the person's own push of that very commit, create-only, a read-back through gh, the rules once more and one pull request whose body the engine writes, proved offline against the fake gh and a bare repository — and `open.ts`'s `openSubmissionForge`, what every submission opens: the local forge, the road, gh's identity, and on GitHub's road the GitHub forge, which both forms of `plan` and `init` take (the phrase's road is refused toward GitHub until 6.3.3). `plan … --submit`, on either road, and `init --submit`, for the service's repository, reach it, through `cli/commands/submit.ts` |
+| `forge/` | where a submission becomes a branch: `provider.ts` — `ForgeProvider`, `Base`, `Submitted`, types only, with no merge, no delete and no caller-chosen name — `ForgeInputError`, a refusal that is the user's arguments — and `local/`, the local forge: `openLocalForge` for one repository, which writes git objects and one create-only ref, through the launcher, and never the working tree, the index or `HEAD` (ADR-0010) — and `github/`, which reads through both launchers and judges with `core/github/`: `readRoad`, the road a submission takes, `readIdentity`, who gh is, `githubApi`, GitHub through gh, `preflight.ts`'s `readProtection`, `preflight` and `readRules` (§ 8's reads), and `openGitHub`, the road then gh's identity, which `idpa protection` reaches — and `github/forge.ts`, the GitHub forge: the local forge (`acceptOlderBase`, `local/tree.ts`'s `treeFor`), then the person's own push of that very commit, create-only, a read-back through gh, the rules once more and one pull request whose body the engine writes, proved offline against the fake gh and a bare repository — and `open.ts`'s `openSubmissionForge`, what every submission opens: the local forge, the road, gh's identity, and on GitHub's road the GitHub forge, which both forms of `plan`, `init` and the phrase take. `plan … --submit`, on either road, `idpa "<phrase>" --submit` and `init --submit`, for the service's repository, reach it, through `cli/commands/submit.ts` |
 | `confine/` | physical confinement: `confine.ts`'s `followInside`, `openToRead` (`O_NOFOLLOW`, checked once open), `makeFolders` and `createNew` (`O_CREAT \| O_EXCL \| O_NOFOLLOW`) — what `assertInsideRepo`, lexical, cannot see; `iac-fs` follows no link, `project-fs` follows one that stays inside, `init platform` writes through none |
 | `process/` | the one place a process is started: `git.ts`'s `gitIn` — hooks and fsmonitor off, `user.useConfigOnly`, every `GIT_*` scrubbed, started outside the repository, bounded — and `pushIn`, the one push form; `gh.ts`'s `ghIn`, gh in the same shape; each checks the finished vector against its grammar (`checkGitArgv`, `checkGhArgv`) before anything starts, and throws `LauncherRefusal` otherwise; and `environment.ts`'s `spawnedEnvironment`, the one builder of a child process's environment |
 
@@ -421,7 +423,7 @@ changing that section first.
 - The catalogue lags the repository by ~2 min: check the repository before proposing,
   **and again at the moment of writing**.
 
-## The trust boundary — built as far as a pull request, on both roads of `plan` and on `init`
+## The trust boundary — built as far as a pull request, on every road that submits
 
 Everything from the Supervisor to the unified diff runs, and on both roads of `plan` one
 step further: `plan … --submit` cuts the branch, locally — `plan
@@ -434,8 +436,10 @@ after the base's rules and its tip were read through gh, and again at the moment
 the first model call, and holds a service's `iacRepo` to the clone's repository as a
 cross-check. `init --submit` crosses it in the service's own clone, held to the same
 configuration check and the same preflight before the Inspector, its refusal on the rules
-naming `--local` (decision 17). The phrase road crosses it in 6.3.3, and until then only
-`idpa "<phrase>"` still ends at the preview (D8).
+naming `--local` (decision 17). `idpa "<phrase>" --submit` crosses it as `plan "<intent>"`
+does (D8 lifted): the forge, gh and the base's rules are read before the Supervisor, a
+change is then submitted through `runIntent`, and a question is refused after the
+Supervisor's one word, exit 3.
 
 One object crosses **per direction of authority** (design §5.1, ADR-0007). The **`Plan`**
 crosses when the AI side asks for a change. The **`Answer`** crosses when it reports a

@@ -30,7 +30,11 @@
  *      `git@github.com:acme/billing-api.git`, gh logged out: exit 2, before
  *      any model, naming --local;
  *  11. the same, gh logged in: exit 2 on the model's configuration, the line
- *      naming the service's repository first.
+ *      naming the service's repository first;
+ *  12. idpa "<phrase>" --submit in the declarations clone, gh logged out:
+ *      exit 2, before any model, naming --local;
+ *  13. idpa "<phrase>" --submit --demo: exit 2 at parse time, the demo SI is
+ *      never written, and every command's usage, as a refused phrase gets.
  *
  * What it runs cannot reach the person's GitHub or spend their model key: the
  * binary's environment loses every `IDP_*`, `*_API_KEY`, `GH_*`, `GITHUB_*`
@@ -463,6 +467,41 @@ step("11. init --submit reads the road and gh's identity before the model's conf
       ['nothing written in the service', serviceUntouched()],
     ]
   },
+})
+
+// The phrase road: the declarations clone again, as far as the steps before
+// the model. With --submit the forge and gh are read before the Supervisor.
+const PHRASE = [INTENT, '--repo', 'iac', '--submit']
+step('12. A phrase refuses a gh that is not logged in before any model', {
+  state: withService(undefined),
+  expects: 'gh to log in, or --local, before any model is configured',
+  args: PHRASE,
+  expected: 2,
+  checks: (run) => [
+    [
+      '"gh is not logged in to github.com", naming --local',
+      /gh is not logged in to github\.com.*or add --local to cut the branch in this clone only\. Nothing was written\.$/m.test(
+        run.stderr ?? '',
+      ),
+    ],
+    ['no word of the model, which comes after', !NO_MODEL.test(run.stderr ?? '')],
+    ['nothing written', ourBranches(CLONE) === before.clone && ourBranches(GITHUB) === before.github],
+  ],
+})
+step('13. A phrase with --submit never writes to the demo SI', {
+  expects: "the parse-time refusal, then every command's usage, the phrase's first, before any model",
+  args: [INTENT, '--submit', '--demo'],
+  expected: 2,
+  checks: (run) => [
+    [
+      'the refusal naming --repo',
+      /^idpa "<phrase>" --submit never writes to the demo SI; name the declarations repository with --repo$/m.test(
+        run.stderr ?? '',
+      ),
+    ],
+    ["the phrase's usage", /^ {2}idpa "<phrase>" .*\[--submit \[--local\]\]$/m.test(run.stderr ?? '')],
+    ['no word of the model', !NO_MODEL.test(run.stderr ?? '')],
+  ],
 })
 
 // The clone's main, on both sides, where it was.

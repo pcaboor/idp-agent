@@ -85,11 +85,15 @@ export async function runAsk(options: AskOptions): Promise<CommandResult> {
  * a change is handed to `change` — `ask`'s refusal, or the entry's preview
  * (`entry.ts`). One function for both, so the question road of `idpa
  * "<phrase>"` is `ask`'s to the byte: the same summary, the same classifier
- * turn, the same Analyst, the same exit codes.
+ * turn, the same Analyst, the same exit codes. `question` is the one other
+ * answer a question can get — `idpa "<phrase>" --submit`'s refusal — and the
+ * Supervisor is sent the same bytes either way.
  */
 export async function classified(
   options: AskOptions,
   change: () => Promise<CommandResult>,
+  /** The question road, when the caller has another answer for one than `ask`'s. Absent: `ask`'s. */
+  question?: () => Promise<CommandResult>,
 ): Promise<CommandResult> {
   const { graph, client, intent, emit } = options
   // With the counts: each list capped at 30 (domain-backstage-8). The Supervisor
@@ -109,6 +113,7 @@ export async function classified(
     case 'MUTATION':
       return change()
     case 'QUESTION':
+      if (question !== undefined) return question()
       return answered(options, summaryText, [
         ...shown.kinds.values,
         ...shown.types.values,

@@ -2,11 +2,9 @@ import type { PullRequestInput } from '../core/github/pull-request.js'
 import type { Repository } from '../core/plan/clear.js'
 import type { GhProcess } from '../process/gh.js'
 import { gitIn } from '../process/git.js'
-import { ForgeInputError } from './errors.js'
 import type { GitHubApi } from './github/api.js'
 import { openGitHubForge } from './github/forge.js'
 import { openGitHub } from './github/open.js'
-import { readRoad } from './github/road.js'
 import { openLocalForge } from './local/forge.js'
 import type { ForgeProvider, GhIdentity, Road } from './provider.js'
 
@@ -31,21 +29,6 @@ export interface OpenedForge {
   readonly github?: { readonly identity: GhIdentity; readonly api: GitHubApi }
 }
 
-/** The roads that open a pull request in this build; the others are refused toward GitHub (stage 6 plan, 6.3). */
-const OPENS_PULL_REQUESTS: readonly PullRequestInput['road'][] = ['from', 'intent', 'init']
-
-/**
- * Why a road that does not open pull requests yet stops toward GitHub, before
- * gh starts: no road starts gh before the test that proves what reaches it
- * lands with it (stage 6 plan, Global Constraint 1). 6.3.1, 6.3.2 and 6.3.3
- * each remove their entry, and the last removes both constants.
- */
-const NOT_YET: Readonly<Partial<Record<PullRequestInput['road'], string>>> = {
-  phrase:
-    'idpa "<phrase>" does not submit yet; a change is submitted with plan --from <plan.json> --submit. ' +
-    'Nothing was written.',
-}
-
 export async function openSubmissionForge(input: {
   readonly repo: string
   readonly repository: Repository
@@ -62,14 +45,6 @@ export async function openSubmissionForge(input: {
   const git = gitIn(repo, { env })
   // Stage 5's checks first, in stage 5's words.
   const forge = await openLocalForge(repo, repository, git)
-
-  if (!OPENS_PULL_REQUESTS.includes(route)) {
-    const road = await readRoad(git, { local })
-    if (road.kind !== 'github') return { forge, road }
-    const said = NOT_YET[route]
-    if (said === undefined) throw new Error(`the ${route} road neither opens pull requests nor says why not`)
-    throw new ForgeInputError(said)
-  }
 
   const side = await openGitHub({ repo, env, ...(input.gh === undefined ? {} : { gh: input.gh }), local, git })
   const { road, identity, api } = side

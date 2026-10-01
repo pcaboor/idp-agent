@@ -15,7 +15,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 4758, no API key" src="https://img.shields.io/badge/tests-4758%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 4777, no API key" src="https://img.shields.io/badge/tests-4777%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -188,12 +188,13 @@ SI here, because a change is never previewed against the demo itself. What nobod
 vouch for is asked at a prompt — the level of a grant always, and the environment unless the
 phrase names what the access is over by its reference in full — and the diff follows.
 Neither writes anything. To submit a change for review, make the copy a git clone
-(`git init`, `git add -A`, `git commit`) and run `idpa plan "<change>" --submit`: after the
-five gates and a `[y/N]`, it cuts one local branch, `idp-agent/…`, from `HEAD`, and moves
-nothing else. A change drafted from words is not pushed yet: toward GitHub it is refused
-before any model, and `--submit --local` keeps the branch in the clone; a directory that
-cannot take the branch is refused before any model is paid ([details](#commands)).
-`idpa "<phrase>"` itself never submits. The CLI reads its environment and never loads a
+(`git init`, `git add -A`, `git commit`) and run `idpa "<change>" --submit`, or
+`idpa plan "<change>" --submit`: after the five gates and a `[y/N]`, it cuts one local
+branch, `idp-agent/…`, from `HEAD`, and moves nothing else. In a clone whose branch tracks
+one on github.com, that branch is pushed with your git and a pull request opened with your
+gh, and `--submit --local` keeps it in the clone; a directory that cannot take the branch is
+refused before any model is paid, and a question put to `--submit` is refused after the
+Supervisor's one word ([details](#commands)). The CLI reads its environment and never loads a
 `.env` file: [`.env.example`](.env.example) lists every variable it reads, for
 `node --env-file=.env dist/cli/bin.js "<question>" --demo` from the clone. For a change,
 stand in the declarations repository and name the clone by path —
@@ -423,7 +424,7 @@ provider reported for them.
 ## Commands
 
 ```bash
-idpa "<phrase>" [--repo <dir> | --demo | --backstage] [--refresh | --cached] [--project <dir>] [--json] [--quiet]
+idpa "<phrase>" [--repo <dir> | --demo | --backstage] [--refresh | --cached] [--project <dir>] [--json] [--quiet] [--submit [--local]]
 ```
 
 The daily gesture, typed from anywhere. The Supervisor reads the phrase and decides: a
@@ -437,8 +438,11 @@ for the typo it is and never sent to a model, and options go after a command
 (`idpa show billing-api --repo IaC`), never before it. `--project` and `--json` apply to a
 change only; a question with `--json` is answered as text, and stderr says so. `--quiet`
 applies to a question only: the verified answer, without the model's sentences around it.
-`idpa "<phrase>"` never submits: `--submit` belongs to `plan`, and is refused here with
-exit 2. `ask` and `plan` below force a road: `plan` previews without classifying, and `ask`
+With `--submit`, a change is submitted as `plan "<intent>" --submit` submits it — the
+declarations repository, the road and gh read before a catalogue or a model, the base's
+rules before the Supervisor — and a question is refused after the Supervisor's one word,
+exit 3, nothing answered and nothing written; `--submit --demo` is refused, since the demo
+SI is never written. `ask` and `plan` below force a road: `plan` previews without classifying, and `ask`
 classifies and only answers, declining a change.
 
 ```text

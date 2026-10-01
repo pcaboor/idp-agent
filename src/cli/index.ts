@@ -49,8 +49,10 @@ import { runValidate } from './commands/validate.js'
 import { PlanInputError, questionLines, runIntent, runPlan, type Ask } from './commands/plan.js'
 import {
   openForSubmission,
+  refuseUnprotected,
   reopening,
   type Confirm,
+  type Opened,
   type SubmissionSummary,
   type SubmitOptions,
 } from './commands/submit.js'
@@ -175,8 +177,20 @@ export type Command =
    * the plan road and are carried whichever is taken — a bad `--project`
    * refuses a question too, and `--json` on one is said to do nothing.
    * `quiet` belongs to the question road, and does nothing on a change.
+   * `submit` and `local` are `plan`'s, omitted when absent: with `--submit` a
+   * change is submitted and a question refused (`commands/entry.ts`).
    */
-  | ({ name: 'entry'; phrase: string; project?: string; json: boolean; quiet?: true } & ReadFrom)
+  | ({
+      name: 'entry'
+      phrase: string
+      project?: string
+      json: boolean
+      quiet?: true
+      /** `--submit`: a change becomes a branch for review, and a question is refused. */
+      submit?: true
+      /** `--local`: the branch stays in the clone, whatever the road; only beside `--submit`. */
+      local?: true
+    } & ReadFrom)
   | { name: 'validate'; directory: string }
   /**
    * Absent `repo` means the working directory when it is a declarations
@@ -239,7 +253,7 @@ export type Usage = Exclude<(typeof COMMANDS)[number], 'help'> | 'init-platform'
 
 export const HELP = `idp-agent - turn an intent into reviewed infrastructure declarations
 
-  idpa "<phrase>" [--repo <directory> | --demo | --backstage] [--refresh | --cached] [--project <directory>] [--json] [--quiet]
+  idpa "<phrase>" [--repo <directory> | --demo | --backstage] [--refresh | --cached] [--project <directory>] [--json] [--quiet] [--submit [--local]]
 
   The one gesture, from anywhere: a question about the SI is answered, an
   intent to change it is previewed as a plan, and the phrase need not say
@@ -313,20 +327,22 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   from it and says how old it is; --refresh reads Backstage again, --cached
   answers from the kept copy whatever its age and never asks Backstage, and
   IDP_BACKSTAGE_CACHE=off keeps nothing.
-  A phrase, ask, plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL. None
-  of them writes, and neither do plan and init without --submit. With it, plan cuts
-  a branch idp-agent/… from HEAD in the declarations repository, which must
-  be a git clone's root, for review. When the checked-out branch tracks one
-  on github.com, both forms of plan push that branch with your git and open
-  a pull request into it with your gh, once gh is logged in and the base's
-  ruleset keeps you from merging it unreviewed (idpa protection says whether
-  it does); --local keeps the branch in the clone. plan "<intent>" --submit
-  crosses five gates, the Reviewer last, and reads the road, gh and the
-  base's rules before any model is paid, refusing a repository that cannot
-  take the branch, or a service whose .idp-agent.yml names another
-  repository; plan --from crosses four gates and no Reviewer. Either way
-  the merge authorises. Every model-backed command also needs that
-  provider's key (ANTHROPIC_API_KEY, MISTRAL_API_KEY or OPENAI_API_KEY);
+  A phrase, ask, plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL.
+  None of them writes, and neither do a phrase, plan and init without
+  --submit. With it, plan cuts a branch idp-agent/… from HEAD in the
+  declarations repository, which must be a git clone's root, for review. When
+  the checked-out branch tracks one on github.com, both forms of plan push
+  that branch with your git and open a pull request into it with your gh, once
+  gh is logged in and the base's ruleset keeps you from merging it unreviewed
+  (idpa protection says whether it does); --local keeps the branch in the
+  clone. plan "<intent>" --submit crosses five gates, the Reviewer last, and
+  reads the road, gh and the base's rules before any model is paid, refusing a
+  repository that cannot take the branch, or a service whose .idp-agent.yml
+  names another repository; plan --from crosses four gates and no Reviewer.
+  Either way the merge authorises. A phrase takes --submit too: a change is
+  submitted as plan "<intent>" --submit submits it, and a question is refused.
+  Every model-backed command also needs that provider's key
+  (ANTHROPIC_API_KEY, MISTRAL_API_KEY or OPENAI_API_KEY);
   IDP_TIMEOUT bounds each model call, in seconds, 120 by default.
   IDP_SUPERVISOR_MODEL gives the Supervisor, which only classifies a phrase,
   another model of the same provider; unset, it uses IDP_MODEL.
@@ -747,9 +763,8 @@ function parsePhrase(argv: string[]): Command {
         project: { type: 'string' },
         json: { type: 'boolean' },
         quiet: { type: 'boolean' },
-        // Read only to be refused in words (D8), rather than as an option
-        // this does not know.
         submit: { type: 'boolean' },
+        local: { type: 'boolean' },
       },
       allowPositionals: true,
       strict: true,
@@ -761,17 +776,17 @@ function parsePhrase(argv: string[]): Command {
       const option = argv.find((argument) => argument.startsWith('-')) ?? ''
       return { name: 'error', message: `options go after the command: idpa ${first} … ${option}` }
     }
-    // D8: a phrase reaches the Supervisor before it is known to be a change,
-    // and a submission refuses a repository that cannot take it before any
-    // model is paid. Until the entry does that too, a change is submitted by
-    // plan, by either road.
-    if (values.submit === true) {
+    // A phrase submits from stage 6 (D8 lifted, decision 14): the forge, gh and the base's
+    // rules are read before the Supervisor, so a repository that cannot take the branch is
+    // refused before any model is paid. The demo SI is never written.
+    if (values.submit === true && values.demo === true) {
       return {
         name: 'error',
-        message:
-          'idpa "<phrase>" does not submit; a change is submitted with plan "<intent>" --submit, ' +
-          'or plan --from <plan.json> --submit',
+        message: 'idpa "<phrase>" --submit never writes to the demo SI; name the declarations repository with --repo',
       }
+    }
+    if (values.local === true && values.submit !== true) {
+      return { name: 'error', message: LOCAL_WITHOUT_SUBMIT }
     }
     const phrase = positionals.join(' ').trim()
     if (phrase === '') {
@@ -798,6 +813,8 @@ function parsePhrase(argv: string[]): Command {
       ...(values.project !== undefined ? { project: values.project } : {}),
       json: values.json === true,
       ...(values.quiet === true ? { quiet: true } : {}),
+      ...(values.submit === true ? { submit: true as const } : {}),
+      ...(values.local === true ? { local: true as const } : {}),
     }
   } catch (error) {
     return { name: 'error', message: (error as Error).message }
@@ -1615,6 +1632,42 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
       return failed(error, err)
     }
   }
+  // A phrase's change road: its repositories, and with --submit its forge.
+  const cwd = (): string => deps.cwd ?? process.cwd()
+  let roots: Roots | undefined
+  let early: Opened | undefined
+  // The line naming the GitHub road, held until the lines saying what the run
+  // reads are said: the terminal reads what is read, then where it goes.
+  const road: string[] = []
+  if (command.name === 'entry' && command.submit === true) {
+    // --submit: everything a submission can refuse as an argument, before the
+    // catalogue is requested and before the configuration — as
+    // `declarationsFor` already is. A person who typed --submit has said the
+    // phrase is a change, so the repository it would be decided against is
+    // required now rather than after the Supervisor's word; then the
+    // `--project`, the local forge, the road, the clone's own configuration
+    // and gh, as `plan "<intent>" --submit` opens them (stage 6 brief § 3).
+    if (declarations === undefined) {
+      err(`${planNeedsRepository(context, 'idpa "<phrase>" --submit')}\n\n${usageOf('entry')}`)
+      return EXIT.badUsage
+    }
+    try {
+      roots = await applicationRoot({
+        who: 'idpa',
+        repo: declarations.root,
+        project: command.project,
+        cwd,
+        home: homeOf(deps.env ?? process.env),
+      })
+      early = await openForSubmission(roots.repo, 'declarations', {
+        ...submissionOf(deps, command.local === true, err),
+        notice: (line) => void road.push(line),
+        route: 'phrase',
+      })
+    } catch (error) {
+      return failed(error, err)
+    }
+  }
   const { provider, source } = read
 
   // Once per run, before any model is chosen or called. A catalogue that
@@ -1719,6 +1772,9 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     )
   }
 
+  // Where a phrase's --submit goes, once what the run reads has been said.
+  for (const line of road) toStderr(err)(line)
+
   // The organisation beside the entities, and never among them: every table,
   // summary and tool row built from `all()` is what it was. Its references
   // are judged only where a catalogue read their kind whole.
@@ -1764,11 +1820,10 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     // previewed against the demo SI: refused below, once the Supervisor has
     // said it is a change. A `--project` is still refused for what it is on
     // its own, so the same argument meets the same refusal wherever the SI
-    // came from.
-    const cwd = (): string => deps.cwd ?? process.cwd()
-    let roots: Roots | undefined
+    // came from. With --submit they were decided before the load, and are
+    // not decided twice.
     try {
-      if (declarations !== undefined) {
+      if (roots === undefined && declarations !== undefined) {
         roots = await applicationRoot({
           who: 'idpa',
           repo: declarations.root,
@@ -1776,7 +1831,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
           cwd,
           home: homeOf(deps.env ?? process.env),
         })
-      } else if (command.project !== undefined) {
+      } else if (roots === undefined && command.project !== undefined) {
         await projectRoot('idpa', command.project, cwd)
       }
     } catch (error) {
@@ -1802,12 +1857,30 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
           ...(roots?.project.kind === 'project' ? { project: roots.project.root } : {}),
         },
       },
-      async (client, emit) =>
-        runEntry({
+      async (client, emit) => {
+        if (early !== undefined) {
+          // § 12: the preflight before the Supervisor, the first model call of
+          // this road. `runIntent` asks again, and is answered from this
+          // verdict (`refuseUnprotected` keeps one per forge and base).
+          const unprotected = await refuseUnprotected(early, { json: command.json })
+          if (unprotected !== undefined) return unprotected
+        }
+        // The forge opened above, handed on: `runIntent` reads its base again
+        // and judges the working tree against it, and opens no second one.
+        const confirm = confirmOf(deps, command.json)
+        const submit: SubmitOptions | undefined =
+          early === undefined || roots === undefined
+            ? undefined
+            : {
+                ...(confirm !== undefined ? { confirm } : {}),
+                open: reopening(early, roots.repo, 'declarations'),
+              }
+        return runEntry({
           ...asked,
           client,
           emit,
           json: command.json,
+          ...(early !== undefined ? { submit: true } : {}),
           change: async () => {
             if (roots === undefined) {
               throw new RepositoryArgumentError(
@@ -1824,9 +1897,11 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
               json: command.json,
               colour: colourOf(deps),
               notice: toStderr(err),
+              ...(submit !== undefined ? { submit } : {}),
             })
           },
-        }),
+        })
+      },
     )
   }
 

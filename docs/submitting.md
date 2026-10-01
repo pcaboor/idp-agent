@@ -3,7 +3,11 @@
 What a person needs before idpa can open a pull request on their behalf, and how to check it.
 Stage 6 builds the submission itself task by task ([`plans/stage-6-github.md`](plans/stage-6-github.md));
 what works today is `idpa protection`, the check every submission makes before it writes anything,
-and [`plan --from … --submit`](#submitting-a-plan-file), which pushes and opens the pull request.
+and every road that submits, each of which pushes and opens the pull request:
+[`plan --from … --submit`](#submitting-a-plan-file),
+[`plan "<intent>" --submit`](#from-a-service-plan-intent---submit),
+[`idpa "<phrase>" --submit`](#one-phrase-idpa-phrase---submit) and
+[`init --submit`](#a-services-own-repository-init---submit).
 The design is [`stage-6-brief.md`](stage-6-brief.md), § 3 to § 15.
 
 ## What you need
@@ -204,8 +208,45 @@ and nothing of GitHub is paid for by a model or shown to one. In this order:
 A run that ends on a question (exit 3) or stops at three attempts (exit 1) reads nothing more of
 GitHub and writes nothing. `--local` cuts the branch in the clone only and starts no gh.
 
-`idpa "<phrase>" --submit` follows in stage 6's next task; until then, `idpa "<phrase>"` does not
-submit.
+## One phrase: `idpa "<phrase>" --submit`
+
+```bash
+cd ~/my-service
+idpa "give component:default/billing-api read access to resource:default/orders-db-prod" --repo ~/my-iac --submit
+```
+
+The one gesture submits too. Typing `--submit` says the phrase is a change, so everything a
+submission can refuse as an argument is refused before anything is requested of a catalogue and
+before any model, and the base's rules are read before the Supervisor, the first model call of this
+road. In this order:
+
+1. **The arguments**: `--submit --demo` is refused at once, exit 2 — the demo SI is never written —
+   and so is `--local` without `--submit`.
+2. **The declarations repository, the service and the road**, before a catalogue is read and before
+   the model is configured: with no declarations repository named anywhere, exit 2, naming every way
+   to name one; then `--project`, then the clone, its upstream, its own configuration and gh, as on
+   the intent road, each refusal exit 2.
+3. **What the run reads**, as without `--submit` — the line naming the repository or the catalogue
+   — and then the `submitting to …` line.
+4. **The model's configuration**: exit 2 when it is missing.
+5. **The ruleset and GitHub's tip**, exit 1 when either refuses, before the Supervisor is paid.
+6. **The Supervisor's one word.** The Supervisor is sent exactly what it is sent without
+   `--submit`, and nothing of GitHub.
+7. **A change** then takes the intent road from its step 3: the service's `iacRepo`, the working
+   tree, the rules (already read, and not read again), the Inspector, the Architect, the gates, the
+   Reviewer, the diff, the question and the moment of acting. **A question** is refused, exit 3, and
+   the Analyst is never called:
+
+   ```text
+   that is a question, and --submit submits a change: ask it again without --submit. Nothing was answered, and nothing was written.
+   ```
+
+   Exit 3, as `ask` declines a change: the request is understood, and this build does not submit a
+   question. In `--json` too, with nothing on stdout, since a question has no JSON form.
+
+`--local` cuts the branch in the clone only and starts no gh, as on every road. What a divergent
+working tree costs here is one Supervisor turn: it is judged with the catalogue's bytes, which the
+change road reads after the Supervisor's word.
 
 ## A service's own repository: `init --submit`
 

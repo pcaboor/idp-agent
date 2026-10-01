@@ -157,21 +157,30 @@ describe('parseArguments: --submit', () => {
     expect(parseArguments(['plan', 'give billing-api read access'])).not.toHaveProperty('submit')
   })
 
-  it('is refused on a phrase, pointing at both roads that submit (D8)', () => {
-    // The entry reaches the Supervisor before it knows a phrase is a change,
-    // and a submission refuses a repository that cannot take it before any
-    // model is paid: at stage 5, a change is submitted by plan.
-    for (const argv of [
-      ['give billing-api read access to orders-db', '--submit'],
-      ['give billing-api read access to orders-db', '--submit', '--demo'],
-    ]) {
-      expect(parseArguments(argv)).toStrictEqual({
-        name: 'error',
-        message:
-          'idpa "<phrase>" does not submit; a change is submitted with plan "<intent>" --submit, ' +
-          'or plan --from <plan.json> --submit',
-      })
-    }
+  it('is a flag of the phrase from stage 6, with --local beside it', () => {
+    expect(parseArguments(['give billing-api read access to orders-db', '--submit'])).toMatchObject({
+      name: 'entry',
+      phrase: 'give billing-api read access to orders-db',
+      submit: true,
+    })
+    expect(parseArguments(['give billing-api read access to orders-db', '--submit', '--local'])).toMatchObject({
+      name: 'entry',
+      submit: true,
+      local: true,
+    })
+    expect(parseArguments(['give billing-api read access to orders-db'])).not.toHaveProperty('submit')
+    expect(parseArguments(['give billing-api read access to orders-db', '--submit'])).not.toHaveProperty('local')
+  })
+
+  it('is refused on a phrase with --demo, and --local is refused without it', () => {
+    expect(parseArguments(['give billing-api read access to orders-db', '--submit', '--demo'])).toStrictEqual({
+      name: 'error',
+      message: 'idpa "<phrase>" --submit never writes to the demo SI; name the declarations repository with --repo',
+    })
+    expect(parseArguments(['give billing-api read access to orders-db', '--local'])).toStrictEqual({
+      name: 'error',
+      message: '--local says where --submit cuts its branch, and there is no --submit here: add --submit, or leave --local out',
+    })
   })
 
   it('parses --local beside --submit on plan and init', () => {
@@ -245,7 +254,7 @@ describe('HELP: --submit', () => {
     )
     // The sentence stage 4 said, whatever its case and however it is wrapped.
     expect(HELP.replace(/\s+/g, ' ').toLowerCase()).not.toContain('none of them writes.')
-    expect(HELP.replace(/\s+/g, ' ')).toContain('None of them writes, and neither do plan and init without --submit.')
+    expect(HELP.replace(/\s+/g, ' ')).toContain('None of them writes, and neither do a phrase, plan and init without --submit.')
     expect(HELP).toContain('four gates')
     expect(HELP).toContain('the merge authorises')
   })
@@ -255,6 +264,13 @@ describe('HELP: --submit', () => {
       'idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json] [--submit [--local]]',
     )
     expect(HELP.replace(/\s+/g, ' ')).toContain('plan "<intent>" --submit crosses five gates, the Reviewer last')
+  })
+
+  it('names --submit and --local on the phrase, and says a question is refused', () => {
+    expect(usageOf('entry')).toContain('[--submit [--local]]')
+    expect(HELP.replace(/\s+/g, ' ')).toContain(
+      'A phrase takes --submit too: a change is submitted as plan "<intent>" --submit submits it, and a question is refused.',
+    )
   })
 })
 
