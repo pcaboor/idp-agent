@@ -36,7 +36,10 @@ the grammar does not know, because the check is on the vector, not on the reques
   URL of `GITHUB_PUSH_URL`'s five forms, never a remote's name, and one refspec
   `<commit>:<ref>`, the ref a submission's and the lease's.
 - **gh** (`checkGhArgv`): `--version`; `api --hostname github.com --method GET --include
-  <path>`, the path one of eight templates, every value held to its grammar and encoded, and
+  <path>`, the path one of ten templates — eight, and from Task 6.3.6 the two reads of what is
+  in flight: `repos/<o>/<r>/pulls?state=open&base=<base>&sort=created&direction=desc&per_page=100&page=<p>`,
+  `<p>` 1 to `IN_FLIGHT_PAGES` (3) and nothing else, and `repos/<o>/<r>/pulls/<n>/files?per_page=100`,
+  each matched whole, so neither bends into a door — every value held to its grammar and encoded, and
   no `{`, `}` or `:` anywhere — gh's placeholders, `{owner}` and `:owner` alike, which gh
   fills from the current directory's repository; `api --hostname github.com --method POST
   --include repos/<o>/<r>/pulls --input -`, the one write, its body on stdin and exactly the

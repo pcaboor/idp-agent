@@ -1,7 +1,10 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
+import { isSubmissionBranch } from '../../src/core/github/in-flight.js'
 import { baseOfMerge, isRemoteName, parseRemoteUrl } from '../../src/core/github/remote.js'
-import { checkGhArgv, ghArgv, type GhRoute } from '../../src/process/gh.js'
+import { GITHUB_LIMITS } from '../../src/forge/github/limits.js'
+import { IN_FLIGHT_PAGES, checkGhArgv, ghArgv, type GhRoute } from '../../src/process/gh.js'
+import { SUBMISSION_BRANCH } from '../../src/process/grammar.js'
 import { GITHUB_PUSH_URL, HARDENING, checkGitArgv } from '../../src/process/git.js'
 
 /**
@@ -103,6 +106,7 @@ describe('the two copies of each grammar give one answer', () => {
       const engine = baseOfMerge(`refs/heads/${base}`) === base
       expect(gitPasses('check-ref-format', '--branch', base), JSON.stringify(base)).toBe(engine)
       expect(ghPasses({ route: 'rules', owner: 'acme', name: 'iac', branch: base }), JSON.stringify(base)).toBe(engine)
+      expect(ghPasses({ route: 'open-pulls', owner: 'acme', name: 'iac', base, page: 1 }), JSON.stringify(base)).toBe(engine)
     }
     for (const base of named) agree(base)
     fc.assert(fc.property(fc.oneof(word(24), long(253, 257)), agree), RUNS)
@@ -165,6 +169,26 @@ describe('the two copies of each grammar give one answer', () => {
         fc.oneof(word(12), long(98, 102)),
         agree,
       ),
+      RUNS,
+    )
+  })
+
+  it('the pages of what is in flight: the launcher asks exactly as many as the run may read', () => {
+    expect(IN_FLIGHT_PAGES).toBe(GITHUB_LIMITS.inFlightPages)
+    for (const page of [0, 1, 2, 3, 4, 1.5, -1]) {
+      const allowed = Number.isInteger(page) && page >= 1 && page <= GITHUB_LIMITS.inFlightPages
+      expect(ghPasses({ route: 'open-pulls', owner: 'acme', name: 'iac', base: 'main', page }), String(page)).toBe(allowed)
+    }
+  })
+
+  it("a submission's branch: the engine's isSubmissionBranch iff the launchers' SUBMISSION_BRANCH", () => {
+    const named = ['idp-agent/x-0123abcd', 'idp-agent/x-0123abc', 'idp-agent/X-0123abcd', 'idp-agent/x-0123abcd/y', 'feature/x', '']
+    for (const name of named) expect(isSubmissionBranch(name), name).toBe(SUBMISSION_BRANCH.test(name))
+    fc.assert(
+      fc.property(fc.constantFrom('idp-agent/', 'idp-agent', 'x/', ''), word(16), fc.constantFrom('-0123abcd', '-0123abc', 'G0123abcd', ''), (prefix, slug, tail) => {
+        const name = `${prefix}${slug}${tail}`
+        expect(isSubmissionBranch(name)).toBe(SUBMISSION_BRANCH.test(name))
+      }),
       RUNS,
     )
   })

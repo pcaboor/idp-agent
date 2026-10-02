@@ -38,7 +38,14 @@
  *  14. plan --from … --submit of another change where the repository has no
  *      ruleset: exit 0, the note on stderr and in the pull request's body —
  *      the pull request is opened whatever the base's rules, and whether its
- *      author may merge it alone is the company's rule (2026-10-01).
+ *      author may merge it alone is the company's rule (2026-10-01);
+ *  15. on a fresh GitHub where grace may push beside ada, step 5's change
+ *      submitted again as ada: exit 0, only its pull request opened, #1;
+ *  16. the same command as grace: exit 0, "already proposed by ada in pull
+ *      request #1" — another account's identical proposal is named, and
+ *      nothing is written on either side (2026-10-01);
+ *  17. as grace, a different change to the same file: exit 1, the other
+ *      pull request shown with its patch on stderr, nothing written.
  *
  * What it runs cannot reach the person's GitHub or spend their model key: the
  * binary's environment loses every `IDP_*`, `*_API_KEY`, `GH_*`, `GITHUB_*`
@@ -533,6 +540,77 @@ step('14. Submitted where the author may merge alone: opened, with the note', {
       /^Pull request #1 opened on github\.com\/acme\/iac: https:\/\/github\.com\/acme\/iac\/pull\/1$/m.test(run.stdout ?? ''),
     ],
     ['the note in its body', (fakeState().pulls ?? [])[0]?.body.split('\n').includes(NOTE) === true],
+  ],
+})
+
+// What is in flight (the owner's decision of 2026-10-01): a fresh GitHub,
+// protected, where grace may push beside ada. Step 5's branch is still on
+// GitHub's side, so ada's run opens only its pull request; grace's run of the
+// very same change names it, and her different change to the same file is
+// refused with the other pull request's patch on stderr.
+const SHARED = {
+  ...world(PROTECTED),
+  accounts: [
+    { login: 'ada', type: 'User' },
+    { login: 'grace', type: 'User' },
+  ],
+}
+SHARED.repositories[0].permissions = {
+  ...SHARED.repositories[0].permissions,
+  grace: { admin: false, maintain: false, push: true },
+}
+step('15. On a fresh GitHub, step 5’s change submitted again as ada', {
+  state: SHARED,
+  expects: 'only the pull request opened, #1: step 5 pushed its branch',
+  args: SUBMIT,
+  expected: 0,
+  checks: (run) => [
+    [
+      'pull request #1, at the URL the engine built',
+      /^Pull request #1 opened on github\.com\/acme\/iac: https:\/\/github\.com\/acme\/iac\/pull\/1$/m.test(run.stdout ?? ''),
+    ],
+    ['one pull request', (fakeState().pulls ?? []).length === 1],
+  ],
+})
+const flown = { clone: ourBranches(CLONE), github: ourBranches(GITHUB) }
+const inFlightUnwritten = () =>
+  ourBranches(CLONE) === flown.clone && ourBranches(GITHUB) === flown.github && (fakeState().pulls ?? []).length === 1
+step("16. Another account's identical proposal is named", {
+  state: { ...fakeState(), session: { login: 'grace' } },
+  expects: '"already proposed by ada in pull request #1", and nothing written',
+  args: SUBMIT,
+  expected: 0,
+  checks: (run) => [
+    ['"already proposed by ada in pull request #1" on stderr', /^already proposed by ada in pull request #1$/m.test(run.stderr ?? '')],
+    [
+      '"already proposed in pull request #1" on stdout, naming nobody',
+      /^1 file · already proposed in pull request #1 on github\.com\/acme\/iac: https:\/\/github\.com\/acme\/iac\/pull\/1 · nothing written$/m.test(
+        run.stdout ?? '',
+      ) && !/\bada\b/.test(run.stdout ?? ''),
+    ],
+    ['nothing written on either side', inFlightUnwritten()],
+  ],
+})
+const OTHER = path.join(scratch, 'open-network-billing.json')
+writeFileSync(
+  OTHER,
+  readFileSync(path.join(ROOT, 'examples/open-network.json'), 'utf8').replaceAll(
+    'component:default/orders-api',
+    'component:default/billing-api',
+  ),
+)
+const FLOW = 'dependencies/network/orders-api-to-payments.yml'
+step('17. A different change to the same file is refused, its patch shown', {
+  expects: 'the other pull request shown, its patch on stderr, and nothing written',
+  args: ['plan', '--from', path.basename(OTHER), '--repo', 'iac', '--submit'],
+  expected: 1,
+  checks: (run) => [
+    [`"already changes ${FLOW}, differently"`, (run.stdout ?? '').includes(`already changes ${FLOW}, differently`)],
+    [
+      `"In pull request #1, ${FLOW}:" and indented patch lines on stderr`,
+      new RegExp(`^In pull request #1, ${FLOW}:\n {4}@@`, 'm').test(run.stderr ?? ''),
+    ],
+    ['nothing written on either side', inFlightUnwritten()],
   ],
 })
 

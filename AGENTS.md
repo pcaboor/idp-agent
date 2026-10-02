@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 4880 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 4975 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -66,6 +66,7 @@ number in the same commit as the change.
 the repository already declares everything each operation states, the file and fields named,
 or a branch submitted, already submitted, or declined at the confirmation, nothing written
 — on GitHub whatever the base's rules, a note saying when its author may merge it alone — or a
+change another person already proposed, byte for byte, named — or a
 proposal declined, or not made, the preview standing
 · `1` the answer is negative — nothing matched, a name was ambiguous (two entities sharing it
 included), a relation holds nothing, two entities are linked by no declared path and reach
@@ -79,7 +80,8 @@ refused — a catalogue that differs from `HEAD`, a plan writing into both repos
 refusal at the moment of writing, git failing, a repository on GitHub gh's account cannot
 push to, that is archived or that answers under another name, a clone not level with GitHub, a closed or reverted pull request, a pull request not opened, a
 push refused, a service whose `.idp-agent.yml` names another repository than the one a
-submission goes to — or something failed unexpectedly · `2`
+submission goes to, an idp-agent pull request in flight that changes a file this change
+writes, differently, or more of them than this build compares — or something failed unexpectedly · `2`
 the arguments were refused — a bad flag, a plan file that is not a plan, a `--repo`, a
 `--project`, a configured repository or the directory `validate` or `init` is handed that is
 not a directory, a `--project` that is a declarations repository or the one the change is
@@ -154,7 +156,7 @@ service's catalog-info and its `.idp-agent.yml` on one branch of its own reposit
 | 3 | `init platform` — scaffold, CI, CODEOWNERS, witnesses, `validate` | done |
 | 4 | Preview only — Inspector, Architect, `Plan`, diff; writes nothing | done |
 | 5 | Write + local branch — `ForgeProvider`, atomicity, idempotence | done |
-| 6 | GitHub pull request — the person's git and gh, the base's ruleset, the merge refused | in progress: `idpa protection`, `plan --from … --submit`, `plan "<intent>" --submit`, `init --submit`, `idpa "<phrase>" --submit`, the pull request opened whatever the base's rules, with a note where its author may merge it alone (6.3.4), and, at a terminal, a change's diff ending on the engine's proposal to open it (6.3.5) |
+| 6 | GitHub pull request — the person's git and gh, the base's ruleset, the merge refused | in progress: `idpa protection`, `plan --from … --submit`, `plan "<intent>" --submit`, `init --submit`, `idpa "<phrase>" --submit`, the pull request opened whatever the base's rules, with a note where its author may merge it alone (6.3.4), at a terminal, a change's diff ending on the engine's proposal to open it (6.3.5), and what is in flight read first — the open idp-agent pull requests into the base, before any model and again before writing: the same change named, a competing one refused, one beside proposed beside it (6.3.6) |
 | 7 | Polish — Ink TUI, README, asciinema, npm publish | |
 
 The order is imposed by the doctrine: read first, validate before the first write,

@@ -1,3 +1,4 @@
+import type { InFlightEntry, InFlightVerdict } from '../core/github/in-flight.js'
 import type { MergeNote, Missing } from '../core/github/protection.js'
 import type { GitHubRepository } from '../core/github/remote.js'
 import type { Cleared, Expectation, Repository } from '../core/plan/clear.js'
@@ -47,6 +48,13 @@ export type Submitted =
       readonly note?: MergeNote
       /** What step 11's read found missing, set with `note`: the `base-unguarded` line names the rules among them. */
       readonly missing?: readonly Missing[]
+      /**
+       * The idp-agent pull requests in flight beside it, on other files of the
+       * same entities, as step 8 judged them: the body names them by number
+       * (Task 6.3.6). Each pull request's author, branch and patch are for the
+       * CLI's stderr lines; the report and the statuses drop them.
+       */
+      readonly beside?: readonly InFlightEntry[]
     }
   /** The same bytes, already submitted on this base: the branch is named and nothing is written (§9.2). */
   | {
@@ -67,7 +75,29 @@ export type Submitted =
    * control or bidi character — so `cli/` prints it through `inertLine`, as it
    * does `GitError.stderr`.
    */
-  | { readonly outcome: 'refused'; readonly reason: string; readonly kept?: string }
+  | {
+      readonly outcome: 'refused'
+      readonly reason: string
+      readonly kept?: string
+      /**
+       * Refused because an idp-agent pull request in flight already changes a
+       * file this change writes, differently: each, with the paths of this
+       * change it changes, for the CLI to show (Task 6.3.6).
+       */
+      readonly inFlight?: readonly InFlightEntry[]
+    }
+  /**
+   * The same bytes, already proposed by another account's pull request in
+   * flight: named, and nothing is written on either side (the owner's decision
+   * of 2026-10-01). `by` is that pull request's author, for stderr alone.
+   */
+  | {
+      readonly outcome: 'already-proposed'
+      readonly branch: string
+      readonly number: number
+      readonly url: string
+      readonly by: string
+    }
   /**
    * Our branch is on GitHub and no pull request is open from it. Recognised,
    * it is a submission an earlier run stopped at step 12, which `submit`
@@ -99,7 +129,7 @@ export type Recognised = Extract<
 
 /**
  * A forge can do four things, one of them a write, and the absences are the design (ADR-0006,
- * ADR-0010).
+ * ADR-0010); on GitHub a fifth, a read of what is in flight (Task 6.3.6).
  *
  * No `merge`: the merge is the act of authorisation, and a tool that could
  * perform it would make that sentence a matter of not calling a method. There
@@ -139,6 +169,19 @@ export interface ForgeProvider {
   recognise(change: Cleared, base: Base): Promise<Recognised | undefined>
   /** Re-reads the base, re-checks divergence, then creates one branch — or says why not. */
   submit(change: Cleared, base: Base): Promise<Submitted>
+  /**
+   * What is in flight, judged for a change (the GitHub forge's; the local
+   * forge has none): the open idp-agent pull requests into the base, read once
+   * per forge, then answered from what was read. `after` is an edit's bytes,
+   * hashed by the forge to the blob id GitHub reports; absent when the bytes
+   * are not drafted yet (`init`, before the model). Reads only. `submit` reads
+   * again at step 8 on its own.
+   */
+  readonly inFlight?: (target: {
+    readonly writes: readonly { readonly path: string; readonly after?: string }[]
+    readonly related: readonly string[]
+    readonly branch?: string
+  }) => Promise<InFlightVerdict>
 }
 
 /**

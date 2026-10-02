@@ -94,6 +94,11 @@ idpa init                         run in the service repository (or --project <d
  10. submit    stages 5/6         service first; declarations once its consumer is identifiable
 ```
 
+Step 10 reads what is in flight first (stage 6 plan, Task 6.3.6): before its model, it says the
+idp-agent pull requests in flight on the service's catalog-info (`sayInFlight`, as `init --submit`
+does), and its drafted dependency paths are judged after the model, in `submitting()`, and again at
+step 8 — the same bytes named, a competing change refused, one beside proposed beside it.
+
 Four choices in this flow are load-bearing.
 
 **Discovery extends `init`; it is not a new command.** `init` is already "once per

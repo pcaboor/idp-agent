@@ -22,7 +22,7 @@ import { LauncherRefusal } from './refusal.js'
  *
  * gh speaks exactly three shapes here, checked on the FINISHED vector before
  * anything starts (`checkGhArgv`): `--version`; `api --hostname github.com
- * --method GET --include <path>`, the path one of eight templates, every value
+ * --method GET --include <path>`, the path one of ten templates, every value
  * held to its grammar and encoded; and `api --hostname github.com --method
  * POST --include repos/<o>/<r>/pulls --input -`, the one write, its body on
  * standard input. `--method` is always explicit, because gh's default turns to
@@ -101,7 +101,11 @@ export function ghEnvironment(env?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 
 // ---------------------------------------------------------------- requests
 
-/** The eight things idp-agent reads on GitHub, each a template of § 6. */
+/**
+ * The ten things idp-agent reads on GitHub, each a template of § 6: eight, and
+ * from 6.3.6 the two reads of what is in flight — the open pull requests into
+ * a base, one page at a time, and one pull request's files.
+ */
 export type GhRoute =
   | { readonly route: 'user' }
   | { readonly route: 'repository'; readonly owner: string; readonly name: string }
@@ -111,6 +115,8 @@ export type GhRoute =
   | { readonly route: 'ref'; readonly owner: string; readonly name: string; readonly branch: string }
   | { readonly route: 'commit'; readonly owner: string; readonly name: string; readonly sha: string }
   | { readonly route: 'pulls'; readonly owner: string; readonly name: string; readonly head: string }
+  | { readonly route: 'open-pulls'; readonly owner: string; readonly name: string; readonly base: string; readonly page: number }
+  | { readonly route: 'pull-files'; readonly owner: string; readonly name: string; readonly number: number }
 
 /** A call gh is asked to make; `body` is the whole JSON of the one POST. */
 export type GhRequest =
@@ -145,6 +151,10 @@ const pathOf = (route: GhRoute): string => {
       return `repos/${route.owner}/${route.name}/git/commits/${route.sha}`
     case 'pulls':
       return `repos/${route.owner}/${route.name}/pulls?head=${encodeURIComponent(`${route.owner}:${route.head}`)}&state=all&per_page=100`
+    case 'open-pulls':
+      return `repos/${route.owner}/${route.name}/pulls?${openPullsQuery(encodeURIComponent(route.base))}&page=${String(route.page)}`
+    case 'pull-files':
+      return `repos/${route.owner}/${route.name}/pulls/${String(route.number)}/files?per_page=100`
     default: {
       const _exhaustive: never = route
       return _exhaustive
@@ -153,6 +163,22 @@ const pathOf = (route: GhRoute): string => {
 }
 
 const API = ['api', '--hostname', 'github.com', '--method'] as const
+
+/**
+ * How many pages of open pull requests a run may ask for: the copy of
+ * `GITHUB_LIMITS.inFlightPages` the grammar holds a page to, since `process/`
+ * imports nothing of ours (`grammar-agreement.test.ts` holds the two to one
+ * number). A fourth page is never asked, and gh's `--paginate` stays refused.
+ */
+export const IN_FLIGHT_PAGES = 3
+
+/**
+ * The open pull requests into a base, newest first, a hundred a page: the
+ * order stated rather than left to GitHub's default, so page 1 is the most
+ * recently created by construction.
+ */
+const openPullsQuery = (encodedBase: string): string =>
+  `state=open&base=${encodedBase}&sort=created&direction=desc&per_page=100`
 
 /** The vector for `request`, before any check: `checkGhArgv` is what decides whether it runs. */
 export function ghArgv(request: GhRequest): string[] {
@@ -205,7 +231,26 @@ const isPullsHead = (encoded: string, owner: string): boolean => {
   )
 }
 
-/** One of the eight `GET` templates, every value held to its grammar. */
+/** A base as a query value: a branch, written exactly as `encodeURIComponent` writes it. */
+const isEncodedBase = (encoded: string): boolean => {
+  let base: string
+  try {
+    base = decodeURIComponent(encoded)
+  } catch {
+    return false
+  }
+  return isBranch(base) && encodeURIComponent(base) === encoded
+}
+
+/** `pulls?<the open query>&page=<p>`, the base encoded whole and `p` one of 1 to `IN_FLIGHT_PAGES`. */
+const isOpenPulls = (rest: string): boolean => {
+  const query = /^\/pulls\?state=open&base=([^&]+)&sort=created&direction=desc&per_page=100&page=([1-9][0-9]*)$/.exec(rest)
+  if (query === null) return false
+  const [, base = '', page = ''] = query
+  return isEncodedBase(base) && Number(page) <= IN_FLIGHT_PAGES
+}
+
+/** One of the ten `GET` templates, every value held to its grammar. */
 const isGetPath = (route: string): boolean => {
   if (route === 'user') return true
   const repository = /^repos\/([^/?#]+)\/([^/?#]+)(.*)$/s.exec(route)
@@ -224,7 +269,9 @@ const isGetPath = (route: string): boolean => {
     within('/rulesets/', '', isId) ||
     within('/git/ref/heads/', '', isRefPath) ||
     within('/git/commits/', '', isHex) ||
-    within('/pulls?head=', '&state=all&per_page=100', (head) => isPullsHead(head, owner))
+    within('/pulls?head=', '&state=all&per_page=100', (head) => isPullsHead(head, owner)) ||
+    isOpenPulls(rest) ||
+    within('/pulls/', '/files?per_page=100', isId)
   )
 }
 

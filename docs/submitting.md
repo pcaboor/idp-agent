@@ -379,6 +379,90 @@ gh starts — the branch is cut at a clone's root, and the service's paths would
 prefix; `init` without `--submit` previews it), and a plan file writing into both repositories,
 which `plan --from` refuses pointing here.
 
+## What is in flight
+
+Before anything is written, idpa reads the idp-agent pull requests already open into your base, and
+compares your change with them (the owner's decision of 2026-10-01). Two people asking for the same
+access at the same time open one pull request between them, not two; two different changes to one
+file are stopped before they meet at the merge.
+
+**What it reads.** The open pull requests into the base, newest first, a hundred a page, at most
+three pages; of those, the **candidates** — a branch of this very repository (a fork's never is)
+named as an idp-agent run names one, `idp-agent/<slug>-<8 hex>` — and the files each candidate
+changes, one page of a hundred. Two `GET`s through your gh, nothing else, and no write: another
+person's pull request is never edited, commented on, closed or linked to. Never read: a pull
+request's title or body (dropped as it is parsed), a file's bytes on GitHub, a branch somebody made
+by hand, a person's own pull request on any other branch — that one meets yours at the merge, as
+any two changes do. A bot's pull request (`dependabot[bot]`) is not a candidate, and is not looked
+at further. Your own pull request from this very branch is recognition's, which names it as
+*already submitted*.
+
+**What it decides**, in this order:
+
+| A candidate… | What happens | Exit |
+|---|---|---|
+| changes exactly the files your change writes, to the same bytes, its file list whole | named: `already proposed by <login> in pull request #12`; nothing written | 0 |
+| changes a file your change writes, otherwise (or renames or removes it) | shown, its patch for that file on stderr; your change is not submitted | 1 |
+| changes another file of the same entities — one that declares, or names, an entity your plan names — and none your change writes | said, and your change goes on: asked as before, its pull request's body naming the other by number | as the submission |
+| none of the above | nothing said | — |
+
+A candidate whose file list runs past a hundred is judged on the first hundred, and said to be;
+it can be competing or beside, never the same.
+
+```text
+1 file · already proposed in pull request #12 on github.com/acme/iac: https://github.com/acme/iac/pull/12 · nothing written
+```
+
+```text
+1 file · not submitted:
+  pull request #12 on github.com/acme/iac already changes dependencies/network/orders-api-to-payments.yml, differently: https://github.com/acme/iac/pull/12
+Review it there, or run this again once it is merged or closed. Nothing was written.
+```
+
+```text
+In flight beside it on github.com/acme/iac: pull request #12, changing dependencies/access/billing-api-cache-dev.yml
+```
+
+**When it is read, on each road.**
+
+| Road | Read | Said before the model | Judged | Read again |
+|---|---|---|---|---|
+| `plan --from … --submit` | before the preview | — | before the question | at the moment of writing |
+| `plan "<intent>" --submit` | before the Inspector | the pull requests touching the inspected service, when its root `catalog-info` declares one Component | after the Reviewer, from what was read | at the moment of writing |
+| `idpa "<phrase>" --submit` | before the Supervisor | before the Inspector, once the Supervisor took the phrase for a change | as `plan "<intent>"` | at the moment of writing |
+| `init --submit` | before the Inspector | the pull requests changing the service's `catalog-info` or `.idp-agent.yml` | once the Architect's bytes exist | at the moment of writing |
+| the proposal, at a terminal | after the last model call | — | before the question; the same or a competing change is why nothing is proposed, and the preview stands | at the moment of writing |
+| `--local`, any road | nothing is read on GitHub | — | — | — |
+
+Before the model nothing is refused for being in flight: before your change's bytes exist, the
+same change and a different one look alike. The run says what it found and goes on.
+
+**Two reads.** The first, before the question, is kept for the run. The second, at the moment of
+writing, reads page 1 again — the hundred most recently opened — and the files of a candidate that
+is new or was pushed to since; a change named or refused there writes nothing on either side, and
+`what is in flight changed while you read the diff:` says so first. What escapes both: a pull
+request opened between the second read and the push, or one beyond the hundred most recent pushed
+to after the first read. Then the same bytes still give the same branch name, refused by the lease
+or recognised; two different changes on one file meet at the merge.
+
+**The bounds.** More than 300 open pull requests into the base, or more than twenty idp-agent ones,
+is a read this build cannot make whole, and it is refused, exit 1, before any model, rather than
+judged on a part:
+
+```text
+github.com/acme/iac has 21 open idp-agent pull requests into main, more than the 20 this build compares: review some of them, then run this again. Nothing was written.
+```
+
+A run makes at most 92 gh calls.
+
+**Where each fact goes.** Another person's login, their branch and their patch are said on stderr,
+and nowhere else: not on stdout, so not in a trace or MLflow; not in `--json`, whose `submission`
+carries `already-proposed` with the number, the URL and your branch, or, on a refusal, `inFlight`
+with each pull request's number, URL and your own paths it changes; not in your pull request's body;
+never to a model. The body names a pull request beside it by number alone — `Opened beside pull
+request 12, open into main, …` — with no `#` and no URL, so GitHub adds nothing to the other pull
+request's timeline and notifies nobody.
+
 ## Push as gh's account
 
 Nothing idpa can read ties the account your git pushes with to the one gh opens pull requests as.

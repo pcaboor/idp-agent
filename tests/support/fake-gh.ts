@@ -298,6 +298,8 @@ const api = (method: string, route: string, ...rest: string[]): string[] => [
 ]
 const get = (route: string, ...rest: string[]): string[] => api('GET', route, ...rest)
 const PULLS = 'repos/acme/iac/pulls'
+/** The open pull requests into `main`, newest first, as the in-flight read asks, before its page. */
+const OPEN = 'state=open&base=main&sort=created&direction=desc&per_page=100'
 /** The one POST's body, as the engine writes it, with `change` applied. */
 const pullBody = (change: Record<string, unknown>): string =>
   JSON.stringify({
@@ -371,6 +373,23 @@ export const DOORS: readonly Door[] = [
   { name: 'gh api GET of ruleset 0', argv: get('repos/acme/iac/rulesets/0') },
   { name: 'gh api GET of a commit of 7 hex', argv: get('repos/acme/iac/git/commits/0123abc') },
   { name: 'gh api GET of a path outside the templates', argv: get('repos/acme/iac/collaborators') },
+  // What is in flight (6.3.6): two reads, matched whole, so neither bends into a door.
+  { name: 'gh api GET …/pulls/1/merge', argv: get(`${PULLS}/1/merge`) },
+  { name: 'gh api GET …/pulls/1/reviews', argv: get(`${PULLS}/1/reviews`) },
+  { name: "gh api GET of a pull request's second page of files", argv: get(`${PULLS}/1/files?per_page=100&page=2`) },
+  { name: "gh api GET of a pull request's files, no page size", argv: get(`${PULLS}/1/files`) },
+  { name: "gh api GET of pull request 0's files", argv: get(`${PULLS}/0/files?per_page=100`) },
+  { name: 'gh api GET of a fourth page of open pull requests', argv: get(`${PULLS}?${OPEN}&page=4`) },
+  { name: 'gh api GET of page 0 of open pull requests', argv: get(`${PULLS}?${OPEN}&page=0`) },
+  { name: 'gh api GET of open pull requests with no page', argv: get(`${PULLS}?${OPEN}`) },
+  { name: 'gh api GET of open pull requests in no stated order', argv: get(`${PULLS}?state=open&base=main&per_page=100&page=1`) },
+  {
+    name: 'gh api GET of open pull requests into {branch}',
+    argv: get(`${PULLS}?state=open&base=%7Bbranch%7D&sort=created&direction=desc&per_page=100&page=1`),
+  },
+  { name: 'gh api GET of every pull request, closed included', argv: get(`${PULLS}?state=all&base=main&sort=created&direction=desc&per_page=100&page=1`) },
+  { name: 'gh api GET of open pull requests with --paginate', argv: get(`${PULLS}?${OPEN}&page=1`, '--paginate') },
+  { name: "gh api GET of a pull request's files with --paginate", argv: get(`${PULLS}/1/files?per_page=100`, '--paginate') },
   {
     name: 'gh api POST pulls with head owner:branch',
     argv: api('POST', PULLS, '--input', '-'),

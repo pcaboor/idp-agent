@@ -2,7 +2,7 @@ import { chmod, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { LONGEST_NOTE, MERGE_NOTE } from '../../src/core/github/protection.js'
-import { pullRequestBody } from '../../src/core/github/pull-request.js'
+import { LONGEST_BESIDE, pullRequestBody } from '../../src/core/github/pull-request.js'
 import type { Cleared } from '../../src/core/plan/clear.js'
 import { preflight } from '../../src/forge/github/preflight.js'
 import { classifyPushFailure, type PushFailure } from '../../src/forge/github/push.js'
@@ -11,7 +11,19 @@ import type { Submitted } from '../../src/forge/provider.js'
 import { GitError, gitIn, pushIn, type Git, type Push } from '../../src/process/git.js'
 import { clearedFor, removeClones, scratch } from '../support/forge-fixture.js'
 import { protectingRuleset } from '../support/fake-gh.js'
-import { fakeSsh, githubClone, githubForge, remoteRefs, unprotect, type GitHubClone } from '../support/github-fixture.js'
+import {
+  BILLING_GRANT,
+  BILLING_GRANT_PATH,
+  fakeSsh,
+  githubClone,
+  githubForge,
+  onMain,
+  pullRequestBy,
+  remoteRefs,
+  unprotect,
+  type GitHubClone,
+} from '../support/github-fixture.js'
+import type { FakePull } from '../../tools/fake-gh.js'
 import { git, observable } from '../support/git.js'
 
 /**
@@ -524,10 +536,13 @@ describe('the body’s bound', { timeout: 30_000 }, () => {
       'utf8',
     )
 
-  it('refuses at step 8 a body that fits only without room for the longest note, and writes nothing', async () => {
+  /** The longest note and the longest paragraph of pull requests beside it, each with its blank line. */
+  const longest = Buffer.byteLength(`${LONGEST_NOTE}\n\n${LONGEST_BESIDE}\n\n`, 'utf8')
+
+  it('refuses at step 8 a body that fits only without room for the longest note and paragraph, and writes nothing', async () => {
     const opened = await setUp()
-    // The body alone fits; with the longest note and its blank line, one byte over.
-    bound.bodyBytes = bareBytes(opened.change) + Buffer.byteLength(`${LONGEST_NOTE}\n\n`, 'utf8') - 1
+    // The body alone fits; with the longest note, the longest paragraph and their blank lines, one byte over.
+    bound.bodyBytes = bareBytes(opened.change) + longest - 1
     const before = await state(opened.clone)
 
     const result = await opened.forge.submit(opened.change, opened.base)
@@ -539,9 +554,9 @@ describe('the body’s bound', { timeout: 30_000 }, () => {
     expect(await state(opened.clone)).toBe(before)
   })
 
-  it('opens a body that fits with room for the longest note', async () => {
+  it('opens a body that fits with room for the longest note and paragraph', async () => {
     const opened = await setUp()
-    bound.bodyBytes = bareBytes(opened.change) + Buffer.byteLength(`${LONGEST_NOTE}\n\n`, 'utf8')
+    bound.bodyBytes = bareBytes(opened.change) + longest
 
     expect(await opened.forge.submit(opened.change, opened.base)).toMatchObject({ outcome: 'created', pullRequest: { number: 1 } })
   })
@@ -895,14 +910,39 @@ describe('races and failures', { timeout: 30_000 }, () => {
     expect(between.gh.state.pulls ?? []).toEqual([])
   })
 
-  it('stays within 48 gh calls on its longest path', async () => {
+  it('stays within 92 gh calls on its longest path', async () => {
     // Ten supplying rulesets, read at the re-check and again before the pull
     // request; the read-back faulted 404 twice; the POST answered 422 after
     // opening, so the pull requests are listed again. (A branch already on
     // GitHub skips the push and its read-back, so it is not on this path.)
+    // And what is in flight (6.3.6): three pages of open pull requests, twenty
+    // of them idp-agent ones, each one's files read; then step 8's page 1, the
+    // twenty pushed to since, each one's files read again.
     const rulesets = Array.from({ length: 10 }, (_, at) => protectingRuleset(at + 1))
     const clone = await githubClone()
     clone.gh.state.repositories = clone.gh.state.repositories.map((one) => ({ ...one, rulesets }))
+    const seeded = (number: number, head: string): FakePull => ({
+      number,
+      owner: 'acme',
+      name: 'iac',
+      title: 't',
+      body: '',
+      head,
+      base: 'main',
+      draft: false,
+      maintainer_can_modify: false,
+      author: 'grace',
+      state: 'open',
+      merged_at: null,
+      closed_at: null,
+      lastPusher: 'grace',
+      reviews: [],
+      headSha: String(number).padStart(40, 'a'),
+      files: [{ filename: 'README.md', status: 'modified', sha: 'b'.repeat(40) }],
+    })
+    clone.gh.state.pulls = Array.from({ length: 300 }, (_, at) =>
+      seeded(at + 1, at >= 280 ? `idp-agent/theirs-${String(at).padStart(8, '0')}` : `feature/by-hand-${String(at)}`),
+    )
     const inner = pushIn(clone.repo, { env: clone.env })
     const opened = await setUp(
       {
@@ -917,15 +957,112 @@ describe('races and failures', { timeout: 30_000 }, () => {
     )
     clone.gh.fault({ route: 'open-pull-request', status: 422, times: 1, made: true })
 
+    const judged = await opened.forge.inFlight?.({ writes: [], related: [] })
+    expect(judged).toEqual({ kind: 'clear' })
+    for (const pull of clone.gh.state.pulls ?? []) if (pull.head.startsWith('idp-agent/')) pull.headSha = 'c'.repeat(40)
     expect(await opened.forge.recognise(opened.change, opened.base)).toBeUndefined()
     expect(await opened.forge.submit(opened.change, opened.base)).toMatchObject({ outcome: 'created' })
 
-    expect(opened.api.calls()).toBeLessThanOrEqual(48)
+    const files = clone.gh.sent.filter((sent) => /\/pulls\/\d+\/files/.test(sent.argv[6] ?? ''))
+    expect(files).toHaveLength(40)
+    expect(opened.api.calls()).toBeLessThanOrEqual(92)
     expect(opened.api.calls()).toBe(clone.gh.sent.length)
     expect(clone.gh.sent.filter((sent) => sent.argv[4] === 'POST')).toHaveLength(1)
     // What is left of the budget, spent; then one more is refused before gh starts.
-    while (opened.api.calls() < 48) await opened.api.ref('main')
-    await expect(opened.api.ref('main')).rejects.toThrow('more than 48 gh calls')
-    expect(clone.gh.sent).toHaveLength(48)
+    while (opened.api.calls() < 92) await opened.api.ref('main')
+    await expect(opened.api.ref('main')).rejects.toThrow('more than 92 gh calls')
+    expect(clone.gh.sent).toHaveLength(92)
+  })
+})
+
+describe('what is in flight (6.3.6)', { timeout: 30_000 }, () => {
+  /** This change's own edits, as another account's run of the very same change pushes them. */
+  const sameEdits = (change: Cleared): Record<string, string> =>
+    Object.fromEntries(change.edits.map((edit) => [edit.path, edit.after]))
+
+  it('answers already-proposed, and writes nothing on either side, when another account’s pull request holds the same bytes on the same branch', async () => {
+    const clone = await githubClone()
+    const change = await clearedFor(clone.repo)
+    // Another person's run of the same change, under other words: the same branch, another commit message.
+    await pullRequestBy(clone, { login: 'grace', branch: change.branch, edits: sameEdits(change) })
+    const opened = await setUp({}, clone)
+    const before = await state(clone)
+
+    expect(await opened.forge.submit(opened.change, opened.base)).toEqual({
+      outcome: 'already-proposed',
+      branch: change.branch,
+      number: 1,
+      url: 'https://github.com/acme/iac/pull/1',
+      by: 'grace',
+    })
+    expect(await state(clone)).toBe(before)
+  })
+
+  it('refuses a competing pull request, and writes nothing', async () => {
+    const clone = await githubClone()
+    const change = await clearedFor(clone.repo)
+    const [first] = change.edits
+    await pullRequestBy(clone, { login: 'grace', edits: { [first?.path ?? '']: 'kind: Resource\n' } })
+    const opened = await setUp({}, clone)
+    const before = await state(clone)
+
+    const result = await opened.forge.submit(opened.change, opened.base)
+
+    expect(result).toMatchObject({ outcome: 'refused', inFlight: [{ pull: { number: 1, by: 'grace' }, paths: [first?.path] }] })
+    expect(result.outcome === 'refused' ? result.kept : 'kept').toBeUndefined()
+    expect(await state(clone)).toBe(before)
+  })
+
+  it('names beside pull requests in the body it opens, by number, with no # and no URL', async () => {
+    const clone = await githubClone()
+    await onMain(clone, { [BILLING_GRANT_PATH]: BILLING_GRANT })
+    await pullRequestBy(clone, { login: 'grace', edits: { [BILLING_GRANT_PATH]: BILLING_GRANT.replace('readwrite', 'read') } })
+    const opened = await setUp({}, clone)
+    expect(opened.change.related).toContain(BILLING_GRANT_PATH)
+
+    const result = await opened.forge.submit(opened.change, opened.base)
+
+    expect(result).toMatchObject({ outcome: 'created', pullRequest: { number: 2 }, beside: [{ pull: { number: 1 }, paths: [BILLING_GRANT_PATH] }] })
+    const body = pull(clone, 2).body
+    expect(body).toContain('Opened beside pull request 1, open into `main`, which change other files of the same entities.')
+    expect(body).not.toMatch(/#\d/)
+    expect(body).not.toContain('/pull/1')
+  })
+
+  it('refuses at step 8 a competing pull request opened after the first read, and writes nothing on either side', async () => {
+    const opened = await setUp()
+    expect(await opened.forge.inFlight?.({ writes: [], related: [] })).toEqual({ kind: 'clear' })
+    const [first] = opened.change.edits
+    await pullRequestBy(opened.clone, { login: 'grace', edits: { [first?.path ?? '']: 'kind: Resource\n' } })
+    const before = await state(opened.clone)
+
+    expect(await opened.forge.submit(opened.change, opened.base)).toMatchObject({
+      outcome: 'refused',
+      inFlight: [{ pull: { number: 1 } }],
+    })
+    expect(await state(opened.clone)).toBe(before)
+  })
+
+  it('answers already-proposed at step 8 when another account opened the same change after the first read', async () => {
+    const opened = await setUp()
+    expect(await opened.forge.inFlight?.({ writes: [], related: [] })).toEqual({ kind: 'clear' })
+    await pullRequestBy(opened.clone, { login: 'grace', edits: sameEdits(opened.change) })
+    const before = await state(opened.clone)
+
+    expect(await opened.forge.submit(opened.change, opened.base)).toMatchObject({ outcome: 'already-proposed', number: 1, by: 'grace' })
+    expect(await state(opened.clone)).toBe(before)
+  })
+
+  it('reads what is in flight once per forge, and judges every later target from that read', async () => {
+    const opened = await setUp()
+    await pullRequestBy(opened.clone, { login: 'grace', edits: sameEdits(opened.change) })
+    const before = opened.api.calls()
+    const target = { writes: opened.change.edits.map((edit) => ({ path: edit.path, after: edit.after })), related: [], branch: opened.change.branch }
+
+    expect(await opened.forge.inFlight?.(target)).toMatchObject({ kind: 'same', pull: { number: 1, by: 'grace' } })
+    const read = opened.api.calls() - before
+    expect(await opened.forge.inFlight?.({ writes: [], related: [] })).toEqual({ kind: 'clear' })
+    expect(opened.api.calls() - before).toBe(read)
+    expect(read).toBe(2)
   })
 })

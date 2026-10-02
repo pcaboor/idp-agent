@@ -3,6 +3,8 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { CLOSING } from '../../src/cli/render/footer.js'
 import {
   ENGINE_BLOCK_END,
+  LONGEST_BESIDE,
+  besideParagraph,
   fenceFor,
   pullRequestBody,
   pullRequestUrl,
@@ -214,6 +216,50 @@ describe('pullRequestBody', () => {
       expect(line, base).toBe(`note: on this repository no rule on \`${base}\` that binds the author restricts deletions`)
       // Outside its code span, the base is nowhere in the body.
       expect(body.replaceAll(`\`${base}\``, '').includes(base), base).toBe(false)
+    }
+  })
+
+  it('names pull requests in flight beside it by number and base only, one paragraph before the branch’s, with no # and no URL', async () => {
+    const change = await real()
+    for (const road of ['from', 'intent', 'phrase', 'init'] as const) {
+      const without = pullRequestBody(input(change, change.request, road)).body
+      for (const [numbers, said] of [
+        [[3], 'Opened beside pull request 3, open into `main`, which change other files of the same entities.'],
+        [[3, 12], 'Opened beside pull request 3 and pull request 12, open into `main`, which change other files of the same entities.'],
+        [
+          [3, 12, 40],
+          'Opened beside pull request 3, pull request 12 and pull request 40, open into `main`, which change other files of the same entities.',
+        ],
+      ] as const) {
+        const { body } = pullRequestBody({ ...input(change, change.request, road), beside: { numbers, base: 'main' } })
+        const lines = body.split('\n')
+        const branch = lines.findIndex((one) => one.startsWith('The branch '))
+        expect(lines.slice(branch - 2, branch), `${road} ${said}`).toEqual([said, ''])
+        expect(lines.indexOf(ENGINE_BLOCK_END)).toBeGreaterThan(branch)
+        // Nothing GitHub would turn into a cross-reference on another pull request's timeline.
+        expect(body.replace(change.request, ''), said).not.toMatch(/#\d/)
+        expect(body, said).not.toMatch(/\/pull\/\d/)
+        // Nothing else moves: the same body, the paragraph taken out.
+        expect(body.replace(`\n${said}\n`, '')).toBe(without)
+      }
+    }
+    // With a note too: the note first, then the paragraph.
+    const both = pullRequestBody({
+      ...input(change),
+      note: { kind: 'author-may-merge', base: 'main', missing: ['pull-request'] },
+      beside: { numbers: [3], base: 'main' },
+    }).body.split('\n')
+    expect(both.indexOf(MERGE_NOTE)).toBeLessThan(both.findIndex((one) => one.startsWith('Opened beside')))
+    // A base outside the branch grammar, or holding a backtick, is "the base".
+    expect(besideParagraph([3], 'main\u202e')).toBe('Opened beside pull request 3, open into the base, which change other files of the same entities.')
+    expect(besideParagraph([3], 'a`b')).toContain('open into the base,')
+  })
+
+  it('bounds the longest paragraph a body can carry: twenty numbers of the largest size, a 255-byte base', () => {
+    const numbers = Array.from({ length: 20 }, () => Number.MAX_SAFE_INTEGER)
+    expect(LONGEST_BESIDE).toBe(besideParagraph(numbers, 'a'.repeat(255)))
+    for (const one of [[1], Array.from({ length: 20 }, (_, at) => at + 1)]) {
+      expect(Buffer.byteLength(besideParagraph(one, 'main'))).toBeLessThan(Buffer.byteLength(LONGEST_BESIDE))
     }
   })
 

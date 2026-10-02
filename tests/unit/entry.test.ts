@@ -23,7 +23,7 @@ import { fakeBackstage } from '../support/fake-backstage.js'
 import type { FakeGitHub } from '../support/fake-gh.js'
 import { removeClones } from '../support/forge-fixture.js'
 import { observable } from '../support/git.js'
-import { githubClone, unprotect } from '../support/github-fixture.js'
+import { BILLING_GRANT, BILLING_GRANT_PATH, githubClone, onMain, pullRequestBy, unprotect } from '../support/github-fixture.js'
 import { MERGE_NOTE } from '../../src/core/github/protection.js'
 import { confirmingEnvironment } from '../support/ask.js'
 
@@ -686,6 +686,55 @@ describe('idpa "<phrase>" --submit', () => {
     expect(log.slice(0, supervisor).some((line) => /rules\/branches\/main\b/.test(line))).toBe(true)
     // Read once before the Supervisor; step 8 and step 11 after the Reviewer; never a fourth.
     expect(log.filter((line) => /rules\/branches\/main\b/.test(line))).toHaveLength(3)
+  })
+
+  it('reads what is in flight before the Supervisor and says it before the Inspector, and names the same change at exit 0', async () => {
+    const clone = await githubClone({ model: { accounts: [{ login: 'ada', type: 'User' }, { login: 'grace', type: 'User' }] } })
+    clone.gh.state.repositories = clone.gh.state.repositories.map((one) => ({
+      ...one,
+      permissions: { ...one.permissions, grace: { admin: false, maintain: false, push: true } },
+    }))
+    await onMain(clone, { [BILLING_GRANT_PATH]: BILLING_GRANT })
+    const project = await application()
+    await writeFile(
+      path.join(project, 'catalog-info.yaml'),
+      'apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: billing-api\nspec:\n  type: service\n  lifecycle: production\n  owner: group:default/tiger\n',
+      'utf8',
+    )
+    // grace's run of the very same phrase opened pull request #1, and another of hers, #2, changes the grant beside it.
+    clone.gh.as('grace')
+    expect((await run([INTENT, '--repo', clone.repo, '--project', project, '--submit'], {
+      env: clone.env,
+      gh: clone.gh.process,
+      client: changing(),
+      ask: answering('read'),
+    })).code).toBe(0)
+    clone.gh.as('ada')
+    await pullRequestBy(clone, { login: 'grace', edits: { [BILLING_GRANT_PATH]: BILLING_GRANT.replace('readwrite', 'read') } })
+    const { log, gh, client } = watching(clone.gh, changing())
+    const out: string[] = []
+
+    const code = await main([INTENT, '--repo', clone.repo, '--project', project, '--submit'], {
+      env: clone.env,
+      gh,
+      client,
+      ask: answering('read'),
+      out: (chunk) => void out.push(chunk),
+      err: (chunk) => void log.push(`err ${chunk.trimEnd()}`),
+    })
+
+    expect(code, log.join('\n')).toBe(0)
+    const supervisor = log.indexOf('model supervisor')
+    const read = log.findIndex((line) => line.includes('pulls?state=open'))
+    expect(read).toBeGreaterThan(-1)
+    expect(read).toBeLessThan(supervisor)
+    const said = log.findIndex((line) => line.startsWith('err in flight on github.com/acme/iac, touching component:default/billing-api: pull request #2 by grace'))
+    expect(said).toBeGreaterThan(supervisor)
+    expect(said).toBeLessThan(log.indexOf('model inspector'))
+    expect(log).toContain('err already proposed by grace in pull request #1')
+    expect(out.join('')).toMatch(/^2 files · already proposed in pull request #1 on github\.com\/acme\/iac: https:\/\/github\.com\/acme\/iac\/pull\/1 · nothing written$/m)
+    expect(out.join('')).not.toContain('grace')
+    expect(clone.gh.state.pulls).toHaveLength(2)
   })
 
   it('says the road after the line naming what the run reads, never before it', async () => {

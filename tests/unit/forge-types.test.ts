@@ -28,13 +28,13 @@ if (Math.random() > 2) {
 describe('ForgeProvider', () => {
   afterAll(removeClones)
 
-  it('holds exactly six members on both forges, and nothing that merges, approves, closes or deletes', async () => {
+  it('holds seven members on the GitHub forge and six on the local one, and nothing that merges, approves, closes or deletes', async () => {
     const clone = await githubClone()
     const { forge: github } = await githubForge(clone)
     const local = await openLocalForge(clone.repo, 'declarations')
-    for (const forge of [github, local]) {
-      expect(Object.keys(forge).sort(), forge.name).toEqual(['base', 'diverges', 'name', 'recognise', 'repository', 'submit'])
-    }
+    // What is in flight is read on GitHub, and only read (6.3.6): the local forge has nothing to read it from.
+    expect(Object.keys(github).sort()).toEqual(['base', 'diverges', 'inFlight', 'name', 'recognise', 'repository', 'submit'])
+    expect(Object.keys(local).sort()).toEqual(['base', 'diverges', 'name', 'recognise', 'repository', 'submit'])
     expect(github.name).toBe('github')
     expect(local.name).toBe('local')
   })

@@ -4,7 +4,7 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { strippingRefusal } from '../../scripts/type-stripping.mjs'
 import { GH_LIMITS, ghArgv, ghIn, parseIncluded, type GhRequest } from '../../src/process/gh.js'
-import { answer } from '../../tools/fake-gh.js'
+import { answer, type FakePull } from '../../tools/fake-gh.js'
 import { removeClones, scratch } from '../support/forge-fixture.js'
 import { DOORS, FAKE_GH_VERSION, MODELLED_DOORS, fakeGitHub, protectedMain } from '../support/fake-gh.js'
 import { committed, git } from '../support/git.js'
@@ -102,6 +102,8 @@ describe("the fake's own grammar", () => {
     ['ref', { kind: 'get', route: { route: 'ref', ...repo, branch: 'idp-agent/x-0123abcd' } }],
     ['commit', { kind: 'get', route: { route: 'commit', ...repo, sha: '0123456789abcdef0123456789abcdef01234567' } }],
     ['pulls', { kind: 'get', route: { route: 'pulls', ...repo, head: 'idp-agent/x-0123abcd' } }],
+    ['open-pulls', { kind: 'get', route: { route: 'open-pulls', ...repo, base: 'main', page: 1 } }],
+    ['pull-files', { kind: 'get', route: { route: 'pull-files', ...repo, number: 1 } }],
     [
       'open-pull-request',
       {
@@ -151,6 +153,77 @@ describe("the fake's own grammar", () => {
     expect(listed).toHaveLength(1)
     expect(fake.state.pulls?.[0]).toMatchObject({ number: 1, author: 'ada', lastPusher: 'ada', reviews: [] })
     expect(JSON.parse((await gh.get({ route: 'pulls', ...repo_, head: 'idp-agent/y-0123abcd' })).body)).toEqual([])
+  })
+
+  it('answers the open pull requests into a base, newest first, 100 a page, and a pull request’s files from the bare repository', async () => {
+    const root = await scratch('idp-fake-flight-')
+    const repo = path.join(root, 'iac')
+    await mkdir(repo)
+    const base = await committed(repo)
+    await writeFile(path.join(repo, 'a.yml'), 'a: 1\n')
+    await writeFile(path.join(repo, 'README.md'), 'changed\n')
+    await git(repo, 'checkout', '-q', '-b', 'idp-agent/x-0123abcd')
+    await git(repo, 'add', '-A')
+    await git(repo, 'commit', '-q', '-m', 'theirs')
+    const head = await git(repo, 'rev-parse', 'HEAD')
+    await git(repo, 'checkout', '-q', 'main')
+    const pull = (number: number, change: Partial<FakePull> = {}): FakePull => ({
+      number,
+      owner: 'acme',
+      name: 'iac',
+      title: `title ${String(number)}`,
+      body: 'b',
+      head: 'idp-agent/x-0123abcd',
+      base: 'main',
+      draft: false,
+      maintainer_can_modify: false,
+      author: 'grace',
+      state: 'open',
+      merged_at: null,
+      closed_at: null,
+      lastPusher: 'grace',
+      reviews: [],
+      ...change,
+    })
+    const pulls = [
+      ...Array.from({ length: 101 }, (_, at) => pull(at + 1)),
+      pull(102, { state: 'closed', closed_at: '2026-10-01T00:00:00Z' }),
+      pull(103, { base: 'release' }),
+      pull(104, { headRepository: 'grace/iac' }),
+      pull(105, { headRepository: null }),
+    ]
+    const fake = fakeGitHub({ repositories: [protectedMain({ bare: path.join(repo, '.git') })], pulls })
+    const gh = ghIn({ run: fake.process })
+
+    const first = await gh.get({ route: 'open-pulls', ...repo_, base: 'main', page: 1 })
+    expect(first.hasNext).toBe(true)
+    const listed = JSON.parse(first.body) as { number: number; head: { sha: string; repo: { full_name: string } | null } }[]
+    // Open into main only, newest first: the closed one and the one into release are not listed.
+    expect(listed.map((one) => one.number).slice(0, 3)).toEqual([105, 104, 101])
+    expect(listed).toHaveLength(100)
+    expect(listed[0]?.head.repo).toBeNull()
+    expect(listed[1]?.head.repo).toEqual({ full_name: 'grace/iac' })
+    expect(listed[2]?.head).toMatchObject({ sha: head, repo: { full_name: 'acme/iac' } })
+    const second = await gh.get({ route: 'open-pulls', ...repo_, base: 'main', page: 2 })
+    expect(second.hasNext).toBe(false)
+    expect((JSON.parse(second.body) as { number: number }[]).map((one) => one.number)).toEqual([3, 2, 1])
+
+    const files = await gh.get({ route: 'pull-files', ...repo_, number: 1 })
+    expect(files.hasNext).toBe(false)
+    const read = JSON.parse(files.body) as { filename: string; status: string; sha: string; patch?: string }[]
+    expect(read.map((one) => [one.filename, one.status])).toEqual([
+      ['README.md', 'added'],
+      ['a.yml', 'added'],
+    ])
+    expect(read.find((one) => one.filename === 'a.yml')?.sha).toBe(await git(repo, 'rev-parse', `${head}:a.yml`))
+    expect(read.find((one) => one.filename === 'a.yml')?.patch).toContain('+a: 1')
+    expect(base).not.toBe(head)
+    // A list a test seeds is answered as it is; a pull request nobody holds is GitHub's 404.
+    fake.state.pulls = [pull(1, { files: [{ filename: 'x.yml', status: 'removed', sha: null }] })]
+    expect(JSON.parse((await gh.get({ route: 'pull-files', ...repo_, number: 1 })).body)).toEqual([
+      { filename: 'x.yml', status: 'removed', sha: null },
+    ])
+    expect((await gh.get({ route: 'pull-files', ...repo_, number: 9 })).status).toBe(404)
   })
 
   it('answers a fault for the calls it names, and carries out a made one', async () => {

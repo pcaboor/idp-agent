@@ -51,6 +51,7 @@ import {
   openForSubmission,
   refuseUnprotected,
   reopening,
+  sayInFlight,
   type Confirm,
   type Opened,
   type Proposal,
@@ -78,7 +79,7 @@ import type { LlmClient } from '../llm/client.js'
 import type { CommandResult } from './commands/result.js'
 import { cacheLines, copyAge, partialLine, pastBoundOf, setAsideLine, skippedLines } from './render/catalogue-read.js'
 import { NOWHERE, NOWHERE_IN_CATALOGUE } from './render/entity.js'
-import { inert, inertLine, oneLine, plain } from './render/plain.js'
+import { inert, inertLine, inertSpaced, oneLine, plain } from './render/plain.js'
 import { homeOf, shownPath, type CacheRoot } from './personal.js'
 import {
   RepositoryArgumentError,
@@ -1229,11 +1230,15 @@ export function renderEvent(event: AgentEvent): string | undefined {
  */
 const whole = (text: string): string => inertLine(text, Number.POSITIVE_INFINITY)
 
-/** A line the CLI says on stderr, whole and inert: it quotes a folder's name. */
+/**
+ * A line the CLI says on stderr, whole and inert: it quotes a folder's name.
+ * Its spaces are kept, so an indented line — a patch of a pull request in
+ * flight (6.3.6) — reads as it was laid out.
+ */
 const toStderr =
   (err: (chunk: string) => void) =>
   (line: string): void =>
-    err(`${whole(line)}\n`)
+    err(`${inertSpaced(line)}\n`)
 
 /**
  * A reason on the event stream: one line, bounded at `oneLine`'s 200, and the
@@ -1887,6 +1892,12 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
           // (`refuseUnprotected` keeps one per forge and base), saying nothing twice.
           const unprotected = await refuseUnprotected(early, { json: command.json, notice: toStderr(err) })
           if (unprotected !== undefined) return unprotected
+          // 2026-10-01: what is in flight, read with the preflight, before the
+          // Supervisor; nothing is said yet — whether there is a change at all is
+          // the Supervisor's word — and `runIntent` says what touches the
+          // service from this read, before the Inspector, at no gh call.
+          const flight = await sayInFlight(early, undefined, { json: command.json, notice: toStderr(err) })
+          if (flight !== undefined) return flight
         }
         // The forge opened above, handed on: `runIntent` reads its base again
         // and judges the working tree against it, and opens no second one.

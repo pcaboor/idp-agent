@@ -24,7 +24,7 @@ each:
 | 3 | `init platform` and `validate` | done |
 | 4 | Preview only: nothing is written | done |
 | 5 | Write + local branch | done ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)): task 1, `Cleared` for the declarations repository ([#105](https://github.com/pcaboor/idp-agent/pull/105)); task 2, `Cleared` for the service repository ([#106](https://github.com/pcaboor/idp-agent/pull/106)); task 3, the shared git launcher and the `forge/` types ([#107](https://github.com/pcaboor/idp-agent/pull/107)); task 4, the local forge — create-only, idempotent, atomic ([#108](https://github.com/pcaboor/idp-agent/pull/108)); task 5, `plan --from … --submit` ([#109](https://github.com/pcaboor/idp-agent/pull/109)); task 6, `plan "<intent>" --submit`, refused before a model is paid ([#110](https://github.com/pcaboor/idp-agent/pull/110)); task 7, `init --submit` and `.idp-agent.yml`, and a branch already there answered before the confirmation ([#111](https://github.com/pcaboor/idp-agent/pull/111)) |
-| 6 | GitHub pull request | in progress ([the plan](plans/stage-6-github.md)): slice 6.1 done: 6.1.1, the allow-list ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2, the remote and who gh is ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3, the preflight and `idpa protection` ([#125](https://github.com/pcaboor/idp-agent/pull/125)); slice 6.2 done: 6.2.1, the GitHub forge ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2, `plan --from … --submit` to GitHub ([#127](https://github.com/pcaboor/idp-agent/pull/127)); slice 6.3: 6.3.1, `plan "<intent>" --submit` to GitHub, and `iacRepo` as a cross-check ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2, `init --submit` to GitHub ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3, `idpa "<phrase>" --submit` ([#131](https://github.com/pcaboor/idp-agent/pull/131)), which closes slice 6.3 as the plan drew it; 6.3.4, the pull request always opened, with a `note:` where its author may merge it alone ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5, at a terminal, a change's diff ending on the engine's proposal to open the pull request ([#134](https://github.com/pcaboor/idp-agent/pull/134)) |
+| 6 | GitHub pull request | in progress ([the plan](plans/stage-6-github.md)): slice 6.1 done: 6.1.1, the allow-list ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2, the remote and who gh is ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3, the preflight and `idpa protection` ([#125](https://github.com/pcaboor/idp-agent/pull/125)); slice 6.2 done: 6.2.1, the GitHub forge ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2, `plan --from … --submit` to GitHub ([#127](https://github.com/pcaboor/idp-agent/pull/127)); slice 6.3: 6.3.1, `plan "<intent>" --submit` to GitHub, and `iacRepo` as a cross-check ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2, `init --submit` to GitHub ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3, `idpa "<phrase>" --submit` ([#131](https://github.com/pcaboor/idp-agent/pull/131)), which closes slice 6.3 as the plan drew it; 6.3.4, the pull request always opened, with a `note:` where its author may merge it alone ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5, at a terminal, a change's diff ending on the engine's proposal to open the pull request ([#134](https://github.com/pcaboor/idp-agent/pull/134)); 6.3.6, what is in flight read first — the open `idp-agent` pull requests into the base, before any model and again before writing ([#135](https://github.com/pcaboor/idp-agent/pull/135)) |
 | 7 | Polish: Ink TUI, asciinema, npm publish | not started |
 | 8 | Discovery | designed ([the design note](stage-8-brief.md), [#76](https://github.com/pcaboor/idp-agent/pull/76)); not started |
 
@@ -97,9 +97,10 @@ here, one pull request each, each naming the check run together at the end.
    ([#133](https://github.com/pcaboor/idp-agent/pull/133)); so is 6.3.5, the Supervisor proposing to open the pull request
    after the diff, the person's `y` authorising it and the engine opening it and reporting it,
    with no `--submit` typed in a terminal
-   ([#134](https://github.com/pcaboor/idp-agent/pull/134)); and what is in flight — the open `idp-agent` pull
+   ([#134](https://github.com/pcaboor/idp-agent/pull/134)); and so is what is in flight — the open `idp-agent` pull
    requests touching the same service read before any model is paid, so two people never open
-   competing ones. Each is planned in `docs/plans/stage-6-github.md` before it is built.
+   competing ones ([#135](https://github.com/pcaboor/idp-agent/pull/135)). Each was planned in
+   `docs/plans/stage-6-github.md` before it was built; 6.4 is next.
 2. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence; two people discovering the same service see what
@@ -406,7 +407,16 @@ The owner's decisions, dated, each with where it is recorded.
   requests that touch the same service are read. The same content is named, `already proposed
   by <login> in pull request #12`, and nothing is written; different content is shown beside
   it, and only a complementary pull request on other files is proposed. Another person's pull
-  request is never edited or closed. It serves every road and stage 8's discovery.
+  request is never edited or closed. It serves every road and stage 8's discovery. Built
+  ([#135](https://github.com/pcaboor/idp-agent/pull/135)), with the owner's answers to the
+  plan's questions 5, 6 and 7 as settled: two `GET`s through gh, the open pull requests into the
+  base (three pages at most) and each idp-agent one's files (twenty at most), read before any
+  model on every `--submit` road and again at the moment of writing — the proposal road reads
+  after its last model call — and the read before the model says what touches the service and
+  goes on, never stops the run; the same bytes are named at exit 0, a competing change refused
+  at exit 1 with the other's patch on stderr, one beside named in the body by number without
+  `#`; more than twenty in flight, or 300 open, is refused; another person's login, branch and
+  patch reach the terminal alone; the budget is 92 gh calls.
 - Stage 6's decision 17, built: `init --submit` in a service whose checked-out branch tracks
   one on github.com pushes the branch and opens a pull request on the service's own
   repository, once that repository passes the same configuration check and the same preflight

@@ -218,12 +218,13 @@ describe('githubApi', () => {
     expect(await githubApi(client, ACME).user()).toEqual({ login: 'ada', type: 'User' })
   })
 
-  it('stops at the budget before a call: 48 gh calls add up exactly', async () => {
-    expect(GITHUB_LIMITS.ghCalls).toBe(48)
-    const client = clientOf({ made: 48 })
-    await expect(githubApi(client, ACME).user()).rejects.toThrow('idp-agent made more than 48 gh calls in one run')
+  it('stops at the budget before a call: 92 gh calls add up exactly', async () => {
+    // 48, then what is in flight read twice: 3 pages and 20 file lists, then 1 page and 20 (Task 6.3.6).
+    expect(GITHUB_LIMITS.ghCalls).toBe(48 + 3 + 20 + 1 + 20)
+    const client = clientOf({ made: 92 })
+    await expect(githubApi(client, ACME).user()).rejects.toThrow('idp-agent made more than 92 gh calls in one run')
     expect(client.gets).toBe(0)
-    const under = clientOf({ made: 47 })
+    const under = clientOf({ made: 91 })
     await githubApi(under, ACME).user()
     expect(under.gets).toBe(1)
   })

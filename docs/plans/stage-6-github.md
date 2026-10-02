@@ -1,6 +1,6 @@
 # Stage 6 — a GitHub pull request, with the person's own git and gh
 
-**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2 built ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3 built ([#131](https://github.com/pcaboor/idp-agent/pull/131)); 6.3.4 built ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5 built ([#134](https://github.com/pcaboor/idp-agent/pull/134)); 6.3.6 planned (the owner's decisions of 2026-10-01, before 6.4); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
+**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2 built ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3 built ([#131](https://github.com/pcaboor/idp-agent/pull/131)); 6.3.4 built ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5 built ([#134](https://github.com/pcaboor/idp-agent/pull/134)); 6.3.6 built ([#135](https://github.com/pcaboor/idp-agent/pull/135)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
 § 19 (Q1–Q4) were settled on 2026-09-30, each as recommended, and this plan takes them as
 given; so were the four questions the plan itself asked, the same day ([Questions for the
 owner](#questions-for-the-owner)). Fourteen stacked pull requests (eleven at first; 6.3.4 to 6.3.6 were added on 2026-10-01): thirteen, 6.1.1 to 6.4.2, then 6.4.3, the owner's step: every tape
@@ -126,12 +126,12 @@ a task that cannot hold one is stopped and brought to the owner.
    key-reach leg proving it, **in the same pull request that opens that road** (§ 16).
 2. **The allow-list is a grammar checked on the final vector.** Each launcher builds the vector
    from a typed request and checks the finished vector, before any process starts; anything
-   else throws `LauncherRefusal` and starts nothing. The shapes are exactly § 6's, no wider. No
-   merge, approval, review, comment, close, reopen, label, assignment, forced push, deletion, push
-   outside `refs/heads/idp-agent/`, `fetch`, `pull`, `clone`, `gh pr …`, `gh auth …`, `gh repo …`,
-   `PUT`, `PATCH`, `DELETE`, `/merges`, `/contents/`, `/reviews`, `/merge`, `/update-branch`,
-   `/graphql`. `ForgeProvider` keeps no `merge`, no `delete`, no `approve`, no `close`, no way to
-   name a branch. *From 6.3.6:* exactly two GET templates more, the open pull requests into the
+   else throws `LauncherRefusal` and starts nothing. The shapes are exactly § 6's and the two reads
+   of Task 6.3.6, no wider. No merge, approval, review, comment, close, reopen, label, assignment,
+   forced push, deletion, push outside `refs/heads/idp-agent/`, `fetch`, `pull`, `clone`, `gh pr …`,
+   `gh auth …`, `gh repo …`, `PUT`, `PATCH`, `DELETE`, `/merges`, `/contents/`, `/reviews`,
+   `/merge`, `/update-branch`, `/graphql`. `ForgeProvider` keeps no `merge`, no `delete`, no
+   `approve`, no `close`, no way to name a branch. *From 6.3.6:* exactly two GET templates more, the open pull requests into the
    base (pages 1 to 3) and one pull request's files (one page); both reads.
 3. **The repository's configuration is hostile; the person's global and system configuration is
    theirs.** Every push carries § 4's pins; a key of § 7's refused list at the `local` or
@@ -540,7 +540,13 @@ with the exact lines; in short:
   `beside?`, `refused`'s `inFlight?`; `Cleared.related`; `PullRequestInput.beside?`;
   `InFlightReport`, `sayInFlight`, `serviceTarget`; `PreviewStatus`'s `already-proposed` and
   `beside`;
-  `inFlightLines`; `Unproposed`'s `in-flight`; `pullRequestBy` (test helper).
+  `inFlightLines`; `Unproposed`'s `in-flight`; `pullRequestBy` (test helper). As built:
+  `InFlightEntry` (`{ pull, paths }`, the members of `competing` and `beside`), which
+  `Submitted`'s `created.beside?` and `refused.inFlight?` carry instead of bare numbers and
+  pulls, since the lines name the paths; `mergeReads`' third parameter is `{ listed, whole }`,
+  every number page 1 listed and whether it was the whole list, instead of `newest: number[]`;
+  `inertSpaced` (`cli/render/plain.ts`), what `cli/index.ts` says on stderr, its spaces kept so
+  a patch's indentation survives (Task 6.3.6, *As built*).
 
 **Exact lines** (engine sentences; every `<…>` passes `inertLine`).
 - stderr, the GitHub road: `submitting to github.com/<o>/<r>, into <base> (<remote>, <branch>'s upstream), as <login> (gh)`. No role: it is printed when the forge opens, before the preflight reads `permissions` (Choices); `idpa protection`'s block names the role.
@@ -7648,7 +7654,10 @@ pull request by a person, on any branch, is not read: the decision is about what
 have in flight, and a person's own pull request meets this one at the merge, as design §4.3 says.
 One candidate is left to recognition: the pull request from this change's own branch opened by
 gh's own account — `already submitted` is § 14's answer, with its older-base line, and it stays
-recognition's.
+recognition's. While that pull request is open the verdict is `clear`, whatever else is in flight:
+the change is already proposed by this person, and a competing pull request opened since (the race
+below, an older build, a hand-pushed branch) meets it at the merge, never as a refusal of a change
+that is already open.
 
 **The verdict**, `judgeInFlight`, in this order:
 
@@ -7761,8 +7770,8 @@ format or bidi character):
   or closed. Nothing was written.` (`init`: `…once it is merged or closed, or add --local to cut
   the branch in this clone only. Nothing was written.`) and `CLOSING`; stderr, said before the
   result is printed: per pull request `pull request #<k> is by <login>, from <branch>`, then per
-  path `In pull request #<k>, <path>:` and at most 40 lines of its patch, each `    <line>`, at most
-  120 in all, `    … <m> more lines: https://github.com/<o>/<r>/pull/<k>/files` past the bound,
+  path `In pull request #<k>, <path>:` and at most 40 lines of its patch, each `    <line>` cut at
+  200 characters (code points, then `…`), at most 120 in all, `    … <m> more lines: https://github.com/<o>/<r>/pull/<k>/files` past the bound,
   `    (GitHub shows no patch for it: https://github.com/<o>/<r>/pull/<k>/files)` where it gives
   none;
 - beside, stdout, in the `pending` status (before the question) and the `submitted` one (after
@@ -7893,8 +7902,8 @@ export function mergeReads(first: readonly InFlightPull[], page: readonly InFlig
 /** `idp-agent/<slug>-<8 hex>`: the names an idp-agent run pushes (core's copy of `SUBMISSION_BRANCH`). */
 export function isSubmissionBranch(name: string): boolean
 
-/** 40 lines of a patch per path, 120 per run. */
-export const PATCH_LINES = { perPath: 40, perRun: 120 } as const
+/** 40 lines of a patch per path, 120 per run, each cut at 200 code points. */
+export const PATCH_LINES = { perPath: 40, perRun: 120, perLine: 200 } as const
 
 // src/core/plan/clear.ts
 /** The files of `snapshot` declaring one of `refs`, or an entity naming one of them, the organisation's kinds left out, less `except`; sorted. */
@@ -7972,7 +7981,7 @@ export function serviceTarget(project: ProjectRead, snapshot: RepositorySnapshot
 helper); the trace attribute `idp.forge.in_flight` (the number of candidates judged same, competing
 or beside; never a login, a path or a branch).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/unit/in-flight.test.ts` (pure, no process): one `it` per row of the verdict table, and:
 
@@ -8123,7 +8132,7 @@ The roads, each through `main`:
 "carries a different change", exit 1; the competing case opens a second pull request; the beside
 case opens one whose body names nothing; nothing is said before the model.
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 ```bash
 df -h "$TMPDIR"
@@ -8135,7 +8144,7 @@ pnpm vitest run tests/unit/submit-github.test.ts tests/unit/plan-intent.test.ts 
 Expected: FAIL — the modules and routes missing; the identical case exiting 1 on recognition's
 sentence; the competing case opening pull request #2.
 
-- [ ] **Step 3: The routes**
+- [x] **Step 3: The routes**
 
 `process/gh.ts`: the two `GhRoute` members, their `pathOf` cases (the switch keeps its `never`),
 and two templates in `checkGhArgv`, matched against the whole path:
@@ -8154,7 +8163,7 @@ refuses any answer whose `base.ref` is not the base asked; `pullFiles` reads `ha
 `complete: false`; both spend from the budget as every route does. `limits.ts`: the two bounds and
 `ghCalls: 92`, the comment's sum written out.
 
-- [ ] **Step 4: `core/github/in-flight.ts`**
+- [x] **Step 4: `core/github/in-flight.ts`**
 
 `judgeInFlight` filters the candidates (this change's own branch by `me` left out), computes each
 one's changed paths (`path` and `previous`), then applies the table's rows in order over every
@@ -8165,7 +8174,7 @@ there — the intersection with the target's writes, or with its related paths �
 the verdict is built, not matched. `readInFlight` (in `forge/github/in-flight.ts`) holds a
 candidate's `user.login` to `isLogin` once it is known to be a candidate, and never another's.
 
-- [ ] **Step 5: `clear.ts`, the forge, `submit.ts`**
+- [x] **Step 5: `clear.ts`, the forge, `submit.ts`**
 
 `relatedPaths` and `clearPlan`'s `related`: the refs every operation names (its subject, and every
 reference in its fields, the organisation's kinds left out), the snapshot's files that declare one
@@ -8225,7 +8234,7 @@ false`, and every outcome gains `idp.forge.in_flight` when the forge was asked. 
 `refused` whose step-8 verdict differs from the one shown before the question is said in one line
 (*Exact lines*). 6.3.5's proposal reads `same` and `competing` as `Unproposed`'s `in-flight`.
 
-- [ ] **Step 6: The roads before the model**
+- [x] **Step 6: The roads before the model**
 
 `plan --from` (`runPlan`, `plan.ts:1102`) and `runIntent` (`plan.ts:1465`), right after
 `refuseUnprotected`:
@@ -8245,7 +8254,7 @@ false`, and every outcome gains `idp.forge.in_flight` when the forge was asked. 
 read, before the Supervisor — and `runIntent`'s call then says the service's lines from the kept
 read, at no gh call.
 
-- [ ] **Step 7: The demo**
+- [x] **Step 7: The demo**
 
 `scripts/demo-github.mjs`, two steps after the last, on a fresh `world(PROTECTED)` whose accounts
 hold `grace` beside `ada`, both able to push:
@@ -8267,7 +8276,7 @@ at "no model configured" (exit 2) before its preflight, as 6.3.2's steps do; it 
 `init-command.test.ts` and the key-reach leg. `package-scripts.test.ts`'s pin follows if it counts
 steps.
 
-- [ ] **Step 8: The documents this task makes true**
+- [x] **Step 8: The documents this task makes true**
 
 - `docs/stage-6-brief.md`: one italic paragraph at the head of § 6 ("*Amended 2026-10-01 by the
   owner: two GET templates are added, the open pull requests into the base, newest first, and one
@@ -8319,7 +8328,7 @@ refuses* still holds: neither template names a door word, and `DOOR_WORDS` is un
 new module imports Zod-free `core/` only; `forge/github/in-flight.ts` imports `core/` and its
 siblings, as *forge/ imports core/, process/, node:crypto and node:path, and nothing else* requires.
 
-- [ ] **Step 9: Checks**
+- [x] **Step 9: Checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -8339,7 +8348,8 @@ Expected: all green; `prompt-digests.test.ts` unchanged; the last command prints
 ```bash
 git add src/process/gh.ts src/core/github/in-flight.ts src/core/github/answers.ts src/core/github/pull-request.ts src/core/plan/clear.ts \
   src/forge/github/in-flight.ts src/forge/github/api.ts src/forge/github/limits.ts src/forge/github/forge.ts src/forge/open.ts src/forge/provider.ts \
-  src/cli/commands/submit.ts src/cli/commands/plan.ts src/cli/commands/init.ts src/cli/index.ts src/cli/render/footer.ts src/forge/github/README.md src/cli/README.md \
+  src/cli/commands/submit.ts src/cli/commands/plan.ts src/cli/commands/init.ts src/cli/index.ts src/cli/render/footer.ts src/cli/render/plain.ts \
+  src/forge/github/README.md src/cli/README.md src/process/README.md scripts/smoke.mjs tests/unit/gh-identity.test.ts \
   tools/fake-gh.ts tests/support/fake-gh.ts tests/support/github-fixture.ts \
   tests/unit/in-flight.test.ts tests/unit/in-flight-read.test.ts tests/unit/process-gh.test.ts tests/unit/launcher-doors.test.ts \
   tests/unit/fake-gh.test.ts tests/unit/grammar-agreement.test.ts tests/unit/github-pulls.test.ts tests/unit/github-forge.test.ts tests/unit/forge-types.test.ts \
@@ -8350,6 +8360,9 @@ git add src/process/gh.ts src/core/github/in-flight.ts src/core/github/answers.t
   CHANGELOG.md docs/roadmap.md docs/plans/stage-6-github.md
 git commit -m "feat(forge): read the idp-agent pull requests in flight before any model and again before writing, and never compete with one"
 ```
+
+Stage by this list, never `git add -A` or `git add .`: the worktree's `node_modules` is a symlink to
+the main checkout's, which `.gitignore`'s `node_modules/` (a directory pattern) does not match.
 
 Branch `feat/s6-in-flight`, base `feat/s6-propose`. CHANGELOG, `### Added`:
 
@@ -8439,6 +8452,30 @@ Attendu :
 Close pull request #<n> on GitHub (idpa never closes one). The identical case needs a second
 account, which 6.4.1 sets up: it is proved offline here, and by 6.4.1's live run once that account
 exists.
+
+**As built.** Where the code differs from the text above, the code was followed, to the same end:
+
+- `InFlightVerdict`'s `competing` and `beside` hold `InFlightEntry`s (`{ pull, paths }`), and
+  `Submitted`'s `created.beside?` and `refused.inFlight?` carry those entries rather than numbers
+  and bare pulls: the stdout and stderr lines name the paths that put each pull request there.
+- `mergeReads(first, page, newest)` takes `newest` as `{ listed, whole }` — every open pull
+  request page 1 listed, candidate or not, and whether that was the whole list — rather than a
+  list of numbers: a pull request of the first read missing from page 1 is closed only when page
+  1 would have listed it.
+- stderr goes through `inertSpaced` (`cli/render/plain.ts`, new) instead of `inertLine`: it
+  keeps a line's spaces, so a patch's YAML keeps its indentation, and still spells out the bidi
+  controls and turns every other white space into one space.
+- The demo gains three steps, not two: on a fresh `world(PROTECTED)`, step 15 opens pull request
+  #1 as `ada` (only the pull request: step 5 pushed its branch), then step 16 is the identical
+  proposal as `grace` and step 17 the competing one.
+- The proposal road's three cases are in `tests/unit/plan-intent.test.ts`'s proposal block (*what
+  is in flight (6.3.6)*), beside 6.3.5's own cases through `main`; `tests/unit/proposal.test.ts`
+  holds the pure functions and is unchanged.
+- `tests/unit/gh-identity.test.ts`, which the file list does not name, pinned the budget at 48:
+  it now pins 92 and writes the sum out.
+- The roadmap records the owner's answers to questions 5, 6 and 7 as settled (the read before the
+  model says and goes on; more than twenty is refused; the proposal road reads after its model)
+  rather than naming 5 and 7 as open.
 
 ---
 
@@ -8533,7 +8570,7 @@ export const LIVE_DOORS: readonly LiveDoor[]
 // tests/support/github-answers.ts — names no door; node: built-ins only
 /** A leaf is its type, `'<string>' | '<number>' | '<boolean>' | '<null>'`, or, under a KEPT_KEYS key, the value itself. */
 export type Shape = string | number | boolean | null | readonly Shape[] | { readonly [key: string]: Shape }
-export const KEPT_KEYS: readonly string[]   // type, current_user_can_bypass, enforcement, target, source_type, bypass_mode, actor_type, state, merged, draft, mergeable_state, archived, private, visibility, protected, admin, maintain, push, pull, triage, required_approving_review_count, require_last_push_approval, dismiss_stale_reviews_on_push, require_code_owner_review
+export const KEPT_KEYS: readonly string[]   // type, current_user_can_bypass, enforcement, target, source_type, bypass_mode, actor_type, state, merged, draft, mergeable_state, archived, private, visibility, protected, admin, maintain, push, pull, triage, required_approving_review_count, require_last_push_approval, dismiss_stale_reviews_on_push, require_code_owner_review, and from 6.3.6 status (a file's)
 export function shapeOf(value: unknown): Shape
 /** Paths where `fake` says something `recorded` does not: a key GitHub did not send, another type, another kept value. Empty when the fake is within GitHub. */
 export function fakeWithin(fake: Shape, recorded: Shape): string[]
@@ -8578,7 +8615,9 @@ a login, a name, an email, a token's shape or a body's text:
 The values above are illustrative; every number, status and version is the run's. `routes`
 holds one entry per route of § 6 the run read (`user`, `repository`, `branch`, `rules`,
 `ruleset`, `ref`, `commit`, `pulls`, and `pull`, the single pull request the test reads
-itself as a stand-in for the `POST`'s answer, which the CLI never shows it), as the owner and,
+itself as a stand-in for the `POST`'s answer, which the CLI never shows it; from 6.3.6 also
+`open-pulls` and `pull-files`, one answer of each, the two reads of what is in flight, with
+`KEPT_KEYS` gaining `status`, so the fake is held to GitHub on them too), as the owner and,
 where the second account is set, as the reviewer (the missing permission: no `bypass_actors`
 on a ruleset, `permissions.admin` false). `remote` holds the `remote:` lines of a refused
 push, scrubbed. `bypassActors` is `[{ type, count }]` by actor type, or `"unreadable"`.

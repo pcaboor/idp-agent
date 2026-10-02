@@ -1,5 +1,5 @@
 import { noteLine, type MergeNote, type Missing } from './protection.js'
-import type { GitHubRepository } from './remote.js'
+import { isBranch, type GitHubRepository } from './remote.js'
 
 /**
  * The text and the address of the one pull request a submission opens (stage
@@ -14,9 +14,10 @@ import type { GitHubRepository } from './remote.js'
  * hide a line in a comment — nor can the base's name, written as code in the
  * note. The engine's block follows: how the change was made (D4), the note
  * on who may merge it when the base's rules call for one (the owner's
- * decision of 2026-10-01), what the branch name means, and that nothing is
- * provisioned until the merge; it ends on `ENGINE_BLOCK_END`, after which
- * stage 8's report will go.
+ * decision of 2026-10-01), the idp-agent pull requests in flight beside it on
+ * other files of the same entities, by number alone (Task 6.3.6), what the
+ * branch name means, and that nothing is provisioned until the merge; it ends
+ * on `ENGINE_BLOCK_END`, after which stage 8's report will go.
  */
 
 /** The last line of the engine's block: what comes after it is not the engine's. */
@@ -42,7 +43,42 @@ export interface PullRequestInput {
    * `unguardedNote`, which holds it to the branch grammar and writes it as code.
    */
   readonly note?: { readonly kind: MergeNote; readonly base: string; readonly missing: readonly Missing[] }
+  /**
+   * The idp-agent pull requests in flight that change other files of the same
+   * entities, and the base they are open into: a paragraph of the engine's
+   * block naming each by number alone (`besideParagraph`).
+   */
+  readonly beside?: { readonly numbers: readonly number[]; readonly base: string }
 }
+
+/**
+ * The paragraph that names the pull requests in flight beside this one —
+ * "Opened beside pull request 3 and pull request 12, open into main, which
+ * change other files of the same entities.", the base as code. Numbers and
+ * the base only — no `#` and no URL: GitHub turns `#<k>` or a pull request's
+ * URL in a body into a cross-reference on that pull request's timeline, and
+ * may notify its participants, which would be a trace on another person's
+ * pull request. The base is code when it holds to the branch grammar and holds
+ * no backtick, as the note writes it, else "the base".
+ */
+export function besideParagraph(numbers: readonly number[], base: string): string {
+  const named = numbers.map((number) => `pull request ${String(number)}`)
+  const last = named.at(-1) ?? ''
+  const listed = named.length < 2 ? last : `${named.slice(0, -1).join(', ')} and ${last}`
+  const where = isBranch(base) && !base.includes('`') ? `\`${base}\`` : 'the base'
+  return `Opened beside ${listed}, open into ${where}, which change other files of the same entities.`
+}
+
+/**
+ * The longest paragraph `besideParagraph` writes for a run: twenty pull
+ * requests (`GITHUB_LIMITS.inFlightPulls`), each number as long as a double
+ * holds exactly, into a base of 255 bytes. Step 8 checks a body's bound with
+ * it, before anything is written.
+ */
+export const LONGEST_BESIDE: string = besideParagraph(
+  Array.from({ length: 20 }, () => Number.MAX_SAFE_INTEGER),
+  'a'.repeat(255),
+)
 
 /** Three backticks, or one more than the longest run in the text: no line of it can close the fence. */
 export const fenceFor = (text: string): string => {
@@ -121,6 +157,9 @@ export function pullRequestBody(input: PullRequestInput): { readonly title: stri
     `This change was ${made(input.road)}.`,
     '',
     ...(input.note === undefined ? [] : [noteLine(input.note.kind, input.note.base, input.note.missing, 'markdown'), '']),
+    ...(input.beside === undefined || input.beside.numbers.length === 0
+      ? []
+      : [besideParagraph(input.beside.numbers, input.beside.base), '']),
     `The branch \`${input.branch}\` is named by a digest of its files' paths and bytes: the same change always ` +
       'names the same branch, and any other change another.',
     '',

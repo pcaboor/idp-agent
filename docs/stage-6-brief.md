@@ -455,6 +455,10 @@ of another account or a deploy key in the bypass list is outside what gh can ans
 
 ## 6. The allow-list: what idpa may run
 
+*Amended 2026-10-01 by the owner: two GET templates are added, the open pull requests into the
+base, newest first, and one pull request's files (stage 6 plan, Task 6.3.6); the section below
+is the record of 2026-09-30.*
+
 **Two launchers, one shape.** `src/process/git.ts` stays the only module that starts git;
 `src/process/gh.ts` becomes the only module that starts gh, and the architecture rule that
 "only `process/git.ts` starts a process" becomes "only `process/git.ts` and `process/gh.ts`",
@@ -1132,6 +1136,13 @@ is refused without `--submit`.
 
 ## 14. Idempotence, and what the user sees
 
+*Amended 2026-10-01 by the owner: on GitHub's road, the open idp-agent pull requests into the
+base are read before any model is paid, the change is judged against them before recognition,
+and they are read again at step 8 — the same bytes already proposed are named at exit 0, a
+change to a file this change writes, differently, is refused at exit 1, and one on other files
+of the same entities is proposed beside it (stage 6 plan, Task 6.3.6); the section below is the
+record of 2026-09-30.*
+
 **How the forges compose.** One `ForgeProvider` of `name: 'github'` holds the local forge, the
 push and gh. `base`, `diverges` and the local half of `recognise` and `submit` are the local
 forge's; the GitHub forge adds the remote half. `submit()`'s early return on a recognised local
@@ -1187,6 +1198,12 @@ ours" from then on, and the push rule of § 8 means that push needs a new approv
 merges it.
 
 ## 15. Configuration and failure
+
+*Amended 2026-10-01 by the owner: the budget is 92 gh calls — 48, then what is in flight read
+before the question (three pages and twenty file lists at most) and again at step 8 (one page
+and twenty file lists at most); more than 300 open pull requests into the base, or more than
+twenty idp-agent ones, is refused rather than judged on a part (stage 6 plan, Task 6.3.6); the
+section below is the record of 2026-09-30.*
 
 **Configuration.**
 

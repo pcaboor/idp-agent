@@ -13,7 +13,7 @@ import { disagreements, memorySink, onlyTrace, skeletonOf } from '../support/tra
 import { confirmingEnvironment } from '../support/ask.js'
 import { committed } from '../support/git.js'
 import { removeClones } from '../support/forge-fixture.js'
-import { githubClone } from '../support/github-fixture.js'
+import { githubClone, onMain, pullRequestBy, type GitHubClone } from '../support/github-fixture.js'
 
 const FIXTURES = path.resolve(import.meta.dirname, '../../fixtures/si-demo')
 
@@ -577,6 +577,96 @@ describe('tracing a submission', () => {
 
     expect(code).toBe(0)
     expect(Object.keys(onlyTrace(sink).spans[0]?.attributes ?? {}).filter((key) => key.startsWith('idp.forge.'))).toEqual([])
+  }, 30_000)
+})
+
+describe('tracing what is in flight (6.3.6)', () => {
+  const DATABASE_FILE = 'catalog/databases/orders-db-prod.yml'
+  const GRANT_FILE = 'dependencies/access/billing-api-orders-db-prod.yml'
+  const GRANT = [
+    '---',
+    'apiVersion: backstage.io/v1alpha1',
+    'kind: Resource',
+    'metadata:',
+    '  name: billing-api-orders-db-prod',
+    '  annotations:',
+    '    company.fr/env: prod',
+    'spec:',
+    '  type: database-access',
+    '  access: read',
+    '  owner: group:default/tiger',
+    '  dependsOn:',
+    '    - resource:default/orders-db-prod',
+    '  dependencyOf:',
+    '    - component:default/billing-api',
+    '',
+  ].join('\n')
+  const CANARY = 'canary-patch-5d0e'
+
+  /** grace beside ada, both able to push. */
+  const shared = async (): Promise<GitHubClone> => {
+    const clone = await githubClone({ model: { accounts: [{ login: 'ada', type: 'User' }, { login: 'grace', type: 'User' }] } })
+    clone.gh.state.repositories = clone.gh.state.repositories.map((one) => ({
+      ...one,
+      permissions: { ...one.permissions, grace: { admin: false, maintain: false, push: true } },
+    }))
+    return clone
+  }
+
+  const submitted = async (clone: GitHubClone) => {
+    const sink = memorySink()
+    const ran = await running(['plan', INTENT, '--repo', clone.repo, '--submit'], {
+      client: changing(),
+      env: clone.env,
+      gh: clone.gh.process,
+      cwd: await scratch(),
+      traceSinks: [sink],
+    })
+    const trace = JSON.stringify(onlyTrace(sink), (_, value: unknown) => (typeof value === 'bigint' ? value.toString() : value))
+    return { ...ran, root: onlyTrace(sink).spans[0]?.attributes ?? {}, trace }
+  }
+
+  it('puts idp.forge.in_flight and the outcome already-proposed on the root, and no login', async () => {
+    const clone = await shared()
+    clone.gh.as('grace')
+    expect((await submitted(clone)).code).toBe(0)
+    clone.gh.as('ada')
+
+    const { code, err, root, trace } = await submitted(clone)
+
+    expect(code, err).toBe(0)
+    expect(root).toMatchObject({
+      'idp.forge.kind': 'github',
+      'idp.forge.outcome': 'already-proposed',
+      'idp.forge.pull_request': 1,
+      'idp.forge.pushed': false,
+      'idp.forge.in_flight': 1,
+    })
+    expect(trace).not.toContain('grace')
+  }, 30_000)
+
+  it('keeps another person’s login, branch and patch off the root, competing and beside alike', async () => {
+    const competing = await shared()
+    await pullRequestBy(competing, { login: 'grace', edits: { [DATABASE_FILE]: `kind: Resource\n# ${CANARY}\n` } })
+    const theirs = competing.gh.state.pulls?.[0]?.head ?? ''
+    const refused = await submitted(competing)
+    expect(refused.code, refused.err).toBe(1)
+    expect(refused.err).toContain(CANARY)
+    expect(refused.root).toMatchObject({ 'idp.forge.outcome': 'refused', 'idp.forge.in_flight': 1 })
+
+    const beside = await shared()
+    await onMain(beside, { [GRANT_FILE]: GRANT })
+    await pullRequestBy(beside, { login: 'grace', edits: { [GRANT_FILE]: GRANT.replace(`access: read`, `access: readwrite # ${CANARY}`) } })
+    const opened = await submitted(beside)
+    expect(opened.code, opened.err).toBe(0)
+    expect(opened.root).toMatchObject({ 'idp.forge.outcome': 'created', 'idp.forge.in_flight': 1, 'idp.forge.pull_request': 2 })
+
+    for (const { trace } of [refused, opened]) {
+      expect(trace).not.toContain('grace')
+      expect(trace).not.toContain(theirs)
+      expect(trace).not.toContain('idp-agent/by-grace')
+      expect(trace).not.toContain(CANARY)
+    }
   }, 30_000)
 })
 

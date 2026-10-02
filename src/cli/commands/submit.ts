@@ -1,7 +1,11 @@
+import type { ProjectRead } from '../../context/project-fs/types.js'
+import { PATCH_LINES, type InFlightEntry, type InFlightPull, type InFlightVerdict } from '../../core/github/in-flight.js'
 import { noteLine, noteOf, refusesPush, type MergeNote } from '../../core/github/protection.js'
-import type { PullRequestInput } from '../../core/github/pull-request.js'
+import { pullRequestUrl, type PullRequestInput } from '../../core/github/pull-request.js'
 import { locatorRepository, printedRepository, sameRepository } from '../../core/github/remote.js'
-import type { Cleared, ClearRefusal, Expectation, Repository } from '../../core/plan/clear.js'
+import { identitiesOf, isComponent } from '../../core/plan/catalog-info.js'
+import { relatedPaths, type Cleared, type ClearRefusal, type Expectation, type Repository } from '../../core/plan/clear.js'
+import type { RepositorySnapshot } from '../../core/validate/rules.js'
 import { CONFIG_FILE, type RepositoryConfig } from '../../core/schemas/config.js'
 import { ForgeInputError } from '../../forge/errors.js'
 import { GitHubAnswerError, type GitHubApi } from '../../forge/github/api.js'
@@ -20,8 +24,8 @@ import type {
 } from '../../forge/provider.js'
 import type { GhProcess } from '../../process/gh.js'
 import type { Attributes } from '../../trace/model.js'
-import { baseOf, closingLines, type PreviewStatus } from '../render/footer.js'
-import { inert, inertLine } from '../render/plain.js'
+import { baseOf, closingLines, IN_FLIGHT_SHOWN, type Beside, type PreviewStatus } from '../render/footer.js'
+import { inert, inertLine, visible } from '../render/plain.js'
 import { renderUnprotected } from '../render/protection.js'
 import type { CommandResult } from './result.js'
 
@@ -370,13 +374,167 @@ async function unprotected(
   return { refusal: refusedBefore(opened, text, reasons, options) }
 }
 
+// ---------------------------------------------------------------- what is in flight (6.3.6)
+
+/**
+ * A pull request in flight, as `--json`, a status and a trace may carry it:
+ * its number, the URL the engine builds, and this change's own paths it
+ * changes. Never a login, never another run's branch, never a patch, never a
+ * title (the owner's decision of 2026-10-01).
+ */
+export interface InFlightReport {
+  readonly number: number
+  readonly url: string
+  readonly paths: readonly string[]
+}
+
+const reportOf = (entry: InFlightEntry, road: GitHubRoad): InFlightReport => ({
+  number: entry.pull.number,
+  url: pullRequestUrl(road.repository, entry.pull.number),
+  paths: entry.paths,
+})
+
+/** The pull requests beside a change, as the statuses print them. */
+const besideOf = (entries: readonly InFlightEntry[], road: GitHubRoad): Beside => ({
+  repository: printedRepository(road.repository),
+  pulls: entries.map((entry) => ({ number: entry.pull.number, paths: entry.paths, complete: entry.pull.complete })),
+})
+
+/** Who opened a pull request in flight, and from where: stderr alone. */
+const whoLine = (pull: InFlightPull): string =>
+  `pull request #${String(pull.number)} is by ${one(pull.by)}, from ${one(pull.branch)}`
+
+/** The stdout line of a competing pull request: its number, this change's paths, its URL. */
+const competingLine = (entry: InFlightEntry, road: GitHubRoad): string =>
+  `pull request #${String(entry.pull.number)} on ${printedRepository(road.repository)} already changes ` +
+  `${entry.paths.map(one).join(', ')}, differently: ${pullRequestUrl(road.repository, entry.pull.number)}`
+
+/** A line of another pull request's patch, cut at `PATCH_LINES.perLine` code points: one line of 1 MiB is still one line. */
+const patchLine = (line: string): string => {
+  const points = [...line]
+  return points.length > PATCH_LINES.perLine ? `${points.slice(0, PATCH_LINES.perLine).join('')}…` : line
+}
+
+/**
+ * What a competing pull request changes, on stderr: for each of this change's
+ * paths it changes, its heading and at most 40 lines of GitHub's patch, each
+ * indented four spaces, cut at 200 characters, every control and bidi
+ * character spelled out, at most 120 lines in all, then where the rest is. A
+ * patch is printed here and reaches nothing else: no model, no trace, no pull
+ * request body and no `--json`.
+ */
+export const patchLines = (entries: readonly InFlightEntry[], road: GitHubRoad): string[] => {
+  const lines: string[] = []
+  let left: number = PATCH_LINES.perRun
+  for (const { pull, paths } of entries) {
+    const files = `${pullRequestUrl(road.repository, pull.number)}/files`
+    for (const path of paths) {
+      lines.push(`In pull request #${String(pull.number)}, ${one(path)}:`)
+      const file = pull.files.find((candidate) => candidate.path === path || candidate.previous === path)
+      if (file?.patch === undefined || file.patch === '') {
+        lines.push(`    (GitHub shows no patch for it: ${files})`)
+        continue
+      }
+      const patch = file.patch.split(/\r?\n/)
+      const shown = patch.slice(0, Math.min(PATCH_LINES.perPath, left))
+      left -= shown.length
+      // Spelled out, never removed: a reviewer sees that a line holds something there, as in the diff.
+      lines.push(...shown.map((line) => `    ${visible(patchLine(line))}`))
+      if (shown.length < patch.length) lines.push(`    … ${String(patch.length - shown.length)} more lines: ${files}`)
+    }
+  }
+  return lines
+}
+
+/** A verdict's pull requests, by kind and number: what step 8 compares with the one shown before the question. */
+const verdictKey = (verdict: InFlightVerdict): string => {
+  switch (verdict.kind) {
+    case 'clear':
+      return 'clear'
+    case 'same':
+      return `same ${String(verdict.pull.number)}`
+    case 'competing':
+    case 'beside':
+      return `${verdict.kind} ${verdict.pulls.map((entry) => String(entry.pull.number)).join(',')}`
+    default: {
+      const _exhaustive: never = verdict
+      return _exhaustive
+    }
+  }
+}
+
+/** How many pull requests in flight a verdict judged same, competing or beside: `idp.forge.in_flight`. */
+const countOf = (verdict: InFlightVerdict): number =>
+  verdict.kind === 'clear' ? 0 : verdict.kind === 'same' ? 1 : verdict.pulls.length
+
+/**
+ * The inspected service's paths in the declarations repository: the one
+ * Component its root `catalog-info.yaml` or `.yml` declares — the files of no
+ * workspace — and every file of `snapshot` that declares it or names it
+ * (`relatedPaths`). Undefined when no single Component is declared there: the
+ * service is not known before the model, and nothing is said.
+ */
+export function serviceTarget(
+  project: ProjectRead,
+  snapshot: RepositorySnapshot,
+): { readonly what: string; readonly paths: readonly string[] } | undefined {
+  const components = project.declarations
+    .filter((file) => file.workspace === undefined && (file.path === 'catalog-info.yaml' || file.path === 'catalog-info.yml'))
+    .flatMap((file) => ('text' in file ? identitiesOf(file.text).identities.filter(isComponent) : []))
+  const [component] = components
+  if (components.length !== 1 || component === undefined) return undefined
+  const ref = `component:${component.namespace.toLowerCase()}/${component.name.toLowerCase()}`
+  return { what: ref, paths: relatedPaths(snapshot, [ref], []) }
+}
+
+/**
+ * Right after `refuseUnprotected`, before any model (the owner's decision of
+ * 2026-10-01): makes the first read of what is in flight, kept by the forge;
+ * says on stderr the idp-agent pull requests touching `about` when it is given
+ * — their author and branch said there and nowhere else — and refuses only a
+ * read that cannot be made whole (exit 1). Nothing is refused for being in
+ * flight here: before the bytes exist, the same change and a different one
+ * cannot be told apart, and a change somebody already proposed byte for byte
+ * is named at exit 0 once its bytes exist. A local road reads nothing.
+ */
+export async function sayInFlight(
+  opened: Opened,
+  about: { readonly what: string; readonly paths: readonly string[] } | undefined,
+  options: { readonly json?: boolean; readonly notice?: (line: string) => void },
+): Promise<CommandResult | undefined> {
+  const { forge, road } = opened
+  if (forge.inFlight === undefined || road.kind !== 'github') return undefined
+  let verdict: InFlightVerdict
+  try {
+    verdict = await forge.inFlight({ writes: [], related: about?.paths ?? [] })
+  } catch (error) {
+    if (!(error instanceof GitHubAnswerError)) throw error
+    return refusedBefore(opened, error.message, [error.message], options)
+  }
+  if (about === undefined || verdict.kind !== 'beside') return undefined
+  const where = printedRepository(road.repository)
+  for (const { pull, paths } of verdict.pulls.slice(0, IN_FLIGHT_SHOWN)) {
+    options.notice?.(
+      `in flight on ${where}, touching ${one(about.what)}: pull request #${String(pull.number)} by ${one(pull.by)} ` +
+        `(${one(pull.branch)}), changing ${paths.map(one).join(', ')}`,
+    )
+  }
+  const more = verdict.pulls.length - IN_FLIGHT_SHOWN
+  if (more > 0) options.notice?.(`… and ${String(more)} more`)
+  options.notice?.('this run drafts the change, then compares it with them before anything is written')
+  return undefined
+}
+
 /**
  * Why a change previewed at a terminal ends without the question: what `--submit`
- * would have refused with, said as the reason nothing is proposed.
+ * would have refused with, said as the reason nothing is proposed — or, from
+ * 6.3.6, an idp-agent pull request in flight with the same change or a
+ * competing one, said in the line it carries.
  */
 export type Unproposed =
   | { readonly why: 'local-road'; readonly road: LocalRoad }
   | { readonly why: 'refused'; readonly line: string }
+  | { readonly why: 'in-flight'; readonly line: string }
 
 /** What a local road leaves a person who wants the branch anyway. */
 const CUTS_HERE = '--submit cuts the branch in this clone'
@@ -407,6 +565,7 @@ export function unproposedLine(unproposed: Unproposed): string {
       }
     }
     case 'refused':
+    case 'in-flight':
       return said(one(unproposed.line))
     default: {
       const _exhaustive: never = unproposed
@@ -530,10 +689,20 @@ export type SubmissionReport =
       readonly olderBase?: string
       /** On GitHub: the note the rules read just before the pull request called for, which its body carries. */
       readonly note?: MergeNote
+      /** On GitHub: the idp-agent pull requests in flight beside it, which its body names (6.3.6). */
+      readonly beside?: readonly InFlightReport[]
     }
   | { readonly outcome: 'unchanged' }
   | { readonly outcome: 'declined'; readonly branch: string }
-  | { readonly outcome: 'refused'; readonly reasons: readonly string[]; readonly kept?: string }
+  | {
+      readonly outcome: 'refused'
+      readonly reasons: readonly string[]
+      readonly kept?: string
+      /** Refused for an idp-agent pull request in flight that changes a file this change writes, differently. */
+      readonly inFlight?: readonly InFlightReport[]
+    }
+  /** Another account's pull request in flight proposes the same bytes: named, nothing written (6.3.6). No author. */
+  | { readonly outcome: 'already-proposed'; readonly branch: string; readonly number: number; readonly url: string }
   | {
       readonly outcome: 'pushed-without-pull-request'
       readonly branch: string
@@ -552,10 +721,12 @@ export type SubmissionReport =
  * Where a submission went, as root attributes of a traced run (stage 6 brief
  * § 12): the forge's kind, the host and repository on GitHub's road (the host
  * on another host's too), the base, the branch, the pull request's number, the
- * outcome, how many gh calls the run made and whether it pushed. Never gh's
- * login, nor anything a person typed.
+ * outcome, how many gh calls the run made and whether it pushed — and, when
+ * what is in flight was judged, how many pull requests it judged the same,
+ * competing or beside (`inFlight`, 6.3.6). Never gh's login, nor another
+ * person's, nor their branch, nor anything a person typed.
  */
-export function forgeAttributes(report: SubmissionReport, road: Road, calls: number): Attributes {
+export function forgeAttributes(report: SubmissionReport, road: Road, calls: number, inFlight?: number): Attributes {
   const where: Record<string, string | number | boolean> = {}
   switch (road.kind) {
     case 'github':
@@ -595,6 +766,11 @@ export function forgeAttributes(report: SubmissionReport, road: Road, calls: num
       where['idp.forge.branch'] = report.branch
       where['idp.forge.pull_request'] = report.number
       break
+    case 'already-proposed':
+      // The pull request named is another account's: this run pushed nothing.
+      where['idp.forge.branch'] = report.branch
+      where['idp.forge.pull_request'] = report.number
+      break
     case 'refused':
       // A kept branch may have been pushed before step 11 refused: unsaid.
       if (report.kept !== undefined) {
@@ -614,6 +790,7 @@ export function forgeAttributes(report: SubmissionReport, road: Road, calls: num
     'idp.forge.outcome': report.outcome,
     'idp.forge.gh_calls': calls,
     ...(pushed === undefined ? {} : { 'idp.forge.pushed': pushed }),
+    ...(inFlight === undefined ? {} : { 'idp.forge.in_flight': inFlight }),
   }
 }
 
@@ -651,7 +828,7 @@ export async function submit(input: {
   // proposal road, whether the question was put (true) or the run said why
   // not (false); a submission named before the question was neither.
   const attributes = {
-    ...forgeAttributes(done.report, opened.road, callsOf(opened)),
+    ...forgeAttributes(done.report, opened.road, callsOf(opened), done.inFlight),
     ...(done.proposed === undefined ? {} : { 'idp.forge.proposed': done.proposed }),
   }
   return { report: done.report, result: { ...done.result, attributes } }
@@ -671,7 +848,13 @@ async function submitting(input: {
   readonly confirm?: Confirm
   readonly notice?: (line: string) => void
   readonly proposal?: ProposalEnding
-}): Promise<{ readonly result: CommandResult; readonly report: SubmissionReport; readonly proposed?: boolean }> {
+}): Promise<{
+  readonly result: CommandResult
+  readonly report: SubmissionReport
+  readonly proposed?: boolean
+  /** How many pull requests in flight the last judgement named, when one was made. */
+  readonly inFlight?: number
+}> {
   const { opened, cleared, render, confirm, proposal } = input
 
   if ('outcome' in cleared) {
@@ -690,6 +873,97 @@ async function submitting(input: {
   // what the prompt would have shown is not printed in its place.
   const said = (status: PreviewStatus): string =>
     confirm === undefined ? render(status).text : closingLines(status, changed).join('\n')
+  // Where stderr goes: the proposal's, else `--submit`'s.
+  const tell = (line: string): void => (proposal === undefined ? input.notice?.(line) : proposal.notice(line))
+  /** On the proposal road, why nothing is proposed: the line, then the preview whole, exit 0. */
+  const unproposed = (
+    why: Unproposed,
+    report: SubmissionReport,
+    count?: number,
+  ): { readonly result: CommandResult; readonly report: SubmissionReport; readonly proposed: false; readonly inFlight?: number } => {
+    tell(unproposedLine(why))
+    return {
+      report,
+      result: { text: render({ kind: 'preview' }).text, found: true },
+      proposed: false,
+      ...(count === undefined ? {} : { inFlight: count }),
+    }
+  }
+
+  // What is in flight (the owner's decision of 2026-10-01), judged before
+  // recognition: another account's run of this very change lands on the same
+  // branch name under other words, and is named here rather than refused as
+  // "a different change". The forge read it before any model (`sayInFlight`)
+  // and answers from that read, at no gh call; on the proposal road, and on a
+  // forge nobody asked before, this is the first read. Only the GitHub forge
+  // has one.
+  let shown: InFlightVerdict | undefined
+  let beside: readonly InFlightEntry[] = []
+  if (opened.forge.inFlight !== undefined && opened.road.kind === 'github') {
+    const { road } = opened
+    try {
+      shown = await opened.forge.inFlight({
+        writes: cleared.edits.map((edit) => ({ path: edit.path, after: edit.after })),
+        related: cleared.related,
+        branch: cleared.branch,
+      })
+    } catch (error) {
+      // As recognition's read below: why nothing is proposed, or `--submit`'s answer.
+      if (proposal === undefined || !(error instanceof GitHubAnswerError)) throw error
+      return unproposed({ why: 'refused', line: reasonOf(error.message) }, { outcome: 'refused', reasons: [error.message] })
+    }
+    const count = countOf(shown)
+    switch (shown.kind) {
+      case 'clear':
+        break
+      case 'same': {
+        const { pull } = shown
+        const url = pullRequestUrl(road.repository, pull.number)
+        if (proposal !== undefined) {
+          return unproposed(
+            { why: 'in-flight', line: `already proposed by ${one(pull.by)} in pull request #${String(pull.number)}: ${url}` },
+            { outcome: 'already-proposed', branch: cleared.branch, number: pull.number, url },
+            count,
+          )
+        }
+        const named = outcomeOf(
+          { outcome: 'already-proposed', branch: cleared.branch, number: pull.number, url, by: pull.by },
+          opened,
+          said,
+          tell,
+        )
+        return { ...named, inFlight: count }
+      }
+      case 'competing': {
+        if (proposal !== undefined) {
+          const [first] = shown.pulls
+          if (first === undefined) throw new Error('a competing verdict names a pull request')
+          const reason =
+            `pull request #${String(first.pull.number)} by ${one(first.pull.by)} (${one(first.pull.branch)}) already changes ` +
+            `${first.paths.map(one).join(', ')}, differently: ${pullRequestUrl(road.repository, first.pull.number)}`
+          const ended = unproposed(
+            { why: 'in-flight', line: reason },
+            { outcome: 'refused', reasons: shown.pulls.map((entry) => competingLine(entry, road)), inFlight: shown.pulls.map((entry) => reportOf(entry, road)) },
+            count,
+          )
+          for (const line of patchLines(shown.pulls, road)) tell(line)
+          return ended
+        }
+        const refusal = outcomeOf({ outcome: 'refused', reason: '', inFlight: shown.pulls }, opened, said, tell)
+        return { ...refusal, inFlight: count }
+      }
+      case 'beside':
+        beside = shown.pulls
+        break
+      default: {
+        const _exhaustive: never = shown
+        return _exhaustive
+      }
+    }
+  }
+  const count = shown === undefined ? undefined : countOf(shown)
+  const withCount = <T extends object>(done: T): T & { readonly inFlight?: number } =>
+    count === undefined ? done : { ...done, inFlight: count }
 
   // Before anyone is asked: a branch that is already there is either this
   // very submission — nothing to confirm, and nothing to write — or somebody
@@ -708,12 +982,7 @@ async function submitting(input: {
     // `openToPropose`: the preview stands, exit 0. Under `--submit` it is the
     // run's answer, exit 1, as it always was.
     if (proposal === undefined || !(error instanceof GitHubAnswerError || error instanceof ForgeInputError)) throw error
-    proposal.notice(unproposedLine({ why: 'refused', line: reasonOf(error.message) }))
-    return {
-      report: { outcome: 'refused', reasons: [error.message] },
-      result: { text: render({ kind: 'preview' }).text, found: true },
-      proposed: false,
-    }
+    return withCount(unproposed({ why: 'refused', line: reasonOf(error.message) }, { outcome: 'refused', reasons: [error.message] }))
   }
   const noted = await preflightNote(opened)
   // The note step 11's read calls for, said on stderr just above the closing
@@ -724,45 +993,48 @@ async function submitting(input: {
     if (line !== noted?.line) input.notice?.(line)
   }
   if (known !== undefined && known.outcome !== 'pushed-without-pull-request') {
-    if (proposal === undefined) return outcomeOf(known, opened.base, opened.road, said, after)
+    if (proposal === undefined) return withCount(outcomeOf(known, opened, said, after))
     // Recognised before a proposal: the person asked for a preview, and gets
     // it whole. A submission already made is named under it; a refusal or a
     // closed pull request is why nothing is proposed, and the preview stands.
     let ended: PreviewStatus = { kind: 'preview' }
     const whole = outcomeOf(
       known,
-      opened.base,
-      opened.road,
+      opened,
       (status) => {
         ended = status
         return render(status).text
       },
       after,
     )
-    if (known.outcome === 'already-submitted') return whole
+    if (known.outcome === 'already-submitted') return withCount(whole)
     // A closed pull request's reason is its closing line's, so one sentence says it.
-    const shown = closingLines(ended, changed)
+    const shownLines = closingLines(ended, changed)
     proposal.notice(
       unproposedLine({
         why: 'refused',
         line:
           known.outcome === 'refused'
             ? reasonOf(unwritten(known.reason))
-            : (shown[0] ?? '').replace(/^\d+ files? · not submitted — /, '').replace(/ · nothing written$/, ''),
+            : (shownLines[0] ?? '').replace(/^\d+ files? · not submitted — /, '').replace(/ · nothing written$/, ''),
       }),
     )
-    return {
+    return withCount({
       report: whole.report,
       result: { text: render({ kind: 'preview' }).text, found: true },
       proposed: false,
-    }
+    })
   }
 
-  // The question is about to be put: what `openToPropose` held is true now.
+  // The question is about to be put: what `openToPropose` held is true now,
+  // and so is who opened each pull request in flight beside this one — said
+  // once, on stderr, never on stdout.
   for (const line of proposal?.held ?? []) proposal?.notice(line)
+  for (const { pull } of beside.slice(0, IN_FLIGHT_SHOWN)) tell(whoLine(pull))
 
+  const road = opened.road
+  const besideNow = beside.length === 0 || road.kind !== 'github' ? undefined : besideOf(beside, road)
   if (confirm !== undefined) {
-    const { road } = opened
     const yes = await confirm({
       root: opened.root,
       repository: cleared.repository,
@@ -772,7 +1044,7 @@ async function submitting(input: {
         path: edit.path,
         change: edit.before === undefined ? 'create' : 'amend',
       })),
-      preview: render({ kind: 'pending', branch: cleared.branch }).text,
+      preview: render({ kind: 'pending', branch: cleared.branch, ...(besideNow === undefined ? {} : { beside: besideNow }) }).text,
       ...(road.kind === 'github'
         ? {
             github: {
@@ -786,40 +1058,96 @@ async function submitting(input: {
         : {}),
     })
     if (!yes) {
-      return {
+      return withCount({
         report: { outcome: 'declined', branch: cleared.branch },
         result: { text: said({ kind: 'declined' }), found: true },
         ...(proposal === undefined ? {} : { proposed: true }),
-      }
+      })
     }
   }
 
-  const done = outcomeOf(await opened.forge.submit(cleared, opened.base), opened.base, opened.road, said, after)
-  return { report: done.report, result: done.result, ...(proposal === undefined ? {} : { proposed: true }) }
+  const submitted = await opened.forge.submit(cleared, opened.base)
+  // Step 8 read what is in flight again: where its verdict is not the one
+  // shown before the question, that is said first, then the new verdict's lines.
+  const now = stepEight(submitted)
+  if (shown !== undefined && now !== undefined && verdictKey(now) !== verdictKey(shown) && now.kind !== 'clear') {
+    tell('what is in flight changed while you read the diff:')
+    if (now.kind === 'beside') for (const { pull } of now.pulls.slice(0, IN_FLIGHT_SHOWN)) tell(whoLine(pull))
+  }
+  const done = outcomeOf(submitted, opened, said, after, tell)
+  const final = now === undefined ? count : countOf(now)
+  return {
+    report: done.report,
+    result: done.result,
+    ...(proposal === undefined ? {} : { proposed: true }),
+    ...(final === undefined ? {} : { inFlight: final }),
+  }
+}
+
+/**
+ * The verdict step 8 reached, as the forge's answer carries it: `undefined`
+ * where the answer says nothing of what is in flight — a refusal for another
+ * reason, a stop at step 12, a closed pull request.
+ */
+const stepEight = (submitted: Submitted): InFlightVerdict | undefined => {
+  switch (submitted.outcome) {
+    case 'already-proposed':
+      return {
+        kind: 'same',
+        pull: { number: submitted.number, by: submitted.by, branch: submitted.branch, head: '', files: [], complete: true },
+      }
+    case 'refused':
+      return submitted.inFlight === undefined ? undefined : { kind: 'competing', pulls: submitted.inFlight }
+    case 'created':
+      return submitted.beside === undefined || submitted.beside.length === 0
+        ? { kind: 'clear' }
+        : { kind: 'beside', pulls: submitted.beside }
+    case 'already-submitted':
+    case 'unchanged':
+    case 'pushed-without-pull-request':
+    case 'closed':
+      return undefined
+    default: {
+      const _exhaustive: never = submitted
+      return _exhaustive
+    }
+  }
 }
 
 /** A reason the forge ended on "Nothing was written.": the closing lines say it, or say what was kept. */
 const unwritten = (reason: string): string => reason.replace(/\s*Nothing was written\.$/, '')
 
+/** What a competing pull request leaves a person: review it, or wait — and, in a service's repository, `--local`. */
+const remedyFor = (opened: Opened): string =>
+  opened.forge.repository === 'service'
+    ? 'Review it there, or run this again once it is merged or closed, or add --local to cut the branch in this clone only. Nothing was written.'
+    : 'Review it there, or run this again once it is merged or closed. Nothing was written.'
+
 /**
  * What the forge said, as the run's result and its `--json` key — the same
  * words whether it said them before the prompt or at the moment of writing.
  * A pull request not opened, and one closed, are negative answers (exit 1),
- * as a refusal is.
+ * as a refusal is; so is a pull request in flight that competes with this
+ * change. A change another account already proposed is named, exit 0. What
+ * names another person — their login, their branch, their patch — goes to
+ * `inFlight`, stderr, before the result; the result names numbers, URLs and
+ * this change's own paths.
  */
 function outcomeOf(
   submitted: Submitted,
-  base: Base,
-  road: Road,
+  opened: Opened,
   said: (status: PreviewStatus) => string,
   noting: (line: string) => void,
+  inFlight: (line: string) => void = noting,
 ): { readonly result: CommandResult; readonly report: SubmissionReport } {
+  const { base, road } = opened
   switch (submitted.outcome) {
     case 'created':
     case 'already-submitted': {
       const { pullRequest, olderBase } = submitted
       const statusChecks = submitted.outcome === 'created' ? submitted.statusChecks : undefined
       const note = submitted.outcome === 'created' ? submitted.note : undefined
+      const beside = submitted.outcome === 'created' ? (submitted.beside ?? []) : []
       if (note !== undefined && road.kind === 'github') {
         noting(one(noteLine(note, road.base, submitted.outcome === 'created' ? (submitted.missing ?? []) : [])))
       }
@@ -833,6 +1161,7 @@ function outcomeOf(
         ...(olderBase === undefined ? {} : { olderBase }),
         ...(statusChecks === undefined ? {} : { statusChecks }),
         ...(note === undefined ? {} : { note }),
+        ...(beside.length === 0 || road.kind !== 'github' ? {} : { beside: besideOf(beside, road) }),
       }
       return {
         report: {
@@ -844,6 +1173,7 @@ function outcomeOf(
           ...(pullRequest === undefined ? {} : { pullRequest }),
           ...(olderBase === undefined ? {} : { olderBase }),
           ...(note === undefined ? {} : { note }),
+          ...(beside.length === 0 || road.kind !== 'github' ? {} : { beside: beside.map((entry) => reportOf(entry, road)) }),
         },
         result: { text: said(status), found: true },
       }
@@ -851,6 +1181,17 @@ function outcomeOf(
     case 'unchanged':
       return { report: submitted, result: { text: said({ kind: 'preview' }), found: true } }
     case 'refused': {
+      if (submitted.inFlight !== undefined && road.kind === 'github') {
+        // Another person's pull request: who and from where, then what it
+        // changes of this change's files, on stderr; numbers, URLs and paths on stdout.
+        for (const { pull } of submitted.inFlight) inFlight(whoLine(pull))
+        for (const line of patchLines(submitted.inFlight, road)) inFlight(line)
+        const reasons = submitted.inFlight.map((entry) => competingLine(entry, road))
+        return {
+          report: { outcome: 'refused', reasons, inFlight: submitted.inFlight.map((entry) => reportOf(entry, road)) },
+          result: { text: said({ kind: 'refused', reasons, remedy: remedyFor(opened) }), found: false },
+        }
+      }
       // The forge's words quote refs and paths of the repository: cleaned.
       const { kept } = submitted
       const status: PreviewStatus = {
@@ -861,6 +1202,23 @@ function outcomeOf(
       return {
         report: { outcome: 'refused', reasons: [submitted.reason], ...(kept === undefined ? {} : { kept }) },
         result: { text: said(status), found: false },
+      }
+    }
+    case 'already-proposed': {
+      if (road.kind !== 'github') throw new Error('a local road never meets a pull request')
+      // The owner's words, on stderr: the author is named there and nowhere else.
+      inFlight(`already proposed by ${one(submitted.by)} in pull request #${String(submitted.number)}`)
+      return {
+        report: { outcome: 'already-proposed', branch: submitted.branch, number: submitted.number, url: submitted.url },
+        result: {
+          text: said({
+            kind: 'already-proposed',
+            number: submitted.number,
+            url: submitted.url,
+            repository: printedRepository(road.repository),
+          }),
+          found: true,
+        },
       }
     }
     case 'pushed-without-pull-request': {

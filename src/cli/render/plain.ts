@@ -182,6 +182,21 @@ export function inertLine(text: string, max = REASON_LIMIT): string {
 }
 
 /**
+ * One line with nothing a terminal obeys and the bidi controls spelled out,
+ * as `inertLine` writes it, but its spaces kept: an indentation, and the runs
+ * inside a line that a patch's YAML is laid out with. Every other white space
+ * — a line break, a tab, a separator — is one space, so a line stays a line;
+ * trailing white space is dropped. Nothing is cut. What `cli/index.ts` says on
+ * stderr, a patch of another pull request's included (Task 6.3.6).
+ */
+export function inertSpaced(text: string): string {
+  return plain(text)
+    .replace(/[^\S ]+/g, ' ')
+    .trimEnd()
+    .replace(BIDI, (char) => visible(char))
+}
+
+/**
  * Text this tool did not write, kept on as many lines as it has: `plain`, with
  * the bidi controls spelled out. For a refusal `cli/index.ts` prints whole —
  * a message that quotes a file name, a key or a parser's excerpt of a file.

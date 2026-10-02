@@ -21,9 +21,14 @@ export const CLOSING = 'Nothing is provisioned yet. The merge is what authorises
  */
 export type PreviewStatus =
   | { readonly kind: 'preview' }
-  | { readonly kind: 'pending'; readonly branch: string }
+  | { readonly kind: 'pending'; readonly branch: string; readonly beside?: Beside }
   | { readonly kind: 'declined' }
-  | { readonly kind: 'refused'; readonly reasons: readonly string[]; readonly kept?: string }
+  /**
+   * `remedy`, when the refusal is an idp-agent pull request in flight that
+   * changes a file this change writes (Task 6.3.6): said in place of "Nothing
+   * was written.", which it ends on.
+   */
+  | { readonly kind: 'refused'; readonly reasons: readonly string[]; readonly kept?: string; readonly remedy?: string }
   | {
       readonly kind: 'submitted'
       readonly again: boolean
@@ -41,7 +46,15 @@ export type PreviewStatus =
        * do not promise one.
        */
       readonly note?: MergeNote
+      /** The idp-agent pull requests in flight beside it, which its body names. */
+      readonly beside?: Beside
     }
+  /**
+   * The same bytes, already proposed by another account's pull request in
+   * flight, named by number and URL — never by its author, who is said on
+   * stderr alone (Task 6.3.6). `repository` as printed.
+   */
+  | { readonly kind: 'already-proposed'; readonly number: number; readonly url: string; readonly repository: string }
   /** `repository` as printed, `github.com/acme/iac`; `reason` the forge's, cleaned. */
   | { readonly kind: 'pushed-without-pull-request'; readonly branch: string; readonly repository: string; readonly reason: string }
   /** `base`: the branch on GitHub a merged pull request went into, which no longer carries it. */
@@ -55,6 +68,35 @@ export type PreviewStatus =
     }
   /** `init`'s preview ends on its `apply` sentence instead of `CLOSING`: the tail it says in place of it. */
   | { readonly kind: 'applied-by-hand'; readonly apply: string }
+
+/**
+ * The idp-agent pull requests in flight beside a change (Task 6.3.6), as
+ * stdout names them: by number and by this change's own paths, never by
+ * author or branch. `repository` as printed; `complete` false when a pull
+ * request's file list ran past one page and only the first 100 were compared.
+ */
+export interface Beside {
+  readonly repository: string
+  readonly pulls: readonly { readonly number: number; readonly paths: readonly string[]; readonly complete: boolean }[]
+}
+
+/** How many pull requests in flight a run names on stdout, or before the model on stderr, before `… and <m> more`. */
+export const IN_FLIGHT_SHOWN = 5
+
+/**
+ * The lines naming the pull requests in flight beside a change: one per pull
+ * request, five at most, then how many more. Paths are this repository's own,
+ * printed through `inertLine`.
+ */
+export function inFlightLines(beside: Beside): string[] {
+  const shown = beside.pulls.slice(0, IN_FLIGHT_SHOWN).map(
+    (pull) =>
+      `In flight beside it on ${beside.repository}: pull request #${String(pull.number)}, changing ` +
+      `${pull.paths.map(one).join(', ')}${pull.complete ? '' : ' (more than 100 files; the first 100 compared)'}`,
+  )
+  const more = beside.pulls.length - shown.length
+  return more > 0 ? [...shown, `… and ${String(more)} more`] : shown
+}
 
 const short = (commit: string): string => commit.slice(0, 7)
 
@@ -139,20 +181,29 @@ export function closingLines(status: PreviewStatus, changed: number): string[] {
     case 'applied-by-hand':
       return [`${files} · nothing written`, status.apply]
     case 'pending':
-      return [`${files} · not yet submitted — it would become ${status.branch}`, CLOSING]
+      return [
+        `${files} · not yet submitted — it would become ${status.branch}`,
+        ...(status.beside === undefined ? [] : inFlightLines(status.beside)),
+        CLOSING,
+      ]
     case 'declined':
       return [`${files} · not submitted · nothing written`, CLOSING]
     case 'refused':
       return [
         `${files} · not submitted:`,
         ...status.reasons.map((reason) => `  ${reason}`),
-        status.kept === undefined
-          ? 'Nothing was written.'
-          : `${status.kept} was cut in this clone, and no pull request was opened.`,
+        status.kept !== undefined
+          ? `${status.kept} was cut in this clone, and no pull request was opened.`
+          : (status.remedy ?? 'Nothing was written.'),
+        CLOSING,
+      ]
+    case 'already-proposed':
+      return [
+        `${files} · already proposed in pull request #${String(status.number)} on ${status.repository}: ${status.url} · nothing written`,
         CLOSING,
       ]
     case 'submitted':
-      return [...submittedLines(status, files), CLOSING]
+      return [...submittedLines(status, files), ...(status.beside === undefined ? [] : inFlightLines(status.beside)), CLOSING]
     case 'pushed-without-pull-request':
       return [`${files} · ${status.branch} is on ${status.repository}, and ${status.reason}`, CLOSING]
     case 'closed':
