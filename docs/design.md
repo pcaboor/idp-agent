@@ -163,13 +163,17 @@ follows from the documentation of the tools involved.
 - **The merge is the act of authorisation.** The CLI opens a pull request; it never
   writes to the main branch. Confirming in the terminal means "I am submitting my
   request", not "I am authorising myself".
-- **The identity that opens a pull request cannot merge it until someone else has approved
-  the exact commit that would merge, and idpa never submits against a base without those
-  rules.** On GitHub the right to push a branch is the right that merges, so no credential
-  can be scoped out of merging; what refuses the merge is the base's ruleset, which the tool
-  reads before it writes anything and again at the moment of acting, and a test asserts that
-  the merge **fails**: offline against a fake, live on a throwaway repository (the stage 6
-  note, `docs/stage-6-brief.md` §§ 8 and 10).
+- **idpa never merges and never writes to the base: it opens a pull request, and the base's
+  rules decide who may merge it.** Whether its author may merge it alone is the company's rule,
+  not this tool's; where the rules allow it, idpa says so — `note: on this repository the
+  author may merge without another person's review` — on stderr and in the pull request, and
+  the pull request is opened all the same. Where the rules require someone else's approval of
+  the exact commit that would merge, the identity that opens the pull request cannot merge it:
+  on GitHub the right to push a branch is the right that merges, so no credential can be
+  scoped out of merging, and what refuses the merge is the base's ruleset, which the tool
+  reads before it writes anything and again at the moment of acting; a test asserts that the
+  merge **fails** there: offline against a fake, live on a throwaway repository (the stage 6
+  note, `docs/stage-6-brief.md` §§ 8 and 10, amended 2026-10-01).
 - Any check that guards against destruction is repeated engine-side, at the moment of
   acting. A control that only lives in the client controls nothing.
 
