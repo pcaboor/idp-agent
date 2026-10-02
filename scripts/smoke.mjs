@@ -743,7 +743,9 @@ check({
 // put first on PATH by the demo itself, over a clone whose upstream is on
 // github.com, then plan --from --submit with --local, to a pull request, again,
 // and with gh logged out, then to a pull request where the repository has no
-// ruleset, with the note; every push goes to the demo's bare repository. The fake is TypeScript Node runs as it is, and a shell script
+// ruleset, with the note, then what is in flight — another account's identical
+// proposal named, and a different change to the same file refused; every push
+// goes to the demo's bare repository. The fake is TypeScript Node runs as it is, and a shell script
 // on PATH: where this Node or this system cannot, it is skipped and said to
 // be, and the smoke goes on.
 {
@@ -776,6 +778,9 @@ check({
       /^1 file · already submitted as idp-agent\/[a-z0-9-]+-[0-9a-f]{8} · pull request #1 is open · nothing written$/m,
       /^main tracks github\.com\/acme\/iac, and gh is not logged in to github\.com/m,
       /^note: on this repository the author may merge without another person's review$/m,
+      /^already proposed by ada in pull request #1$/m,
+      /^1 file · already proposed in pull request #1 on github\.com\/acme\/iac: https:\/\/github\.com\/acme\/iac\/pull\/1 · nothing written$/m,
+      /^ {2}pull request #1 on github\.com\/acme\/iac already changes dependencies\/network\/orders-api-to-payments\.yml, differently: https:\/\/github\.com\/acme\/iac\/pull\/1$/m,
       /^Done\. No model was called, every push went to a bare repository in a scratch folder, and the only gh this ran was the fake\.$/m,
     ]) {
       if (!shown.test(out)) failures.push(`pnpm demo:github: stdout ${shown}`)

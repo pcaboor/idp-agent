@@ -69,6 +69,7 @@ import {
   openForSubmission,
   refuseDivergence,
   refuseUnprotected,
+  sayInFlight,
   submit,
   type Opened,
   type SubmitOptions,
@@ -921,6 +922,19 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
       ...(options.submit?.notice === undefined ? {} : { notice: options.submit.notice }),
     })
     if (unprotected !== undefined) return unprotected
+    // 2026-10-01: what is in flight, read before the Inspector is paid. The
+    // pull requests changing the service's catalog-info or its configuration
+    // are said here; the change is judged once the Architect's bytes exist,
+    // and again at the moment of writing.
+    const flight = await sayInFlight(
+      opened,
+      {
+        what: "the service's catalog-info",
+        paths: ['catalog-info.yaml', 'catalog-info.yml', ...(written === undefined ? [] : [CONFIG_FILE])],
+      },
+      options.submit?.notice === undefined ? {} : { notice: options.submit.notice },
+    )
+    if (flight !== undefined) return flight
   }
 
   const facts = await inspect(options.client, snapshot, options.emit)

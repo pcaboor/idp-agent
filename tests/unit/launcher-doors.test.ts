@@ -49,6 +49,12 @@ describe('the launchers start nothing for a hostile value', () => {
       { route: 'commit', owner: 'acme', name: 'iac', sha: 'abc1234' },
       { route: 'pulls', owner: 'acme', name: 'iac', head: 'main' },
       { route: 'pulls', owner: 'acme/evil', name: 'iac', head: 'idp-agent/x-0123abcd' },
+      { route: 'open-pulls', owner: 'acme', name: 'iac', base: 'main', page: 4 },
+      { route: 'open-pulls', owner: 'acme', name: 'iac', base: 'main', page: 0 },
+      { route: 'open-pulls', owner: 'acme', name: 'iac', base: '{branch}', page: 1 },
+      { route: 'open-pulls', owner: 'acme', name: 'iac', base: 'main\u202e', page: 1 },
+      { route: 'pull-files', owner: 'acme', name: 'iac', number: 0 },
+      { route: 'pull-files', owner: 'acme', name: 'iac', number: 2.5 },
     ]
     for (const route of routes) {
       await expect(gh.get(route), JSON.stringify(route)).rejects.toBeInstanceOf(LauncherRefusal)

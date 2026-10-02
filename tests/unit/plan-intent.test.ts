@@ -25,7 +25,17 @@ import { confirmingEnvironment } from '../support/ask.js'
 import { ForgeInputError } from '../../src/forge/errors.js'
 import { clearedFor, clone, removeClones, scratch } from '../support/forge-fixture.js'
 import { committed, git, observable, show, stored } from '../support/git.js'
-import { githubClone, moveGitHubBase, remoteRefs, unprotect, type GitHubClone } from '../support/github-fixture.js'
+import {
+  BILLING_GRANT,
+  BILLING_GRANT_PATH,
+  githubClone,
+  moveGitHubBase,
+  onMain,
+  pullRequestBy,
+  remoteRefs,
+  unprotect,
+  type GitHubClone,
+} from '../support/github-fixture.js'
 import { protectedMain } from '../support/fake-gh.js'
 import { MERGE_NOTE } from '../../src/core/github/protection.js'
 import { memorySink, onlyTrace } from '../support/trace.js'
@@ -1661,6 +1671,115 @@ describe('plan "<intent>" --submit to GitHub', { timeout: PUSHING }, () => {
     expect(login).toBe(LOGIN)
     expect(JSON.stringify(trace, (_, value: unknown) => (typeof value === 'bigint' ? value.toString() : value))).not.toContain(login)
   })
+
+  /** An application repository whose root catalog-info declares billing-api: the service is known before the model. */
+  const declaredService = async (): Promise<string> => {
+    const project = await application(CONFIGURED)
+    await writeFile(
+      path.join(project, 'catalog-info.yaml'),
+      'apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: billing-api\nspec:\n  type: service\n  lifecycle: production\n  owner: group:default/tiger\n',
+      'utf8',
+    )
+    return project
+  }
+
+  it('reads what is in flight before the Inspector, and says the pull requests touching the inspected service', async () => {
+    const clone = await githubClone()
+    await onMain(clone, { [BILLING_GRANT_PATH]: BILLING_GRANT })
+    await pullRequestBy(clone, { login: 'grace', edits: { [BILLING_GRANT_PATH]: BILLING_GRANT.replace('readwrite', 'read') } })
+    const theirs = clone.gh.state.pulls?.[0]?.head ?? ''
+    const project = await declaredService()
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+    const out: string[] = []
+
+    const code = await main(submitting(clone, project), {
+      env: clone.env,
+      gh,
+      client,
+      ask: answering('read'),
+      out: (chunk) => void out.push(chunk),
+      err: (chunk) => void log.push(`err ${chunk.trimEnd()}`),
+    })
+
+    expect(code, log.join('\n')).toBe(0)
+    const first = log.findIndex((line) => line.startsWith('model '))
+    const reviewed = log.lastIndexOf('model reviewer')
+    const preflight = log.findIndex((line) => /rules\/branches\/main\b/.test(line))
+    const read = log.findIndex((line) => line.includes('pulls?state=open'))
+    expect(preflight).toBeGreaterThan(-1)
+    expect(read).toBeGreaterThan(preflight)
+    expect(read).toBeLessThan(first)
+    const said = log.indexOf(
+      `err in flight on github.com/acme/iac, touching component:default/billing-api: pull request #1 by grace (${theirs}), changing ${BILLING_GRANT_PATH}`,
+    )
+    expect(said).toBeGreaterThan(-1)
+    expect(said).toBeLessThan(first)
+    expect(log[said + 1]).toBe('err this run drafts the change, then compares it with them before anything is written')
+    // Judged after the Reviewer from the read it kept: the next read of the open pull
+    // requests is step 8's, after the last model call, and nothing of GitHub between.
+    const reads = log.flatMap((line, at) => (line.includes('pulls?state=open') ? [at] : []))
+    expect(reads).toHaveLength(2)
+    expect(reads[1]).toBeGreaterThan(reviewed)
+    expect(log.slice(first, reviewed + 1).every((line) => line.startsWith('model ') || line.startsWith('err '))).toBe(true)
+    expect(out.join('')).toContain(`In flight beside it on github.com/acme/iac: pull request #1, changing ${BILLING_GRANT_PATH}`)
+    expect(out.join('')).not.toContain('grace')
+  })
+
+  it('reads what is in flight before the Inspector, and says nothing of it when no single service is declared', async () => {
+    const clone = await githubClone()
+    await onMain(clone, { [BILLING_GRANT_PATH]: BILLING_GRANT })
+    await pullRequestBy(clone, { login: 'grace', edits: { [BILLING_GRANT_PATH]: BILLING_GRANT.replace('readwrite', 'read') } })
+    const project = await application(CONFIGURED)
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+
+    const { code, err } = await run(clone, submitting(clone, project), { gh, client, ask: answering('read') })
+
+    expect(code, err).toBe(0)
+    const first = log.findIndex((line) => line.startsWith('model '))
+    const read = log.findIndex((line) => line.includes('pulls?state=open'))
+    expect(first).toBeGreaterThan(-1)
+    expect(read).toBeGreaterThan(-1)
+    expect(read).toBeLessThan(first)
+    expect(err).not.toContain('in flight on')
+  })
+
+  it('names a change another account already proposed, exit 0, and refuses a competing one, exit 1, nothing written', async () => {
+    const clone = await githubClone({ model: { accounts: [{ login: 'ada', type: 'User' }, { login: 'grace', type: 'User' }] } })
+    clone.gh.state.repositories = clone.gh.state.repositories.map((one) => ({
+      ...one,
+      permissions: { ...one.permissions, grace: { admin: false, maintain: false, push: true } },
+    }))
+    const project = await application(CONFIGURED)
+    clone.gh.as('grace')
+    expect((await run(clone, submitting(clone, project), { client: converging([CREATE_DATABASE, CREATE_ACCESS]), ask: answering('read') })).code).toBe(0)
+    clone.gh.as('ada')
+    for (const ref of await ours(clone.repo)) await git(clone.repo, 'update-ref', '-d', ref)
+    const before = await remoteRefs(clone.bare)
+
+    const same = await run(clone, submitting(clone, project), { client: converging([CREATE_DATABASE, CREATE_ACCESS]), ask: answering('read') })
+
+    expect(same.code, same.err).toBe(0)
+    expect(same.err.split('\n')).toContain('already proposed by grace in pull request #1')
+    expect(same.out).toContain('already proposed in pull request #1 on github.com/acme/iac: https://github.com/acme/iac/pull/1 · nothing written')
+    expect(same.out).not.toContain('grace')
+    expect(await ours(clone.repo)).toEqual([])
+    expect(await remoteRefs(clone.bare)).toBe(before)
+
+    const competing = await githubClone()
+    await pullRequestBy(competing, { login: 'grace', edits: { [DATABASE_PATH]: 'kind: Resource\n' } })
+    const other = await run(competing, submitting(competing, project), {
+      client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+      ask: answering('read'),
+    })
+    expect(other.code, other.err).toBe(1)
+    expect(other.out).toContain(
+      `  pull request #1 on github.com/acme/iac already changes ${DATABASE_PATH}, differently: https://github.com/acme/iac/pull/1`,
+    )
+    expect(other.out).toContain('Review it there, or run this again once it is merged or closed. Nothing was written.')
+    expect(other.err).toContain(`In pull request #1, ${DATABASE_PATH}:`)
+    expect(await ours(competing.repo)).toEqual([])
+    expect(competing.gh.state.pulls).toHaveLength(1)
+  })
 })
 
 describe('plan "<intent>" --submit and iacRepo', { timeout: PUSHING }, () => {
@@ -2351,5 +2470,89 @@ describe('plan "<intent>" at a terminal, without --submit', { timeout: PUSHING }
     expect(JSON.stringify(attended.seen)).toBe(JSON.stringify(unattended.seen))
     expect(JSON.stringify(attended.seen)).not.toContain('github.com')
     expect(JSON.stringify(attended.seen)).not.toContain(LOGIN)
+  })
+
+  describe('what is in flight (6.3.6)', () => {
+    /** grace beside ada, both able to push. */
+    const shared = async (): Promise<GitHubClone> => {
+      const clone = await githubClone({ model: { accounts: [{ login: 'ada', type: 'User' }, { login: 'grace', type: 'User' }] } })
+      clone.gh.state.repositories = clone.gh.state.repositories.map((one) => ({
+        ...one,
+        permissions: { ...one.permissions, grace: { admin: false, maintain: false, push: true } },
+      }))
+      return clone
+    }
+
+    it('proposes nothing when the change is already proposed, and the preview stands at exit 0', async () => {
+      const clone = await shared()
+      const project = await application(CONFIGURED)
+      clone.gh.as('grace')
+      expect((await run(clone, submitting(clone, project), { client: converging([CREATE_DATABASE, CREATE_ACCESS]), ask: answering('read') })).code).toBe(0)
+      clone.gh.as('ada')
+      for (const ref of await ours(clone.repo)) await git(clone.repo, 'update-ref', '-d', ref)
+      const { asked, propose } = proposing(true)
+
+      const { code, out, err } = await run(clone, previewing(clone, project), {
+        client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+        ask: answering('read'),
+        propose,
+      })
+
+      expect(code, err).toBe(0)
+      expect(asked).toEqual([])
+      expect(err.split('\n')).toContain(
+        'no pull request proposed — already proposed by grace in pull request #1: https://github.com/acme/iac/pull/1',
+      )
+      expect(out.trimEnd().split('\n').slice(-2)).toEqual(['2 files · nothing written', CLOSING])
+      expect(out).not.toContain('grace')
+      expect(clone.gh.state.pulls).toHaveLength(1)
+    })
+
+    it('proposes nothing beside a competing pull request, and shows its patch on stderr', async () => {
+      const clone = await shared()
+      await pullRequestBy(clone, { login: 'grace', edits: { [DATABASE_PATH]: 'kind: Resource\n' } })
+      const theirs = clone.gh.state.pulls?.[0]?.head ?? ''
+      const project = await application(CONFIGURED)
+      const { asked, propose } = proposing(true)
+
+      const { code, out, err } = await run(clone, previewing(clone, project), {
+        client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+        ask: answering('read'),
+        propose,
+      })
+
+      expect(code, err).toBe(0)
+      expect(asked).toEqual([])
+      const lines = err.split('\n')
+      expect(lines).toContain(
+        `no pull request proposed — pull request #1 by grace (${theirs}) already changes ${DATABASE_PATH}, differently: https://github.com/acme/iac/pull/1`,
+      )
+      const at = lines.indexOf(`In pull request #1, ${DATABASE_PATH}:`)
+      expect(at).toBeGreaterThan(-1)
+      expect(lines[at + 1]).toMatch(/^ {4}@@/)
+      expect(out.trimEnd().split('\n').slice(-2)).toEqual(['2 files · nothing written', CLOSING])
+      expect(out).not.toContain('grace')
+      expect(await ours(clone.repo)).toEqual([])
+    })
+
+    it('proposes beside a pull request on another file of the same entities, and opens it on y', async () => {
+      const clone = await shared()
+      await onMain(clone, { [BILLING_GRANT_PATH]: BILLING_GRANT })
+      await pullRequestBy(clone, { login: 'grace', edits: { [BILLING_GRANT_PATH]: BILLING_GRANT.replace('readwrite', 'read') } })
+      const project = await application(CONFIGURED)
+      const { asked, propose } = proposing(true)
+
+      const { code, out, err } = await run(clone, previewing(clone, project), {
+        client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+        ask: answering('read'),
+        propose,
+      })
+
+      expect(code, err).toBe(0)
+      const beside = `In flight beside it on github.com/acme/iac: pull request #1, changing ${BILLING_GRANT_PATH}`
+      expect(asked[0]?.preview.split('\n')).toContain(beside)
+      expect(out).toContain('Pull request #2 opened on github.com/acme/iac: https://github.com/acme/iac/pull/2')
+      expect(clone.gh.state.pulls?.find((one) => one.number === 2)?.body).toContain('Opened beside pull request 1, open into `main`')
+    })
   })
 })

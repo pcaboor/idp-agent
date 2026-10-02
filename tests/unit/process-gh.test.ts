@@ -257,6 +257,15 @@ describe('the vectors it builds', () => {
     expect(at({ route: 'pulls', ...repo, head: 'idp-agent/x-0123abcd' })).toBe(
       'repos/acme/iac/pulls?head=acme%3Aidp-agent%2Fx-0123abcd&state=all&per_page=100',
     )
+    // What is in flight (6.3.6): the open pull requests into a base, newest first, one page
+    // asked at a time; and one pull request's files, one page.
+    expect(at({ route: 'open-pulls', ...repo, base: 'main', page: 2 })).toBe(
+      'repos/acme/iac/pulls?state=open&base=main&sort=created&direction=desc&per_page=100&page=2',
+    )
+    expect(at({ route: 'open-pulls', ...repo, base: 'release/1', page: 1 })).toBe(
+      'repos/acme/iac/pulls?state=open&base=release%2F1&sort=created&direction=desc&per_page=100&page=1',
+    )
+    expect(at({ route: 'pull-files', ...repo, number: 12 })).toBe('repos/acme/iac/pulls/12/files?per_page=100')
     expect(ghArgv({ kind: 'version' })).toEqual(['--version'])
   })
 

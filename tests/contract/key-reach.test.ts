@@ -14,7 +14,7 @@ import { catalogueOf } from '../../tools/fake-backstage.js'
 import { fakeBackstage, type Faults, type Sent as ToCatalogue } from '../support/fake-backstage.js'
 import { fakeGitHub, protectedMain } from '../support/fake-gh.js'
 import { CLOSED_PROXY, PROXY_VARIABLES } from '../setup/forge.js'
-import { fakeSsh, githubClone, requireUnrewritten, type GitHubClone } from '../support/github-fixture.js'
+import { fakeSsh, githubClone, pullRequestBy, requireUnrewritten, type GitHubClone } from '../support/github-fixture.js'
 import type { GhProcess } from '../../src/process/gh.js'
 import { git } from '../support/git.js'
 import { removeClones } from '../support/forge-fixture.js'
@@ -919,13 +919,13 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
     argv: string[],
     word: Road['word'],
     operations: unknown[],
-    arrange: (clone: GitHubClone) => void = () => {},
+    arrange: (clone: GitHubClone) => void | Promise<void> = () => {},
     cloned: { readonly source: string; readonly repository: string } = { source: FIXTURES, repository: 'acme/iac' },
     catalogue?: ReturnType<typeof fakeBackstage>,
     more: Pick<MainDeps, 'propose'> = {},
   ): Promise<Submitted> => {
     const clone = await githubClone({ ...cloned, login: LOGIN })
-    arrange(clone)
+    await arrange(clone)
     const base = await git(clone.repo, 'rev-parse', 'main')
     const toGh: Handed[] = []
     const gh: GhProcess = async (vector, options) => {
@@ -1200,6 +1200,107 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
     // nothing GitHub answered about acme/orders-api.
     expect(ran.out).toContain('+iacRepo: "github.com/acme/iac"')
     heldToGitHub(ran, 'acme/orders-api', ['github.com/acme/iac'])
+  }, 30_000)
+
+  /**
+   * What is in flight (6.3.6): another account's idp-agent pull request,
+   * competing with this change, each of whose title, branch, patch and a file
+   * name this change neither writes nor relates to holds a canary. The read is
+   * before the Inspector on both roads, so what it read reaches no request.
+   */
+  const OTHER = 'canary-other-7c1'
+  const IN_FLIGHT = {
+    title: 'canary-title-in-flight-31f',
+    branch: 'idp-agent/canary-branch-in-flight-0123abcd',
+    patch: 'canary-patch-in-flight-77a',
+    file: 'catalog/canary-unrelated-file-91b.yml',
+  }
+  const competing =
+    (path: string) =>
+    async (clone: GitHubClone): Promise<void> => {
+      clone.gh.state.accounts = [...clone.gh.state.accounts, { login: OTHER, type: 'User' }]
+      await pullRequestBy(clone, {
+        login: OTHER,
+        branch: IN_FLIGHT.branch,
+        title: IN_FLIGHT.title,
+        edits: { [path]: `kind: Resource\n# ${IN_FLIGHT.patch}\n`, [IN_FLIGHT.file]: 'kind: Resource\n' },
+      })
+    }
+
+  /** Held to § 12 for what is in flight: on stderr alone, the branch and the patch; the title and the unrelated file nowhere. */
+  const heldInFlight = (ran: Submitted): void => {
+    const login = /as ([A-Za-z0-9-]+) \(gh\)$/m.exec(ran.err)?.[1] ?? ''
+    expect(login, ran.err).toBe(LOGIN)
+    expect(ran.code, ran.err).toBe(1)
+    // The read was made, the verdict said, and the patch shown: not vacuous.
+    expect(ran.toGh.some((call) => (call.argv[6] ?? '').includes('pulls?state=open'))).toBe(true)
+    expect(ran.err).toContain(`pull request #1 is by ${OTHER}, from ${IN_FLIGHT.branch}`)
+    expect(ran.err).toContain(IN_FLIGHT.patch)
+    expect(ran.toProvider.length).toBeGreaterThan(0)
+    for (const sent of ran.toProvider) {
+      const shown = JSON.stringify(sent)
+      for (const kept of ['github.com', login, OTHER, ...Object.values(IN_FLIGHT)]) expect(shown, kept).not.toContain(kept)
+    }
+    const shipped = ran.toMlflow.map((sent) => JSON.stringify(sent))
+    expect(shipped.length).toBeGreaterThan(0)
+    for (const text of [ran.out, ran.trace, ...shipped]) {
+      for (const kept of [login, OTHER, ...Object.values(IN_FLIGHT)]) expect(text, kept).not.toContain(kept)
+    }
+    const bodies = JSON.stringify(ran.pulls)
+    for (const nowhere of [IN_FLIGHT.file]) {
+      for (const text of [ran.out, ran.err, ran.trace]) expect(text, nowhere).not.toContain(nowhere)
+    }
+    for (const text of [ran.out, ran.err, ran.trace]) expect(text).not.toContain(IN_FLIGHT.title)
+    // Nothing was opened: the one pull request is the other account's, its body as it was.
+    expect((ran.pulls as { number: number }[]).map((pull) => pull.number)).toEqual([1])
+    expect(bodies).not.toContain('idp-agent: ')
+    expect(ran.toGh.some((call) => call.argv[4] === 'POST')).toBe(false)
+  }
+
+  it('keeps what is in flight off the provider, the trace and MLflow, on plan "<intent>" --submit: the other run’s branch and patch on stderr alone', async () => {
+    const example = JSON.parse(await readFile(EXAMPLE, 'utf8')) as { intent: string; operations: unknown[] }
+    const { project } = await repositories()
+    const ran = await submittingRun(
+      ['plan', example.intent, '--project', project, '--submit'],
+      'MUTATION',
+      example.operations,
+      competing('dependencies/network/orders-api-to-payments.yml'),
+    )
+    heldInFlight(ran)
+  }, 30_000)
+
+  it('keeps what is in flight off the provider, the trace and MLflow, on init --submit: the other run’s branch and patch on stderr alone', async () => {
+    const { project } = await repositories()
+    const ran = await submittingRun(
+      [
+        'init',
+        '--submit',
+        '--iac-repo',
+        'github.com/acme/iac',
+        '--environment',
+        'prod',
+        '--name',
+        'orders-api',
+        '--lifecycle',
+        'production',
+        '--owner',
+        'group:default/tiger',
+      ],
+      'MUTATION',
+      [
+        {
+          op: 'create-entity',
+          entity: {
+            kind: 'Component',
+            metadata: { name: 'orders-api' },
+            spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
+          },
+        },
+      ],
+      competing('catalog-info.yaml'),
+      { source: project, repository: 'acme/orders-api' },
+    )
+    heldInFlight(ran)
   }, 30_000)
 
   it('keeps gh\'s login off the trace and MLflow when the rules let the author merge alone, or refuse the push, on plan "<intent>" --submit, in prose and in --json', async () => {

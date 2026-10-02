@@ -153,3 +153,46 @@ export const pullsAnswer = z.array(
 )
 
 export type PullsAnswer = z.infer<typeof pullsAnswer>
+
+/**
+ * `GET repos/<o>/<r>/pulls?state=open&base=<b>&sort=created&direction=desc&per_page=100&page=<p>`
+ * (stage 6 plan, Task 6.3.6): what is in flight into a base, newest first. Of
+ * each pull request, its number, its author's login as a bounded string —
+ * `isLogin` is held to a candidate's only, since a bot's `[bot]` login, or one
+ * GitHub shows as nobody's, must not stop every submission into the base — its
+ * head's branch, commit and repository (`null` for a fork GitHub no longer
+ * holds), and its base. Its title and its body are not named, so they are
+ * dropped here and nothing downstream can carry them.
+ */
+export const openPullsAnswer = z.array(
+  z.object({
+    number: pullNumber,
+    user: z.object({ login: z.string().max(100) }).nullable(),
+    head: z.object({
+      ref: z.string().max(1024),
+      sha: objectId,
+      repo: z.object({ full_name: z.string().max(256) }).nullable(),
+    }),
+    base: z.object({ ref: z.string() }),
+  }),
+)
+
+export type OpenPullsAnswer = z.infer<typeof openPullsAnswer>
+
+/**
+ * `GET repos/<o>/<r>/pulls/<n>/files?per_page=100`: what one pull request
+ * changes, by path. `sha` is the blob at its head (GitHub's, or `null`);
+ * `previous_filename` a rename's old path; `patch` GitHub's diff of the file,
+ * absent where it gives none — kept as bytes, and printed only on stderr.
+ */
+export const pullFilesAnswer = z.array(
+  z.object({
+    filename: z.string().min(1).max(4096),
+    status: z.enum(['added', 'removed', 'modified', 'renamed', 'copied', 'changed', 'unchanged']),
+    sha: objectId.nullable(),
+    previous_filename: z.string().min(1).max(4096).optional(),
+    patch: z.string().optional(),
+  }),
+)
+
+export type PullFilesAnswer = z.infer<typeof pullFilesAnswer>

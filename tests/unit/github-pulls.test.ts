@@ -125,6 +125,59 @@ describe('the pull requests route', () => {
   })
 })
 
+describe('what is in flight: the open pull requests and one pull request’s files (6.3.6)', () => {
+  const OPEN = {
+    ...PULL,
+    title: 'canary-title-91c',
+    body: 'canary-body-91c',
+    head: { ref: BRANCH, sha: SHA, repo: { full_name: 'acme/iac' } },
+  }
+
+  it('reads one page of open pull requests into the base, says whether a next one is linked, and keeps no title', async () => {
+    const one = stub([200, [OPEN, { ...OPEN, number: 8, user: null, head: { ref: 'feature/x', sha: SHA, repo: null } }], ['Link: <https://api.github.com/x?page=3>; rel="next"']])
+
+    const read = await one.api().openPulls('main', 2)
+
+    expect(read).toEqual({
+      pulls: [
+        { number: 7, by: 'ada', branch: BRANCH, head: SHA, repository: 'acme/iac' },
+        { number: 8, by: undefined, branch: 'feature/x', head: SHA, repository: null },
+      ],
+      more: true,
+    })
+    expect(JSON.stringify(read)).not.toContain('canary')
+    expect(one.sent[0]?.argv[6]).toBe('repos/acme/iac/pulls?state=open&base=main&sort=created&direction=desc&per_page=100&page=2')
+    // A pull request into another base is not one into this base: none of it is read.
+    const elsewhere = await thrown(stub([200, [{ ...OPEN, base: { ref: 'release', sha: SHA } }]]).api().openPulls('main', 1))
+    expect((elsewhere as GitHubAnswerError).status).toBe('unreadable')
+    const unpaired = await thrown(stub([200, [{ ...OPEN, head: { ref: BRANCH, sha: 'abc' } }]]).api().openPulls('main', 1))
+    expect((unpaired as GitHubAnswerError).status).toBe('unreadable')
+  })
+
+  it("reads one page of a pull request's files, and says when it was not the whole list", async () => {
+    const files = [
+      { filename: 'catalog/a.yml', status: 'added', sha: SHA, patch: '@@ -0,0 +1 @@\n+a', additions: 1 },
+      { filename: 'catalog/b.yml', status: 'renamed', sha: SHA, previous_filename: 'catalog/old.yml' },
+      { filename: 'catalog/c.yml', status: 'removed', sha: SHA },
+    ]
+    const one = stub([200, files])
+
+    expect(await one.api().pullFiles(7)).toEqual({
+      files: [
+        { path: 'catalog/a.yml', removed: false, blob: SHA, patch: '@@ -0,0 +1 @@\n+a' },
+        { path: 'catalog/b.yml', removed: false, blob: SHA, previous: 'catalog/old.yml' },
+        { path: 'catalog/c.yml', removed: true },
+      ],
+      complete: true,
+    })
+    expect(one.sent[0]?.argv[6]).toBe('repos/acme/iac/pulls/7/files?per_page=100')
+    const cut = await stub([200, files, ['Link: <https://api.github.com/x?page=2>; rel="next"']]).api().pullFiles(7)
+    expect(cut.complete).toBe(false)
+    const odd = await thrown(stub([200, [{ ...files[0], status: 'moved' }]]).api().pullFiles(7))
+    expect((odd as GitHubAnswerError).status).toBe('unreadable')
+  })
+})
+
 describe('the one write', () => {
   const INPUT = { title: 'idp-agent: declare orders-db-prod', head: BRANCH, base: 'main', body: 'the body' }
 

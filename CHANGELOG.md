@@ -299,6 +299,17 @@ Each pull request adds its line here.
   says why no pull request is proposed, and the preview stands at exit 0. No model writes the
   question or holds a tool that pushes; a script, a pipe or `--json` is never asked and still
   needs `--submit` ([#134](https://github.com/pcaboor/idp-agent/pull/134)).
+- What is in flight is read first: on every `--submit` toward GitHub, before any model, the open
+  `idp-agent` pull requests into the base are read with their files, through two new gh reads,
+  those touching the service are said, and the change is judged against them before anything is
+  written and again at the moment of writing. The same bytes already proposed are named,
+  `already proposed by <login> in pull request #12`, and nothing is written (exit 0); a pull
+  request that changes a file this change writes, differently, is shown beside it with its patch
+  and this one is not submitted (exit 1); one that changes other files of the same entities is
+  shown, and this change is proposed beside it, its body naming the other by number. Another
+  person's pull request is never edited, commented on, closed or linked to, its title is never
+  read, and their login, branch and patch go to the terminal alone, never to a trace or `--json`
+  ([#135](https://github.com/pcaboor/idp-agent/pull/135)).
 
 ### Changed
 

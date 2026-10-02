@@ -11,7 +11,16 @@ import { gitIn, pushIn, type Git, type Push } from '../../src/process/git.js'
 import type { FakeRepository, FakeRuleset } from '../../tools/fake-gh.js'
 import { MERGE_DOOR, protectedMain, protectingRuleset, repository } from '../support/fake-gh.js'
 import { clearedFor, removeClones } from '../support/forge-fixture.js'
-import { githubClone, githubForge, remoteRefs, type GitHubClone } from '../support/github-fixture.js'
+import {
+  BILLING_GRANT,
+  BILLING_GRANT_PATH,
+  githubClone,
+  githubForge,
+  onMain,
+  pullRequestBy,
+  remoteRefs,
+  type GitHubClone,
+} from '../support/github-fixture.js'
 import { git, observable, show } from '../support/git.js'
 
 /**
@@ -430,4 +439,80 @@ describe('the owner’s decision of 2026-10-01 — the pull request is always op
       await discard(clone)
     }
   })
+})
+
+describe('the owner’s decision of 2026-10-01 — what is in flight', () => {
+  /** What another account's pull request changes, for each verdict the fake can be seeded into. */
+  const SEEDS: Record<string, (change: Cleared) => { readonly edits: Record<string, string>; readonly branch?: string }> = {
+    same: (change) => ({ edits: Object.fromEntries(change.edits.map((edit) => [edit.path, edit.after])) }),
+    'same, on this change’s own branch': (change) => ({
+      edits: Object.fromEntries(change.edits.map((edit) => [edit.path, edit.after])),
+      branch: change.branch,
+    }),
+    competing: (change) => ({ edits: { [change.edits[0]?.path ?? '']: 'kind: Resource\n' } }),
+    beside: () => ({ edits: { [BILLING_GRANT_PATH]: BILLING_GRANT.replace('readwrite', 'read') } }),
+    clear: () => ({ edits: { 'README.md': 'somebody else’s\n' } }),
+  }
+
+  /** Everything of a pull request this run did not open that GitHub would show: its fields, every event, its head's commits. */
+  const others = async (clone: GitHubClone, numbers: ReadonlySet<number>): Promise<string> => {
+    const pulls = (clone.gh.state.pulls ?? []).filter((pull) => numbers.has(pull.number))
+    const heads = await Promise.all(
+      pulls.map(async (pull) => git(clone.bare, 'log', '--format=%H %T %P %s', `refs/heads/${pull.head}`).catch(() => 'gone')),
+    )
+    return JSON.stringify({ pulls, heads })
+  }
+
+  it('never writes another person’s pull request: before the first read or between the two, whatever the verdict', async () => {
+    const reached = new Set<string>()
+    for (const [verdict, seed] of Object.entries(SEEDS)) {
+      for (const when of ['before the first read', 'between the two reads'] as const) {
+        const where = `${verdict}, opened ${when}`
+        const clone = await githubClone()
+        await onMain(clone, { [BILLING_GRANT_PATH]: BILLING_GRANT })
+        const change = await clearedFor(clone.repo)
+        const posts: Buffer[] = []
+        const gh: GhProcess = (argv, options) => {
+          if (argv[4] === 'POST' && options.stdin !== undefined) posts.push(options.stdin)
+          return clone.gh.process(argv, options)
+        }
+        const { forge } = await githubForge(clone, { wait: async () => {}, gh })
+        const base = await forge.base()
+        const { edits, branch } = seed(change)
+        const theirs = async (): Promise<void> => {
+          await pullRequestBy(clone, { login: 'grace', edits, ...(branch === undefined ? {} : { branch }) })
+        }
+        if (when === 'before the first read') await theirs()
+        const first = await forge.inFlight?.({
+          writes: change.edits.map((edit) => ({ path: edit.path, after: edit.after })),
+          related: change.related,
+          branch: change.branch,
+        })
+        if (when === 'between the two reads') {
+          expect(first, where).toEqual({ kind: 'clear' })
+          await theirs()
+        } else {
+          reached.add(first?.kind ?? 'none')
+        }
+        const numbers = new Set((clone.gh.state.pulls ?? []).map((pull) => pull.number))
+        const before = await others(clone, numbers)
+
+        const outcome = await forge.submit(change, base)
+
+        expect(await others(clone, numbers), where).toBe(before)
+        const expected =
+          verdict === 'competing' ? 'refused' : verdict.startsWith('same') ? 'already-proposed' : 'created'
+        expect(outcome.outcome, where).toBe(expected)
+        expect(posts.length, where).toBeLessThanOrEqual(1)
+        for (const post of posts) {
+          const sent = JSON.parse(post.toString('utf8')) as { head: string; body: string }
+          expect(sent.head, where).toBe(change.branch)
+          expect(sent.body, where).not.toMatch(/#\d/)
+        }
+        await discard(clone)
+      }
+    }
+    // Never vacuous: every verdict was reached before the question.
+    expect([...reached].sort()).toEqual(['beside', 'clear', 'competing', 'same'])
+  }, 300_000)
 })

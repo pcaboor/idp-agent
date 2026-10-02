@@ -43,6 +43,8 @@ import {
   refuseDivergence,
   refuseOtherRepository,
   refuseUnprotected,
+  sayInFlight,
+  serviceTarget,
   submit,
   unproposedLine,
   type Confirm,
@@ -1109,6 +1111,13 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
       ...(options.submit?.notice === undefined ? {} : { notice: options.submit.notice }),
     })
     if (unprotected !== undefined) return unprotected
+    // 2026-10-01: what is in flight, read before the preview (this road pays
+    // no model), and judged in `submit` before anyone is asked.
+    const flight = await sayInFlight(opened, undefined, {
+      json: options.json === true,
+      ...(options.submit?.notice === undefined ? {} : { notice: options.submit.notice }),
+    })
+    if (flight !== undefined) return flight
   }
   const previewing = {
     ...options,
@@ -1504,6 +1513,16 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
       ...(options.submit?.notice === undefined ? {} : { notice: options.submit.notice }),
     })
     if (unprotected !== undefined) return unprotected
+    // 2026-10-01: what is in flight, read before any model. Said here only
+    // where the service is known; judged once the bytes exist, and again at
+    // the moment of writing. The phrase road read it before the Supervisor,
+    // and this is answered from that read.
+    const about = project === undefined ? undefined : serviceTarget(project, snapshot)
+    const flight = await sayInFlight(opened, about, {
+      json: options.json === true,
+      ...(options.submit?.notice === undefined ? {} : { notice: options.submit.notice }),
+    })
+    if (flight !== undefined) return flight
   }
   const contexts = contextsOf(root, snapshot, contents, graph, {
     config,

@@ -1,7 +1,9 @@
 import {
   branchAnswer,
   commitAnswer,
+  openPullsAnswer,
   pullAnswer,
+  pullFilesAnswer,
   pullsAnswer,
   refAnswer,
   repositoryAnswer,
@@ -13,6 +15,7 @@ import {
   type RulesAnswer,
   type RulesetAnswer,
 } from '../../core/github/answers.js'
+import type { InFlightFile } from '../../core/github/in-flight.js'
 import { isBranch, printedRepository, type GitHubRepository } from '../../core/github/remote.js'
 import { GH_LIMITS, GhError, ghIn, type GhAnswer, type GhClient, type GhProcess, type GhRoute } from '../../process/gh.js'
 import { GITHUB_LIMITS } from './limits.js'
@@ -25,7 +28,9 @@ import { GITHUB_LIMITS } from './limits.js'
  * (`GitHubAnswerError`), never GitHub's or gh's, which a repository or a
  * server can reach. The routes of a commit and of the pull requests, and the
  * one write, are the GitHub forge's (`forge.ts`): the write at most once per
- * run, whatever the first one answered.
+ * run, whatever the first one answered. The two reads of what is in flight
+ * (Task 6.3.6) are `in-flight.ts`'s, and the only routes read a page at a
+ * time: a next page is said, never followed here.
  */
 
 /**
@@ -44,7 +49,7 @@ export function githubClient(options: { readonly env?: NodeJS.ProcessEnv; readon
 /** What an answer's failure is: an HTTP status, or what kept an answer from being read at all. */
 export type AnswerStatus = number | 'timeout' | 'too-large' | 'unreadable' | 'paginated'
 
-/** The route an answer came from: one of the eight reads, the one write, or gh's `--version`. */
+/** The route an answer came from: one of the ten reads, the one write, or gh's `--version`. */
 export type AnswerRoute = GhRoute['route'] | 'open-pull-request' | 'version'
 
 const NOTHING = 'Nothing was written.'
@@ -155,6 +160,21 @@ export type PullRequestFrom = {
   | { readonly state: 'closed'; readonly merged: boolean; readonly at: string }
 )
 
+/**
+ * An open pull request into the base, as the in-flight read lists it: its
+ * number, its author's login as GitHub wrote it (unchecked: `in-flight.ts`
+ * holds a candidate's to `isLogin`), its head's branch and commit, and the
+ * repository the head is a branch of (`null`: a fork GitHub no longer holds).
+ * Never its title nor its body, which the schema does not name.
+ */
+export interface OpenPull {
+  readonly number: number
+  readonly by: string | undefined
+  readonly branch: string
+  readonly head: string
+  readonly repository: string | null
+}
+
 /** The pull request a submission opens: the engine's title and body, from `head` into `base`. */
 export interface PullRequestAsked {
   readonly title: string
@@ -186,6 +206,10 @@ export interface GitHubApi {
   commit(sha: string): Promise<GitHubCommit>
   /** `GET repos/<o>/<r>/pulls?head=…&state=all`: every pull request from the branch, one page of 100. */
   pulls(branch: string): Promise<readonly PullRequestFrom[]>
+  /** `GET …/pulls?state=open&base=<base>&sort=created&direction=desc&per_page=100&page=<p>`: one page, and whether GitHub links a next. */
+  openPulls(base: string, page: number): Promise<{ readonly pulls: readonly OpenPull[]; readonly more: boolean }>
+  /** `GET …/pulls/<n>/files?per_page=100`: one page, and whether it was the whole list. */
+  pullFiles(number: number): Promise<{ readonly files: readonly InFlightFile[]; readonly complete: boolean }>
   /**
    * `POST repos/<o>/<r>/pulls`, the one write, its body on stdin: the number
    * GitHub gave it, from a 201. At most once per API: a second call throws
@@ -252,6 +276,22 @@ export function githubApi(gh: GhClient, repository: GitHubRepository): GitHubApi
     return parsed.data
   }
 
+  /**
+   * One page of the in-flight reads: a 200 and a body that parses against
+   * `schema`, and whether a `Link` names a next page — said to the caller,
+   * which decides whether to ask it, never followed here.
+   */
+  const page = async <T>(
+    route: GhRoute,
+    schema: { safeParse(value: unknown): { success: true; data: T } | { success: false } },
+  ): Promise<{ readonly data: T; readonly hasNext: boolean }> => {
+    const answer = await ask(route)
+    if (answer.status !== 200) throw new GitHubAnswerError(route.route, answer.status, repository)
+    const parsed = schema.safeParse(json(route.route, answer))
+    if (!parsed.success) throw new GitHubAnswerError(route.route, 'unreadable', repository)
+    return { data: parsed.data, hasNext: answer.hasNext }
+  }
+
   const { owner, name } = repository
   const where = printedRepository(repository)
   /** Set before the one POST starts, so a POST whose answer was lost still counts. */
@@ -311,6 +351,39 @@ export function githubApi(gh: GhClient, repository: GitHubRepository): GitHubApi
         if (at === undefined) throw new GitHubAnswerError('pulls', 'unreadable', repository)
         return { ...fields, state: 'closed', merged: one.merged_at !== null, at }
       })
+    },
+    openPulls: async (base, number) => {
+      const { data, hasNext } = await page({ route: 'open-pulls', owner, name, base, page: number }, openPullsAnswer)
+      // Each into the base asked about: or none of it is read.
+      if (data.some((one) => one.base.ref !== base)) throw new GitHubAnswerError('open-pulls', 'unreadable', repository)
+      return {
+        pulls: data.map(
+          (one): OpenPull => ({
+            number: one.number,
+            by: one.user?.login,
+            branch: one.head.ref,
+            head: one.head.sha,
+            repository: one.head.repo?.full_name ?? null,
+          }),
+        ),
+        more: hasNext,
+      }
+    },
+    pullFiles: async (number) => {
+      const { data, hasNext } = await page({ route: 'pull-files', owner, name, number }, pullFilesAnswer)
+      return {
+        files: data.map((one): InFlightFile => {
+          const removed = one.status === 'removed'
+          return {
+            path: one.filename,
+            removed,
+            ...(one.previous_filename === undefined ? {} : { previous: one.previous_filename }),
+            ...(removed || one.sha === null ? {} : { blob: one.sha }),
+            ...(one.patch === undefined ? {} : { patch: one.patch }),
+          }
+        }),
+        complete: !hasNext,
+      }
     },
     openPullRequest: async (input) => {
       if (asked) throw new Error('idp-agent asked to open a second pull request in one run')

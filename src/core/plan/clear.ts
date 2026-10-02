@@ -10,6 +10,7 @@ import {
 } from '../schemas/config.js'
 import { planSchema, type Plan } from '../schemas/plan.js'
 import { reasonOf } from '../schemas/reject.js'
+import type { Entity } from '../schemas/entity.js'
 import { repositoryFileOf, type RepositorySnapshot } from '../validate/rules.js'
 import { asCatalogInfo, catalogInfoEdits, filedIn } from './catalog-info.js'
 import { questionsOf } from './clarify.js'
@@ -102,6 +103,13 @@ export interface Cleared {
    */
   readonly request: string
   readonly repository: Repository
+  /**
+   * The files that declare an entity the plan names, but not the files it
+   * writes: what "the same entities" means for what is in flight (stage 6
+   * plan, Task 6.3.6). A pull request in flight on one of them is beside this
+   * change, never competing with it. Sorted; no gate reads it.
+   */
+  readonly related: readonly string[]
   readonly [cleared]: true
 }
 
@@ -262,7 +270,80 @@ export function clearPlan(signed: SignedPlan, input: ClearInput): Cleared | Clea
   // absent: a file that appeared at the base meanwhile is a divergence.
   const files = new Map<string, string | undefined>(input.contents)
   for (const edit of changed) if (edit.before === undefined) files.set(edit.path, undefined)
-  return mint(changed, files, 'declarations', signed.plan)
+  const related = relatedPaths(snapshot, refsOf(signed.plan), changed.map((edit) => edit.path))
+  return mint(changed, files, 'declarations', signed.plan, related)
+}
+
+/** Backstage's organisation, whose files are not a service's: a team owns many services. */
+const ORGANISATION = new Set(['group', 'user', 'system', 'domain'])
+
+/** A reference's kind is one of the organisation's. */
+const isOrganisation = (ref: string): boolean => ORGANISATION.has(ref.slice(0, ref.indexOf(':')).toLowerCase())
+
+/** An entity's own reference, its namespace Backstage's `default` unless it states one. */
+const ownRef = (entity: Entity): string => {
+  const namespace = (entity.metadata as { readonly namespace?: unknown }).namespace
+  return `${entity.kind.toLowerCase()}:${typeof namespace === 'string' && namespace !== '' ? namespace : 'default'}/${entity.metadata.name}`
+}
+
+/** What an entity names in its fields: what it depends on, what it is a right for, the APIs it provides. */
+const namedBy = (entity: Entity): readonly string[] => [
+  ...(entity.spec.dependsOn ?? []),
+  ...(entity.kind === 'Resource' ? (entity.spec.dependencyOf ?? []) : []),
+  ...(entity.kind === 'Component' ? (entity.spec.providesApis ?? []) : []),
+]
+
+/**
+ * Every entity a plan names: the one each operation declares or amends, and
+ * every full reference in its fields — a consumer, a `dependsOn`, the thing a
+ * right is over, an owner — the organisation's kinds left out.
+ */
+const refsOf = (plan: Plan): readonly string[] => {
+  const refs = plan.operations.flatMap((operation): readonly unknown[] => {
+    switch (operation.op) {
+      case 'create-entity':
+      case 'create-catalog-info': {
+        const { entity } = operation
+        const spec = entity.spec as { readonly dependsOn?: unknown; readonly dependencyOf?: unknown; readonly owner?: unknown }
+        return [
+          `${entity.kind.toLowerCase()}:default/${String(entity.metadata.name)}`,
+          spec.owner,
+          ...(Array.isArray(spec.dependsOn) ? spec.dependsOn : []),
+          ...(Array.isArray(spec.dependencyOf) ? spec.dependencyOf : []),
+        ]
+      }
+      case 'update-entity':
+        return [operation.entityRef, operation.patch.consumer]
+      default: {
+        const _exhaustive: never = operation
+        return _exhaustive
+      }
+    }
+  })
+  return refs.filter((ref): ref is string => typeof ref === 'string' && ref.includes(':') && !isOrganisation(ref))
+}
+
+/**
+ * The files of `snapshot` declaring one of `refs`, or an entity naming one of
+ * them, the organisation's kinds left out, less `except`; sorted. Read from
+ * the files that hold each entity where it is declared, never computed from
+ * its type: an entity's location is read from the entity (§4.4).
+ */
+export function relatedPaths(
+  snapshot: RepositorySnapshot,
+  refs: readonly string[],
+  except: readonly string[],
+): readonly string[] {
+  const named = new Set(refs.filter((ref) => !isOrganisation(ref)))
+  const left = new Set(except)
+  return snapshot.files
+    .filter(
+      (file) =>
+        !left.has(file.path) &&
+        file.entities.some((entity) => named.has(ownRef(entity)) || namedBy(entity).some((ref) => named.has(ref))),
+    )
+    .map((file) => file.path)
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
 }
 
 /**
@@ -275,6 +356,7 @@ function mint(
   files: ReadonlyMap<string, string | undefined>,
   repository: Repository,
   plan: Plan,
+  related: readonly string[],
   label?: string,
 ): Cleared {
   const edits = [...changed].sort(byPath).map((edit) => Object.freeze({ ...edit }))
@@ -288,6 +370,7 @@ function mint(
     message: messageFor(plan, edits),
     request: recordedRequest(plan.intent),
     repository,
+    related: Object.freeze([...related]),
   })
   minted.add(value)
   return value as unknown as Cleared
@@ -421,7 +504,12 @@ export function clearService(signed: SignedPlan, input: ServiceInput): Cleared |
   )
   const label =
     component?.op === 'create-catalog-info' ? `init-${component.entity.metadata.name}` : 'init'
-  return mint(changed, files, 'service', minted.data, label)
+  // In a service's repository, the same entity is its declaration wherever it
+  // may be at the root: the other spelling of catalog-info, which this change
+  // does not write.
+  const written = new Set(changed.map((edit) => edit.path))
+  const related = ['catalog-info.yaml', 'catalog-info.yml'].filter((path) => !written.has(path))
+  return mint(changed, files, 'service', minted.data, related, label)
 }
 
 const stemOf = (file: string | undefined): string =>

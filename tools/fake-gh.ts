@@ -110,6 +110,25 @@ export interface FakePull {
   lastPusher: string
   /** Each approval, at the commit the head was at when it was given. */
   reviews: { login: string; commit: string }[]
+  /**
+   * The repository its head is a branch of, as `head.repo.full_name` answers
+   * it: this repository when absent, a fork's name, or `null` for a fork
+   * GitHub no longer holds.
+   */
+  headRepository?: string | null
+  /** The commit the head was at when it was opened, for a head the bare repository no longer holds. */
+  headSha?: string
+  /** What `pulls/<n>/files` answers, as a test seeds it; computed from the bare repository when absent. */
+  files?: FakePullFile[]
+}
+
+/** One file of a pull request, as GitHub's `pulls/<n>/files` lists it. */
+export interface FakePullFile {
+  filename: string
+  status: 'added' | 'removed' | 'modified' | 'renamed' | 'copied' | 'changed' | 'unchanged'
+  sha: string | null
+  previous_filename?: string
+  patch?: string
 }
 
 /**
@@ -224,12 +243,12 @@ const branchPath = (written: string): string | undefined => {
 
 /** A `GET` path, by this file's own reading: the route, and the values it names. */
 interface Read {
-  readonly route: 'user' | 'repository' | 'branch' | 'rules' | 'ruleset' | 'ref' | 'commit' | 'pulls'
+  readonly route: 'user' | 'repository' | 'branch' | 'rules' | 'ruleset' | 'ref' | 'commit' | 'pulls' | 'open-pulls' | 'pull-files'
   readonly owner: string
   readonly name: string
-  /** The branch of `branch`, `rules` and `ref`, decoded; the head of `pulls`. */
+  /** The branch of `branch`, `rules` and `ref`, decoded; the head of `pulls`; the base of `open-pulls`. */
   readonly branch: string
-  /** The ruleset of `ruleset`. */
+  /** The ruleset of `ruleset`; the pull request of `pull-files`; the page of `open-pulls`. */
   readonly id: number
   /** The commit of `commit`. */
   readonly sha: string
@@ -267,6 +286,15 @@ const routeOf = (address: string): Read | undefined => {
   if (match !== null) return read('ruleset', owner, name, '', Number(match[1]))
   match = /^git\/commits\/([^/?]+)$/.exec(rest)
   if (match !== null) return SHA.test(match[1] ?? '') ? read('commit', owner, name, '', 0, match[1]) : undefined
+  // What is in flight: the open pull requests into a base, newest first, pages 1 to 3 asked
+  // one by one; and one pull request's files, one page.
+  match = /^pulls\?state=open&base=([^&]+)&sort=created&direction=desc&per_page=100&page=([1-3])$/.exec(rest)
+  if (match !== null) {
+    const base = branchPath((match[1] ?? '').replaceAll('%2F', '/'))
+    return base === undefined ? undefined : read('open-pulls', owner, name, base, Number(match[2]))
+  }
+  match = /^pulls\/([1-9][0-9]*)\/files\?per_page=100$/.exec(rest)
+  if (match !== null) return read('pull-files', owner, name, '', Number(match[1]))
   match = /^pulls\?head=([^&]+)&state=all&per_page=100$/.exec(rest)
   if (match !== null) {
     const head = decodeURIComponent(match[1] ?? '')
@@ -466,9 +494,43 @@ const commitIn = (bare: string, sha: string, source: string): unknown => {
   }
 }
 
+/**
+ * A pull request's files, as GitHub lists them: what its head changes since
+ * the merge base with its base, renames not followed, each with the blob at
+ * the head (or, removed, the one it had) and its patch.
+ */
+const filesIn = (bare: string | undefined, pull: FakePull): FakePullFile[] => {
+  if (bare === undefined) return []
+  const head = refIn(bare, pull.head) ?? pull.headSha
+  const base = refIn(bare, pull.base)
+  if (head === undefined || base === undefined) return []
+  const from = inBare(bare, ['merge-base', base, head])
+  const raw = execFileSync('git', ['--git-dir', bare, 'diff-tree', '-r', '-z', '--no-renames', from, head], {
+    encoding: 'utf8',
+    env: { PATH: process.env['PATH'] ?? '', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' },
+    stdio: ['ignore', 'pipe', 'ignore'],
+  })
+  const fields = raw.split('\0')
+  const files: FakePullFile[] = []
+  for (let at = 0; at + 1 < fields.length; at += 2) {
+    const [, , older = '', newer = '', letter = ''] = (fields[at] ?? '').split(' ')
+    const filename = fields[at + 1] ?? ''
+    const status = letter === 'A' ? 'added' : letter === 'D' ? 'removed' : 'modified'
+    const patch = inBare(bare, ['diff', from, head, '--', filename])
+    files.push({
+      filename,
+      status,
+      sha: status === 'removed' ? older : newer,
+      patch: patch.slice(patch.indexOf('@@')),
+    })
+  }
+  return files.sort((a, b) => (a.filename < b.filename ? -1 : a.filename > b.filename ? 1 : 0))
+}
+
 /** A pull request as GitHub's pull routes answer one, with fields the reader never reads. */
-const pullJson = (pull: FakePull, bare: string | undefined): unknown => {
-  const at = (branch: string): string | null => (bare === undefined ? null : (refIn(bare, branch) ?? null))
+const pullJson = (pull: FakePull, bare: string | undefined, refs?: ReadonlyMap<string, string>): unknown => {
+  const at = (branch: string): string | null =>
+    refs !== undefined ? (refs.get(branch) ?? null) : bare === undefined ? null : (refIn(bare, branch) ?? null)
   return {
     url: `https://api.github.com/repos/${pull.owner}/${pull.name}/pulls/${String(pull.number)}`,
     html_url: `https://github.com/${pull.owner}/${pull.name}/pull/${String(pull.number)}`,
@@ -480,7 +542,13 @@ const pullJson = (pull: FakePull, bare: string | undefined): unknown => {
     draft: pull.draft,
     merged_at: pull.merged_at,
     closed_at: pull.closed_at,
-    head: { label: `${pull.owner}:${pull.head}`, ref: pull.head, sha: at(pull.head) },
+    head: {
+      label: `${pull.owner}:${pull.head}`,
+      ref: pull.head,
+      // GitHub keeps the head's last commit after its branch is gone.
+      sha: at(pull.head) ?? pull.headSha ?? '0'.repeat(40),
+      repo: pull.headRepository === null ? null : { full_name: pull.headRepository ?? `${pull.owner}/${pull.name}` },
+    },
     base: { label: `${pull.owner}:${pull.base}`, ref: pull.base, sha: at(pull.base) },
   }
 }
@@ -653,6 +721,37 @@ const ofRepository = (state: FakeState, read: Read): FakeExit => {
           .sort((a, b) => b.number - a.number)
           .map((pull) => pullJson(pull, repository.bare)),
       )
+    case 'open-pulls': {
+      const open = (state.pulls ?? [])
+        .filter((pull) => same(pull.owner, repository.owner) && same(pull.name, repository.name))
+        .filter((pull) => pull.state === 'open' && pull.base === read.branch)
+        .sort((a, b) => b.number - a.number)
+      const page = open.slice((read.id - 1) * PAGE, read.id * PAGE)
+      const link = (to: number): string =>
+        `<https://api.github.com/repositories/1/pulls?state=open&base=${read.branch}&page=${String(to)}>`
+      // Every branch read once, rather than twice a pull request: a page holds a hundred.
+      const refs = new Map<string, string>()
+      if (repository.bare !== undefined) {
+        for (const line of inBare(repository.bare, ['for-each-ref', '--format=%(objectname) %(refname)', 'refs/heads/']).split('\n')) {
+          const [sha = '', ref = ''] = line.split(' ')
+          if (ref.startsWith('refs/heads/')) refs.set(ref.slice('refs/heads/'.length), sha)
+        }
+      }
+      return included(
+        200,
+        page.map((pull) => pullJson(pull, repository.bare, refs)),
+        open.length > read.id * PAGE ? [`Link: ${link(read.id + 1)}; rel="next"`] : [],
+      )
+    }
+    case 'pull-files': {
+      const pull = (state.pulls ?? []).find(
+        (one) => one.number === read.id && same(one.owner, repository.owner) && same(one.name, repository.name),
+      )
+      if (pull === undefined) return included(404, NOT_FOUND)
+      const files = pull.files ?? filesIn(repository.bare, pull)
+      const next = `<https://api.github.com/repositories/1/pulls/${String(read.id)}/files?per_page=${String(PAGE)}&page=2>`
+      return included(200, files.slice(0, PAGE), files.length > PAGE ? [`Link: ${next}; rel="next"`] : [])
+    }
     case 'user':
       return user(state)
     default: {

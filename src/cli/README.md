@@ -478,6 +478,31 @@ that proposes nothing. A traced run's root
 carries `idp.forge.proposed`: `true` where the question was put, `false` where the line was
 said. No model writes the question, no prompt changed for it, and no agent reaches `forge/`.
 
+**What is in flight** (6.3.6, the owner's decision of 2026-10-01). Right after
+`refuseUnprotected`, before any model on every `--submit` road, `sayInFlight` asks the GitHub
+forge's `inFlight` with no writes: the forge's first read of the open idp-agent pull requests
+into the base and their files, kept for the run. Where the service is known before the model —
+`serviceTarget`, the one Component an inspected project's root catalog-info declares, and the
+declarations repository's files that declare or name it; on `init --submit`, the service's
+catalog-info and `.idp-agent.yml` — the ones touching it are said on stderr, `in flight on
+github.com/<o>/<r>, touching <what>: pull request #<k> by <login> (<branch>), changing <path>`,
+and the run goes on; only a read that cannot be made whole is refused, exit 1, through
+`refusedBefore`. The phrase road reads it with its early preflight, before the Supervisor, and
+`runIntent`'s call says the service's lines from that read. `submitting()` judges the cleared
+change before recognition, at no gh call: the same bytes are `already-proposed` (the author on
+stderr, `already proposed by <login> in pull request #<k>`; stdout and `--json` the number, the
+URL and this branch, exit 0); a competing pull request is a refusal, exit 1, its number, URL
+and this change's paths on stdout and in `--json`'s `inFlight`, its author, branch and patch on
+stderr (`patchLines`: four spaces, every control and bidi character spelled out, 40 lines a
+path, 120 a run, 200 characters a line); one beside is said (`inFlightLines` in the `pending` and `submitted`
+statuses, who opened it on stderr) and the change goes on. Step 8's verdict is the forge's;
+where it is not the one shown before the question, `what is in flight changed while you read
+the diff:` is said first. On the proposal road the same and a competing change are why nothing
+is proposed (`Unproposed`'s `in-flight`). Another person's login, branch and patch go to
+stderr alone — never stdout, so never a trace, nor `--json`, nor a body — and `toStderr` keeps
+a line's spaces (`inertSpaced`) so a patch reads as it was laid out. `forgeAttributes` carries
+`idp.forge.in_flight`, how many pull requests the last judgement named.
+
 `plan "<intent>" --submit` moves the forge's opening earlier still: `main` opens it before the
 model is configured, so a directory that cannot take a branch is an argument error even with
 no model set, and hands it to `runIntent` through `reopening`, which refuses to serve any

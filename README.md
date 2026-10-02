@@ -15,7 +15,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 4880, no API key" src="https://img.shields.io/badge/tests-4880%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 4975, no API key" src="https://img.shields.io/badge/tests-4975%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -155,8 +155,13 @@ Run again, it names the same pull request and writes nothing. On a base without 
 ruleset the pull request is opened all the same — whether its author may merge it alone is
 the company's rule, not idpa's — and the run says so in one line, on stderr and in the pull
 request, `note: on this repository the author may merge without another person's review`; the question then ends `Nothing is provisioned until it is merged.` and
-the closing lines promise no approval. `pnpm demo:github` runs all of it offline, against a
-fake gh and a bare repository on disk.
+the closing lines promise no approval. Before anything is written it reads the idp-agent
+pull requests already open into the base: the same change somebody else already proposed is
+named, `already proposed by <login> in pull request #12`, and nothing is written; a different
+change to a file yours writes is shown with its patch, and yours is not submitted; one on other
+files of the same entities is named in your pull request's body, by number
+([details](docs/submitting.md#what-is-in-flight)). `pnpm demo:github` runs all of it offline,
+against a fake gh and a bare repository on disk.
 
 ## With your own key
 

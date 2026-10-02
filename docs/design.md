@@ -1109,7 +1109,12 @@ catalogue declares, levels still asked. The design note is
 6. re-check             against the repository (catalogue lag) — the fourth gate of
                         step 5, run inside its loop, not a pass after the Reviewer
 7. diff + confirmation  "I am submitting my request"
-8. branch + MR          an architect reviews -> merge = AUTHORISATION
+                        on GitHub, the open idp-agent pull requests into the base read
+                        before any model; the same bytes already proposed named, nothing
+                        written; a file this change writes changed differently: shown, not
+                        submitted; other files of the same entities: named in this body
+8. branch + MR          what is in flight read again at the moment of writing; an architect
+                        reviews -> merge = AUTHORISATION
 ```
 
 **Steps 2 to 7 are built — step 1 from a git repository, Backstage not yet — and step 8's
@@ -1153,6 +1158,19 @@ the clone level with GitHub — after the last model call, and asks only when it
 says; otherwise it says in one line why no pull request is proposed, and the preview stands.
 The question is the engine's; no model writes it, and no agent holds a tool that pushes. A run
 with no terminal is never asked, and submits only with `--submit`.
+
+What is in flight is read first (2026-10-01). On GitHub's road, before any model is paid on
+every `--submit` road (after the last model call on the proposal road), the open idp-agent
+pull requests into the base are read with the files each changes; where the service is known
+before the model, the ones touching it are said then, and the run goes on. Before the question
+the change is judged against them — the same bytes already proposed by another account are
+named, *already proposed by <login> in pull request #12*, and nothing is written (exit 0); a
+pull request that changes a file this change writes, differently, is shown with its patch and
+this one is not submitted (exit 1); one on other files of the same entities is said, and this
+change is proposed beside it, its body naming the other by number, without `#`. Step 8 reads
+again, and judges again, at the moment of writing. Another person's pull request is never
+edited, commented on or closed; their login, branch and patch are said on stderr, and reach no
+model, no trace, no `--json` and no pull request body.
 
 The two `--repo` flags on this page name two different repositories, and the difference is
 the whole reason the flag exists. `plan --repo` is the **declarations** repository, which
@@ -1218,6 +1236,8 @@ Schemas, serialiser, path computation, diff. No I/O. Around 60 % of the suite.
 ∀ Plan            → applying twice == applying once
 ∀ Plan + file     → the edit, read back, carries out the operation and nothing else —
                     or the operation is dropped, naming the file
+∀ verdict + timing → a submission never writes another person's pull request: its head,
+                    commits, body, state and events are the same after the run
 ```
 
 "Byte for byte" includes how the file ends. A file whose last line has no line break still
@@ -1233,7 +1253,11 @@ bytes (`planEdits` on applied bytes changes nothing) and at the forge (the same 
 the same base name the same branch, which is recognised, not duplicated). Two model drafts
 that differ are two plans. The atomicity invariant is checked over real repositories
 (`tests/invariants/forge.test.ts`): every git call of a submission is made to fail, before
-it runs and after, and so is a stranger creating the branch at each of them.
+it runs and after, and so is a stranger creating the branch at each of them. The seventh is
+held in `tests/invariants/github-forge.test.ts`: another account's pull request, seeded into
+each verdict of what is in flight and opened before the first read or between it and the
+moment of writing, is left exactly as it was, and the one pull request this run may open names
+its own branch and no `#<digits>` (2026-10-01).
 
 The fourth is "textual surgery, never a reparse" made executable: replacing insertion
 with `parse + stringify` breaks it. The fifth encodes "absent means already done". The

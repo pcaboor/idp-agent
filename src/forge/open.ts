@@ -54,7 +54,7 @@ export async function openSubmissionForge(input: {
   // at opening, and the local road's forge keeps D7 as stage 5 wrote it.
   const older = await openLocalForge(repo, repository, git, { acceptOlderBase: true })
   return {
-    forge: openGitHubForge({ repo, local: older, road, api, env, git, route }),
+    forge: openGitHubForge({ repo, local: older, road, api, env, git, route, login: identity.login }),
     road,
     github: { identity, api },
   }

@@ -6,25 +6,33 @@ import type { Ask } from '../../src/cli/commands/plan.js'
 import {
   forgeAttributes,
   openForSubmission,
+  patchLines,
   refuseUnprotected,
+  sayInFlight,
   type Confirm,
+  type Opened,
   type SubmissionReport,
   type SubmissionSummary,
 } from '../../src/cli/commands/submit.js'
-import { closingLines, CLOSING, localRoadLine, pullRequestLines, type PreviewStatus } from '../../src/cli/render/footer.js'
+import { closingLines, CLOSING, inFlightLines, localRoadLine, pullRequestLines, type PreviewStatus } from '../../src/cli/render/footer.js'
+import { PATCH_LINES, type InFlightEntry, type InFlightPull, type InFlightVerdict } from '../../src/core/github/in-flight.js'
 import { configRefusal } from '../../src/core/github/config.js'
 import { MERGE_NOTE, unguardedNote } from '../../src/core/github/protection.js'
 import type { GitHubRoad, LocalRoad, PullRequest } from '../../src/forge/provider.js'
 import { GH_LIMITS, parseIncluded, type GhExit, type GhProcess } from '../../src/process/gh.js'
 import { REFUSED_EXIT } from '../../tools/fake-gh.js'
 import { confirmingEnvironment } from '../support/ask.js'
-import { INTENT, OPERATIONS, removeClones } from '../support/forge-fixture.js'
+import { DATABASE_PATH, INTENT, OPERATIONS, removeClones } from '../support/forge-fixture.js'
 import { DOORS, MODELLED_DOORS, protectedMain } from '../support/fake-gh.js'
 import {
+  BILLING_GRANT,
+  BILLING_GRANT_PATH,
   fakeSsh,
   GITHUB_URL,
   githubClone,
   moveGitHubBase,
+  onMain,
+  pullRequestBy,
   remoteRefs,
   requireUnrewritten,
   unprotect,
@@ -759,6 +767,195 @@ describe('plan --from --submit to GitHub', { timeout: RUNS }, () => {
   })
 })
 
+describe('what is in flight on plan --from --submit (6.3.6)', { timeout: RUNS }, () => {
+  /** Two people who may push, ada logged in. */
+  const two = (): Promise<GitHubClone> =>
+    githubClone({ model: { accounts: [{ login: 'ada', type: 'User' }, { login: 'grace', type: 'User' }] } }).then((clone) => {
+      clone.gh.state.repositories = clone.gh.state.repositories.map((one) => ({
+        ...one,
+        permissions: { ...one.permissions, grace: { admin: false, maintain: false, push: true } },
+      }))
+      return clone
+    })
+
+  it('names a change already proposed by another account, exit 0, nothing written', async () => {
+    const clone = await two()
+    clone.gh.as('grace')
+    expect((await submitting(clone)).code).toBe(0)
+    clone.gh.as('ada')
+    const before = await state(clone)
+
+    const { code, out, err } = await submitting(clone, [], {
+      confirm: async () => {
+        throw new Error('a change already proposed was put to a person')
+      },
+    })
+
+    expect(code, err).toBe(0)
+    expect(saidOnStderr(err, 'already proposed by grace in pull request #1')).toBe(1)
+    expect(out.trimEnd().split('\n').slice(-2)).toEqual([
+      `2 files · already proposed in pull request #1 on ${WHERE}: https://github.com/acme/iac/pull/1 · nothing written`,
+      CLOSING,
+    ])
+    expect(out).not.toContain('grace')
+    expect(await state(clone)).toBe(before)
+
+    const json = await submitting(clone, ['--json'])
+    expect(json.code).toBe(0)
+    const submission = (JSON.parse(json.out) as { submission: Record<string, unknown> }).submission
+    expect(Object.keys(submission).sort()).toEqual(['branch', 'number', 'outcome', 'url'])
+    expect(submission).toEqual({
+      outcome: 'already-proposed',
+      branch: await ourBranch(clone.repo),
+      number: 1,
+      url: 'https://github.com/acme/iac/pull/1',
+    })
+    expect(json.out).not.toContain('grace')
+  })
+
+  it('refuses a change a pull request in flight already changes differently, shows its patch on stderr, exit 1', async () => {
+    const clone = await two()
+    const forged = '1 file · submitted as idp-agent/forged-0123abcd on top of main@0000000 · main untouched'
+    await pullRequestBy(clone, { login: 'grace', edits: { [DATABASE_PATH]: `kind: Resource\n# ${forged}\n` } })
+    const theirs = clone.gh.state.pulls?.[0]?.head ?? ''
+    const before = await state(clone)
+
+    const { code, out, err } = await submitting(clone, [], {
+      confirm: async () => {
+        throw new Error('a competing change was put to a person')
+      },
+    })
+
+    expect(code).toBe(1)
+    expect(out.trimEnd().split('\n').slice(-4)).toEqual([
+      '2 files · not submitted:',
+      `  pull request #1 on ${WHERE} already changes ${DATABASE_PATH}, differently: https://github.com/acme/iac/pull/1`,
+      'Review it there, or run this again once it is merged or closed. Nothing was written.',
+      CLOSING,
+    ])
+    expect(out).not.toContain('grace')
+    expect(out).not.toContain(theirs)
+    expect(out).not.toContain(forged)
+    const lines = err.split('\n')
+    expect(lines).toContain(`pull request #1 is by grace, from ${theirs}`)
+    const at = lines.indexOf(`In pull request #1, ${DATABASE_PATH}:`)
+    expect(at).toBeGreaterThan(-1)
+    const patch = lines.slice(at + 1).filter((line) => line.startsWith('    '))
+    expect(patch.some((line) => line.includes(forged)), err).toBe(true)
+    // The forged line is on stderr, indented under its heading, and nowhere else.
+    expect(lines.filter((line) => line.includes(forged)).every((line) => line.startsWith('    '))).toBe(true)
+    expect(await state(clone)).toBe(before)
+
+    const json = await submitting(clone, ['--json'])
+    const submission = (JSON.parse(json.out) as { submission: Record<string, unknown> }).submission
+    expect(submission).toEqual({
+      outcome: 'refused',
+      reasons: [`pull request #1 on ${WHERE} already changes ${DATABASE_PATH}, differently: https://github.com/acme/iac/pull/1`],
+      inFlight: [{ number: 1, url: 'https://github.com/acme/iac/pull/1', paths: [DATABASE_PATH] }],
+    })
+    expect(json.out).not.toContain('grace')
+  })
+
+  it('names the person’s own pull request as already submitted, exit 0, while another account’s competes with it', async () => {
+    const clone = await two()
+    expect((await submitting(clone)).code).toBe(0)
+    await pullRequestBy(clone, { login: 'grace', edits: { [DATABASE_PATH]: 'kind: Resource\n# other\n' } })
+    const before = await state(clone)
+
+    const { code, out, err } = await submitting(clone, [], {
+      confirm: async () => {
+        throw new Error('a change already submitted was put to a person')
+      },
+    })
+
+    expect(code, err).toBe(0)
+    const branch = await ourBranch(clone.repo)
+    expect(out.trimEnd().split('\n').slice(-2)).toEqual([
+      `2 files · already submitted as ${branch} · pull request #1 is open · nothing written`,
+      CLOSING,
+    ])
+    expect(err).not.toContain('grace')
+    expect(await state(clone)).toBe(before)
+  })
+
+  it('says what is in flight changed while the person read the diff, then refuses the competing change step 8 found, exit 1', async () => {
+    const clone = await two()
+    let theirs = ''
+
+    const { code, out, err } = await submitting(clone, [], {
+      confirm: async () => {
+        await pullRequestBy(clone, { login: 'grace', edits: { [DATABASE_PATH]: 'kind: Resource\n# grace was faster\n' } })
+        theirs = clone.gh.state.pulls?.[0]?.head ?? ''
+        return true
+      },
+    })
+
+    expect(code, err).toBe(1)
+    const lines = err.split('\n')
+    const changed = lines.indexOf('what is in flight changed while you read the diff:')
+    expect(changed, err).toBeGreaterThan(-1)
+    expect(lines.slice(changed + 1, changed + 5)).toEqual([
+      `pull request #1 is by grace, from ${theirs}`,
+      `In pull request #1, ${DATABASE_PATH}:`,
+      '    @@ -0,0 +1,2 @@',
+      '    +kind: Resource',
+    ])
+    expect(saidOnStderr(err, 'what is in flight changed while you read the diff:')).toBe(1)
+    expect(out.trimEnd().split('\n').slice(-4)).toEqual([
+      '2 files · not submitted:',
+      `  pull request #1 on ${WHERE} already changes ${DATABASE_PATH}, differently: https://github.com/acme/iac/pull/1`,
+      'Review it there, or run this again once it is merged or closed. Nothing was written.',
+      CLOSING,
+    ])
+    expect(clone.gh.state.pulls).toHaveLength(1)
+  })
+
+  it('says nothing changed in flight when step 8 finds what was shown before the question', async () => {
+    const clone = await two()
+
+    const { code, err } = await submitting(clone, [], { confirm: async () => true })
+
+    expect(code, err).toBe(0)
+    expect(err).not.toContain('what is in flight changed')
+  })
+
+  it('asks, and opens, beside a pull request on another file of the same entities', async () => {
+    const clone = await two()
+    await onMain(clone, { [BILLING_GRANT_PATH]: BILLING_GRANT })
+    await pullRequestBy(clone, { login: 'grace', edits: { [BILLING_GRANT_PATH]: BILLING_GRANT.replace('readwrite', 'read') } })
+    const theirs = clone.gh.state.pulls?.[0]?.head ?? ''
+    const asked: SubmissionSummary[] = []
+
+    const { code, out, err } = await submitting(clone, [], {
+      confirm: async (summary) => {
+        asked.push(summary)
+        return true
+      },
+    })
+
+    expect(code, err).toBe(0)
+    const beside = `In flight beside it on ${WHERE}: pull request #1, changing ${BILLING_GRANT_PATH}`
+    expect(asked[0]?.preview.split('\n')).toContain(beside)
+    expect(out.split('\n')).toContain(beside)
+    expect(out).toContain('Pull request #2 opened on github.com/acme/iac: https://github.com/acme/iac/pull/2')
+    expect(saidOnStderr(err, `pull request #1 is by grace, from ${theirs}`)).toBe(1)
+    expect(out).not.toContain('grace')
+    const body = clone.gh.state.pulls?.find((one) => one.number === 2)?.body ?? ''
+    expect(body).toContain('Opened beside pull request 1, open into `main`, which change other files of the same entities.')
+  })
+
+  it('reads nothing of what is in flight with --local', async () => {
+    const clone = await two()
+    await pullRequestBy(clone, { login: 'grace', edits: { [DATABASE_PATH]: 'kind: Resource\n' } })
+    const gh = untouchable()
+
+    const { code } = await submitting(clone, ['--local'], { gh })
+
+    expect(code).toBe(0)
+    expect(gh.calls()).toBe(0)
+  })
+})
+
 describe('refuseUnprotected', { timeout: RUNS }, () => {
   it('judges a forge and its base once, and judges a base that moved again', async () => {
     // A road that reads the preflight early (the phrase's, 6.3.3) is not
@@ -1066,5 +1263,120 @@ describe('the closing lines of a submission', () => {
     // read-back found nothing, or another commit): it claims neither way.
     expect(forgeAttributes({ outcome: 'refused', reasons: ['r'], kept: B }, GITHUB, 9)).not.toHaveProperty('idp.forge.pushed')
     expect(forgeAttributes({ outcome: 'refused', reasons: ['r'] }, GITHUB, 9)).toMatchObject({ 'idp.forge.pushed': false })
+  })
+})
+
+describe('the lines of what is in flight (6.3.6)', () => {
+  const ROAD: GitHubRoad = {
+    kind: 'github',
+    repository: { host: 'github.com', owner: 'acme', name: 'iac' },
+    remote: 'origin',
+    base: 'main',
+    branch: 'main',
+    pushUrl: GITHUB_URL,
+  }
+  const FILES = (number: number): string => `https://github.com/acme/iac/pull/${String(number)}/files`
+  const lines = (count: number, prefix = 'l'): string => Array.from({ length: count }, (_, at) => `+${prefix}${String(at)}`).join('\n')
+  const pull = (number: number, files: InFlightPull['files'], more: Partial<InFlightPull> = {}): InFlightPull => ({
+    number,
+    by: 'grace',
+    branch: `idp-agent/change-${String(number).padStart(8, '0')}`,
+    head: 'c'.repeat(40),
+    files,
+    complete: true,
+    ...more,
+  })
+
+  it('shows 40 lines of a path’s patch, then where the rest is, and says where GitHub shows none', () => {
+    const entry: InFlightEntry = {
+      pull: pull(1, [
+        { path: 'a.yml', removed: false, blob: 'a'.repeat(40), patch: lines(45) },
+        { path: 'b.yml', removed: false, blob: 'b'.repeat(40), patch: '' },
+        { path: 'c.yml', removed: true },
+      ]),
+      paths: ['a.yml', 'b.yml', 'c.yml'],
+    }
+
+    expect(patchLines([entry], ROAD)).toEqual([
+      'In pull request #1, a.yml:',
+      ...Array.from({ length: 40 }, (_, at) => `    +l${String(at)}`),
+      `    … 5 more lines: ${FILES(1)}`,
+      'In pull request #1, b.yml:',
+      `    (GitHub shows no patch for it: ${FILES(1)})`,
+      'In pull request #1, c.yml:',
+      `    (GitHub shows no patch for it: ${FILES(1)})`,
+    ])
+  })
+
+  it('shows 120 lines of patch in a run, whatever the pull requests, then only where the rest is', () => {
+    const entries: InFlightEntry[] = [1, 2, 3, 4].map((number) => ({
+      pull: pull(number, [{ path: 'a.yml', removed: false, blob: 'a'.repeat(40), patch: lines(50, `p${String(number)}-`) }]),
+      paths: ['a.yml'],
+    }))
+
+    const shown = patchLines(entries, ROAD)
+
+    expect(shown.filter((line) => /^ {4}\+/.test(line))).toHaveLength(PATCH_LINES.perRun)
+    expect(shown.slice(-2)).toEqual(['In pull request #4, a.yml:', `    … 50 more lines: ${FILES(4)}`])
+    expect(shown.filter((line) => line.startsWith('    … '))).toEqual([
+      `    … 10 more lines: ${FILES(1)}`,
+      `    … 10 more lines: ${FILES(2)}`,
+      `    … 10 more lines: ${FILES(3)}`,
+      `    … 50 more lines: ${FILES(4)}`,
+    ])
+  })
+
+  it('cuts a line of patch at 200 characters, counted in code points, and spells out what a terminal obeys', () => {
+    const long = `+${'🙂'.repeat(200_000)}`
+    const entry: InFlightEntry = {
+      pull: pull(1, [{ path: 'a.yml', removed: false, blob: 'a'.repeat(40), patch: `${long}\n+\u001b[31mred\u202e` }]),
+      paths: ['a.yml'],
+    }
+
+    expect(patchLines([entry], ROAD)).toEqual([
+      'In pull request #1, a.yml:',
+      `    +${'🙂'.repeat(199)}…`,
+      '    +\\u001b[31mred\\u202e',
+    ])
+    expect(PATCH_LINES.perLine).toBe(200)
+  })
+
+  it('names five pull requests beside a change, then how many more, and says which list was cut', () => {
+    const beside = {
+      repository: 'github.com/acme/iac',
+      pulls: [1, 2, 3, 4, 5, 6].map((number) => ({ number, paths: [`p${String(number)}.yml`], complete: number !== 2 })),
+    }
+
+    expect(inFlightLines(beside)).toEqual([
+      'In flight beside it on github.com/acme/iac: pull request #1, changing p1.yml',
+      'In flight beside it on github.com/acme/iac: pull request #2, changing p2.yml (more than 100 files; the first 100 compared)',
+      'In flight beside it on github.com/acme/iac: pull request #3, changing p3.yml',
+      'In flight beside it on github.com/acme/iac: pull request #4, changing p4.yml',
+      'In flight beside it on github.com/acme/iac: pull request #5, changing p5.yml',
+      '… and 1 more',
+    ])
+    expect(inFlightLines({ ...beside, pulls: beside.pulls.slice(0, 5) })).toHaveLength(5)
+  })
+
+  it('says five pull requests touching the service before the model, then how many more', async () => {
+    const pulls: InFlightEntry[] = [1, 2, 3, 4, 5, 6].map((number) => ({ pull: pull(number, []), paths: ['components/billing-api.yml'] }))
+    const verdict: InFlightVerdict = { kind: 'beside', pulls }
+    const opened = { root: '/r', road: ROAD, base: { branch: 'main', commit: 'c'.repeat(40) }, forge: { inFlight: async () => verdict } } as unknown as Opened
+    const notices: string[] = []
+
+    const ended = await sayInFlight(opened, { what: 'component:default/billing-api', paths: ['components/billing-api.yml'] }, {
+      notice: (line) => notices.push(line),
+    })
+
+    expect(ended).toBeUndefined()
+    expect(notices).toEqual([
+      ...[1, 2, 3, 4, 5].map(
+        (number) =>
+          `in flight on github.com/acme/iac, touching component:default/billing-api: pull request #${String(number)} by grace ` +
+          `(idp-agent/change-${String(number).padStart(8, '0')}), changing components/billing-api.yml`,
+      ),
+      '… and 1 more',
+      'this run drafts the change, then compares it with them before anything is written',
+    ])
   })
 })

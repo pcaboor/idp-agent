@@ -31,7 +31,7 @@ import { MERGE_NOTE, protectionText } from '../../src/core/github/protection.js'
 import type { GhProcess } from '../../src/process/gh.js'
 import type { SubmissionSummary } from '../../src/cli/commands/submit.js'
 import { removeClones } from '../support/forge-fixture.js'
-import { githubClone, moveGitHubBase, unprotect } from '../support/github-fixture.js'
+import { githubClone, moveGitHubBase, pullRequestBy, unprotect } from '../support/github-fixture.js'
 
 /** The line a preview of `init` ends on, in place of `plan`'s about the merge. */
 const INIT_CLOSING =
@@ -1344,6 +1344,128 @@ describe('init --submit to GitHub', { timeout: 30_000 }, () => {
       },
     })
     expect(summaries[0]?.github).toStrictEqual({ host: 'github.com', repository: 'acme/billing-api', base: 'main', pushedAlready: false, authorMayMergeAlone: false })
+  })
+
+  /** The service, with grace beside ada, both able to push: another person's run is hers. */
+  const shared = async () => {
+    const clone = await service()
+    clone.gh.state.accounts = [...clone.gh.state.accounts, { login: 'grace', type: 'User' }]
+    clone.gh.state.repositories = clone.gh.state.repositories.map((one) => ({
+      ...one,
+      permissions: { ...one.permissions, grace: { admin: false, maintain: false, push: true } },
+    }))
+    return clone
+  }
+
+  it('says a pull request in flight on the service’s catalog-info before the Inspector, goes on, and opens beside it', async () => {
+    const clone = await shared()
+    await pullRequestBy(clone, { login: 'grace', edits: { 'catalog-info.yml': 'kind: Component\n' } })
+    const theirs = clone.gh.state.pulls?.[0]?.head ?? ''
+    const inner = drafting([COMPONENT])
+    const said: string[] = []
+    const client: LlmClient = {
+      generate: async (request) => {
+        said.push(`model ${request.agent}`)
+        return inner.generate(request)
+      },
+    }
+
+    const output: string[] = []
+    const code = await main(['init', '--repo', clone.repo, '--submit', ...FLAGS], {
+      cwd: clone.repo,
+      env: clone.env,
+      gh: clone.gh.process,
+      client,
+      out: (chunk) => void output.push(chunk),
+      err: (chunk) => void said.push(`err ${chunk}`),
+    })
+    const out = output.join('')
+
+    expect(code, said.join('')).toBe(0)
+    const flight = said.indexOf(
+      `err in flight on github.com/acme/billing-api, touching the service's catalog-info: pull request #1 by grace (${theirs}), changing catalog-info.yml\n`,
+    )
+    expect(flight, said.join('')).toBeGreaterThan(-1)
+    expect(said[flight + 1]).toBe('err this run drafts the change, then compares it with them before anything is written\n')
+    expect(flight).toBeLessThan(said.findIndex((line) => line.startsWith('model ')))
+    expect(out).toContain('Pull request #2 opened on github.com/acme/billing-api')
+    expect(out).toContain('In flight beside it on github.com/acme/billing-api: pull request #1, changing catalog-info.yml')
+    expect(out).not.toContain('grace')
+    expect(clone.gh.state.pulls?.find((one) => one.number === 2)?.body).toContain(
+      'Opened beside pull request 1, open into `main`, which change other files of the same entities.',
+    )
+  })
+
+  it('refuses after the Architect a pull request in flight that changes catalog-info.yaml differently, naming --local, exit 1', async () => {
+    const clone = await shared()
+    await pullRequestBy(clone, { login: 'grace', edits: { 'catalog-info.yaml': 'kind: Component\n' } })
+    const client = drafting([COMPONENT])
+    const before = await observable(clone.repo)
+
+    const { code, out, err } = await run(clone, [], { client })
+
+    expect(code).toBe(1)
+    expect(client.seen.length).toBeGreaterThan(0)
+    expect(out).toContain(
+      '  pull request #1 on github.com/acme/billing-api already changes catalog-info.yaml, differently: https://github.com/acme/billing-api/pull/1',
+    )
+    expect(out).toContain(
+      'Review it there, or run this again once it is merged or closed, or add --local to cut the branch in this clone only. Nothing was written.',
+    )
+    expect(err).toContain('In pull request #1, catalog-info.yaml:')
+    expect(out).not.toContain('grace')
+    expect(await observable(clone.repo)).toBe(before)
+    expect(clone.gh.state.pulls).toHaveLength(1)
+  })
+
+  it('names the same catalog-info already proposed, exit 0', async () => {
+    const clone = await shared()
+    clone.gh.as('grace')
+    expect((await run(clone, [], { client: drafting([COMPONENT]) })).code).toBe(0)
+    clone.gh.as('ada')
+    await git(clone.repo, 'update-ref', '-d', (await ours(clone.repo))[0] ?? '')
+    const before = await observable(clone.repo)
+
+    const { code, out, err } = await run(clone, [], { client: drafting([COMPONENT]) })
+
+    expect(code, err).toBe(0)
+    expect(err.split('\n')).toContain('already proposed by grace in pull request #1')
+    expect(out).toContain('already proposed in pull request #1 on github.com/acme/billing-api: https://github.com/acme/billing-api/pull/1 · nothing written')
+    expect(out).not.toContain('grace')
+    expect(await observable(clone.repo)).toBe(before)
+  })
+
+  it('refuses before the Inspector a read that cannot be made whole', async () => {
+    const clone = await shared()
+    clone.gh.state.pulls = Array.from({ length: 21 }, (_, at) => ({
+      number: at + 1,
+      owner: 'acme',
+      name: 'billing-api',
+      title: 't',
+      body: '',
+      head: `idp-agent/theirs-${String(at).padStart(8, '0')}`,
+      base: 'main',
+      draft: false,
+      maintainer_can_modify: false,
+      author: 'grace',
+      state: 'open' as const,
+      merged_at: null,
+      closed_at: null,
+      lastPusher: 'grace',
+      reviews: [],
+      headSha: String(at + 1).padStart(40, 'a'),
+      files: [],
+    }))
+    const client = drafting([COMPONENT])
+
+    const { code, out } = await run(clone, [], { client })
+
+    expect(code).toBe(1)
+    expect(out.trimEnd()).toBe(
+      'github.com/acme/billing-api has 21 open idp-agent pull requests into main, more than the 20 this build compares: ' +
+        'review some of them, then run this again. Nothing was written.',
+    )
+    expect(client.seen).toEqual([])
   })
 
   it('still refuses a service in a subfolder of its repository (D12), exit 2, before gh is started', async () => {
