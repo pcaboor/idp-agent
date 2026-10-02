@@ -27,7 +27,7 @@ import { committed, git, observable, show, stored } from '../support/git.js'
 import { ConfigError, readConfig } from '../../src/cli/config.js'
 import { CONFIG_FILE, serializeConfig } from '../../src/core/schemas/config.js'
 import { listDocumentNames } from '../../src/core/yaml/surgery.js'
-import { protectionText } from '../../src/core/github/protection.js'
+import { MERGE_NOTE, protectionText } from '../../src/core/github/protection.js'
 import type { GhProcess } from '../../src/process/gh.js'
 import type { SubmissionSummary } from '../../src/cli/commands/submit.js'
 import { removeClones } from '../support/forge-fixture.js'
@@ -1214,18 +1214,56 @@ describe('init --submit to GitHub', { timeout: 30_000 }, () => {
     expect(await observable(clone.repo)).toBe(before)
   })
 
-  it('refuses a service repository whose rules let the opener merge, exit 1, before the Inspector, naming --local', async () => {
+  it('says the note before the Inspector, and opens the service’s pull request', async () => {
     const clone = await service()
     unprotect(clone.gh)
+    const inner = drafting([COMPONENT])
+    const said: string[] = []
+    const client: LlmClient = {
+      generate: async (request) => {
+        said.push(`model ${request.agent}`)
+        return inner.generate(request)
+      },
+    }
+    const out: string[] = []
+
+    const code = await main(['init', '--repo', clone.repo, '--submit', ...FLAGS], {
+      cwd: clone.repo,
+      env: clone.env,
+      gh: clone.gh.process,
+      client,
+      out: (chunk) => void out.push(chunk),
+      err: (chunk) => void said.push(`err ${chunk}`),
+    })
+
+    expect(code, said.join('')).toBe(0)
+    const noted = said.indexOf(`err ${MERGE_NOTE}\n`)
+    expect(noted).toBeGreaterThan(-1)
+    expect(said.filter((line) => line === `err ${MERGE_NOTE}\n`)).toHaveLength(1)
+    expect(noted).toBeLessThan(said.findIndex((line) => line.startsWith('model ')))
+    expect(out.join('')).not.toContain('Add a ruleset')
+    expect(out.join('')).not.toContain(MERGE_NOTE)
+    expect(out.join('')).toContain('Pull request #1 opened on github.com/acme/billing-api: https://github.com/acme/billing-api/pull/1')
+    expect(clone.gh.state.pulls?.[0]?.body.split('\n')).toContain(MERGE_NOTE)
+    expect(await ours(clone.bare)).toHaveLength(1)
+  })
+
+  it('refuses a service repository gh’s account cannot push to, before the Inspector, naming --local', async () => {
+    const clone = await service()
+    clone.gh.state.repositories = clone.gh.state.repositories.map((one) => ({
+      ...one,
+      permissions: { ada: { admin: false, maintain: false, push: false } },
+    }))
     const client = drafting([COMPONENT])
 
     const { code, out } = await run(clone, [], { client })
 
     expect(code).toBe(1)
-    expect(out).toContain(
-      "not submitted — nothing on github.com/acme/billing-api's main stops the person who would open this pull request from merging it:",
-    )
-    expect(out).toContain('Then run this again, or add --local to cut the branch in this clone only. Nothing was written.')
+    expect(out.trimEnd().split('\n')).toEqual([
+      'not submitted — github.com/acme/billing-api cannot take a pull request from this run:',
+      "  missing: push access: gh's account cannot push to acme/billing-api",
+      'Then run this again, or add --local to cut the branch in this clone only. Nothing was written.',
+    ])
     expect(client.seen).toEqual([])
     expect(await ours(clone.repo)).toEqual([])
     expect(await ours(clone.bare)).toEqual([])
@@ -1274,7 +1312,7 @@ describe('init --submit to GitHub', { timeout: 30_000 }, () => {
     expect(client.seen).toEqual([])
   })
 
-  it('refuses when the rules go while the Architect drafts, at the moment of acting, and writes nothing on either side', async () => {
+  it('opens the pull request with the note when the rules go while the Architect drafts', async () => {
     const clone = await service()
     const inner = drafting([COMPONENT])
     const client: LlmClient = {
@@ -1284,11 +1322,15 @@ describe('init --submit to GitHub', { timeout: 30_000 }, () => {
       },
     }
 
-    const { code } = await run(clone, [], { client })
+    const { code, out, err } = await run(clone, [], { client })
 
-    expect(code).toBe(1)
-    expect(await ours(clone.repo)).toEqual([])
-    expect(await ours(clone.bare)).toEqual([])
+    expect(code, err).toBe(0)
+    // The preflight found the rules whole; step 11's read found them gone, and the run says so once.
+    expect(err.split('\n').filter((line) => line === MERGE_NOTE)).toHaveLength(1)
+    expect(out).toContain('Pull request #1 opened on github.com/acme/billing-api')
+    expect(clone.gh.state.pulls?.[0]?.body.split('\n')).toContain(MERGE_NOTE)
+    const [ref] = await ours(clone.repo)
+    expect(await ours(clone.bare)).toEqual([ref])
   })
 
   it('asks the question of § 3, naming the service’s repository', async () => {
@@ -1301,7 +1343,7 @@ describe('init --submit to GitHub', { timeout: 30_000 }, () => {
         return false
       },
     })
-    expect(summaries[0]?.github).toStrictEqual({ host: 'github.com', repository: 'acme/billing-api', base: 'main', pushedAlready: false })
+    expect(summaries[0]?.github).toStrictEqual({ host: 'github.com', repository: 'acme/billing-api', base: 'main', pushedAlready: false, authorMayMergeAlone: false })
   })
 
   it('still refuses a service in a subfolder of its repository (D12), exit 2, before gh is started', async () => {

@@ -295,6 +295,14 @@ Each pull request adds its line here.
 
 ### Changed
 
+- A submission toward GitHub opens the pull request whatever the base's rules: whether its
+  author may merge it alone is the company's rule, not idpa's. Where the rules allow it, the
+  run says so in one line, `note: on this repository the author may merge without another
+  person's review`, on stderr and in the pull request, and exits 0; idpa still never merges
+  and never writes to the base, and a repository gh's account cannot push to, that is
+  archived or that answers under another name is still refused, as are gh and a clone
+  configured to redirect the push; `idpa protection` still answers 0 or 1
+  ([#133](https://github.com/pcaboor/idp-agent/pull/133)).
 - A Backstage catalogue larger than a run reads — 20,000 Components, Resources and APIs,
   200,000 Groups, Users, Systems and Domains, or 200,000 references of other kinds — is no
   longer refused: it is read up to that bound and answered in part. A stderr line,

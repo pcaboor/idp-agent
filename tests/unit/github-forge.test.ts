@@ -1,6 +1,7 @@
 import { chmod, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
+import { LONGEST_NOTE, MERGE_NOTE } from '../../src/core/github/protection.js'
 import { pullRequestBody } from '../../src/core/github/pull-request.js'
 import type { Cleared } from '../../src/core/plan/clear.js'
 import { preflight } from '../../src/forge/github/preflight.js'
@@ -26,6 +27,28 @@ import { git, observable } from '../support/git.js'
  */
 
 afterAll(removeClones)
+
+/**
+ * A seam into `GITHUB_LIMITS.bodyBytes`: the real 1 MiB unless a case of
+ * *the body's bound* sets another, read each time the forge reads it. A body
+ * of 1 MiB would take a clearance of thousands of files to build.
+ */
+const bound = vi.hoisted(() => ({ bodyBytes: undefined as number | undefined }))
+vi.mock('../../src/forge/github/limits.js', async (original) => {
+  const real = await original<typeof import('../../src/forge/github/limits.js')>()
+  return {
+    ...real,
+    GITHUB_LIMITS: {
+      ...real.GITHUB_LIMITS,
+      get bodyBytes(): number {
+        return bound.bodyBytes ?? real.GITHUB_LIMITS.bodyBytes
+      },
+    },
+  }
+})
+afterEach(() => {
+  bound.bodyBytes = undefined
+})
 
 const WHERE = 'github.com/acme/iac'
 
@@ -79,6 +102,24 @@ const pull = (clone: GitHubClone, number: number) => {
   const found = (clone.gh.state.pulls ?? []).find((one) => one.number === number)
   if (found === undefined) throw new Error(`no pull request #${String(number)}`)
   return found
+}
+
+/** The one pull request's body holds the owner's note on a line of its own, above the provisioning sentence. */
+const noted = (clone: GitHubClone): void => {
+  expect(clone.gh.state.pulls ?? []).toHaveLength(1)
+  const lines = pull(clone, 1).body.split('\n')
+  const at = lines.indexOf(MERGE_NOTE)
+  expect(at).toBeGreaterThan(-1)
+  expect(lines.indexOf('Nothing is provisioned yet. The merge is what authorises it.')).toBeGreaterThan(at)
+}
+
+/** GitHub's refs moved by the one branch, added, and nothing else. */
+const movedByTheBranch = (clone: GitHubClone, before: string, after: string, branch: string): void => {
+  const added = after.split('\n').filter((line) => !before.split('\n').includes(line))
+  expect(added).toHaveLength(1)
+  expect(added[0]).toContain(`refs/heads/${branch}`)
+  expect(before.split('\n').every((line) => after.split('\n').includes(line))).toBe(true)
+  expect(clone.gh.state.pulls ?? []).toHaveLength(1)
 }
 
 // Real git processes, a push and a bare repository per test: seconds alone,
@@ -381,17 +422,22 @@ describe('recognition, one test per row of § 14', { timeout: 30_000 }, () => {
 })
 
 describe('the moment of acting', { timeout: 30_000 }, () => {
-  it('re-checks the rules at the moment of acting: a ruleset dropped after the confirmation leaves nothing on either side', async () => {
+  it('reads the rules again at the moment of acting, and a ruleset dropped after the confirmation opens the pull request with the note in its body', async () => {
     const opened = await setUp()
     expect(await opened.forge.recognise(opened.change, opened.base)).toBeUndefined()
     unprotect(opened.clone.gh)
-    const before = await state(opened.clone)
+    const main = await git(opened.clone.repo, 'rev-parse', 'main')
+    const refs = await remoteRefs(opened.clone.bare)
 
     const result = await opened.forge.submit(opened.change, opened.base)
 
-    expect(result).toMatchObject({ outcome: 'refused' })
-    expect(result).not.toHaveProperty('kept')
-    expect(await state(opened.clone)).toBe(before)
+    expect(result).toMatchObject({ outcome: 'created', note: 'author-may-merge', pullRequest: { number: 1 } })
+    noted(opened.clone)
+    movedByTheBranch(opened.clone, refs, await remoteRefs(opened.clone.bare), opened.change.branch)
+    expect(await git(opened.clone.repo, 'rev-parse', 'main')).toBe(main)
+    expect(await git(opened.clone.repo, 'rev-parse', `refs/heads/${opened.change.branch}`)).toBe(
+      await onGitHub(opened.clone, opened.change.branch),
+    )
   })
 
   it('re-checks the base: main moved on GitHub after the confirmation', async () => {
@@ -467,6 +513,64 @@ describe('the moment of acting', { timeout: 30_000 }, () => {
 
     expect(await onGitHub(opened.clone, opened.change.branch)).toBeDefined()
     expect(await remoteRefs(opened.clone.bare)).not.toContain('elsewhere')
+  })
+})
+
+describe('the body’s bound', { timeout: 30_000 }, () => {
+  /** The body step 11 builds when its read calls for no note. */
+  const bareBytes = (change: Cleared): number =>
+    Buffer.byteLength(
+      pullRequestBody({ message: change.message, request: change.request, road: 'from', branch: change.branch }).body,
+      'utf8',
+    )
+
+  it('refuses at step 8 a body that fits only without room for the longest note, and writes nothing', async () => {
+    const opened = await setUp()
+    // The body alone fits; with the longest note and its blank line, one byte over.
+    bound.bodyBytes = bareBytes(opened.change) + Buffer.byteLength(`${LONGEST_NOTE}\n\n`, 'utf8') - 1
+    const before = await state(opened.clone)
+
+    const result = await opened.forge.submit(opened.change, opened.base)
+
+    expect(result).toEqual({
+      outcome: 'refused',
+      reason: "the pull request's body would be over 1 MiB, more than this build sends. Nothing was written.",
+    })
+    expect(await state(opened.clone)).toBe(before)
+  })
+
+  it('opens a body that fits with room for the longest note', async () => {
+    const opened = await setUp()
+    bound.bodyBytes = bareBytes(opened.change) + Buffer.byteLength(`${LONGEST_NOTE}\n\n`, 'utf8')
+
+    expect(await opened.forge.submit(opened.change, opened.base)).toMatchObject({ outcome: 'created', pullRequest: { number: 1 } })
+  })
+
+  it('checks the body step 11 built once more, and opens nothing over the bound, the branch pushed', async () => {
+    const clone = await githubClone()
+    const inner = pushIn(clone.repo, { env: clone.env })
+    const opened = await setUp(
+      {
+        // Step 8 passed; the bound moves under the body before step 11, standing
+        // for a body step 8 did not foresee.
+        push: async (request) => {
+          const answer = await inner(request)
+          bound.bodyBytes = 1
+          return answer
+        },
+      },
+      clone,
+    )
+
+    const result = await opened.forge.submit(opened.change, opened.base)
+
+    expect(result).toMatchObject({
+      outcome: 'pushed-without-pull-request',
+      branch: opened.change.branch,
+      reason: "the pull request was not opened: its body would be over 1 MiB, more than this build sends.",
+    })
+    expect(await onGitHub(clone, opened.change.branch)).toBe(result.outcome === 'pushed-without-pull-request' ? result.commit : '')
+    expect(clone.gh.state.pulls ?? []).toEqual([])
   })
 })
 
@@ -633,7 +737,7 @@ describe('races and failures', { timeout: 30_000 }, () => {
     expect(clone.gh.state.pulls ?? []).toEqual([])
   })
 
-  it('opens nothing when the rules stop holding during the push', async () => {
+  it('opens the pull request with the note when the rules stop holding during the push', async () => {
     const clone = await githubClone()
     const inner = pushIn(clone.repo, { env: clone.env })
     const opened = await setUp(
@@ -645,15 +749,13 @@ describe('races and failures', { timeout: 30_000 }, () => {
       },
       clone,
     )
+    const refs = await remoteRefs(clone.bare)
 
     const result = await opened.forge.submit(opened.change, opened.base)
 
-    expect(result).toMatchObject({ outcome: 'pushed-without-pull-request', branch: opened.change.branch })
-    expect(result.outcome === 'pushed-without-pull-request' ? result.reason : '').toContain(
-      `the pull request was not opened: the rules that keep it from merging unreviewed no longer hold on ${WHERE}'s main`,
-    )
-    expect(await onGitHub(clone, opened.change.branch)).toBeDefined()
-    expect(clone.gh.state.pulls ?? []).toEqual([])
+    expect(result).toMatchObject({ outcome: 'created', note: 'author-may-merge', pushed: true, pullRequest: { number: 1 } })
+    noted(clone)
+    movedByTheBranch(clone, refs, await remoteRefs(clone.bare), opened.change.branch)
     expect((await preflight(opened.api, opened.road, opened.base)).verdict.holds).toBe(false)
   })
 

@@ -78,9 +78,9 @@ import {
  * Printed on every run, including the one that writes nothing. The second
  * reader of a repository is as entitled to it as the first, and a tool that
  * only admits its limits once has not admitted them. The list is
- * `PROTECTION_SETTINGS`, the one `idpa protection` checks and a refused
- * submission prints, so the three cannot drift; a directory with no remote
- * yet has nothing to check, so this says what will.
+ * `PROTECTION_SETTINGS`, the one `idpa protection` checks and prints, so
+ * the two cannot drift; a directory with no remote yet has nothing to
+ * check, so this says what will.
  */
 const RULESET_NOTICE = [
   'Branch protection is set in the forge, not here. Add a ruleset on the default branch (Settings → Rules → Rulesets):',
@@ -911,11 +911,15 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
     files.set(CONFIG_FILE, read?.text)
     const refused = await refuseDivergence(opened, { files, scope: 'touched' })
     if (refused !== undefined) return refused
-    // § 8 on the service's own repository (decision 17): the same rules the declarations
-    // repository must hold, read before the Inspector is paid for a branch they would refuse,
-    // and refused "with --local named", which the declarations roads do not offer. `init` has
-    // no --json, so the refusal is prose. A local road reads nothing here.
-    const unprotected = await refuseUnprotected(opened, { offerLocal: true })
+    // § 8 on the service's own repository (decision 17): read before the Inspector is paid
+    // for a branch the repository could not take (item 1, refused "with --local named",
+    // which the declarations roads do not offer), and the note on who may merge said there,
+    // the run going on (2026-10-01). `init` has no --json, so a refusal is prose. A local
+    // road reads nothing here.
+    const unprotected = await refuseUnprotected(opened, {
+      offerLocal: true,
+      ...(options.submit?.notice === undefined ? {} : { notice: options.submit.notice }),
+    })
     if (unprotected !== undefined) return unprotected
   }
 
@@ -1205,6 +1209,7 @@ async function concluded(
     cleared,
     render,
     ...(options.submit?.confirm !== undefined ? { confirm: options.submit.confirm } : {}),
+    ...(options.submit?.notice !== undefined ? { notice: options.submit.notice } : {}),
   })
   return result
 }

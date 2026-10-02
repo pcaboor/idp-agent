@@ -13,13 +13,13 @@ import {
 } from '../../src/cli/commands/submit.js'
 import { closingLines, CLOSING, localRoadLine, pullRequestLines, type PreviewStatus } from '../../src/cli/render/footer.js'
 import { configRefusal } from '../../src/core/github/config.js'
-import { protectionText } from '../../src/core/github/protection.js'
+import { MERGE_NOTE, unguardedNote } from '../../src/core/github/protection.js'
 import type { GitHubRoad, LocalRoad, PullRequest } from '../../src/forge/provider.js'
 import { GH_LIMITS, parseIncluded, type GhExit, type GhProcess } from '../../src/process/gh.js'
 import { REFUSED_EXIT } from '../../tools/fake-gh.js'
 import { confirmingEnvironment } from '../support/ask.js'
 import { INTENT, OPERATIONS, removeClones } from '../support/forge-fixture.js'
-import { DOORS, MODELLED_DOORS } from '../support/fake-gh.js'
+import { DOORS, MODELLED_DOORS, protectedMain } from '../support/fake-gh.js'
 import {
   fakeSsh,
   GITHUB_URL,
@@ -81,19 +81,29 @@ const submitting = async (
   clone: GitHubClone,
   extra: readonly string[] = [],
   deps: { readonly confirm?: Confirm; readonly gh?: GhProcess; readonly env?: NodeJS.ProcessEnv } = {},
-): Promise<{ code: number; out: string; err: string }> => {
+): Promise<{ code: number; out: string; err: string; chunks: readonly { readonly to: 'out' | 'err'; readonly text: string }[] }> => {
   const out: string[] = []
   const err: string[] = []
+  const chunks: { to: 'out' | 'err'; text: string }[] = []
   const code = await main(['plan', '--from', await planFile(clone), '--repo', clone.repo, '--submit', ...extra], {
-    out: (chunk) => void out.push(chunk),
-    err: (chunk) => void err.push(chunk),
+    out: (chunk) => {
+      out.push(chunk)
+      chunks.push({ to: 'out', text: chunk })
+    },
+    err: (chunk) => {
+      err.push(chunk)
+      chunks.push({ to: 'err', text: chunk })
+    },
     env: deps.env ?? clone.env,
     gh: deps.gh ?? clone.gh.process,
     ask,
     ...(deps.confirm === undefined ? {} : { confirm: deps.confirm }),
   })
-  return { code, out: out.join(''), err: err.join('') }
+  return { code, out: out.join(''), err: err.join(''), chunks }
 }
+
+/** How many times `line` is said on stderr, a line of its own. */
+const saidOnStderr = (err: string, line: string): number => err.split('\n').filter((one) => one === line).length
 
 /** The idp-agent branch the clone holds: exactly one. */
 const ourBranch = async (repo: string): Promise<string> => {
@@ -171,7 +181,7 @@ describe('plan --from --submit to GitHub', { timeout: RUNS }, () => {
 
     expect(code).toBe(0)
     expect(asked.map((summary) => summary.github)).toEqual([
-      { host: 'github.com', repository: 'acme/iac', base: 'main', pushedAlready: false },
+      { host: 'github.com', repository: 'acme/iac', base: 'main', pushedAlready: false, authorMayMergeAlone: false },
     ])
     expect(out.trimEnd().split('\n').slice(-2)).toEqual(['2 files · not submitted · nothing written', CLOSING])
     expect(await state(clone)).toBe(before)
@@ -249,33 +259,111 @@ describe('plan --from --submit to GitHub', { timeout: RUNS }, () => {
     expect(third['reason']).toContain('GitHub answered 502 through gh')
   })
 
-  it('refuses an unprotected base before anything is written, and prints the ruleset to add', async () => {
+  it('opens the pull request on an unprotected base, says the note on stderr and in its body, and exits 0', async () => {
     const clone = await githubClone()
     unprotect(clone.gh)
+    const main0 = await git(clone.repo, 'rev-parse', 'main')
+
+    const { code, out, err } = await submitting(clone)
+
+    expect(code, err).toBe(0)
+    expect(err.split('\n').slice(0, 2)).toEqual([SUBMITTING, MERGE_NOTE])
+    expect(saidOnStderr(err, MERGE_NOTE)).toBe(1)
+    expect(out).not.toContain(MERGE_NOTE)
+    expect(out).not.toContain('Add a ruleset')
+    const branch = await ourBranch(clone.repo)
+    expect(out.trimEnd().split('\n').slice(-4)).toEqual([
+      `2 files · submitted as ${branch} on top of main@${main0.slice(0, 7)} · main untouched`,
+      'Pull request #1 opened on github.com/acme/iac: https://github.com/acme/iac/pull/1',
+      'No status check is required, so a system downstream could not refuse it (ADR-0012).',
+      CLOSING,
+    ])
+    expect(clone.gh.state.pulls).toHaveLength(1)
+    expect(clone.gh.state.pulls?.[0]?.body.split('\n')).toContain(MERGE_NOTE)
+
+    const other = await githubClone()
+    unprotect(other.gh)
+    const json = await submitting(other, ['--json'])
+    expect(json.code, json.err).toBe(0)
+    expect(saidOnStderr(json.err, MERGE_NOTE)).toBe(1)
+    const report = JSON.parse(json.out) as { submission: Record<string, unknown> }
+    expect(Object.keys(report.submission).sort()).toEqual(['base', 'branch', 'commit', 'note', 'outcome', 'pullRequest', 'pushed'])
+    expect(report.submission).toMatchObject({ outcome: 'created', note: 'author-may-merge', pushed: true, pullRequest: { number: 1 } })
+    expect(other.gh.state.pulls?.[0]?.body.split('\n')).toContain(MERGE_NOTE)
+  })
+
+  it('asks without promising an approval where the author may merge alone', async () => {
+    const clone = await githubClone()
+    unprotect(clone.gh)
+    const asked: SubmissionSummary[] = []
+
+    const { code, err } = await submitting(clone, [], {
+      confirm: async (summary) => {
+        asked.push(summary)
+        return false
+      },
+    })
+
+    expect(code).toBe(0)
+    expect(asked.map((summary) => summary.github)).toEqual([
+      { host: 'github.com', repository: 'acme/iac', base: 'main', pushedAlready: false, authorMayMergeAlone: true },
+    ])
+    expect(saidOnStderr(err, MERGE_NOTE)).toBe(1)
+    expect(clone.gh.state.pulls ?? []).toEqual([])
+  })
+
+  it('says the base-unguarded line, and keeps promising the approval, where only force pushes are unguarded', async () => {
+    const clone = await githubClone()
+    clone.gh.state.repositories = clone.gh.state.repositories.map((one) => ({
+      ...one,
+      rulesets: one.rulesets.map((ruleset) => ({ ...ruleset, rules: ruleset.rules.filter((rule) => rule.type !== 'non_fast_forward') })),
+    }))
+    const asked: SubmissionSummary[] = []
+
+    const { code, out, err } = await submitting(clone, [], {
+      confirm: async (summary) => {
+        asked.push(summary)
+        return true
+      },
+    })
+
+    expect(code, err).toBe(0)
+    const line = unguardedNote('main', ['non-fast-forward'])
+    expect(saidOnStderr(err, line)).toBe(1)
+    expect(err).not.toContain(MERGE_NOTE)
+    expect(asked[0]?.github?.authorMayMergeAlone).toBe(false)
+    expect(out.trimEnd().split('\n').slice(-2)).toEqual([MERGING, CLOSING])
+    // The same words in the body, the base written as code.
+    expect(clone.gh.state.pulls?.[0]?.body.split('\n')).toContain(unguardedNote('main', ['non-fast-forward'], 'markdown'))
+  })
+
+  it('refuses a repository gh’s account cannot push to, before anything is written', async () => {
+    const clone = await githubClone()
+    clone.gh.state.repositories = [protectedMain({ bare: clone.bare, permissions: { ada: { admin: false, maintain: false, push: false } } })]
     const before = await state(clone)
 
-    const { code, out } = await submitting(clone)
+    const { code, out, err } = await submitting(clone)
 
     expect(code).toBe(1)
-    const lines = out.trimEnd().split('\n')
-    expect(lines[0]).toBe(
-      `not submitted — nothing on ${WHERE}'s main stops the person who would open this pull request from merging it:`,
-    )
-    expect(lines).toContain('  missing: a pull request rule requiring 1 approval')
-    for (const line of protectionText()) expect(lines).toContain(line)
-    expect(lines.at(-1)).toBe('Then run this again. Nothing was written.')
-    expect(out).not.toContain('+++')
+    expect(out.trimEnd().split('\n')).toEqual([
+      'not submitted — github.com/acme/iac cannot take a pull request from this run:',
+      "  missing: push access: gh's account cannot push to acme/iac",
+      'Then run this again. Nothing was written.',
+    ])
+    expect(err).not.toContain('note:')
     expect(await state(clone)).toBe(before)
 
     const json = await submitting(clone, ['--json'])
     expect(json.code).toBe(1)
     const report = JSON.parse(json.out) as Record<string, unknown>
     expect(Object.keys(report)).toEqual(['submission'])
-    const refused = report['submission'] as { outcome: string; reasons: string[] }
-    expect(Object.keys(refused).sort()).toEqual(['outcome', 'reasons'])
-    expect(refused.outcome).toBe('refused')
-    expect(refused.reasons[0]).toBe(lines[0])
-    expect(refused.reasons).toContain('  missing: a pull request rule requiring 1 approval')
+    expect(report['submission']).toEqual({
+      outcome: 'refused',
+      reasons: [
+        'not submitted — github.com/acme/iac cannot take a pull request from this run:',
+        "  missing: push access: gh's account cannot push to acme/iac",
+      ],
+    })
     expect(await state(clone)).toBe(before)
   })
 
@@ -449,28 +537,92 @@ describe('plan --from --submit to GitHub', { timeout: RUNS }, () => {
     expect(await remoteRefs(clone.bare)).toBe(refs)
   })
 
-  it('re-checks the rules after the confirmation, and writes nothing when they are gone', async () => {
+  it('reads the rules after the confirmation, and opens the pull request with the note when they are gone', async () => {
     const clone = await githubClone()
-    const before = await state(clone)
 
-    const { code, out } = await submitting(clone, [], {
+    const { code, out, err, chunks } = await submitting(clone, [], {
       confirm: async () => {
         unprotect(clone.gh)
         return true
       },
     })
 
-    expect(code).toBe(1)
+    expect(code, err).toBe(0)
     const lines = out.trimEnd().split('\n')
-    expect(lines.slice(-4)).toEqual([
-      '2 files · not submitted:',
-      expect.stringMatching(
-        new RegExp(`^  nothing on ${WHERE}'s main stops the person who would open this pull request from merging it \\(missing: .+\\); idpa protection says what to add\\.$`),
-      ),
-      'Nothing was written.',
+    expect(lines.slice(-3)).toEqual([
+      'Pull request #1 opened on github.com/acme/iac: https://github.com/acme/iac/pull/1',
+      'No status check is required, so a system downstream could not refuse it (ADR-0012).',
       CLOSING,
     ])
-    expect(await state(clone)).toBe(before)
+    // The preflight found none, so the note is said once, just above the closing lines.
+    expect(saidOnStderr(err, MERGE_NOTE)).toBe(1)
+    const note = chunks.findIndex((chunk) => chunk.to === 'err' && chunk.text.includes(MERGE_NOTE))
+    const closing = chunks.findIndex((chunk) => chunk.to === 'out' && chunk.text.includes('Pull request #1 opened'))
+    expect(note).toBeGreaterThan(-1)
+    expect(note).toBeLessThan(closing)
+    expect(clone.gh.state.pulls?.[0]?.body.split('\n')).toContain(MERGE_NOTE)
+  })
+
+  it('says step 11’s note again when its words differ from the preflight’s: force pushes, then deletions', async () => {
+    const clone = await githubClone()
+    const protectedRepositories = clone.gh.state.repositories
+    /** The protected base, the rules of `types` taken out of every ruleset. */
+    const without = (...types: readonly string[]): void => {
+      clone.gh.state.repositories = protectedRepositories.map((one) => ({
+        ...one,
+        rulesets: one.rulesets.map((ruleset) => ({ ...ruleset, rules: ruleset.rules.filter((rule) => !types.includes(rule.type)) })),
+      }))
+    }
+    without('non_fast_forward')
+
+    const { code, err, chunks } = await submitting(clone, [], {
+      confirm: async () => {
+        without('deletion')
+        return true
+      },
+    })
+
+    expect(code, err).toBe(0)
+    const before = unguardedNote('main', ['non-fast-forward'])
+    const after = unguardedNote('main', ['deletion'])
+    // Both said once, in that order: the second is what the body says.
+    expect(saidOnStderr(err, before)).toBe(1)
+    expect(saidOnStderr(err, after)).toBe(1)
+    expect(err.indexOf(before)).toBeLessThan(err.indexOf(after))
+    const said = chunks.findIndex((chunk) => chunk.to === 'err' && chunk.text.includes(after))
+    const closing = chunks.findIndex((chunk) => chunk.to === 'out' && chunk.text.includes('Pull request #1 opened'))
+    expect(said).toBeLessThan(closing)
+    const body = clone.gh.state.pulls?.[0]?.body.split('\n') ?? []
+    expect(body).toContain(unguardedNote('main', ['deletion'], 'markdown'))
+    expect(body).not.toContain(unguardedNote('main', ['non-fast-forward'], 'markdown'))
+  })
+
+  it('says step 11’s note when it is another note than the preflight’s, and the body carries step 11’s', async () => {
+    const clone = await githubClone()
+    const protectedRepositories = clone.gh.state.repositories
+    unprotect(clone.gh)
+
+    const { code, out, err } = await submitting(clone, [], {
+      confirm: async () => {
+        // The ruleset comes back, without its deletion rule.
+        clone.gh.state.repositories = protectedRepositories.map((one) => ({
+          ...one,
+          rulesets: one.rulesets.map((ruleset) => ({ ...ruleset, rules: ruleset.rules.filter((rule) => rule.type !== 'deletion') })),
+        }))
+        return true
+      },
+    })
+
+    expect(code, err).toBe(0)
+    const after = unguardedNote('main', ['deletion'])
+    expect(saidOnStderr(err, MERGE_NOTE)).toBe(1)
+    expect(saidOnStderr(err, after)).toBe(1)
+    expect(err.indexOf(MERGE_NOTE)).toBeLessThan(err.indexOf(after))
+    // Step 11's read decides the body and the closing lines: an approval is required there.
+    expect(out.trimEnd().split('\n').slice(-2)).toEqual([MERGING, CLOSING])
+    const body = clone.gh.state.pulls?.[0]?.body.split('\n') ?? []
+    expect(body).toContain(unguardedNote('main', ['deletion'], 'markdown'))
+    expect(body).not.toContain(MERGE_NOTE)
   })
 
   it('says the local branch stays when the push fails', async () => {
@@ -725,6 +877,60 @@ describe('the closing lines of a submission', () => {
         [
           `1 file · submitted as ${B} on top of main@abc1234, an older main (now def5678; GitHub shows whether it still ` +
             'merges cleanly) · main untouched',
+          'Pull request #3 opened on github.com/acme/iac: https://github.com/acme/iac/pull/3',
+          MERGING,
+          CLOSING,
+        ],
+      ],
+      [
+        {
+          kind: 'submitted',
+          again: false,
+          branch: B,
+          base: BASE,
+          road: GITHUB,
+          pullRequest: pull('opened'),
+          statusChecks: [],
+          note: 'author-may-merge',
+        },
+        [
+          `1 file · submitted as ${B} on top of main@abc1234 · main untouched`,
+          'Pull request #3 opened on github.com/acme/iac: https://github.com/acme/iac/pull/3',
+          'No status check is required, so a system downstream could not refuse it (ADR-0012).',
+          CLOSING,
+        ],
+      ],
+      [
+        {
+          kind: 'submitted',
+          again: false,
+          branch: B,
+          base: BASE,
+          road: GITHUB,
+          pullRequest: pull('opened'),
+          statusChecks: ['ci/validate', 'downstream/tufin'],
+          note: 'author-may-merge',
+        },
+        [
+          `1 file · submitted as ${B} on top of main@abc1234 · main untouched`,
+          'Pull request #3 opened on github.com/acme/iac: https://github.com/acme/iac/pull/3',
+          'Merging it waits for the status checks ci/validate, downstream/tufin.',
+          CLOSING,
+        ],
+      ],
+      [
+        {
+          kind: 'submitted',
+          again: false,
+          branch: B,
+          base: BASE,
+          road: GITHUB,
+          pullRequest: pull('opened'),
+          statusChecks: [],
+          note: 'base-unguarded',
+        },
+        [
+          `1 file · submitted as ${B} on top of main@abc1234 · main untouched`,
           'Pull request #3 opened on github.com/acme/iac: https://github.com/acme/iac/pull/3',
           MERGING,
           CLOSING,

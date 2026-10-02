@@ -1,6 +1,6 @@
 # Stage 6 — a GitHub pull request, with the person's own git and gh
 
-**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2 built ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3 built ([#131](https://github.com/pcaboor/idp-agent/pull/131)); 6.3.4, 6.3.5 and 6.3.6 planned (the owner's three decisions of 2026-10-01, before 6.4); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
+**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2 built ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3 built ([#131](https://github.com/pcaboor/idp-agent/pull/131)); 6.3.4 built ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5 and 6.3.6 planned (the owner's decisions of 2026-10-01, before 6.4); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
 § 19 (Q1–Q4) were settled on 2026-09-30, each as recommended, and this plan takes them as
 given; so were the four questions the plan itself asked, the same day ([Questions for the
 owner](#questions-for-the-owner)). Fourteen stacked pull requests (eleven at first; 6.3.4 to 6.3.6 were added on 2026-10-01): thirteen, 6.1.1 to 6.4.2, then 6.4.3, the owner's step: every tape
@@ -16,10 +16,9 @@ and logged in to github.com as a person, `plan --from … --submit`, `plan "<int
 `init --submit` and `idpa "<phrase>" --submit` cut stage 5's local branch, push that very commit
 create-only to the same `idp-agent/…` name on GitHub with the person's own git, and open one pull
 request into the tracked branch with the person's own gh; they recognise, before anyone is asked,
-a submission already made on this base or an older one; they refuse to submit where the base
-branch's ruleset would let the opener merge without someone else's approval of the latest
-commit, read before anything is written and again at the moment of acting; and they print the
-pull request's URL, built by the engine. idpa reads, stores and sends no GitHub credential, and
+a submission already made on this base or an older one; they open the pull request whatever the
+base's rules, saying in one note when its author may merge it alone, the rules read before
+anything is written and again at the moment of acting; and they print the pull request's URL, built by the engine. idpa reads, stores and sends no GitHub credential, and
 runs only an explicit list of git and gh command shapes, checked at run time on the final
 argument vector and by architecture rules in the source.
 
@@ -139,24 +138,20 @@ a task that cannot hold one is stopped and brought to the owner.
    `worktree` scope is exit 2, before any model and again at step 8, naming the key and its scope,
    **never its value**. The push goes to the URL `git remote get-url --push` printed, never to a
    remote name.
-4. **Nothing is written on either side before the re-check at step 8 passes**, and nothing is
-   opened before the read-back and the second rules read of step 11 pass. Each system stays
-   atomic on its own (ADR-0010 locally, one ref per push on GitHub); the two together are not
-   claimed atomic, and every intermediate state is a row of § 4's table that the same command,
-   run again, completes. *Amended by the owner on 2026-10-01, built by 6.3.4, which rewrites this
-   constraint in its pull request:* the second rules read of step 11 decides the note in the body,
-   never whether to open; nothing is opened before the read-back passes. *From 6.3.6:* step 8 also
+4. **Nothing is written on either side before the re-check at step 8 passes, and nothing is
+   opened before the read-back of step 11 passes; the second rules read of step 11 decides the
+   note in the body, never whether to open** (the owner's decision of 2026-10-01, built by 6.3.4).
+   Each system stays atomic on its own (ADR-0010 locally, one ref per push on GitHub); the two
+   together are not claimed atomic, and every intermediate state is a row of § 4's table that the
+   same command, run again, completes. *From 6.3.6:* step 8 also
    reads again what is in flight, and nothing is written when it finds the same change or a
    competing one.
-5. **The invariant, in the owner's words**, wherever a document states it: "the identity that
-   opens a pull request cannot merge it until someone else has approved the exact commit that
-   would merge, and idpa never submits against a base without those rules". A pull request is
-   opened only when every ruleset supplying a required rule answers `current_user_can_bypass`
-   `never`; a base protected only by classic branch protection is refused. *Amended by the owner on
-   2026-10-01, built by 6.3.4, which rewrites this constraint in its pull request:* the pull request
-   is always opened; where the base's rules let its author merge it alone, one neutral line says so
-   (`note: on this repository the author may merge without another person's review`), on stderr and
-   in the pull request; the push itself is still refused on § 8 item 1, and every exit 2 stays.
+5. **The invariant, in the owner's words**, wherever a document states it: "idpa never merges and
+   never writes to the base: it opens a pull request, and the base's rules decide who may merge
+   it" (design §4.2, the owner's decision of 2026-10-01, built by 6.3.4). A pull request is opened
+   whatever the base's rules; the note says when its author may merge it alone (`note: on this
+   repository the author may merge without another person's review`, on stderr and in the pull
+   request); the push itself is refused on § 8 item 1, and every exit 2 stays.
 6. **`pnpm test` reaches no network, no real gh, no real ssh and none of the developer's git or gh
    credentials** (§ 10's offline floor). `tests/setup/forge.ts` is loaded in every worker, even
    while a scenario records, and removes `NODE_USE_ENV_PROXY` there too, so the proxy it closes
@@ -522,9 +517,15 @@ with the exact lines; in short:
   `renamed` refused, `non-fast-forward`, `deletion` and `bypassable` `base-unguarded`, the rest
   `author-may-merge`); `noteOf(verdict)`; `refusesPush(verdict)`; `MERGE_NOTE = "note: on this
   repository the author may merge without another person's review"`; `unguardedNote(base,
-  missing)`; `noteLine(note, base, missing)`; `LONGEST_NOTE`. `PullRequestInput.note?`; `Submitted`'s `created.note?`;
+  missing, form?)`; `noteLine(note, base, missing, form?)`; `LONGEST_NOTE`. `PullRequestInput.note?`; `Submitted`'s `created.note?`;
   `SubmissionSummary.github.authorMayMergeAlone`; `SubmissionReport`'s `created.note?`;
-  `PreviewStatus`'s `submitted.note?`; `refuseUnprotected`'s `notice`.
+  `PreviewStatus`'s `submitted.note?`; `refuseUnprotected`'s `notice`. As built: `Submitted`'s
+  `created` also carries `missing?` beside `note` (what step 11's read found missing, which the
+  `base-unguarded` line names when the CLI says it; never in the `--json` report), and `submit()`
+  takes `notice` too, where a note only step 11 found is said. As built too: `NoteForm`
+  (`'text' | 'markdown'`), the last parameter of `unguardedNote` and `noteLine` — the body's line
+  writes the base as code — and the closing note is said when its line is not the one the
+  preflight said (Task 6.3.4, *As built*).
 - 6.3.5, `cli/commands/submit.ts`: `Unproposed`, `unproposedLine`, `Proposal`, `openToPropose`,
   `submit`'s `proposal`; `IntentOptions.propose` (`plan.ts`); `MainDeps.propose`, `proposeOf`,
   `Terminals`, `discardTypedAhead`, `confirmOnTerminal`'s `discard` (`index.ts`).
@@ -545,12 +546,14 @@ with the exact lines; in short:
 - stderr, the GitHub road: `submitting to github.com/<o>/<r>, into <base> (<remote>, <branch>'s upstream), as <login> (gh)`. No role: it is printed when the forge opens, before the preflight reads `permissions` (Choices); `idpa protection`'s block names the role.
 - stderr, `idpa protection`: `checking github.com/<o>/<r>'s <base> (<remote>, <branch>'s upstream), as <login> (gh)`.
 - stdout, local roads, in place of `NO_FORGE`: `<branch> tracks no remote: nothing pushed`; `the remote is on <host>, where this build opens no pull request: nothing pushed` (`<host>` is `this machine` for a path or a `file://` URL); `--local: nothing pushed by this run` (what this run did, never where the branch is: `--local` reads nothing on GitHub, where an earlier run without it may have pushed the same branch; 6.2.2).
-- stdout, opened: `<n> file(s) · submitted as <idp-branch> on top of <base>@<sha7> · <base> untouched`, then `Pull request #<n> opened on github.com/<o>/<r>: https://github.com/<o>/<r>/pull/<n>`, then `Merging it waits for one approval of its latest commit from someone other than you. No status check is required, so a system downstream could not refuse it (ADR-0012).` or `…from someone other than you, and for the status checks <c1>, <c2>.`, then `CLOSING`.
+- stdout, opened: `<n> file(s) · submitted as <idp-branch> on top of <base>@<sha7> · <base> untouched`, then `Pull request #<n> opened on github.com/<o>/<r>: https://github.com/<o>/<r>/pull/<n>`, then `Merging it waits for one approval of its latest commit from someone other than you. No status check is required, so a system downstream could not refuse it (ADR-0012).` or `…from someone other than you, and for the status checks <c1>, <c2>.`, then `CLOSING`; where step 11's note is `author-may-merge` (6.3.4), the third line is `No status check is required, so a system downstream could not refuse it (ADR-0012).` or `Merging it waits for the status checks <c1>, <c2>.`.
+- stderr, the note (6.3.4; once a run, from the preflight, or just above the closing lines when only step 11's read found it; the same line in the pull request's body, a paragraph of the engine's block after `This change was …`): `note: on this repository the author may merge without another person's review`; where only `base-unguarded` kinds are missing, `note: on this repository no rule on <base> that binds the author blocks force pushes`, `… restricts deletions`, or `… blocks force pushes or restricts deletions` (`<base>` held to the branch grammar and holding no backtick, else `the base`; in the body, the same words with the base written as code, `` `main` ``).
+- stdout, `idpa protection`'s exit 1 where a submission would go on (6.3.4), before `Then run idpa protection again.`: `A submission still opens its pull request here, and says: <the note line>`.
 - stdout, again: `<n> file(s) · already submitted as <idp-branch> · pull request #<n> is open · nothing written`; on an older base: `<n> file(s) · already submitted as <idp-branch> · pull request #<n> is open, on <base>@<old7>; <base> is now <new7>, and GitHub shows whether it still merges cleanly · nothing written`.
 - stdout, step 11 or 12 stopped: `<n> file(s) · <idp-branch> is on github.com/<o>/<r>, and <reason>`, the reason the forge wrote, e.g. `the pull request was not opened: GitHub answered <status> through gh. Run the same command again to open it.`, or `gh did not say whether the pull request was opened. Run the same command again: it names the pull request, or opens it.`
 - stdout, not level: `not submitted — github.com/<o>/<r>'s <base> is at <gh7> and this clone's <base> is at <local7>: bring them level (git pull), then run this again. If you submitted this change before, the next run names its pull request. Nothing was written.`
-- stdout, unprotected: `not submitted — nothing on github.com/<o>/<r>'s <base> stops the person who would open this pull request from merging it:`, the `  missing: …` lines, `Add a ruleset on <base> (Settings → Rules → Rulesets):`, `protectionText()`, `Then run this again. Nothing was written.`; on `init --submit`'s road (6.3.2, decision 17: "with `--local` named") the last line is `Then run this again, or add --local to cut the branch in this clone only. Nothing was written.`
-- the prompt, GitHub road: `Push <idp-branch> to github.com/<o>/<r> with your git, and open a pull request into <base> with your gh? Nothing is provisioned until someone else approves it and it is merged. [y/N] `; branch already pushed: `Open a pull request from <idp-branch> into <base> on github.com/<o>/<r> with your gh? The branch was pushed by an earlier run. Nothing is provisioned until someone else approves it and it is merged. [y/N] `.
+- stdout, § 8 item 1 (archived, no push access, renamed; from 6.3.4 the only refusal on the preflight's verdict): `not submitted — github.com/<o>/<r> cannot take a pull request from this run:`, the `  missing: …` lines, `Then run this again. Nothing was written.` (no ruleset, which would not help); on `init --submit`'s road (6.3.2, decision 17: "with `--local` named") the last line is `Then run this again, or add --local to cut the branch in this clone only. Nothing was written.`
+- the prompt, GitHub road: `Push <idp-branch> to github.com/<o>/<r> with your git, and open a pull request into <base> with your gh? Nothing is provisioned until someone else approves it and it is merged. [y/N] `; branch already pushed: `Open a pull request from <idp-branch> into <base> on github.com/<o>/<r> with your gh? The branch was pushed by an earlier run. Nothing is provisioned until someone else approves it and it is merged. [y/N] `; where the preflight found an `author-may-merge` kind (6.3.4, `authorMayMergeAlone`), each ends `Nothing is provisioned until it is merged. [y/N] `.
 - exit 2, gh (the checked-out `<branch>` is what tracks; usually both are `main`): `<branch> tracks github.com/<o>/<r>, and gh is not logged in to github.com, so idpa cannot read the rules that keep a pull request from merging unreviewed. Run \`gh auth login --hostname github.com\`, then run this again; or add --local to cut the branch in this clone only. Nothing was written.`; `gh is not installed` in place of `gh is not logged in to github.com`, with `Install it (https://cli.github.com) and run …`; `gh <v> is older than <min>, the oldest this build reads; update gh, then run this again; or add --local …`; `gh is logged in to github.com as <login>, which GitHub says is a <type>, not a person: the pull request's author would be a bot, and whoever asked could approve it. Log gh in as yourself (gh auth login --hostname github.com), or add --local … Nothing was written.`. For `idpa protection` (`purpose: 'protection'`), each is the same sentence without `; or add --local to cut the branch in this clone only` (or `, or add --local …`).
 - exit 2, configuration: `this clone's own configuration sets <key> (<scope>), which would decide who pushes for you; idpa pushes only with your global git configuration. Remove it with \`git config --<scope> --unset-all <key>\`, or set it globally, then run this again. Nothing was written.` (the phrase after the comma follows the key's section: *where your push goes* for `url`, `http`, `protocol` and the `remote.*` keys, *who pushes for you* for `credential`, *what program runs during your push* for `ssh`, `gpg`, `push`, `core.*`).
 - exit 2, userinfo: `<remote>'s URL carries a credential; set it to https://github.com/<o>/<r>. Nothing was written.`
@@ -6172,6 +6175,20 @@ lease, the read-back, § 14's rows.
   answers otherwise; if refused, those kinds say no note at all (the approved line would be
   false there, so it is never the fallback), and `idpa protection` keeps reporting them.
 
+*As built*, after review, two departures from the text above, each pinned by a test. **The base is
+written as code in the body**: `unguardedNote` and `noteLine` take a last parameter, `NoteForm`
+(`'text'`, the default, for stderr; `'markdown'` for the body), and in the body the base is a code
+span, `` `main` `` — the same words, so a branch name GitHub would read as a mention
+(`@acme/security`), a reference (`fix#12`, `GH-12`, a commit's digits), a link (`www.…`) or HTML
+cannot be any of them there; a base holding a backtick, which would close the span, is `the base`
+in both forms; `LONGEST_NOTE` is measured on the `markdown` form (*writes the base as code in the
+note, so a branch name cannot mention, link, reference or render*). **The closing note is compared
+by its line, not its kind**: when step 11's line is not the line the preflight said — another
+note, or the `base-unguarded` line naming other rules — it is said above the closing lines, so
+stderr ends on the words the body carries; the same line is never said twice. A run can then say
+two different note lines, one per read (*says step 11's note again when its words differ from the
+preflight's*, *says step 11's note when it is another note than the preflight's*).
+
 The line goes to stderr (where the `submitting to` line goes, `SubmitOptions.notice`) and, the
 same text, into the pull request's body. It is never on stdout, so a traced run's output, which
 is its stdout, is unchanged by it, and `--json` stays one object: the report says it with a key
@@ -6236,6 +6253,9 @@ which is true.
   `tests/invariants/github-forge.test.ts`, `tests/contract/key-reach.test.ts`,
   `tests/unit/package-scripts.test.ts` (the demo's pin, if it counts steps)
 - Modify: `scripts/demo-github.mjs` (one step)
+- Modify, as built: `scripts/smoke.mjs` (its pin of the demo's last line, which now says every
+  push, and the note line the new step prints); `src/core/README.md` (`PROTECTION_SETTINGS` is
+  printed by `idpa protection` and `init platform`, no longer by a refused submission)
 - Modify: `AGENTS.md` (*Authorisation*; the exit-code paragraph; the state line; the test count),
   `SECURITY.md` (the *Guaranteed* row of the invariant; *Not guaranteed*), `docs/submitting.md`
   (its opening invariant, *The ruleset on the base branch*, *`idpa protection`*, each road's
@@ -6340,7 +6360,7 @@ same `missing:` lines, then the same last line (`init`'s keeps `--local`). No ru
 there, as on `851ef71` already: `RULESET_WOULD_HELP` (`render/protection.ts:32-41`) holds no item-1
 kind.
 
-- [ ] **Step 1: Design §4.2 first (its own commit)**
+- [x] **Step 1: Design §4.2 first (its own commit)**
 
 `docs/design.md` §4.2's second bullet, the owner's invariant of 2026-09-30, is replaced by the
 owner's decision of 2026-10-01, in the wording put to the owner (question 1; recommended below,
@@ -6367,7 +6387,7 @@ git add docs/design.md
 git commit -m "docs(design): the pull request is always opened; the base's rules decide who may merge it"
 ```
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 `tests/unit/protection.test.ts`:
 
@@ -6553,7 +6573,7 @@ the pull request's body holding the note):
 
 *Why they fail:* every road refuses on the rules.
 
-- [ ] **Step 3: Run them to verify they fail**
+- [x] **Step 3: Run them to verify they fail**
 
 ```bash
 df -h "$TMPDIR"
@@ -6565,7 +6585,7 @@ pnpm vitest run tests/invariants/github-forge.test.ts
 Expected: FAIL — the missing exports; the four roads refusing with the ruleset block; the forge
 refusing at step 8 and stopping at step 11.
 
-- [ ] **Step 4: `core/github/`**
+- [x] **Step 4: `core/github/`**
 
 `consequenceOf` is a `switch` over `Missing` with `const _exhaustive: never = missing` in
 `default`. `noteOf` returns undefined when `refusesPush(verdict)`, else the strongest note among
@@ -6577,7 +6597,7 @@ after `This change was …` and its blank line; the base reaches the body only t
 `unguardedNote`, which holds it to `isBranch` (`core/` cannot import `inertLine`): a base outside
 the grammar is written `the base`. No other line of the body moves.
 
-- [ ] **Step 5: The forge**
+- [x] **Step 5: The forge**
 
 In `submit`, step 8: `const verdict = await readRules(api, road)` stays (its status checks and,
 from step 11, the note are read from it); `if (!verdict.holds) return refused(unprotected(…))`
@@ -6595,7 +6615,7 @@ there with the branch pushed and nothing opened — a row of § 4's table that t
 run again, completes. `created` carries `note` when there is one. `unprotected` and its sentence
 are deleted.
 
-- [ ] **Step 6: `cli/`**
+- [x] **Step 6: `cli/`**
 
 `refuseUnprotected` (`submit.ts`): `if (!verdict.holds)` becomes `if (refusesPush(verdict))`,
 then the level check as today; when `noteOf(verdict)` is defined, `options.notice?.(noteLine(…))`
@@ -6617,7 +6637,7 @@ prints the heading `not submitted — <github.com/o/r> cannot take a pull reques
 (the repository through `printedRepository`), its `missing:` lines and its last line, and no
 ruleset. `renderProtection` gains its line.
 
-- [ ] **Step 7: The demo**
+- [x] **Step 7: The demo**
 
 `scripts/demo-github.mjs` gains, after the last step, on a fresh `world({})` (no ruleset) and a
 copy of `examples/open-network.json` whose entity is `orders-api-to-payments-alone`, written in the
@@ -6626,7 +6646,7 @@ exit 0, stderr holding `note: on this repository the author may merge without an
 review`, stdout `Pull request #1 opened on github.com/acme/iac: …/pull/1`, the fake's pull
 request #1 body holding the note. `package-scripts.test.ts`'s pin follows if it counts steps.
 
-- [ ] **Step 8: The documents this task makes true**
+- [x] **Step 8: The documents this task makes true**
 
 - `AGENTS.md`, *Invariants*, **Authorisation**: the first bullet unchanged; the second becomes the
   §4.2 bullet of Step 1, word for word, with `tests/unit/merge-refused.test.ts` and the owner's
@@ -6677,7 +6697,7 @@ request #1 body holding the note. `package-scripts.test.ts`'s pin follows if it 
 --reporter=verbose`, 30 on `851ef71`). No door, no route and no launcher shape moves: the forge
 opens through the one POST it already had.
 
-- [ ] **Step 9: Checks**
+- [x] **Step 9: Checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -6701,6 +6721,7 @@ git add src/core/github/protection.ts src/core/github/pull-request.ts src/forge/
   tests/unit/protection.test.ts tests/unit/pull-request-body.test.ts tests/unit/protection-command.test.ts tests/unit/plan-command.test.ts tests/unit/github-forge.test.ts tests/unit/merge-refused.test.ts \
   tests/unit/submit-github.test.ts tests/unit/plan-intent.test.ts tests/unit/init-command.test.ts tests/unit/entry.test.ts \
   tests/invariants/github-forge.test.ts tests/contract/key-reach.test.ts tests/unit/package-scripts.test.ts scripts/demo-github.mjs \
+  scripts/smoke.mjs src/core/README.md \
   AGENTS.md SECURITY.md docs/submitting.md docs/stage-6-brief.md README.md CHANGELOG.md docs/roadmap.md docs/plans/stage-6-github.md
 git commit -m "feat(forge): open the pull request whatever the base's rules, and say when its author may merge it alone"
 ```
@@ -6737,7 +6758,7 @@ pnpm demo:github
 Attendu :
 - `merge-refused.test.ts` lists *refuses every door to the identity that opened the pull request,
   and leaves it open and main where it was* and *opens the pull request with the note wherever
-  the rules let its author merge it alone, and the author can merge it*, among its six; `consequenceOf`'s
+  the rules let its author merge it alone, and the author can merge it*, among its five; `consequenceOf`'s
   eleven cases pass; exit 0;
 - `pnpm demo:github` prints every earlier step as before, then *Submitted where the author may
   merge alone: opened, with the note* — `(exit 0)`, and no line saying `this step expects`.
@@ -8950,17 +8971,6 @@ test (Global Constraint 5). No behaviour changes: the one file under `src/` is a
 
 Cites Global Constraints 5, 11, 12, 13, 14 and 15.
 
-*Amended 2026-10-01 (the owner's first decision of that day, built by 6.3.4):* every passage of
-this task that quotes "…and idpa never submits against a base without those rules" — Step 1's
-`INVARIANT`, Step 2's *Decision*, Step 3's ADR-0006 paragraph, Step 4's §4.2 bullet, Steps 5 and 8
-(`SECURITY.md` and `AGENTS.md`, which repeat the bullet) and Step 11's `CHANGELOG` line — states
-instead the bullet 6.3.4's Step 1 puts in
-design §4.2, word for word: "idpa never merges and never writes to the base: it opens a pull
-request, and the base's rules decide who may merge it", followed where the passage goes on by the
-note's line and the proof of what GitHub enforces where the rules require another person's
-approval. 6.3.4 brings each of those passages to that wording in its own pull request; they are
-marked below where they stand.
-
 Earlier tasks already made some of these true (the File Structure: design §4.2's invariant,
 `AGENTS.md`'s *Authorisation* bullets, `SECURITY.md`'s two rows and its two authorisation items
 in 6.2.2, `docs/submitting.md` from 6.1.3 and 6.2.2, the
@@ -8982,14 +8992,13 @@ complete.
   `docs/roadmap.md`, `CHANGELOG.md`, `docs/plans/stage-6-github.md` (ticks)
 
 - [ ] **Step 1: The wording test (fails: ADR-0015 does not exist; design §4.2, `AGENTS.md`
-  and `SECURITY.md` state the invariant since 6.2.2)**
+  and `SECURITY.md` state the invariant since 6.3.4)**
 
 ```typescript
-/** The owner's words (the note's § 18, decision 1), stated once here and nowhere else in tests/. */
+/** The owner's words (the decision of 2026-10-01, design §4.2), stated once here and nowhere else in tests/. */
 const INVARIANT =
-  'the identity that opens a pull request cannot merge it until someone else has approved ' +
-  'the exact commit that would merge, and idpa never submits against a base without those rules'
-// 2026-10-01: superseded by 6.3.4's Step 1 wording (see this task's head).
+  'idpa never merges and never writes to the base: it opens a pull request, and the ' +
+  "base's rules decide who may merge it"
 
 describe('the invariant, in the owner’s words', () => {
   it.each([
@@ -9024,10 +9033,12 @@ ADR-0010, ADR-0011, ADR-0012. Sections:
   credential (`repo` scope, an SSH key, *Contents: write*), so "one token per capability" cannot
   be delivered by any credential's scope; the owner's decision of 2026-09-30 that idpa holds no
   GitHub credential, "like Claude Code".
-- **Decision.** First, verbatim and in bold, the invariant: "**the identity that opens a pull
-  request cannot merge it until someone else has approved the exact commit that would merge,
-  and idpa never submits against a base without those rules**" *(2026-10-01: 6.3.4's Step 1
-  wording instead; see this task's head)*. Then, one paragraph each: the
+- **Decision.** First, verbatim and in bold, the invariant: "**idpa never merges and never
+  writes to the base: it opens a pull request, and the base's rules decide who may merge it**",
+  then the rest of design §4.2's bullet: whether its author may merge it alone is the company's
+  rule, said in the note where the rules allow it, and where they require someone else's
+  approval of the exact commit that would merge, the identity that opens the pull request
+  cannot merge it. Then, one paragraph each: the
   person's git pushes the exact commit create-only (`--force-with-lease=<ref>:`, empty expected
   value, one refspec, to the URL `git remote get-url --push` printed, hooks off, § 4's pins);
   the person's gh reads and opens (eight `GET` templates and one `POST`, `--hostname github.com`
@@ -9072,11 +9083,9 @@ ADR-0010, ADR-0011, ADR-0012. Sections:
   check that the identity which opens a pull request cannot merge it is the owner's live test,
   never the tool's: a merge the tool attempted would be the merge nobody authorised." A last
   paragraph: "Stage 6 replaces 'a token that may open a request, never merge it', which no
-  GitHub credential can be scoped to, with the owner's invariant: the identity that opens a pull
-  request cannot merge it until someone else has approved the exact commit that would merge,
-  and idpa never submits against a base without those rules (ADR-0015)." The *Decision* section
-  is the record of 2026-09-21 and stays as written. *(2026-10-01: the quoted invariant becomes
-  6.3.4's Step 1 wording; see this task's head.)*
+  GitHub credential can be scoped to, with the owner's invariant: idpa never merges and never
+  writes to the base: it opens a pull request, and the base's rules decide who may merge it
+  (ADR-0015)." The *Decision* section is the record of 2026-09-21 and stays as written.
 - **ADR-0010**, *Consequences*, one paragraph: "From stage 6 the same commit is pushed to the
   same name on GitHub, create-only as well: `--force-with-lease=<ref>:` with an empty expected
   value refuses a ref that exists, and the push names one refspec and a URL, never a remote.
@@ -9105,18 +9114,19 @@ ADR-0010, ADR-0011, ADR-0012. Sections:
 
 - [ ] **Step 4: `docs/design.md`**
 
-- **§4.2.** Written in 6.2.2; this step re-reads it and replaces its closing reference to the
-  note by "(ADR-0015)". The bullet, as 6.2.2 writes it and this step leaves it:
+- **§4.2.** Written in 6.3.4; this step re-reads it and replaces its closing reference to the
+  note by "(ADR-0015)". The bullet, as 6.3.4 writes it and this step leaves it:
 
-  > - **The identity that opens a pull request cannot merge it until someone else has approved
-  >   the exact commit that would merge, and idpa never submits against a base without those
-  >   rules.** On GitHub the right to push a branch is the right that merges, so no credential
-  >   can be scoped out of merging; what refuses the merge is the base's ruleset, which the tool
-  >   reads before it writes anything and again at the moment of acting, and a test asserts that
-  >   the merge **fails**: offline against a fake, live on a throwaway repository (ADR-0015).
-
-  *(2026-10-01: 6.3.4 replaces this bullet with its Step 1 wording, and this step then only
-  replaces that bullet's closing reference to the note by "(ADR-0015)".)*
+  > - **idpa never merges and never writes to the base: it opens a pull request, and the base's
+  >   rules decide who may merge it.** Whether its author may merge it alone is the company's rule,
+  >   not this tool's; where the rules allow it, idpa says so — `note: on this repository the
+  >   author may merge without another person's review` — on stderr and in the pull request, and
+  >   the pull request is opened all the same. Where the rules require someone else's approval of
+  >   the exact commit that would merge, the identity that opens the pull request cannot merge it:
+  >   on GitHub the right to push a branch is the right that merges, so no credential can be
+  >   scoped out of merging, and what refuses the merge is the base's ruleset, which the tool
+  >   reads before it writes anything and again at the moment of acting; a test asserts that the
+  >   merge **fails** there: offline against a fake, live on a throwaway repository (ADR-0015).
 
   (The first bullet's "merge request" became "pull request" in 6.2.2; the third stays.)
 - **§4.4**, *Declared is not provisioned*: "Refusal is caught before the merge by a required
@@ -9277,16 +9287,13 @@ git commit -m "docs: record that a submission is a pull request the rules keep f
 
 Base `test/s6-live-github`. CHANGELOG, `### Documentation`:
 
-> - ADR-0015: a submission is a pull request the rules keep from merging until someone else
->   approves it — "the identity that opens a pull request cannot merge it until someone else has
->   approved the exact commit that would merge, and idpa never submits against a base without
->   those rules", word for word in the design, `AGENTS.md`, `SECURITY.md` and
+> - ADR-0015: a submission is a pull request, and the base's rules decide who may merge it —
+>   "idpa never merges and never writes to the base: it opens a pull request, and the base's
+>   rules decide who may merge it", word for word in the design, `AGENTS.md`, `SECURITY.md` and
 >   `docs/submitting.md` and held there by a test; ADR-0006, -0010, -0012 and -0003, the design's
 >   authorisation, configuration, journeys, failure and test sections, the README and `AGENTS.md`
 >   describe stage 6 as built, and `docs/submitting.md` is the page a person follows to submit
 >   ([#PRNUM](https://github.com/pcaboor/idp-agent/pull/PRNUM)).
-
-*(2026-10-01: the quoted invariant becomes 6.3.4's Step 1 wording; see this task's head.)*
 
 **What changes that a person sees:** documents only, and one comment in `src/`; every command's
 output is the same byte for byte.

@@ -1752,7 +1752,7 @@ describe('the confirmation at a terminal', () => {
   it('asks § 3’s question on the GitHub road', async () => {
     const shown = await asked({
       ...SUMMARY,
-      github: { host: 'github.com', repository: 'acme/iac', base: 'main', pushedAlready: false },
+      github: { host: 'github.com', repository: 'acme/iac', base: 'main', pushedAlready: false, authorMayMergeAlone: false },
     })
     expect(shown).toContain(
       'Push idp-agent/orders-db-prod-3f9c2a1b to github.com/acme/iac with your git, and open a pull request into ' +
@@ -1761,11 +1761,29 @@ describe('the confirmation at a terminal', () => {
     expect(shown).not.toContain('Submit this for review')
   })
 
+  it('asks without promising an approval where the author may merge alone', async () => {
+    const shown = await asked({
+      ...SUMMARY,
+      github: { host: 'github.com', repository: 'acme/iac', base: 'main', pushedAlready: false, authorMayMergeAlone: true },
+    })
+    expect(shown).toContain(
+      'Push idp-agent/orders-db-prod-3f9c2a1b to github.com/acme/iac with your git, and open a pull request into ' +
+        'main with your gh? Nothing is provisioned until it is merged. [y/N] ',
+    )
+    expect(shown).not.toContain('approves')
+    expect(
+      await asked({
+        ...SUMMARY,
+        github: { host: 'github.com', repository: 'acme/iac', base: 'main', pushedAlready: true, authorMayMergeAlone: true },
+      }),
+    ).toContain('The branch was pushed by an earlier run. Nothing is provisioned until it is merged. [y/N] ')
+  })
+
   it('asks only for the pull request when the branch was pushed', async () => {
     expect(
       await asked({
         ...SUMMARY,
-        github: { host: 'github.com', repository: 'acme/iac', base: 'main', pushedAlready: true },
+        github: { host: 'github.com', repository: 'acme/iac', base: 'main', pushedAlready: true, authorMayMergeAlone: false },
       }),
     ).toContain(
       'Open a pull request from idp-agent/orders-db-prod-3f9c2a1b into main on github.com/acme/iac with your gh? ' +

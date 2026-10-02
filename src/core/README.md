@@ -121,8 +121,8 @@ and nothing here can be steered by what it validates. Hence the property tests r
   whether a base keeps a pull request from merging until someone other than its opener
   approves its latest commit, from the repository, its rules and each supplying ruleset (§ 8,
   items 1 to 5), a rule counting only when its ruleset answers `current_user_can_bypass:
-  never`; and `PROTECTION_SETTINGS`, the one list of settings `idpa protection`, a refused
-  submission and `init platform` print (`protectionText`). `pull-request.ts`: the text and
+  never`; and `PROTECTION_SETTINGS`, the one list of settings `idpa protection` and `init
+  platform` print (`protectionText`). `pull-request.ts`: the text and
   the URL of a pull request — `pullRequestBody`, the commit's message with the request inside
   a fence no line of it can close (`fenceFor`), then the engine's block, ending on
   `ENGINE_BLOCK_END`, after which stage 8's report will go; and `pullRequestUrl`, built from

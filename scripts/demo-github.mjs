@@ -34,7 +34,11 @@
  *  12. idpa "<phrase>" --submit in the declarations clone, gh logged out:
  *      exit 2, before any model, naming --local;
  *  13. idpa "<phrase>" --submit --demo: exit 2 at parse time, the demo SI is
- *      never written, and every command's usage, as a refused phrase gets.
+ *      never written, and every command's usage, as a refused phrase gets;
+ *  14. plan --from … --submit of another change where the repository has no
+ *      ruleset: exit 0, the note on stderr and in the pull request's body —
+ *      the pull request is opened whatever the base's rules, and whether its
+ *      author may merge it alone is the company's rule (2026-10-01).
  *
  * What it runs cannot reach the person's GitHub or spend their model key: the
  * binary's environment loses every `IDP_*`, `*_API_KEY`, `GH_*`, `GITHUB_*`
@@ -44,7 +48,7 @@
  * `GH_CONFIG_DIR` point into a scratch folder of this run, removed when it
  * ends; and an `ssh` that refuses to run sits beside the fake `gh`, first on
  * PATH. No model is configured, and a step of the intent road that finds one
- * fails the demo. The one push goes to the bare repository in that folder.
+ * fails the demo. Every push goes to a bare repository in that folder.
  *
  * Run after `pnpm build`. The fake is TypeScript that Node runs as it is,
  * which needs Node 22.18 or later (`scripts/type-stripping.mjs`), and it is
@@ -504,6 +508,34 @@ step('13. A phrase with --submit never writes to the demo SI', {
   ],
 })
 
+// The owner's decision of 2026-10-01: the pull request is opened whatever the
+// base's rules. Another change than step 5's, so another branch, submitted
+// where the repository has no ruleset: opened, with the note.
+const ALONE = path.join(scratch, 'open-network-alone.json')
+writeFileSync(
+  ALONE,
+  readFileSync(path.join(ROOT, 'examples/open-network.json'), 'utf8').replaceAll(
+    'orders-api-to-payments',
+    'orders-api-to-payments-alone',
+  ),
+)
+const NOTE = "note: on this repository the author may merge without another person's review"
+step('14. Submitted where the author may merge alone: opened, with the note', {
+  state: world({}),
+  expects: 'the note on stderr and in the body, and pull request #1 opened',
+  args: ['plan', '--from', path.basename(ALONE), '--repo', 'iac', '--submit'],
+  expected: 0,
+  checks: (run) => [
+    ['the note, once, on stderr', (run.stderr ?? '').split('\n').filter((line) => line === NOTE).length === 1],
+    ['no ruleset to add', !/Add a ruleset/.test(run.stdout ?? '')],
+    [
+      'pull request #1, at the URL the engine built',
+      /^Pull request #1 opened on github\.com\/acme\/iac: https:\/\/github\.com\/acme\/iac\/pull\/1$/m.test(run.stdout ?? ''),
+    ],
+    ['the note in its body', (fakeState().pulls ?? [])[0]?.body.split('\n').includes(NOTE) === true],
+  ],
+})
+
 // The clone's main, on both sides, where it was.
 if (
   readGit(CLONE, 'rev-parse', 'main') !== readGit(GITHUB, 'rev-parse', 'main') ||
@@ -518,5 +550,5 @@ if (failed) {
   process.exit(1)
 }
 console.log(
-  `\n${bold('Done.')} No model was called, the one push went to a bare repository in a scratch folder, and the only gh this ran was the fake.`,
+  `\n${bold('Done.')} No model was called, every push went to a bare repository in a scratch folder, and the only gh this ran was the fake.`,
 )

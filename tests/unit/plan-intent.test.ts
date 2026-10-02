@@ -25,6 +25,8 @@ import { ForgeInputError } from '../../src/forge/errors.js'
 import { clearedFor, clone, removeClones, scratch } from '../support/forge-fixture.js'
 import { committed, git, observable, show, stored } from '../support/git.js'
 import { githubClone, moveGitHubBase, unprotect, type GitHubClone } from '../support/github-fixture.js'
+import { protectedMain } from '../support/fake-gh.js'
+import { MERGE_NOTE } from '../../src/core/github/protection.js'
 import { memorySink, onlyTrace } from '../support/trace.js'
 import { GITHUB_LIMITS } from '../../src/forge/github/limits.js'
 import type { GhProcess } from '../../src/process/gh.js'
@@ -1411,9 +1413,11 @@ describe('plan "<intent>" --submit to GitHub', { timeout: PUSHING }, () => {
     expect(seenAtReview).toEqual([[]])
   })
 
-  it('refuses at the moment of acting when the rules go while the Reviewer reads, and writes nothing on either side', async () => {
-    // § 3 step 8: the preflight passed before the Inspector; the ruleset is removed while
-    // the last model call runs. The re-check is what refuses, before the local ref.
+  it('opens the pull request with the note when the rules go while the Reviewer reads', async () => {
+    // § 3 step 8: the preflight found the rules whole before the Inspector; the ruleset is
+    // removed while the last model call runs. Nothing refuses on the rules any more (the
+    // owner's decision of 2026-10-01): step 11's read puts the note in the body, and the
+    // run says it once, on stderr, since the preflight did not.
     const clone = await githubClone()
     const project = await application(CONFIGURED)
     const inner = converging([CREATE_DATABASE, CREATE_ACCESS])
@@ -1424,29 +1428,48 @@ describe('plan "<intent>" --submit to GitHub', { timeout: PUSHING }, () => {
       },
     }
 
-    const { code, out } = await run(clone, submitting(clone, project), { client, ask: answering('read') })
+    const { code, out, err } = await run(clone, submitting(clone, project), { client, ask: answering('read') })
 
-    expect(code).toBe(1)
-    expect(out).toContain('Nothing was written.')
-    expect(await ours(clone.repo)).toEqual([])
-    expect(await ours(clone.bare)).toEqual([])
+    expect(code, err).toBe(0)
+    expect(err.split('\n').filter((line) => line === MERGE_NOTE)).toHaveLength(1)
+    expect(out).not.toContain(MERGE_NOTE)
+    expect(out).toContain('Pull request #1 opened on github.com/acme/iac: https://github.com/acme/iac/pull/1')
+    expect(out).toContain('No status check is required, so a system downstream could not refuse it (ADR-0012).')
+    expect(out).not.toContain('approval of its latest commit')
+    expect(clone.gh.state.pulls?.[0]?.body.split('\n')).toContain(MERGE_NOTE)
+    const [ref] = await ours(clone.repo)
+    expect(await ours(clone.bare)).toEqual([ref])
   })
 
-  it('refuses a base whose rules let the opener merge, exit 1, before a single model call', async () => {
+  it('says the note before a single model call, and opens the pull request after the Reviewer', async () => {
     const clone = await githubClone()
     unprotect(clone.gh)
     const project = await application(CONFIGURED)
-    const inner = converging([CREATE_DATABASE, CREATE_ACCESS])
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+    const out: string[] = []
+    const err: string[] = []
 
-    const { code, out } = await run(clone, submitting(clone, project), { client: inner, ask: answering('read') })
+    const code = await main(submitting(clone, project), {
+      env: clone.env,
+      gh,
+      client,
+      ask: answering('read'),
+      out: (chunk) => void out.push(chunk),
+      err: (chunk) => {
+        err.push(chunk)
+        log.push(`err ${chunk}`)
+      },
+    })
 
-    expect(code).toBe(1)
-    expect(out).toContain(
-      "not submitted — nothing on github.com/acme/iac's main stops the person who would open this pull request from merging it:",
-    )
-    expect(out).toContain('Add a ruleset on main (Settings → Rules → Rulesets):')
-    expect(inner.seen).toEqual([])
-    expect(await ours(clone.bare)).toEqual([])
+    expect(code, err.join('')).toBe(0)
+    const noted = log.findIndex((line) => line === `err ${MERGE_NOTE}\n`)
+    expect(noted).toBeGreaterThan(-1)
+    expect(log.filter((line) => line === `err ${MERGE_NOTE}\n`)).toHaveLength(1)
+    expect(noted).toBeLessThan(log.findIndex((line) => line.startsWith('model ')))
+    expect(log.lastIndexOf('model reviewer')).toBeLessThan(log.findIndex((line) => /POST/.test(line)))
+    expect(out.join('')).not.toContain('Add a ruleset')
+    expect(out.join('')).toContain('Pull request #1 opened on github.com/acme/iac: https://github.com/acme/iac/pull/1')
+    expect(clone.gh.state.pulls?.[0]?.body.split('\n')).toContain(MERGE_NOTE)
   })
 
   it('refuses a clone that is not level with GitHub, exit 1, before a single model call', async () => {
@@ -1552,7 +1575,7 @@ describe('plan "<intent>" --submit to GitHub', { timeout: PUSHING }, () => {
     })
 
     expect(summaries).toHaveLength(1)
-    expect(summaries[0]?.github).toStrictEqual({ host: 'github.com', repository: 'acme/iac', base: 'main', pushedAlready: false })
+    expect(summaries[0]?.github).toStrictEqual({ host: 'github.com', repository: 'acme/iac', base: 'main', pushedAlready: false, authorMayMergeAlone: false })
     expect(await ours(clone.bare)).toEqual([])
   })
 
@@ -1644,12 +1667,15 @@ describe('plan "<intent>" --submit and iacRepo', { timeout: PUSHING }, () => {
 
   it('puts where a refusal before any model would have gone on the trace’s root: the forge, refused, the gh calls made', async () => {
     // § 12: every result of a submission carries the forge, a refusal before
-    // the preview included — the cross-check, the divergence, the rules.
+    // the preview included — the cross-check, the divergence, the push access.
     for (const arrange of [
       async () => ({ clone: await githubClone(), config: 'iacRepo: github.com/acme/other-iac\nenvironments: [prod]\n' }),
       async () => {
+        // § 8 item 1: a repository gh's account cannot push to, refused as the rules once were.
         const clone = await githubClone()
-        unprotect(clone.gh)
+        clone.gh.state.repositories = [
+          protectedMain({ bare: clone.bare, permissions: { ada: { admin: false, maintain: false, push: false } } }),
+        ]
         return { clone, config: CONFIGURED }
       },
       async () => {

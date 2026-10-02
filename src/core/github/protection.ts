@@ -5,7 +5,7 @@ import {
   type RulesAnswer,
   type RulesetAnswer,
 } from './answers.js'
-import { parseRemoteUrl, type GitHubRepository } from './remote.js'
+import { isBranch, parseRemoteUrl, type GitHubRepository } from './remote.js'
 
 /**
  * Whether a base keeps a pull request from merging until someone other than
@@ -18,6 +18,11 @@ import { parseRemoteUrl, type GitHubRepository } from './remote.js'
  * the most restrictive winning, as GitHub enforces both. Classic branch
  * protection is never counted: its settings need an administrator to read,
  * and the owner decided a ruleset is required.
+ *
+ * A verdict that does not hold refuses a submission only on item 1 — the
+ * push itself could not be made; anything of items 2 to 4 is a note, said on
+ * stderr and in the pull request (`consequenceOf`, the owner's decision of
+ * 2026-10-01): whether its author may merge it alone is the company's rule.
  */
 
 /** What a base lacks, in the order it is said. */
@@ -212,7 +217,7 @@ export function judgeProtection(input: ProtectionInput): ProtectionVerdict {
   }
 
   // Every list GitHub showed is looked at, whichever other list it left out:
-  // a deploy key seen is refused, on any supplying ruleset.
+  // a deploy key seen is said, on any supplying ruleset.
   const listOf = (id: number) => input.rulesets.get(id)?.bypass_actors
   const deployKeys = rulesets.filter((id) => listOf(id)?.some((actor) => actor.actor_type === DEPLOY_KEY) === true)
   if (deployKeys.length > 0) missing.add('deploy-key')
@@ -246,8 +251,122 @@ export function judgeProtection(input: ProtectionInput): ProtectionVerdict {
 }
 
 /**
- * The one list of settings (§ 8), printed by `idpa protection`, by a refused
- * submission and by `init platform`, so the three cannot drift. `required`
+ * What a missing rule does to a submission (the owner's decision of
+ * 2026-10-01): whether a pull request's author may merge it alone is the
+ * company's rule, not idpa's, so a rule of items 2 to 4 that is missing is
+ * said, never refused. `author-may-merge`: nothing binding asks for another
+ * person's approval of the commit that would merge. `base-unguarded`: a
+ * binding pull request rule may still ask for it, but no binding rule blocks
+ * force pushes or deletions of the base.
+ */
+export type MergeNote = 'author-may-merge' | 'base-unguarded'
+
+/**
+ * Exhaustive over `Missing`: a note, or a refusal of the push itself (§ 8
+ * item 1). `bypassable` is never a note of its own: `judgeProtection` adds it
+ * only beside the required kind the bypassed ruleset supplies, which decides —
+ * a bypassed pull request rule is `pull-request` too, so alone it can only
+ * explain `non-fast-forward` or `deletion`. A deploy key in a bypass list
+ * moves the base with a plain push, and gh cannot see who holds it.
+ */
+export function consequenceOf(missing: Missing): MergeNote | 'refused' {
+  switch (missing) {
+    case 'pull-request':
+    case 'approvals':
+    case 'last-push':
+    case 'deploy-key':
+    case 'classic-only':
+      return 'author-may-merge'
+    case 'non-fast-forward':
+    case 'deletion':
+    case 'bypassable':
+      return 'base-unguarded'
+    case 'archived':
+    case 'no-push':
+    case 'renamed':
+      return 'refused'
+    default: {
+      const _exhaustive: never = missing
+      return _exhaustive
+    }
+  }
+}
+
+/** Whether a verdict refuses the submission: some missing kind's consequence is `refused`. */
+export function refusesPush(verdict: ProtectionVerdict): boolean {
+  return verdict.missing.some((missing) => consequenceOf(missing) === 'refused')
+}
+
+/**
+ * The one note a verdict carries, or none: `author-may-merge` when any missing
+ * kind is one, else `base-unguarded` when any is, else undefined. Undefined
+ * too when the verdict refuses: a caller reads `refusesPush` first.
+ */
+export function noteOf(verdict: ProtectionVerdict): MergeNote | undefined {
+  if (refusesPush(verdict)) return undefined
+  const consequences = new Set(verdict.missing.map(consequenceOf))
+  if (consequences.has('author-may-merge')) return 'author-may-merge'
+  return consequences.has('base-unguarded') ? 'base-unguarded' : undefined
+}
+
+/** The owner's words, on stderr and in the pull request's body. */
+export const MERGE_NOTE = "note: on this repository the author may merge without another person's review"
+
+/**
+ * Where a note's line goes: `text` for stderr, `markdown` for the pull
+ * request's body, where the base is written as code so that a branch name —
+ * `@acme/security`, `fix#12`, `GH-12`, a commit's digits — cannot mention,
+ * reference, link or render. The words are the same in both.
+ */
+export type NoteForm = 'text' | 'markdown'
+
+/**
+ * The `base-unguarded` line: a fact about the rules, never about their
+ * effect, since a binding pull request rule refuses a direct push — a force
+ * push included — by anyone it binds. It names the rules no binding ruleset
+ * supplies among `non-fast-forward` and `deletion` (both, when `missing`
+ * names neither: a line that says less would be the one that is false), and
+ * the base only when it holds to the branch grammar and holds no backtick,
+ * which would close its code span in the body, else "the base", in both
+ * forms: the line reaches stderr and a pull request's body, and `core/` has
+ * no `inertLine`.
+ */
+export function unguardedNote(base: string, missing: readonly Missing[], form: NoteForm = 'text'): string {
+  const named = isBranch(base) && !base.includes('`')
+  const where = !named ? 'the base' : form === 'markdown' ? `\`${base}\`` : base
+  const forcePushes = missing.includes('non-fast-forward')
+  const deletions = missing.includes('deletion')
+  const what =
+    forcePushes === deletions
+      ? 'blocks force pushes or restricts deletions'
+      : forcePushes
+        ? 'blocks force pushes'
+        : 'restricts deletions'
+  return `note: on this repository no rule on ${where} that binds the author ${what}`
+}
+
+/** The line for a note, whichever it is, in the form its place reads. */
+export function noteLine(note: MergeNote, base: string, missing: readonly Missing[], form: NoteForm = 'text'): string {
+  switch (note) {
+    case 'author-may-merge':
+      return MERGE_NOTE
+    case 'base-unguarded':
+      return unguardedNote(base, missing, form)
+    default: {
+      const _exhaustive: never = note
+      return _exhaustive
+    }
+  }
+}
+
+/** The longest line `noteLine` can return for a base of 255 bytes, in either form: what the body's bound is checked with. */
+export const LONGEST_NOTE: string = [MERGE_NOTE, unguardedNote('a'.repeat(255), [], 'markdown')].reduce((longest, line) =>
+  Buffer.byteLength(line, 'utf8') > Buffer.byteLength(longest, 'utf8') ? line : longest,
+)
+
+/**
+ * The one list of settings (§ 8), printed by `idpa protection` and by
+ * `init platform`, so the two cannot drift. `required`
  * is what `judgeProtection` checks; `advised` is what no read of the person's
  * can check, or what is policy rather than who may merge.
  */

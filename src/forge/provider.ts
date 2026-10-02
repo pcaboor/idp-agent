@@ -1,3 +1,4 @@
+import type { MergeNote, Missing } from '../core/github/protection.js'
 import type { GitHubRepository } from '../core/github/remote.js'
 import type { Cleared, Expectation, Repository } from '../core/plan/clear.js'
 
@@ -42,6 +43,10 @@ export type Submitted =
       readonly olderBase?: string
       /** The contexts the rules read before the pull request require, for the closing line (§ 11). */
       readonly statusChecks?: readonly string[]
+      /** The note step 11's read called for: the body carries it, and the CLI says its line if the preflight did not. */
+      readonly note?: MergeNote
+      /** What step 11's read found missing, set with `note`: the `base-unguarded` line names the rules among them. */
+      readonly missing?: readonly Missing[]
     }
   /** The same bytes, already submitted on this base: the branch is named and nothing is written (§9.2). */
   | {

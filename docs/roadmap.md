@@ -24,7 +24,7 @@ each:
 | 3 | `init platform` and `validate` | done |
 | 4 | Preview only: nothing is written | done |
 | 5 | Write + local branch | done ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)): task 1, `Cleared` for the declarations repository ([#105](https://github.com/pcaboor/idp-agent/pull/105)); task 2, `Cleared` for the service repository ([#106](https://github.com/pcaboor/idp-agent/pull/106)); task 3, the shared git launcher and the `forge/` types ([#107](https://github.com/pcaboor/idp-agent/pull/107)); task 4, the local forge — create-only, idempotent, atomic ([#108](https://github.com/pcaboor/idp-agent/pull/108)); task 5, `plan --from … --submit` ([#109](https://github.com/pcaboor/idp-agent/pull/109)); task 6, `plan "<intent>" --submit`, refused before a model is paid ([#110](https://github.com/pcaboor/idp-agent/pull/110)); task 7, `init --submit` and `.idp-agent.yml`, and a branch already there answered before the confirmation ([#111](https://github.com/pcaboor/idp-agent/pull/111)) |
-| 6 | GitHub pull request | in progress ([the plan](plans/stage-6-github.md)): slice 6.1 done: 6.1.1, the allow-list ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2, the remote and who gh is ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3, the preflight and `idpa protection` ([#125](https://github.com/pcaboor/idp-agent/pull/125)); slice 6.2 done: 6.2.1, the GitHub forge ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2, `plan --from … --submit` to GitHub ([#127](https://github.com/pcaboor/idp-agent/pull/127)); slice 6.3: 6.3.1, `plan "<intent>" --submit` to GitHub, and `iacRepo` as a cross-check ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2, `init --submit` to GitHub ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3, `idpa "<phrase>" --submit` ([#131](https://github.com/pcaboor/idp-agent/pull/131)), which closes slice 6.3 as the plan drew it |
+| 6 | GitHub pull request | in progress ([the plan](plans/stage-6-github.md)): slice 6.1 done: 6.1.1, the allow-list ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2, the remote and who gh is ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3, the preflight and `idpa protection` ([#125](https://github.com/pcaboor/idp-agent/pull/125)); slice 6.2 done: 6.2.1, the GitHub forge ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2, `plan --from … --submit` to GitHub ([#127](https://github.com/pcaboor/idp-agent/pull/127)); slice 6.3: 6.3.1, `plan "<intent>" --submit` to GitHub, and `iacRepo` as a cross-check ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2, `init --submit` to GitHub ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3, `idpa "<phrase>" --submit` ([#131](https://github.com/pcaboor/idp-agent/pull/131)), which closes slice 6.3 as the plan drew it; 6.3.4, the pull request always opened, with a `note:` where its author may merge it alone ([#133](https://github.com/pcaboor/idp-agent/pull/133)) |
 | 7 | Polish: Ink TUI, asciinema, npm publish | not started |
 | 8 | Discovery | designed ([the design note](stage-8-brief.md), [#76](https://github.com/pcaboor/idp-agent/pull/76)); not started |
 
@@ -93,7 +93,8 @@ here, one pull request each, each naming the check run together at the end.
    which closes slice 6.3 as the plan drew it.
    Three tasks the owner added on 2026-10-01 follow them, before
    6.4: 6.3.4, the pull request always opened whatever the base's rules, with a neutral `note:`
-   when its author may merge it alone; 6.3.5, the Supervisor proposing to open the pull request
+   when its author may merge it alone, is built
+   ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5, the Supervisor proposing to open the pull request
    after the diff, the person's `y` authorising it and the engine opening it and reporting it,
    with no `--submit` typed in a terminal; and what is in flight — the open `idp-agent` pull
    requests touching the same service read before any model is paid, so two people never open
@@ -385,7 +386,12 @@ The owner's decisions, dated, each with where it is recorded.
   pull request, and exits 0. idpa still never merges and never writes to `main`; the refusals
   that protect the push itself stay (no gh, a clone configured to redirect the push); `idpa
   protection` still answers 0 or 1. Task 6.3.4, after 6.3.3 and before ADR-0015: design §4.2
-  changes first, then `AGENTS.md`, `SECURITY.md`, `docs/submitting.md` and the note.
+  changes first, then `AGENTS.md`, `SECURITY.md`, `docs/submitting.md` and the note. Built
+  ([#133](https://github.com/pcaboor/idp-agent/pull/133)): what still refuses is item 1 of
+  § 8 — a repository archived, not pushable by gh's account or answering under another name
+  (exit 1) — besides gh and the clone's configuration (exit 2); where a binding rule still
+  requires another person's approval and only force pushes or deletions are unguarded, the
+  note says that instead, as the plan's question 2 recommended.
 - **The Supervisor proposes to open the pull request** (task 6.3.5): after the diff, in a
   terminal and with no `--submit` typed, it proposes; the person's `y` authorises; the engine
   opens it and prints its URL. The model never holds a tool that pushes without that answer;

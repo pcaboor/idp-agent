@@ -333,12 +333,13 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   declarations repository, which must be a git clone's root, for review. When
   the checked-out branch tracks one on github.com, both forms of plan push
   that branch with your git and open a pull request into it with your gh, once
-  gh is logged in and the base's ruleset keeps you from merging it unreviewed
-  (idpa protection says whether it does); --local keeps the branch in the
-  clone. plan "<intent>" --submit crosses five gates, the Reviewer last, and
-  reads the road, gh and the base's rules before any model is paid, refusing a
-  repository that cannot take the branch, or a service whose .idp-agent.yml
-  names another repository; plan --from crosses four gates and no Reviewer.
+  gh is logged in. The pull request is opened whatever the base's rules; where
+  they let its author merge it alone, a note says so (idpa protection says
+  what they keep); --local keeps the branch in the clone. plan "<intent>"
+  --submit crosses five gates, the Reviewer last, and reads the road, gh and
+  the base's rules before any model is paid, refusing a repository that cannot
+  take the branch, or a service whose .idp-agent.yml names another
+  repository; plan --from crosses four gates and no Reviewer.
   Either way the merge authorises. A phrase takes --submit too: a change is
   submitted as plan "<intent>" --submit submits it, and a question is refused.
   Every model-backed command also needs that provider's key
@@ -1333,6 +1334,8 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
         submit = {
           ...(confirm !== undefined ? { confirm } : {}),
           open: reopening(opened, project, 'service'),
+          // The note on who may merge, said on stderr where the preflight finds it (2026-10-01).
+          notice: toStderr(err),
         }
       } catch (error) {
         return failed(error, err)
@@ -1560,6 +1563,8 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
         submit = {
           ...(confirm !== undefined ? { confirm } : {}),
           open: reopening(opened, roots.repo, 'declarations'),
+          // The note on who may merge, said on stderr where the preflight finds it (2026-10-01).
+          notice: toStderr(err),
         }
       } catch (error) {
         return failed(error, err)
@@ -1860,9 +1865,10 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
       async (client, emit) => {
         if (early !== undefined) {
           // § 12: the preflight before the Supervisor, the first model call of
-          // this road. `runIntent` asks again, and is answered from this
-          // verdict (`refuseUnprotected` keeps one per forge and base).
-          const unprotected = await refuseUnprotected(early, { json: command.json })
+          // this road, and the note on who may merge said there (2026-10-01).
+          // `runIntent` asks again, and is answered from this verdict
+          // (`refuseUnprotected` keeps one per forge and base), saying nothing twice.
+          const unprotected = await refuseUnprotected(early, { json: command.json, notice: toStderr(err) })
           if (unprotected !== undefined) return unprotected
         }
         // The forge opened above, handed on: `runIntent` reads its base again
@@ -1874,6 +1880,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
             : {
                 ...(confirm !== undefined ? { confirm } : {}),
                 open: reopening(early, roots.repo, 'declarations'),
+                notice: toStderr(err),
               }
         return runEntry({
           ...asked,
@@ -2269,7 +2276,9 @@ export const confirmOnTerminal = (
  * hold. On GitHub's road it names both acts and whose they are — the push
  * with the person's git, the pull request with their gh — or, when an earlier
  * run pushed the branch, the pull request alone (stage 6 brief § 3); the
- * local road's is stage 5's, byte for byte.
+ * local road's is stage 5's, byte for byte. Where the preflight found that
+ * the base's rules let the author merge alone, it promises no approval
+ * (the owner's decision of 2026-10-01).
  */
 const questionOf = (summary: SubmissionSummary): string => {
   const one = (value: string): string => inertLine(value, Number.POSITIVE_INFINITY)
@@ -2281,7 +2290,9 @@ const questionOf = (summary: SubmissionSummary): string => {
     )
   }
   const where = `${github.host}/${one(github.repository)}`
-  const provisioned = 'Nothing is provisioned until someone else approves it and it is merged. [y/N] '
+  const provisioned = github.authorMayMergeAlone
+    ? 'Nothing is provisioned until it is merged. [y/N] '
+    : 'Nothing is provisioned until someone else approves it and it is merged. [y/N] '
   return github.pushedAlready
     ? `Open a pull request from ${one(summary.branch)} into ${one(github.base)} on ${where} with your gh? ` +
         `The branch was pushed by an earlier run. ${provisioned}`
