@@ -420,8 +420,17 @@ or not a person, and — until 6.3.3 — the phrase's road toward GitHub are
 `ForgeInputError`s, exit 2, before any model. On GitHub's road it says, once, on stderr,
 `submitting to github.com/<o>/<r>, into <base> (<remote>, <branch>'s upstream), as <login>
 (gh)`. `refuseUnprotected`, right after `refuseDivergence`, runs the preflight and refuses,
-exit 1, a base the rules do not protect (`renderUnprotected`, the ruleset to add) or a clone
-not level with GitHub, before the preview. `submit` takes a `pushed-without-pull-request`
+exit 1, a repository this run cannot push to — archived, not pushable by gh's account,
+answering under another name (§ 8 item 1, `renderUnprotected`, under the heading `not
+submitted — github.com/<o>/<r> cannot take a pull request from this run:`) — or a clone not
+level with GitHub, before the preview. The base's rules refuse nothing (the owner's decision
+of 2026-10-01): where they let the author merge alone, `refuseUnprotected` says `note: on
+this repository the author may merge without another person's review` through `notice`, on
+stderr, once a run (or the `base-unguarded` line, `core/github/protection.ts`'s `noteLine`),
+and the run goes on; the question (`authorMayMergeAlone`) and the closing lines
+(`pullRequestLines`) then promise no approval. The forge's step 11 puts the note it reads
+into the pull request's body, and `submit` says it on stderr above the closing lines when the
+preflight did not say that line; `--json`'s `submission` carries it as `note`. `submit` takes a `pushed-without-pull-request`
 recognised as the pull request left to open, and asks only about it; `Confirm`'s
 `SubmissionSummary` carries `github`, and `confirmOnTerminal` asks the GitHub road's
 question from it, the local road's unchanged. The closing lines name the road
@@ -458,8 +467,8 @@ they do without `--submit`. `plan-intent.test.ts` counts zero model calls on eac
 its forge before `agentBacked` — the road and gh's identity included, the `submitting to`
 line said there — and `runInitRepo`, handed it through `reopening`, runs the configuration's
 questions, the project's files and init's own verdicts, then `refuseDivergence` and
-`refuseUnprotected` with `offerLocal`, whose refusal on the rules ends on `--local`
-(decision 17), before the Inspector. No `refuseOtherRepository`: the service's `iacRepo`
+`refuseUnprotected` with `offerLocal`, whose refusal on § 8 item 1 ends on `--local`
+(decision 17), and whose note on the rules is said there, before the Inspector. No `refuseOtherRepository`: the service's `iacRepo`
 names the declarations repository, never the clone the branch goes to. D12 is the local
 forge's refusal, before gh starts; D6 is the clearance's.
 
@@ -474,14 +483,16 @@ named here by `import type` alone, since only `forge/github/` loads the gh launc
 run's is its own `spawnGh`. `runProtection` opens the GitHub side (`forge/github/open.ts`'s
 `openGitHub`: the clone's root, the road, gh's identity), says the `checking …` line on stderr,
 reads (`readProtection`) and renders (`render/protection.ts`'s `renderProtection`); `found`
-is whether the rules hold, so exit 0 or 1. A clone on no GitHub road, a refused configuration
+is whether the rules hold, so exit 0 or 1 — a diagnostic: where a submission would go on with
+a note, its exit-1 answer ends on `A submission still opens its pull request here, and says:
+<the note>`. A clone on no GitHub road, a refused configuration
 key or a gh that is missing, logged out, too old or not a person is a `ForgeInputError`, exit
 2, before anything is read on GitHub; what GitHub fails to answer is a `GitHubAnswerError`,
 which `failed()` prints in its own sentence, exit 1, as it does a `GhError` that escaped the
 forge (matched by name, as `isGitError` is). No model is chosen, so none can be called, and
 nothing is written. `renderUnprotected` is the same `missing:` lines as a submission's
-refusal, which `refuseUnprotected` prints — naming gh's account where `renderProtection` names
-its login, because the intent road's trace keeps a refusal as its output (stage 6 brief § 12).
+refusal on § 8 item 1, which `refuseUnprotected` prints — naming gh's account where
+`renderProtection` names its login, because the intent road's trace keeps a refusal as its output (stage 6 brief § 12).
 
 **Tracing.** `trace-sink.ts` is the only way a trace leaves the process: `mlflowSink` posts
 OTLP/JSON to `IDP_MLFLOW_TRACKING_URI`'s `/v1/traces` — never `MLFLOW_TRACKING_URI`'s, which

@@ -1,5 +1,5 @@
 import { pullRequestBody, pullRequestUrl, type PullRequestInput } from '../../core/github/pull-request.js'
-import type { ProtectionVerdict } from '../../core/github/protection.js'
+import { LONGEST_NOTE, noteOf } from '../../core/github/protection.js'
 import { printedRepository, sameRepository } from '../../core/github/remote.js'
 import { isCleared, type Cleared } from '../../core/plan/clear.js'
 import { gitIn, pushIn, type Git, type Push } from '../../process/git.js'
@@ -25,12 +25,19 @@ import { readRoad } from './road.js'
  *
  * `submit` writes, and only past step 8, the re-check at the moment of acting:
  * the clone's upstream and its own configuration read again (`readRoad`), the
- * base's rules (`readRules`), GitHub's base at the commit the clone's is, and
- * the branch on GitHub and the pull requests from it judged again, by § 14's
- * table as `recognise` judges them. Then step 9, stage 5's local branch;
- * step 10, the push of that very commit, create-only; step 11, the branch read
- * back through gh and the rules read once more; step 12, the one pull request,
- * its body the engine's.
+ * base's rules (`readRules`, for their status checks), GitHub's base at the
+ * commit the clone's is, and the branch on GitHub and the pull requests from
+ * it judged again, by § 14's table as `recognise` judges them. Then step 9,
+ * stage 5's local branch; step 10, the push of that very commit, create-only;
+ * step 11, the branch read back through gh and the rules read once more;
+ * step 12, the one pull request, its body the engine's.
+ *
+ * The rules never refuse a submission (the owner's decision of 2026-10-01):
+ * whether a pull request's author may merge it alone is the company's rule.
+ * `readRules` judges items 2 and 3 alone, so neither read holds an item-1
+ * kind — an account that lost its push access meanwhile is refused by the
+ * push — and step 11's read decides the note in the body, never whether to
+ * open.
  *
  * What it is not: atomic across the two systems. Its only writes on GitHub
  * are one ref and one pull request, each atomic on its own; the two together
@@ -255,18 +262,31 @@ export function openGitHubForge(input: {
     return `${road.branch}'s upstream changed during the run: it no longer names ${where}'s ${road.base}; run this again. Nothing was written.`
   }
 
-  const unprotected = (verdict: ProtectionVerdict): string =>
-    `nothing on ${where}'s ${road.base} stops the person who would open this pull request from merging it ` +
-    `(missing: ${verdict.missing.join(', ')}); idpa protection says what to add. Nothing was written.`
+  /** The pull request's text for a change, with the note step 11's read calls for, if any. */
+  const textOf = (change: Cleared, note?: PullRequestInput['note']): { readonly title: string; readonly body: string } =>
+    pullRequestBody({
+      message: change.message,
+      request: change.request,
+      road: route,
+      branch: change.branch,
+      ...(note === undefined ? {} : { note }),
+    })
 
-  /** Steps 11 and 12: the rules once more, then the one pull request. The branch is on GitHub at `commit`. */
+  const overBound = (body: string): boolean => Buffer.byteLength(body, 'utf8') > GITHUB_LIMITS.bodyBytes
+
+  /**
+   * Steps 11 and 12: the rules once more, then the one pull request. The
+   * branch is on GitHub at `commit`. The read decides the note in the body,
+   * never whether to open: rules that weakened while the person read the diff
+   * are said, and rules that strengthened leave a body without a note, which
+   * is true.
+   */
   const opened = async (
     change: Cleared,
     commit: string,
     pushed: boolean,
     olderBase: string | undefined,
     deadline: number,
-    text: { readonly title: string; readonly body: string },
   ): Promise<Submitted> => {
     const stop = (reason: string): Submitted => ({
       outcome: 'pushed-without-pull-request',
@@ -275,11 +295,11 @@ export function openGitHubForge(input: {
       reason,
     })
     const again = await readRules(api, road)
-    if (!again.holds) {
-      return stop(
-        `the pull request was not opened: the rules that keep it from merging unreviewed no longer hold on ${where}'s ` +
-          `${road.base} (${again.missing.join(', ')}). Run the same command again once they do.`,
-      )
+    const note = noteOf(again)
+    const text = textOf(change, note === undefined ? undefined : { kind: note, base: road.base, missing: again.missing })
+    // Step 8 checked the body with the longest note, so this never holds; checked all the same, before the POST.
+    if (overBound(text.body)) {
+      return stop(`the pull request was not opened: its body would be over 1 MiB, more than this build sends.`)
     }
     if (now() > deadline) {
       return stop(`the pull request was not opened: the submission took longer than ${seconds} s. Run the same command again to open it.`)
@@ -292,6 +312,7 @@ export function openGitHubForge(input: {
       pullRequest: pullRequestOf(number, state),
       statusChecks: again.reported.statusChecks,
       ...(olderBase === undefined ? {} : { olderBase }),
+      ...(note === undefined ? {} : { note, missing: again.missing }),
     })
     try {
       const { number } = await api.openPullRequest({ ...text, head: change.branch, base: road.base })
@@ -333,8 +354,11 @@ export function openGitHubForge(input: {
     // Step 8, reads only: a refusal here leaves nothing on either side.
     const moved = await roadMoved()
     if (moved !== undefined) return refused(moved)
-    const verdict = await readRules(api, road)
-    if (!verdict.holds) return refused(unprotected(verdict))
+    // The rules, read again: they refuse nothing now (the owner's decision of
+    // 2026-10-01), but an answer past its bound — more than ten supplying
+    // rulesets, a paginated answer — still stops the run here, before anything
+    // is written, and § 15's budget is unchanged.
+    await readRules(api, road)
     const tip = await refOf(road.base)
     if (tip === undefined) {
       return refused(`${where} shows no branch ${road.base} to your account; nothing is submitted into it. Nothing was written.`)
@@ -355,8 +379,10 @@ export function openGitHubForge(input: {
     // named, and nothing is written.
     const judged = decided(change, base, remote, await api.pulls(change.branch), known)
     if (judged !== undefined && judged.outcome !== 'pushed-without-pull-request') return judged
-    const text = pullRequestBody({ message: change.message, request: change.request, road: route, branch: change.branch })
-    if (Buffer.byteLength(text.body, 'utf8') > GITHUB_LIMITS.bodyBytes) {
+    // The bound, checked on the longest body step 11 could build: this one,
+    // with the longest note as its paragraph (the line and its blank line).
+    const bare = Buffer.byteLength(textOf(change).body, 'utf8')
+    if (bare + Buffer.byteLength(`${LONGEST_NOTE}\n\n`, 'utf8') > GITHUB_LIMITS.bodyBytes) {
       return refused(`the pull request's body would be over 1 MiB, more than this build sends. Nothing was written.`)
     }
     switch (remote.kind) {
@@ -366,7 +392,7 @@ export function openGitHubForge(input: {
       case 'ours':
         // A push that landed on an earlier run: nothing is written in this
         // clone, and the pull request is the one write left.
-        return opened(change, remote.commit, false, remote.olderBase, deadline, text).catch((error: unknown) => ({
+        return opened(change, remote.commit, false, remote.olderBase, deadline).catch((error: unknown) => ({
           outcome: 'pushed-without-pull-request' as const,
           branch: change.branch,
           commit: remote.commit,
@@ -426,7 +452,7 @@ export function openGitHubForge(input: {
         }
       }
       onGitHub = true
-      return await opened(change, cut.commit, pushed, undefined, deadline, text)
+      return await opened(change, cut.commit, pushed, undefined, deadline)
     } catch (error) {
       // A run that cut or pushed a branch never ends on a sentence that says
       // nothing was written.

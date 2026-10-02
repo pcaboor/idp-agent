@@ -24,6 +24,7 @@ import type { FakeGitHub } from '../support/fake-gh.js'
 import { removeClones } from '../support/forge-fixture.js'
 import { observable } from '../support/git.js'
 import { githubClone, unprotect } from '../support/github-fixture.js'
+import { MERGE_NOTE } from '../../src/core/github/protection.js'
 import { confirmingEnvironment } from '../support/ask.js'
 
 /**
@@ -730,20 +731,58 @@ describe('idpa "<phrase>" --submit', () => {
     },
   )
 
-  it('refuses unprotected rules before the Supervisor, exit 1', async () => {
+  it('says the note before the Supervisor, and opens the pull request where the author may merge alone', async () => {
     const clone = await githubClone()
     unprotect(clone.gh)
-    const client = changing()
+    const project = await application()
+    const { log, gh, client } = watching(clone.gh, changing())
+    const out: string[] = []
 
-    const { code, out } = await run([INTENT, '--repo', clone.repo, '--submit'], {
+    const code = await main([INTENT, '--repo', clone.repo, '--project', project, '--submit'], {
       env: clone.env,
-      gh: clone.gh.process,
+      gh,
       client,
+      ask: answering('read'),
+      out: (chunk) => void out.push(chunk),
+      err: (chunk) => void log.push(`err ${chunk}`),
     })
 
-    expect(code).toBe(1)
-    expect(out).toContain("not submitted — nothing on github.com/acme/iac's main stops the person")
-    expect(client.seen).toEqual([])
+    expect(code, log.join('\n')).toBe(0)
+    const noted = log.indexOf(`err ${MERGE_NOTE}\n`)
+    expect(noted).toBeGreaterThan(-1)
+    expect(log.filter((line) => line === `err ${MERGE_NOTE}\n`)).toHaveLength(1)
+    expect(noted).toBeLessThan(log.indexOf('model supervisor'))
+    expect(out.join('')).not.toContain('Add a ruleset')
+    expect(out.join('')).toContain('Pull request #1 opened on github.com/acme/iac: https://github.com/acme/iac/pull/1')
+    expect(clone.gh.state.pulls?.[0]?.body.split('\n')).toContain(MERGE_NOTE)
+  })
+
+  it('still refuses a question put to --submit where the author may merge alone, exit 3, the note said before the Supervisor’s word', async () => {
+    const clone = await githubClone()
+    unprotect(clone.gh)
+    const inner = scripted({
+      supervisor: [saying('QUESTION')],
+      analyst: [turnCalling('answer', { outcome: 'nothing' })],
+    })
+    const { log, gh, client } = watching(clone.gh, inner)
+    const out: string[] = []
+
+    const code = await main(['which databases are in prod?', '--repo', clone.repo, '--submit'], {
+      env: clone.env,
+      gh,
+      client,
+      out: (chunk) => void out.push(chunk),
+      err: (chunk) => void log.push(`err ${chunk}`),
+    })
+
+    expect(code).toBe(3)
+    expect(out.join('')).toBe('')
+    const noted = log.indexOf(`err ${MERGE_NOTE}\n`)
+    expect(noted).toBeGreaterThan(-1)
+    expect(noted).toBeLessThan(log.indexOf('model supervisor'))
+    expect(log.some((line) => line.startsWith('err ') && line.includes(QUESTION_NOT_SUBMITTED))).toBe(true)
+    expect(agentsOf(inner)).toEqual(['supervisor'])
+    expect(clone.gh.state.pulls ?? []).toEqual([])
   })
 
   it('refuses gh logged out before the model is configured and before a catalogue is requested, exit 2', async () => {

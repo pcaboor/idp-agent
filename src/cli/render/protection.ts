@@ -1,11 +1,11 @@
-import { protectionText, type Missing, type ProtectionVerdict } from '../../core/github/protection.js'
+import { noteLine, noteOf, protectionText, type Missing, type ProtectionVerdict } from '../../core/github/protection.js'
 import { printedRepository } from '../../core/github/remote.js'
 import type { GhIdentity, GitHubRoad } from '../../forge/provider.js'
 import { inertLine } from './plain.js'
 
 /**
  * What `idpa protection` prints on stdout, and what a submission refused on
- * the rules prints (stage 6 brief § 8). Every value in it came from a clone's
+ * § 8 item 1 prints (stage 6 brief § 8, amended 2026-10-01). Every value in it came from a clone's
  * configuration or from GitHub — a repository, a base, a login, a status
  * check's context — and every line that can hold one passes `inertLine`,
  * whole: a shortened name is another name. The list of settings is the
@@ -128,13 +128,20 @@ const actorsOf = (actors: readonly { readonly type: string; readonly count: numb
 /**
  * `idpa protection`'s answer: why the base holds, what is reported and what
  * no read can see (exit 0); or what it lacks and the ruleset to add (exit 1).
+ * Exit 1 is a diagnostic: where the rules let a submission go on (the owner's
+ * decision of 2026-10-01), its last line but one quotes the note a submission
+ * says there; on § 8 item 1, which refuses submissions, it says nothing of one.
  */
 export function renderProtection(verdict: ProtectionVerdict, road: GitHubRoad, identity: GhIdentity): string {
   const login = identity.login
   if (!verdict.holds) {
+    const note = noteOf(verdict)
     return [
       shown(`${baseOf(road)} does not stop the person who would open a pull request from merging it:`),
       ...refusal(verdict, road, login),
+      ...(note === undefined
+        ? []
+        : [shown(`A submission still opens its pull request here, and says: ${noteLine(note, road.base, verdict.missing)}`)]),
       'Then run idpa protection again.',
     ].join('\n')
   }
@@ -200,10 +207,14 @@ export function renderProtection(verdict: ProtectionVerdict, road: GitHubRoad, i
 const GH_ACCOUNT = "gh's account"
 
 /**
- * What a submission refused on the rules prints (stage 6 brief § 8): the same
- * `missing:` lines, the ruleset to add, and that nothing was written:
- * `refuseUnprotected`'s, on the GitHub road of a submission. It names no
- * login, in prose or in `--json`'s reasons, which are its lines.
+ * What a submission refused on § 8 item 1 prints — an archived repository,
+ * one gh's account cannot push to, one GitHub answers under another name:
+ * the push itself cannot be made, so the heading says the repository cannot
+ * take a pull request from this run, then the same `missing:` lines and that
+ * nothing was written; no ruleset, which would not help. A missing rule of
+ * items 2 to 4 is never refused here: it is a note (the owner's decision of
+ * 2026-10-01). `refuseUnprotected`'s, on the GitHub road of a submission. It
+ * names no login, in prose or in `--json`'s reasons, which are its lines.
  *
  * `offerLocal`, `init --submit`'s (decision 17): the service's own repository
  * is refused "with --local named", since a branch cut in the clone alone is
@@ -216,7 +227,7 @@ export function renderUnprotected(
   options: { readonly offerLocal?: boolean } = {},
 ): string {
   return [
-    shown(`not submitted — nothing on ${baseOf(road)} stops the person who would open this pull request from merging it:`),
+    shown(`not submitted — ${printedRepository(road.repository)} cannot take a pull request from this run:`),
     ...refusal(verdict, road, GH_ACCOUNT),
     options.offerLocal === true
       ? 'Then run this again, or add --local to cut the branch in this clone only. Nothing was written.'

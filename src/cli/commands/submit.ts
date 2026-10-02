@@ -1,3 +1,4 @@
+import { noteLine, noteOf, refusesPush, type MergeNote } from '../../core/github/protection.js'
 import type { PullRequestInput } from '../../core/github/pull-request.js'
 import { locatorRepository, printedRepository, sameRepository } from '../../core/github/remote.js'
 import type { Cleared, ClearRefusal, Expectation, Repository } from '../../core/plan/clear.js'
@@ -19,8 +20,10 @@ import type { CommandResult } from './result.js'
  * github.com, that branch pushed with the person's git and one pull request
  * opened with their gh (stage 6 brief § 3). Everything a run decides about
  * that lives here, in the order it happens — open the forge before anything
- * is read, refuse a repository whose working tree is not `HEAD`, or a base on
- * GitHub the rules do not protect, before anything is previewed, then clear,
+ * is read, refuse a repository whose working tree is not `HEAD`, or one on
+ * GitHub this run cannot push to, before anything is previewed — saying, where
+ * the base's rules let a pull request's author merge it alone, that they do
+ * (the owner's decision of 2026-10-01) — then clear,
  * recognise a submission already made, confirm and submit — so both roads of
  * `plan`, and `init` after them, take the same steps rather than three copies
  * of them.
@@ -54,6 +57,8 @@ export interface SubmissionSummary {
     readonly repository: string
     readonly base: string
     readonly pushedAlready: boolean
+    /** The preflight found an `author-may-merge` kind: the question does not promise an approval. */
+    readonly authorMayMergeAlone: boolean
   }
 }
 
@@ -84,7 +89,7 @@ export interface SubmitOptions {
   readonly env?: NodeJS.ProcessEnv
   /** The gh a test hands in (`MainDeps.gh`); the person's own otherwise. */
   readonly gh?: GhProcess
-  /** Where the line naming the GitHub road goes: stderr, from `cli/index.ts`. */
+  /** Where the line naming the GitHub road goes, and the note on who may merge: stderr, from `cli/index.ts`. */
   readonly notice?: (line: string) => void
 }
 
@@ -264,52 +269,72 @@ export function refuseOtherRepository(
 }
 
 /**
- * On GitHub's road, after the divergence and before the preview: whether the
- * base's rules keep a pull request from merging until someone other than its
- * opener approves its latest commit, and whether GitHub's base is the commit
- * this clone's is (stage 6 brief § 8). Either answered no is the
- * repository's state, a negative answer (exit 1), with the ruleset to add or
- * the commits to bring level; nothing was previewed, nothing written, and no
- * question asked. The rules are judged first, so a base that fails both is
- * told about its ruleset. A local road reads nothing here.
+ * On GitHub's road, after the divergence and before the preview: whether this
+ * run can push to the repository at all — not archived, pushable by gh's
+ * account, answering under the remote's name (§ 8 item 1) — and whether
+ * GitHub's base is the commit this clone's is (stage 6 brief § 8). Either
+ * answered no is the repository's state, a negative answer (exit 1);
+ * nothing was previewed, nothing written, and no question asked. Item 1 is
+ * judged first, so a repository that fails both is told why it cannot take a
+ * pull request. A local road reads nothing here.
+ *
+ * The rules of items 2 to 4 refuse nothing (the owner's decision of
+ * 2026-10-01): whether a pull request's author may merge it alone is the
+ * company's rule, not idpa's. Where they let the author merge alone, or leave
+ * the base unguarded, the note's line goes to `notice` — stderr, never the
+ * result, so a traced run's output and `--json` are unchanged by it — once a
+ * run, and the run goes on.
  *
  * With `json`, the refusal is the report, as `refuseDivergence`'s is. With
- * `offerLocal`, `init --submit`'s, the refusal on the rules names `--local`
+ * `offerLocal`, `init --submit`'s, the refusal on item 1 names `--local`
  * (decision 17).
  */
 export async function refuseUnprotected(
   opened: Opened,
-  options: { readonly json?: boolean; readonly offerLocal?: boolean } = {},
+  options: { readonly json?: boolean; readonly offerLocal?: boolean; readonly notice?: (line: string) => void } = {},
 ): Promise<CommandResult | undefined> {
   const { road, github } = opened
   if (road.kind !== 'github') return undefined
   if (github === undefined) throw new Error('a GitHub road opened without gh')
   // Judged once per forge and base: a road that reads the preflight early
   // (the phrase's, 6.3.3) is not read again by `runIntent`, and the run stays
-  // within `GITHUB_LIMITS.ghCalls`. A refusal ends the run, so only a pass is
-  // ever read back; a base that moved in between is judged again. Step 8's
-  // and step 11's reads are the forge's own, and never kept.
+  // within `GITHUB_LIMITS.ghCalls` — nor says its note twice. A refusal ends
+  // the run, so only a pass is ever read back; a base that moved in between
+  // is judged again. Step 8's and step 11's reads are the forge's own, and
+  // never kept.
   const kept = judged.get(opened.forge)
-  if (kept !== undefined && kept.commit === opened.base.commit) return kept.verdict
-  const verdict = unprotected(opened, road, github, options)
-  judged.set(opened.forge, { commit: opened.base.commit, verdict })
-  return verdict
+  if (kept !== undefined && kept.commit === opened.base.commit) return (await kept.judgement).refusal
+  const judgement = unprotected(opened, road, github, options)
+  judged.set(opened.forge, { commit: opened.base.commit, judgement })
+  return (await judgement).refusal
 }
 
-/** The verdict `refuseUnprotected` reached for a forge, and the base commit it judged. */
-const judged = new WeakMap<ForgeProvider, { readonly commit: string; readonly verdict: Promise<CommandResult | undefined> }>()
+/** What `refuseUnprotected` reached: a refusal, or none and the note the run said, if any, with its line. */
+interface Judgement {
+  readonly refusal?: CommandResult
+  readonly note?: { readonly kind: MergeNote; readonly line: string }
+}
+
+/** The judgement `refuseUnprotected` reached for a forge, and the base commit it judged. */
+const judged = new WeakMap<ForgeProvider, { readonly commit: string; readonly judgement: Promise<Judgement> }>()
+
+/** The note the preflight kept for this forge said, if any, and its line: the question and the closing lines read it. */
+const preflightNote = async (opened: Opened): Promise<Judgement['note']> => {
+  const kept = judged.get(opened.forge)
+  return kept === undefined ? undefined : (await kept.judgement).note
+}
 
 /** `refuseUnprotected`'s judgement, read from GitHub. */
 async function unprotected(
   opened: Opened,
   road: GitHubRoad,
   github: NonNullable<Opened['github']>,
-  options: { readonly json?: boolean; readonly offerLocal?: boolean },
-): Promise<CommandResult | undefined> {
+  options: { readonly json?: boolean; readonly offerLocal?: boolean; readonly notice?: (line: string) => void },
+): Promise<Judgement> {
   const { verdict, level } = await preflight(github.api, road, opened.base)
   let text: string
   let reasons: string[]
-  if (!verdict.holds) {
+  if (refusesPush(verdict)) {
     text = renderUnprotected(verdict, road, { offerLocal: options.offerLocal === true })
     const lines = text.split('\n')
     reasons = [lines[0] ?? '', ...lines.filter((line) => line.startsWith('  missing: '))]
@@ -321,9 +346,14 @@ async function unprotected(
       'Nothing was written.'
     reasons = [text]
   } else {
-    return undefined
+    const note = noteOf(verdict)
+    if (note === undefined) return {}
+    // The line is the engine's; the base in it is held to the branch grammar.
+    const line = one(noteLine(note, road.base, verdict.missing))
+    options.notice?.(line)
+    return { note: { kind: note, line } }
   }
-  return refusedBefore(opened, text, reasons, options)
+  return { refusal: refusedBefore(opened, text, reasons, options) }
 }
 
 /**
@@ -343,6 +373,8 @@ export type SubmissionReport =
       readonly pushed: boolean
       readonly pullRequest?: PullRequest
       readonly olderBase?: string
+      /** On GitHub: the note the rules read just before the pull request called for, which its body carries. */
+      readonly note?: MergeNote
     }
   | { readonly outcome: 'unchanged' }
   | { readonly outcome: 'declined'; readonly branch: string }
@@ -447,6 +479,8 @@ export async function submit(input: {
   readonly cleared: Cleared | ClearRefusal
   readonly render: (status: PreviewStatus) => CommandResult
   readonly confirm?: Confirm
+  /** Where a note line the preflight did not say is said, above the closing lines: stderr. */
+  readonly notice?: (line: string) => void
 }): Promise<{ readonly result: CommandResult; readonly report: SubmissionReport }> {
   const { opened } = input
   const done = await submitting(input)
@@ -461,6 +495,7 @@ async function submitting(input: {
   readonly cleared: Cleared | ClearRefusal
   readonly render: (status: PreviewStatus) => CommandResult
   readonly confirm?: Confirm
+  readonly notice?: (line: string) => void
 }): Promise<{ readonly result: CommandResult; readonly report: SubmissionReport }> {
   const { opened, cleared, render, confirm } = input
 
@@ -490,8 +525,16 @@ async function submitting(input: {
   // The forge only reads to say so; `submit` below looks again at the moment
   // of writing, for a branch created while the person read the diff.
   const known = await opened.forge.recognise(cleared, opened.base)
+  const noted = await preflightNote(opened)
+  // The note step 11's read calls for, said on stderr just above the closing
+  // lines when the preflight did not say those words: the rules changed while
+  // the person read the diff, and the body carries step 11's line, so stderr
+  // ends on what the body says. The same line is never said twice in a run.
+  const after = (line: string): void => {
+    if (line !== noted?.line) input.notice?.(line)
+  }
   if (known !== undefined && known.outcome !== 'pushed-without-pull-request') {
-    return outcomeOf(known, opened.base, opened.road, said)
+    return outcomeOf(known, opened.base, opened.road, said, after)
   }
 
   if (confirm !== undefined) {
@@ -513,6 +556,7 @@ async function submitting(input: {
               repository: `${road.repository.owner}/${road.repository.name}`,
               base: road.base,
               pushedAlready: known?.outcome === 'pushed-without-pull-request',
+              authorMayMergeAlone: noted?.kind === 'author-may-merge',
             },
           }
         : {}),
@@ -525,7 +569,7 @@ async function submitting(input: {
     }
   }
 
-  return outcomeOf(await opened.forge.submit(cleared, opened.base), opened.base, opened.road, said)
+  return outcomeOf(await opened.forge.submit(cleared, opened.base), opened.base, opened.road, said, after)
 }
 
 /** A reason the forge ended on "Nothing was written.": the closing lines say it, or say what was kept. */
@@ -542,12 +586,17 @@ function outcomeOf(
   base: Base,
   road: Road,
   said: (status: PreviewStatus) => string,
+  noting: (line: string) => void,
 ): { readonly result: CommandResult; readonly report: SubmissionReport } {
   switch (submitted.outcome) {
     case 'created':
     case 'already-submitted': {
       const { pullRequest, olderBase } = submitted
       const statusChecks = submitted.outcome === 'created' ? submitted.statusChecks : undefined
+      const note = submitted.outcome === 'created' ? submitted.note : undefined
+      if (note !== undefined && road.kind === 'github') {
+        noting(one(noteLine(note, road.base, submitted.outcome === 'created' ? (submitted.missing ?? []) : [])))
+      }
       const status: PreviewStatus = {
         kind: 'submitted',
         again: submitted.outcome === 'already-submitted',
@@ -557,6 +606,7 @@ function outcomeOf(
         ...(pullRequest === undefined ? {} : { pullRequest }),
         ...(olderBase === undefined ? {} : { olderBase }),
         ...(statusChecks === undefined ? {} : { statusChecks }),
+        ...(note === undefined ? {} : { note }),
       }
       return {
         report: {
@@ -567,6 +617,7 @@ function outcomeOf(
           pushed: submitted.pushed === true,
           ...(pullRequest === undefined ? {} : { pullRequest }),
           ...(olderBase === undefined ? {} : { olderBase }),
+          ...(note === undefined ? {} : { note }),
         },
         result: { text: said(status), found: true },
       }

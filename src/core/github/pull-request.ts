@@ -1,3 +1,4 @@
+import { noteLine, type MergeNote, type Missing } from './protection.js'
 import type { GitHubRepository } from './remote.js'
 
 /**
@@ -10,8 +11,10 @@ import type { GitHubRepository } from './remote.js'
  * label of the request — with each file's path written as code and the
  * request moved inside a fence no line of it can close, so neither a file's
  * name nor a request can mention anyone, link anything, render an image or
- * hide a line in a comment. The engine's block follows: how the
- * change was made (D4), what the branch name means, and that nothing is
+ * hide a line in a comment — nor can the base's name, written as code in the
+ * note. The engine's block follows: how the change was made (D4), the note
+ * on who may merge it when the base's rules call for one (the owner's
+ * decision of 2026-10-01), what the branch name means, and that nothing is
  * provisioned until the merge; it ends on `ENGINE_BLOCK_END`, after which
  * stage 8's report will go.
  */
@@ -33,6 +36,12 @@ export interface PullRequestInput {
   /** The road that made the change, which the block names (D4). */
   readonly road: 'from' | 'intent' | 'init' | 'phrase'
   readonly branch: string
+  /**
+   * The note the rules read just before opening call for, if any: its line is
+   * a paragraph of the engine's block. The base reaches the body only through
+   * `unguardedNote`, which holds it to the branch grammar and writes it as code.
+   */
+  readonly note?: { readonly kind: MergeNote; readonly base: string; readonly missing: readonly Missing[] }
 }
 
 /** Three backticks, or one more than the longest run in the text: no line of it can close the fence. */
@@ -111,6 +120,7 @@ export function pullRequestBody(input: PullRequestInput): { readonly title: stri
     '',
     `This change was ${made(input.road)}.`,
     '',
+    ...(input.note === undefined ? [] : [noteLine(input.note.kind, input.note.base, input.note.missing, 'markdown'), '']),
     `The branch \`${input.branch}\` is named by a digest of its files' paths and bytes: the same change always ` +
       'names the same branch, and any other change another.',
     '',

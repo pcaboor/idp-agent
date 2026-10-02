@@ -15,7 +15,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 4777, no API key" src="https://img.shields.io/badge/tests-4777%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 4818, no API key" src="https://img.shields.io/badge/tests-4818%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -151,8 +151,12 @@ Merging it waits for one approval of its latest commit from someone other than y
 Nothing is provisioned yet. The merge is what authorises it.
 ```
 
-Run again, it names the same pull request and writes nothing. `pnpm demo:github` runs all
-of it offline, against a fake gh and a bare repository on disk.
+Run again, it names the same pull request and writes nothing. On a base without that
+ruleset the pull request is opened all the same — whether its author may merge it alone is
+the company's rule, not idpa's — and the run says so in one line, on stderr and in the pull
+request, `note: on this repository the author may merge without another person's review`; the question then ends `Nothing is provisioned until it is merged.` and
+the closing lines promise no approval. `pnpm demo:github` runs all of it offline, against a
+fake gh and a bare repository on disk.
 
 ## With your own key
 
@@ -439,8 +443,8 @@ for the typo it is and never sent to a model, and options go after a command
 change only; a question with `--json` is answered as text, and stderr says so. `--quiet`
 applies to a question only: the verified answer, without the model's sentences around it.
 With `--submit`, a change is submitted as `plan "<intent>" --submit` submits it — the
-declarations repository, the road and gh read before a catalogue or a model, the base's
-rules before the Supervisor — and a question is refused after the Supervisor's one word,
+declarations repository, the road and gh read before a catalogue or a model, the
+repository and the base's rules before the Supervisor — and a question is refused after the Supervisor's one word,
 exit 3, nothing answered and nothing written; `--submit --demo` is refused, since the demo
 SI is never written. `ask` and `plan` below force a road: `plan` previews without classifying, and `ask`
 classifies and only answers, declining a change.
@@ -483,9 +487,9 @@ branch `idp-agent/init-<name>-<8 hex>` cut from `HEAD` in the service's own repo
 service repository that cannot take the branch (not a clone's root, no committer identity)
 is refused with exit 2 before the model is even configured. Where the service's `main`
 tracks a branch on github.com, the branch is pushed with your git and a pull request opened
-on the service's own repository with your gh, once that repository holds the same ruleset
-as the declarations repository — checked before the Inspector, and refused naming the
-ruleset to add and `--local` otherwise ([`docs/submitting.md`](docs/submitting.md)).
+on the service's own repository with your gh — its rules read before the Inspector, a note
+said where they let you merge alone, and a repository you cannot push to refused naming
+`--local` ([`docs/submitting.md`](docs/submitting.md)).
 
 | Command | What it does |
 |---|---|
@@ -495,7 +499,7 @@ ruleset to add and `--local` otherwise ([`docs/submitting.md`](docs/submitting.m
 | `ask` | Answers a question about your platform. The model picks the queries; the engine answers them, and prints the model's short introduction and conclusion around the answer, checked and marked `›`. Asked about the catalogue as a whole — *talk about this project* — it prints an overview the engine writes: counts by kind, type, environment, owner, system and tag, a few entities in their own descriptions, rights and their levels, the most-reached resources, dangling references, and what it could not read. |
 | `init platform` | Scaffolds the declarations repository, its CI, its Backstage registration, and prints the ruleset `idpa protection` checks. |
 | `init` | Drafts the `catalog-info.yaml` of the service you stand in, or adds to the one it keeps, and its `.idp-agent.yml` from `--iac-repo` and `--environment`. It previews a diff; with `--submit` it cuts a local branch in the service's repository. Needs a model. |
-| `protection` | Checks, through your own gh and with reads only, that the branch your clone tracks on github.com keeps a pull request from merging until someone other than its opener approves its latest commit; prints the ruleset to add when it does not ([`docs/submitting.md`](docs/submitting.md)). Exit 0 when the rules hold, 1 when they do not, 2 when gh or the clone is refused. No model, nothing written. |
+| `protection` | Checks, through your own gh and with reads only, that the branch your clone tracks on github.com keeps a pull request from merging until someone other than its opener approves its latest commit; prints the ruleset to add when it does not, and that a submission still opens its pull request there, with a note ([`docs/submitting.md`](docs/submitting.md)). Exit 0 when the rules hold, 1 when they do not, 2 when gh or the clone is refused. No model, nothing written. |
 | `validate` | Checks a repository against the schemas. This is what the scaffolded CI runs. |
 | `plan` | Turns an intent, or a `Plan` file, into a checked and previewed diff. With `--submit`, either form makes it a local branch `idp-agent/…`, for review; `plan --from` also pushes it and opens a pull request when the clone tracks github.com. |
 
@@ -510,10 +514,11 @@ that decides the bytes, such as a level, is still asked. The plan crossed four g
 Reviewer, and the merge is what authorises it.
 
 Toward GitHub — the checked-out branch tracks one on github.com — the same command reads
-gh's identity before anything, then the base's ruleset and its tip before anything is
-written: a base that would let you merge without someone else approving the latest commit
-is refused with the ruleset to add, and a clone not level with GitHub with both commits
-named, exit 1. It asks `Push … with your git, and open a pull request into main with your
+gh's identity before anything, then the repository, the base's ruleset and its tip before
+anything is written: a repository you cannot push to, archived or answering under another
+name is refused, and a clone not level with GitHub with both commits named, exit 1; a base
+that would let you merge without someone else approving the latest commit is said in a
+note, and the pull request is opened all the same. It asks `Push … with your git, and open a pull request into main with your
 gh? [y/N]`, reads the rules again at the moment of acting, pushes that very commit
 create-only to the same name with your git, and opens one pull request with your gh,
 printing its URL, which the engine builds. Run again, it names the same pull request and

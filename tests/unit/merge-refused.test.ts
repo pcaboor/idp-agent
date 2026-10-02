@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest'
+import { MERGE_NOTE, noteOf } from '../../src/core/github/protection.js'
 import { preflight } from '../../src/forge/github/preflight.js'
-import { GH_LIMITS, ghIn, parseIncluded, type GhExit } from '../../src/process/gh.js'
+import { GH_LIMITS, parseIncluded, type GhExit } from '../../src/process/gh.js'
 import { clearedFor, removeClones } from '../support/forge-fixture.js'
 import { DOORS, MERGE_DOOR, MODELLED_DOORS, protectedMain, protectingRuleset, repository, type FakeGitHub } from '../support/fake-gh.js'
 import { githubClone, githubForge, type GitHubClone } from '../support/github-fixture.js'
@@ -148,10 +149,11 @@ describe('the identity that opened the pull request cannot merge it', { timeout:
     expect(await git(clone.bare, 'rev-parse', 'main')).not.toBe(main)
   })
 
-  it('lets the author merge unreviewed wherever the preflight refuses, and the preflight refuses each', async () => {
-    // In each, grace approves the head, the author pushes on top of it, and
-    // the author merges a commit nobody else approved; the protected base of
-    // the test above refuses exactly that.
+  it('opens the pull request with the note wherever the rules let its author merge it alone, and the author can merge it', async () => {
+    // In each, the forge opens the pull request with the owner's note (the
+    // decision of 2026-10-01), grace approves the head, the author pushes on
+    // top of it, and the author merges a commit nobody else approved: the note
+    // was true. The protected base of the test above refuses exactly that.
     const weak: Record<string, readonly [(bare: string) => FakeRepository, (missing: readonly string[]) => void]> = {
       'no ruleset': [
         (bare) => repository({ bare, permissions: { ada: GRACE, grace: GRACE } }),
@@ -206,22 +208,19 @@ describe('the identity that opened the pull request cannot merge it', { timeout:
       const { forge, api, road } = await githubForge(clone)
       const base = await forge.base()
 
-      // The preflight refuses before the forge is asked to write anything.
+      // The preflight says what is missing, and that the note is the owner's.
       const { verdict } = await preflight(api, road, base)
       expect(verdict.holds, name).toBe(false)
       says(verdict.missing)
+      expect(noteOf(verdict), name).toBe('author-may-merge')
 
-      // A pull request the test opens through the fake, as the author.
-      const local = await git(clone.repo, 'commit-tree', 'main^{tree}', '-p', 'main', '-m', change.message)
-      await git(clone.repo, 'push', '-q', clone.bare, `${local}:refs/heads/${change.branch}`)
-      const answer = await ghIn({ run: clone.gh.process }).openPullRequest(
-        'acme',
-        'iac',
-        JSON.stringify({ title: 't', head: change.branch, base: 'main', body: 'b', draft: false, maintainer_can_modify: false }),
-      )
-      expect(answer.status, name).toBe(201)
+      // The forge itself opens the pull request, as the author, with the note.
+      const result = await forge.submit(change, base)
+      expect(result, name).toMatchObject({ outcome: 'created', note: 'author-may-merge', pullRequest: { number: 1 } })
+      if (result.outcome !== 'created') throw new Error(result.outcome)
+      expect(clone.gh.state.pulls?.[0]?.body.split('\n'), name).toContain(MERGE_NOTE)
       clone.gh.approve(1, 'grace')
-      const top = await onTop(clone, local)
+      const top = await onTop(clone, result.commit)
       expect(clone.gh.pushAs({ type: 'User', login: 'ada' }, `refs/heads/${change.branch}`, top), name).toBe(200)
       const main = await git(clone.bare, 'rev-parse', 'main')
 
@@ -232,22 +231,27 @@ describe('the identity that opened the pull request cannot merge it', { timeout:
     }
   })
 
-  it('refuses a deploy key it can see in the bypass list', async () => {
+  it('notes a deploy key it can see in the bypass list, and opens the pull request', async () => {
     const deployKey = { actor_type: 'DeployKey', actor_id: null, bypass_mode: 'always' as const }
     const visible = await withModel((bare) =>
       protectedMain({ bare, permissions: { ada: { admin: true, maintain: false, push: true }, grace: GRACE }, rulesets: [protectingRuleset(1, { bypass: [deployKey] })] }),
     )
     const { forge, api, road } = await githubForge(visible)
     const base = await forge.base()
+    const { verdict: shown } = await preflight(api, road, base)
+    expect(shown.missing).toEqual(['deploy-key'])
+    expect(noteOf(shown)).toBe('author-may-merge')
+    const result = await forge.submit(await clearedFor(visible.repo), base)
+    expect(result).toMatchObject({ outcome: 'created', note: 'author-may-merge', pullRequest: { number: 1 } })
+    expect(visible.gh.state.pulls?.[0]?.body.split('\n')).toContain(MERGE_NOTE)
+
+    // The note is true of the deploy key: a fast-forward of main nobody reviewed.
     const main = await git(visible.bare, 'rev-parse', 'main')
     const top = await onTop(visible, main)
-
-    // A fast-forward of main nobody reviewed.
     expect(visible.gh.pushAs({ type: 'DeployKey', id: 7 }, 'refs/heads/main', top)).toBe(200)
     expect(await git(visible.bare, 'rev-parse', 'main')).toBe(top)
-    expect((await preflight(api, road, base)).verdict.missing).toEqual(['deploy-key'])
 
-    // The same list, hidden from an account that may not edit the ruleset.
+    // The same list, hidden from an account that may not edit the ruleset: it holds, and notes nothing.
     const hidden = await withModel((bare) =>
       protectedMain({ bare, permissions: { ada: GRACE, grace: GRACE }, rulesets: [protectingRuleset(1, { bypass: [deployKey] })] }),
     )
@@ -255,5 +259,6 @@ describe('the identity that opened the pull request cannot merge it', { timeout:
     const { verdict } = await preflight(seen.api, seen.road, await seen.forge.base())
     expect(verdict.holds).toBe(true)
     expect(verdict.reported.bypassActors).toBe('unreadable')
+    expect(noteOf(verdict)).toBeUndefined()
   })
 })

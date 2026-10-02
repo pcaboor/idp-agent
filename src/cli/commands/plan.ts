@@ -1096,16 +1096,21 @@ export async function runPlan(options: PlanOptions): Promise<CommandResult> {
       { json: options.json === true },
     )
     if (refused !== undefined) return refused
-    // And on GitHub's road, the base's rules and its tip, read through gh:
-    // a base that would let the opener merge unreviewed, or that this clone
-    // is not level with, takes no branch, and nothing is previewed or asked.
-    const unprotected = await refuseUnprotected(opened, { json: options.json === true })
+    // And on GitHub's road, the repository and its base, read through gh: one
+    // this run cannot push to, or a base this clone is not level with, takes
+    // no branch, and nothing is previewed or asked. Rules that let the author
+    // merge alone are said on stderr, and the run goes on (2026-10-01).
+    const unprotected = await refuseUnprotected(opened, {
+      json: options.json === true,
+      ...(options.submit?.notice === undefined ? {} : { notice: options.submit.notice }),
+    })
     if (unprotected !== undefined) return unprotected
   }
   const previewing = {
     ...options,
     ...(opened !== undefined ? { opened } : {}),
     ...(options.submit?.confirm !== undefined ? { confirm: options.submit.confirm } : {}),
+    ...(options.submit?.notice !== undefined ? { notice: options.submit.notice } : {}),
   }
 
   /** What the user said when asked, and what about. See `provenanceOf`. */
@@ -1226,6 +1231,8 @@ async function previewPlan(
     /** The forge `--submit` opened before anything was read; absent, nothing is submitted. */
     readonly opened?: Opened
     readonly confirm?: Confirm
+    /** Where a note line the preflight did not say goes: stderr. */
+    readonly notice?: (line: string) => void
   },
 ): Promise<CommandResult> {
   // Minted once, from the very signature, contexts and bytes the preview is
@@ -1257,6 +1264,7 @@ async function previewPlan(
         opened: options.opened,
         cleared: cleared(),
         render: (status) => renderPreview({ signed, edits, dropped, recheck, status }),
+        ...(options.notice !== undefined ? { notice: options.notice } : {}),
       })
       // `found` is the submission's own: a pull request not opened, or one
       // closed, is a negative answer as a refusal is.
@@ -1333,6 +1341,7 @@ async function previewPlan(
     cleared: cleared(),
     render,
     ...(options.confirm !== undefined ? { confirm: options.confirm } : {}),
+    ...(options.notice !== undefined ? { notice: options.notice } : {}),
   })
   return result
 }
@@ -1389,6 +1398,8 @@ interface Submission {
   readonly opened: Opened
   readonly confirm?: Confirm
   readonly clear: ClearInput
+  /** Where a note line the preflight did not say goes: stderr. */
+  readonly notice?: (line: string) => void
 }
 
 /**
@@ -1460,9 +1471,13 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
       { json: options.json === true },
     )
     if (refused !== undefined) return refused
-    // § 8, items 1 to 5 and the base level: the repository's state, judged where
-    // divergence is, after the configuration and before the Inspector, the first model call.
-    const unprotected = await refuseUnprotected(opened, { json: options.json === true })
+    // § 8 item 1 and the base level: the repository's state, judged where
+    // divergence is, after the configuration and before the Inspector, the
+    // first model call; the note on who may merge, said there too (2026-10-01).
+    const unprotected = await refuseUnprotected(opened, {
+      json: options.json === true,
+      ...(options.submit?.notice === undefined ? {} : { notice: options.submit.notice }),
+    })
     if (unprotected !== undefined) return unprotected
   }
   const contexts = contextsOf(root, snapshot, contents, graph, {
@@ -1479,6 +1494,7 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
           opened,
           clear: { policy: contexts.policy, snapshot, contents },
           ...(options.submit?.confirm !== undefined ? { confirm: options.submit.confirm } : {}),
+          ...(options.submit?.notice !== undefined ? { notice: options.submit.notice } : {}),
         }
   const ending = { ...options, ...(submission !== undefined ? { submission } : {}) }
   const summary = formatSummary(contexts.summary, contexts.vocabulary)
@@ -1679,7 +1695,12 @@ async function renderOutcome(
       const nothing = didNothing(outcome.signed, changed, outcome.recheck)
       if (submission !== undefined && cleared !== undefined) {
         // A program reads --json, and a program is never asked.
-        const { report: submitted, result } = await submit({ opened: submission.opened, cleared, render })
+        const { report: submitted, result } = await submit({
+          opened: submission.opened,
+          cleared,
+          render,
+          ...(submission.notice !== undefined ? { notice: submission.notice } : {}),
+        })
         return {
           text: asJson({ ...report, submission: submitted }),
           found: result.found,
@@ -1699,6 +1720,7 @@ async function renderOutcome(
       cleared,
       render,
       ...(submission.confirm !== undefined ? { confirm: submission.confirm } : {}),
+      ...(submission.notice !== undefined ? { notice: submission.notice } : {}),
     })
     return result
   }

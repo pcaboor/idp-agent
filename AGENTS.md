@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 4777 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 4818 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -65,6 +65,7 @@ number in the same commit as the change.
 **Exit codes:** `0` succeeded — a diff rendered, or a run with nothing to change because
 the repository already declares everything each operation states, the file and fields named,
 or a branch submitted, already submitted, or declined at the confirmation, nothing written
+— on GitHub whatever the base's rules, a note saying when its author may merge it alone
 · `1` the answer is negative — nothing matched, a name was ambiguous (two entities sharing it
 included), a relation holds nothing, two entities are linked by no declared path and reach
 nothing in common (a near miss alone does not count), an entity was asked about its paths
@@ -74,8 +75,8 @@ plan, the repair loop stopped at three attempts, a Backstage catalogue could not
 count bound is answered in part, with the answer's own code, and says so), `--cached` with
 no copy kept that verifies, a submission
 refused — a catalogue that differs from `HEAD`, a plan writing into both repositories, a
-refusal at the moment of writing, git failing, a base on GitHub the rules do not protect, a
-clone not level with GitHub, a closed or reverted pull request, a pull request not opened, a
+refusal at the moment of writing, git failing, a repository on GitHub gh's account cannot
+push to, that is archived or that answers under another name, a clone not level with GitHub, a closed or reverted pull request, a pull request not opened, a
 push refused, a service whose `.idp-agent.yml` names another repository than the one a
 submission goes to — or something failed unexpectedly · `2`
 the arguments were refused — a bad flag, a plan file that is not a plan, a `--repo`, a
@@ -152,7 +153,7 @@ service's catalog-info and its `.idp-agent.yml` on one branch of its own reposit
 | 3 | `init platform` — scaffold, CI, CODEOWNERS, witnesses, `validate` | done |
 | 4 | Preview only — Inspector, Architect, `Plan`, diff; writes nothing | done |
 | 5 | Write + local branch — `ForgeProvider`, atomicity, idempotence | done |
-| 6 | GitHub pull request — the person's git and gh, the base's ruleset, the merge refused | in progress: `idpa protection`, `plan --from … --submit`, `plan "<intent>" --submit`, `init --submit`, `idpa "<phrase>" --submit` |
+| 6 | GitHub pull request — the person's git and gh, the base's ruleset, the merge refused | in progress: `idpa protection`, `plan --from … --submit`, `plan "<intent>" --submit`, `init --submit`, `idpa "<phrase>" --submit`, the pull request opened whatever the base's rules, with a note where its author may merge it alone (6.3.4) |
 | 7 | Polish — Ink TUI, README, asciinema, npm publish | |
 
 The order is imposed by the doctrine: read first, validate before the first write,
@@ -176,8 +177,9 @@ writes thirteen files — the Backstage registration among them — clobbers not
 the ruleset `idpa protection` checks; `idpa protection` (stage 6, slice 6.1), which reads,
 through the person's own gh and with `GET` only, whether the branch a clone tracks on
 github.com keeps a pull request from merging until someone other than its opener approves
-its latest commit — no model, nothing written, and `pnpm demo:github` shows its three
-answers against a fake gh; the
+its latest commit — no model, nothing written, its exit 1 a diagnostic, since a submission
+opens the pull request whatever the rules and says, in a note, when its author may merge it
+alone — and `pnpm demo:github` shows its three answers against a fake gh; the
 read commands and a question over a Backstage catalogue (`backstage-http` slice 1,
 ADR-0011; `pnpm demo:backstage` runs them against a fake on loopback), past its bounds
 answered in part (slice 2, ADR-0013) and kept five minutes for a second run, with
@@ -397,13 +399,18 @@ changing that section first.
 **Authorisation**
 - **The merge is the act of authorisation.** The CLI opens a pull request; it never
   writes to the main branch.
-- **The identity that opens a pull request cannot merge it until someone else has approved
-  the exact commit that would merge, and idpa never submits against a base without those
-  rules.** On GitHub the right to push a branch is the right that merges, so no credential
-  can be scoped out of merging; what refuses the merge is the base's ruleset, which the tool
-  reads before it writes anything and again at the moment of acting — a test asserts the
-  merge *fails*: offline against the fake gh (`tests/unit/merge-refused.test.ts`), live by
-  the owner (stage 6 note, § 10).
+- **idpa never merges and never writes to the base: it opens a pull request, and the base's
+  rules decide who may merge it.** Whether its author may merge it alone is the company's rule,
+  not this tool's; where the rules allow it, idpa says so — `note: on this repository the
+  author may merge without another person's review` — on stderr and in the pull request, and
+  the pull request is opened all the same. Where the rules require someone else's approval of
+  the exact commit that would merge, the identity that opens the pull request cannot merge it:
+  on GitHub the right to push a branch is the right that merges, so no credential can be
+  scoped out of merging, and what refuses the merge is the base's ruleset, which the tool
+  reads before it writes anything and again at the moment of acting; a test asserts that the
+  merge **fails** there: offline against a fake (`tests/unit/merge-refused.test.ts`), live on
+  a throwaway repository by the owner (the stage 6 note, `docs/stage-6-brief.md` §§ 8 and 10,
+  amended 2026-10-01).
 - Any anti-destruction check is repeated engine-side, at the moment of acting.
 
 **Writing**

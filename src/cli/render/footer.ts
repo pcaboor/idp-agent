@@ -1,4 +1,4 @@
-import type { ProtectionVerdict } from '../../core/github/protection.js'
+import type { MergeNote, ProtectionVerdict } from '../../core/github/protection.js'
 import type { Base, LocalRoad, PullRequest, Road } from '../../forge/provider.js'
 import { inertLine } from './plain.js'
 
@@ -35,6 +35,12 @@ export type PreviewStatus =
       readonly olderBase?: string
       /** The contexts merging waits for, as the rules read before the pull request require them. */
       readonly statusChecks?: readonly string[]
+      /**
+       * The note the rules read just before the pull request called for: where
+       * it is `author-may-merge`, merging waits for no approval, and the lines
+       * do not promise one.
+       */
+      readonly note?: MergeNote
     }
   /** `repository` as printed, `github.com/acme/iac`; `reason` the forge's, cleaned. */
   | { readonly kind: 'pushed-without-pull-request'; readonly branch: string; readonly repository: string; readonly reason: string }
@@ -80,22 +86,31 @@ export function localRoadLine(road: LocalRoad): string {
  * The pull request, at the URL the engine built (`pullRequestUrl`, never
  * GitHub's `html_url`), and what merging it waits for: one approval of its
  * latest commit by someone else, and the status checks the rules require —
- * or that none is, so nothing downstream could refuse it (ADR-0012).
+ * or that none is, so nothing downstream could refuse it (ADR-0012). Where
+ * the note is `author-may-merge`, the rules ask for no such approval (the
+ * owner's decision of 2026-10-01), and only the status checks are said.
  */
 export function pullRequestLines(
   pullRequest: PullRequest,
-  verdict: Pick<ProtectionVerdict['reported'], 'statusChecks'>,
+  verdict: Pick<ProtectionVerdict['reported'], 'statusChecks'> & { readonly note?: MergeNote },
 ): string[] {
   const where = `github.com/${one(pullRequest.repository)}`
   const number = `#${String(pullRequest.number)}`
+  const alone = verdict.note === 'author-may-merge'
+  const none = 'No status check is required, so a system downstream could not refuse it (ADR-0012).'
+  const checks = verdict.statusChecks.map(one).join(', ')
   const waits = 'Merging it waits for one approval of its latest commit from someone other than you'
   return [
     pullRequest.state === 'opened'
       ? `Pull request ${number} opened on ${where}: ${pullRequest.url}`
       : `Pull request ${number} is open on ${where}: ${pullRequest.url}`,
     verdict.statusChecks.length === 0
-      ? `${waits}. No status check is required, so a system downstream could not refuse it (ADR-0012).`
-      : `${waits}, and for the status checks ${verdict.statusChecks.map(one).join(', ')}.`,
+      ? alone
+        ? none
+        : `${waits}. ${none}`
+      : alone
+        ? `Merging it waits for the status checks ${checks}.`
+        : `${waits}, and for the status checks ${checks}.`,
   ]
 }
 
@@ -195,6 +210,9 @@ function submittedLines(status: Extract<PreviewStatus, { readonly kind: 'submitt
       ? `${files} · submitted as ${status.branch} on top of ${base.at} · ${base.branch} untouched`
       : `${files} · submitted as ${status.branch} on top of ${older}, an older ${base.branch} (now ${now}; GitHub ` +
         `shows whether it still merges cleanly) · ${base.branch} untouched`,
-    ...pullRequestLines(pullRequest, { statusChecks: status.statusChecks ?? [] }),
+    ...pullRequestLines(pullRequest, {
+      statusChecks: status.statusChecks ?? [],
+      ...(status.note === undefined ? {} : { note: status.note }),
+    }),
   ]
 }

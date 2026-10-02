@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { main } from '../../src/cli/index.js'
+import { MERGE_NOTE } from '../../src/core/github/protection.js'
 import { VERDICT_TOOL } from '../../src/agents/reviewer.js'
 import { REPORT_TOOL } from '../../src/agents/tools/project-tools.js'
 import { PROPOSE_TOOL } from '../../src/agents/tools/propose-tool.js'
@@ -1184,10 +1185,12 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
     heldToGitHub(ran, 'acme/orders-api', ['github.com/acme/iac'])
   }, 30_000)
 
-  it('keeps gh\'s login off the trace and MLflow when the rules refuse plan "<intent>" --submit, in prose and in --json', async () => {
-    // A refusal on the rules comes after the configuration, inside the traced
-    // run, and its text is the trace's output: the two misses that would name
-    // whom gh acts as, each ending the run before any model (§ 8, § 12).
+  it('keeps gh\'s login off the trace and MLflow when the rules let the author merge alone, or refuse the push, on plan "<intent>" --submit, in prose and in --json', async () => {
+    // The preflight comes after the configuration, inside the traced run: the
+    // two misses that would name whom gh acts as (§ 8, § 12). A rule gh's
+    // account bypasses is a note since the owner's decision of 2026-10-01 —
+    // the pull request is opened, the provider reached, and the note said on
+    // stderr — and push access is still the refusal it was, before any model.
     const example = JSON.parse(await readFile(EXAMPLE, 'utf8')) as { intent: string; operations: unknown[] }
     const { project } = await repositories()
     const misses: readonly [string, (clone: GitHubClone) => void][] = [
@@ -1219,22 +1222,39 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
           arrange,
         )
 
-        expect(ran.code, ran.err).toBe(1)
-        expect(ran.toProvider).toEqual([])
-        expect(ran.out).toContain(`missing: ${missing}`)
-        expect(ran.root).toMatchObject({ 'idp.forge.kind': 'github', 'idp.forge.outcome': 'refused' })
+        if (missing === 'rules') {
+          expect(ran.code, ran.err).toBe(0)
+          expect(ran.toProvider.length).toBeGreaterThan(0)
+          expect(ran.err.split('\n').filter((line) => line === MERGE_NOTE)).toHaveLength(1)
+          expect(ran.out).not.toContain(MERGE_NOTE)
+          expect(ran.root).toMatchObject({ 'idp.forge.kind': 'github', 'idp.forge.outcome': 'created' })
+          expect(JSON.stringify(ran.pulls)).toContain(JSON.stringify(MERGE_NOTE).slice(1, -1))
+        } else {
+          expect(ran.code, ran.err).toBe(1)
+          expect(ran.toProvider).toEqual([])
+          expect(ran.out).toContain(`missing: ${missing}`)
+          expect(ran.root).toMatchObject({ 'idp.forge.kind': 'github', 'idp.forge.outcome': 'refused' })
+        }
         expect(ran.toMlflow.length).toBeGreaterThan(0)
-        for (const text of [ran.out, ran.trace, ...ran.toMlflow.map((sent) => JSON.stringify(sent))]) {
+        // The pull request's body and title: the fake records its author, the login, beside them.
+        for (const text of [
+          ran.out,
+          ran.trace,
+          JSON.stringify((ran.pulls as readonly { title: string; body: string }[]).map((pull) => [pull.title, pull.body])),
+          ...ran.toMlflow.map((sent) => JSON.stringify(sent)),
+        ]) {
           for (const secret of [LOGIN, GH_CANARY, KEY]) expect(text).not.toContain(secret)
         }
       }
     }
   }, 60_000)
 
-  it("keeps gh's login off the trace and MLflow when the rules refuse init --submit, naming --local", async () => {
-    // init's refusal on the rules is the same renderer's, with --local offered
-    // (decision 17), inside the traced run like the intent road's: neither of
-    // the two misses that would name whom gh acts as reaches the trace.
+  it("keeps gh's login off the trace and MLflow when the rules let the author merge alone, or refuse the push, on init --submit, naming --local", async () => {
+    // init's refusal on push access is the same renderer's, with --local
+    // offered (decision 17), inside the traced run like the intent road's; a
+    // rule gh's account bypasses opens the service's pull request with the
+    // note (2026-10-01). Neither miss that would name whom gh acts as reaches
+    // the trace, MLflow or the pull request.
     const { project } = await repositories()
     const misses: readonly [string, (clone: GitHubClone) => void][] = [
       [
@@ -1257,21 +1277,59 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
       ],
     ]
     for (const [missing, arrange] of misses) {
+      // Every field FACTS leaves open answered by a flag, so the run that goes on asks nothing.
       const ran = await submittingRun(
-        ['init', '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'prod'],
+        [
+          'init',
+          '--submit',
+          '--iac-repo',
+          'github.com/acme/iac',
+          '--environment',
+          'prod',
+          '--name',
+          'orders-api',
+          '--lifecycle',
+          'production',
+          '--owner',
+          'group:default/tiger',
+        ],
         'MUTATION',
-        [],
+        [
+          {
+            op: 'create-entity',
+            entity: {
+              kind: 'Component',
+              metadata: { name: 'orders-api' },
+              spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
+            },
+          },
+        ],
         arrange,
         { source: project, repository: 'acme/orders-api' },
       )
 
-      expect(ran.code, ran.err).toBe(1)
-      expect(ran.toProvider).toEqual([])
-      expect(ran.out).toContain(`missing: ${missing}`)
-      expect(ran.out).toContain('or add --local to cut the branch in this clone only')
-      expect(ran.root).toMatchObject({ 'idp.forge.kind': 'github', 'idp.forge.outcome': 'refused' })
+      if (missing === 'rules') {
+        expect(ran.code, ran.err).toBe(0)
+        expect(ran.toProvider.length).toBeGreaterThan(0)
+        expect(ran.err.split('\n').filter((line) => line === MERGE_NOTE)).toHaveLength(1)
+        expect(ran.out).toContain('Pull request #1 opened on github.com/acme/orders-api')
+        expect(ran.root).toMatchObject({ 'idp.forge.kind': 'github', 'idp.forge.outcome': 'created' })
+        expect(JSON.stringify(ran.pulls)).toContain(JSON.stringify(MERGE_NOTE).slice(1, -1))
+      } else {
+        expect(ran.code, ran.err).toBe(1)
+        expect(ran.toProvider).toEqual([])
+        expect(ran.out).toContain(`missing: ${missing}`)
+        expect(ran.out).toContain('or add --local to cut the branch in this clone only')
+        expect(ran.root).toMatchObject({ 'idp.forge.kind': 'github', 'idp.forge.outcome': 'refused' })
+      }
       expect(ran.toMlflow.length).toBeGreaterThan(0)
-      for (const text of [ran.out, ran.trace, ...ran.toMlflow.map((sent) => JSON.stringify(sent))]) {
+      // The pull request's body and title: the fake records its author, the login, beside them.
+      for (const text of [
+        ran.out,
+        ran.trace,
+        JSON.stringify((ran.pulls as readonly { title: string; body: string }[]).map((pull) => [pull.title, pull.body])),
+        ...ran.toMlflow.map((sent) => JSON.stringify(sent)),
+      ]) {
         for (const secret of [LOGIN, GH_CANARY, KEY]) expect(text).not.toContain(secret)
       }
     }

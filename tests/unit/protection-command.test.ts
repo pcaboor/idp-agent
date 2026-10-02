@@ -4,7 +4,13 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { main, type MainDeps } from '../../src/cli/index.js'
 import { renderProtection, renderUnprotected } from '../../src/cli/render/protection.js'
 import { configRefusal } from '../../src/core/github/config.js'
-import { judgeProtection, protectionText, type ProtectionVerdict } from '../../src/core/github/protection.js'
+import {
+  MERGE_NOTE,
+  judgeProtection,
+  protectionText,
+  unguardedNote,
+  type ProtectionVerdict,
+} from '../../src/core/github/protection.js'
 import { repositoryAnswer, rulesAnswer, rulesetAnswer } from '../../src/core/github/answers.js'
 import type { GhIdentity, GitHubRoad } from '../../src/forge/provider.js'
 import type { LlmClient } from '../../src/llm/client.js'
@@ -134,8 +140,12 @@ const UNPROTECTED = [
   '  missing: restrict deletions',
   'Add a ruleset on main (Settings → Rules → Rulesets):',
   ...protectionText(),
+  `A submission still opens its pull request here, and says: ${MERGE_NOTE}`,
   'Then run idpa protection again.',
 ]
+
+/** The heading a submission refused on § 8 item 1 opens on: the push itself cannot be made. */
+const CANNOT_TAKE = 'not submitted — github.com/acme/iac cannot take a pull request from this run:'
 
 const lines = (text: string[]): string => `${text.join('\n')}\n`
 
@@ -169,6 +179,9 @@ describe('idpa protection: the rules do not hold', () => {
     expect(ran.out).toContain(
       '  missing: a ruleset: main is protected by classic branch protection only, which idpa does not read\n' +
         'Add a ruleset on main (Settings → Rules → Rulesets):\n',
+    )
+    expect(ran.out).toMatch(
+      new RegExp(`\\nA submission still opens its pull request here, and says: ${MERGE_NOTE}\\nThen run idpa protection again\\.\\n$`),
     )
   })
 
@@ -532,31 +545,84 @@ describe('the blocks, rendered', () => {
     expect(renderProtection(verdict({ push: false }), ROAD, ADA)).toContain('\n  missing: push access: ada cannot push to acme/iac\n')
   })
 
-  it('renders the refusal a submission prints, over the same missing lines', () => {
-    const unprotected = judgeProtection({
+  /** A verdict on § 8 item 1: the repository as GitHub answers it, nothing more read. */
+  const itemOne = (fields: { archived?: boolean; push?: boolean; fullName?: string }): ProtectionVerdict =>
+    judgeProtection({
       expected: ROAD.repository,
-      repository: repositoryAnswer.parse({ full_name: 'acme/iac', archived: false, permissions: { admin: false, push: true } }),
-      rules: [],
+      repository: repositoryAnswer.parse({
+        full_name: fields.fullName ?? 'acme/iac',
+        archived: fields.archived ?? false,
+        permissions: { admin: false, push: fields.push ?? true },
+      }),
       rulesets: new Map(),
-      classic: false,
     })
-    expect(renderUnprotected(unprotected, ROAD)).toBe(
+
+  it('renders the refusal a submission prints on § 8 item 1, under a heading that says why, and no ruleset', () => {
+    const cases: readonly [ProtectionVerdict, string][] = [
+      [itemOne({ archived: true }), '  missing: a repository that is not archived: github.com/acme/iac is'],
+      [itemOne({ push: false }), "  missing: push access: gh's account cannot push to acme/iac"],
       [
-        "not submitted — nothing on github.com/acme/iac's main stops the person who would open this pull request from merging it:",
-        ...UNPROTECTED.slice(1, -1),
-        'Then run this again. Nothing was written.',
-      ].join('\n'),
-    )
+        itemOne({ fullName: 'other/iac' }),
+        "  missing: the remote's name: GitHub answers other/iac, so the repository was renamed or transferred; " +
+          "update the remote's URL",
+      ],
+    ]
+    for (const [verdict, missing] of cases) {
+      const text = renderUnprotected(verdict, ROAD)
+      expect(text).toBe([CANNOT_TAKE, missing, 'Then run this again. Nothing was written.'].join('\n'))
+      expect(text).not.toContain('stops the person who would open this pull request')
+      expect(text).not.toContain('Add a ruleset')
+    }
+  })
+
+  it('ends idpa protection’s exit-1 answer on what a submission says there, the owner’s words for each kind that lets the author merge alone', () => {
+    const shapes: readonly ProtectionVerdict[] = [
+      // No pull request rule; 0 approvals; neither push rule; a deploy key; a bypassed pull request rule.
+      verdict({ rules: [{ type: 'non_fast_forward', ruleset_id: 1 }, { type: 'deletion', ruleset_id: 1 }] }),
+      verdict({
+        rules: [
+          PULL({ required_approving_review_count: 0, require_last_push_approval: true }),
+          { type: 'non_fast_forward', ruleset_id: 1 },
+          { type: 'deletion', ruleset_id: 1 },
+        ],
+      }),
+      verdict({
+        rules: [
+          PULL({ required_approving_review_count: 1 }),
+          { type: 'non_fast_forward', ruleset_id: 1 },
+          { type: 'deletion', ruleset_id: 1 },
+        ],
+      }),
+      verdict({ actors: [{ actor_type: 'DeployKey' }] }),
+      verdict({ bypass: 'always' }),
+    ]
+    for (const shape of shapes) {
+      const text = renderProtection(shape, ROAD, ADA).split('\n')
+      expect(text.slice(-2)).toEqual([
+        `A submission still opens its pull request here, and says: ${MERGE_NOTE}`,
+        'Then run idpa protection again.',
+      ])
+    }
+  })
+
+  it('quotes the base-unguarded line where only force pushes are unguarded, and says neither on § 8 item 1', () => {
+    const forcePushes = renderProtection(
+      verdict({ rules: [PULL({ required_approving_review_count: 1, require_last_push_approval: true }), { type: 'deletion', ruleset_id: 1 }] }),
+      ROAD,
+      ADA,
+    ).split('\n')
+    expect(forcePushes.slice(-2)).toEqual([
+      `A submission still opens its pull request here, and says: ${unguardedNote('main', ['non-fast-forward'])}`,
+      'Then run idpa protection again.',
+    ])
+    expect(forcePushes).not.toContain(`A submission still opens its pull request here, and says: ${MERGE_NOTE}`)
+    const pushless = renderProtection(verdict({ push: false }), ROAD, ADA)
+    expect(pushless).not.toContain('A submission still opens')
+    expect(pushless.split('\n').at(-1)).toBe('Then run idpa protection again.')
   })
 
   it('offers --local on the last line of init --submit\'s refusal, and changes nothing else (decision 17)', () => {
-    const unprotected = judgeProtection({
-      expected: ROAD.repository,
-      repository: repositoryAnswer.parse({ full_name: 'acme/iac', archived: false, permissions: { admin: false, push: true } }),
-      rules: [],
-      rulesets: new Map(),
-      classic: false,
-    })
+    const unprotected = itemOne({ push: false })
     const declarations = renderUnprotected(unprotected, ROAD).split('\n')
     expect(renderUnprotected(unprotected, ROAD, { offerLocal: true })).toBe(
       [

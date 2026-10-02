@@ -8,6 +8,7 @@ import {
   pullRequestUrl,
   type PullRequestInput,
 } from '../../src/core/github/pull-request.js'
+import { MERGE_NOTE, unguardedNote } from '../../src/core/github/protection.js'
 import type { Cleared } from '../../src/core/plan/clear.js'
 import { clearedFor, clone, removeClones } from '../support/forge-fixture.js'
 
@@ -148,6 +149,71 @@ describe('pullRequestBody', () => {
       expect(lines, path).toContain(`  + ${written}`)
       expect(lines, path).toContain(`  ~ ${written}`)
       expect(lines, path).not.toContain(`  + ${path}`)
+    }
+  })
+
+  it('writes no note line when none is asked: the engine’s block of every road as it was', async () => {
+    const change = await real()
+    for (const road of ['from', 'intent', 'phrase', 'init'] as const) {
+      const lines = pullRequestBody(input(change, change.request, road)).body.split('\n')
+      const block = lines.slice(lines.lastIndexOf('---'))
+      expect(block, road).toEqual([
+        '---',
+        '',
+        expect.stringMatching(/^This change was (made|drafted) [^\n]+\.$/),
+        '',
+        `The branch \`${change.branch}\` is named by a digest of its files' paths and bytes: the same change always ` +
+          'names the same branch, and any other change another.',
+        '',
+        CLOSING,
+        '',
+        ENGINE_BLOCK_END,
+      ])
+      expect(lines.some((line) => line.startsWith('note:')), road).toBe(false)
+    }
+  })
+
+  it('puts the note in the engine’s block, one paragraph, after how the change was made and before the provisioning sentence', async () => {
+    const change = await real()
+    for (const road of ['from', 'intent', 'phrase', 'init'] as const) {
+      const without = pullRequestBody(input(change, change.request, road)).body
+      for (const [note, line] of [
+        [{ kind: 'author-may-merge', base: 'main', missing: ['pull-request', 'last-push'] }, MERGE_NOTE],
+        [
+          { kind: 'base-unguarded', base: 'main', missing: ['non-fast-forward', 'bypassable'] },
+          unguardedNote('main', ['non-fast-forward'], 'markdown'),
+        ],
+      ] as const) {
+        const { body } = pullRequestBody({ ...input(change, change.request, road), note })
+        const lines = body.split('\n')
+        const made = lines.findIndex((one) => one.startsWith('This change was '))
+        expect(lines.slice(made + 1, made + 4), `${road} ${note.kind}`).toEqual(['', line, ''])
+        expect(lines.indexOf(CLOSING), `${road} ${note.kind}`).toBeGreaterThan(made + 2)
+        // Nothing else moves: the same body, the note's paragraph taken out.
+        expect(body.replace(`\n${line}\n`, ''), `${road} ${note.kind}`).toBe(without)
+      }
+    }
+  })
+
+  it('writes a base outside the branch grammar as "the base" in the note', async () => {
+    const change = await real()
+    const { body } = pullRequestBody({
+      ...input(change),
+      note: { kind: 'base-unguarded', base: 'main\u202e', missing: ['deletion'] },
+    })
+    expect(body).toContain('note: on this repository no rule on the base that binds the author restricts deletions')
+    expect(body).not.toContain('\u202e')
+  })
+
+  it('writes the base as code in the note, so a branch name cannot mention, link, reference or render', async () => {
+    const change = await real()
+    // Each holds to the branch grammar, and each would mean something to GitHub as prose.
+    for (const base of ['@acme/security', 'fix#12', 'x<details>', 'a<!--b', 'GH-12', 'www.example.com/x', 'a5c3785', '_main_']) {
+      const { body } = pullRequestBody({ ...input(change), note: { kind: 'base-unguarded', base, missing: ['deletion'] } })
+      const line = body.split('\n').find((one) => one.startsWith('note:'))
+      expect(line, base).toBe(`note: on this repository no rule on \`${base}\` that binds the author restricts deletions`)
+      // Outside its code span, the base is nowhere in the body.
+      expect(body.replaceAll(`\`${base}\``, '').includes(base), base).toBe(false)
     }
   })
 

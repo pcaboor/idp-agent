@@ -6,9 +6,18 @@ import {
   type RulesetAnswer,
 } from '../../src/core/github/answers.js'
 import {
+  LONGEST_NOTE,
+  MERGE_NOTE,
   PROTECTION_SETTINGS,
+  consequenceOf,
   judgeProtection,
+  noteLine,
+  noteOf,
   protectionText,
+  refusesPush,
+  unguardedNote,
+  type MergeNote,
+  type Missing,
   type ProtectionInput,
 } from '../../src/core/github/protection.js'
 import type { GitHubRepository } from '../../src/core/github/remote.js'
@@ -428,5 +437,136 @@ describe('PROTECTION_SETTINGS', () => {
       '  advised  · require review from Code Owners',
       '  advised  · the downstream decision as a required status check, once one reports (ADR-0012)',
     ])
+  })
+})
+
+describe('consequenceOf: what a missing rule does to a submission (the owner’s decision of 2026-10-01)', () => {
+  it.each([
+    ['pull-request', 'author-may-merge'],
+    ['approvals', 'author-may-merge'],
+    ['last-push', 'author-may-merge'],
+    ['bypassable', 'base-unguarded'],
+    ['deploy-key', 'author-may-merge'],
+    ['classic-only', 'author-may-merge'],
+    ['non-fast-forward', 'base-unguarded'],
+    ['deletion', 'base-unguarded'],
+    ['archived', 'refused'],
+    ['no-push', 'refused'],
+    ['renamed', 'refused'],
+  ] as const)('%s is %s', (missing, consequence) => {
+    expect(consequenceOf(missing)).toBe(consequence)
+  })
+})
+
+describe('noteOf and refusesPush: the one note a verdict carries', () => {
+  it('notes author-may-merge over base-unguarded when both are missing', () => {
+    const verdict = judged({ rules: [rule('non_fast_forward', 1), rule('deletion', 1)], rulesets: [ruleset(1)] })
+    expect(verdict.missing).toEqual(['pull-request', 'last-push'])
+    const nothing = judged({ rules: [], classic: false })
+    expect(nothing.missing).toEqual(['pull-request', 'last-push', 'non-fast-forward', 'deletion'])
+    expect(noteOf(nothing)).toBe('author-may-merge')
+    expect(refusesPush(nothing)).toBe(false)
+  })
+
+  it('notes nothing on a verdict that holds', () => {
+    const verdict = judged({ rules: protectedBy(1), rulesets: [ruleset(1)] })
+    expect(noteOf(verdict)).toBeUndefined()
+    expect(refusesPush(verdict)).toBe(false)
+  })
+
+  it.each([
+    [{ archived: true }],
+    [{ push: false }],
+    [{ full_name: 'other/iac' }],
+  ])('refuses, and notes nothing, on any item-1 kind (%o)', (fields) => {
+    const verdict = judged({ repository: repository(fields), rules: [], classic: false })
+    expect(refusesPush(verdict)).toBe(true)
+    expect(noteOf(verdict)).toBeUndefined()
+  })
+
+  it('notes base-unguarded, never author-may-merge, where a binding pull request rule requires another person’s approval and only a bypassed ruleset blocks force pushes', () => {
+    const forcePushes = judged({
+      rules: [pullRequest(1), rule('deletion', 1), rule('non_fast_forward', 2)],
+      rulesets: [ruleset(1), ruleset(2, 'always')],
+    })
+    expect(forcePushes.missing).toEqual(['non-fast-forward', 'bypassable'])
+    expect(noteOf(forcePushes)).toBe('base-unguarded')
+    const deletions = judged({
+      rules: [pullRequest(1), rule('non_fast_forward', 1), rule('deletion', 2)],
+      rulesets: [ruleset(1), ruleset(2, 'always')],
+    })
+    expect(deletions.missing).toEqual(['deletion', 'bypassable'])
+    expect(noteOf(deletions)).toBe('base-unguarded')
+  })
+
+  it('notes author-may-merge where the bypassed ruleset supplies the pull request rule', () => {
+    const verdict = judged({
+      rules: [pullRequest(2), rule('non_fast_forward', 1), rule('deletion', 1)],
+      rulesets: [ruleset(1), ruleset(2, 'always')],
+    })
+    expect(verdict.missing).toEqual(['pull-request', 'last-push', 'bypassable'])
+    expect(noteOf(verdict)).toBe('author-may-merge')
+  })
+
+  it('notes a deploy key it can see as author-may-merge, and classic protection alone too', () => {
+    const deployKey = judged({ rules: protectedBy(1), rulesets: [ruleset(1, 'never', [{ actor_type: 'DeployKey', actor_id: 3 }])] })
+    expect(deployKey.missing).toEqual(['deploy-key'])
+    expect(noteOf(deployKey)).toBe('author-may-merge')
+    expect(noteOf(judged({ rules: [], classic: true }))).toBe('author-may-merge')
+  })
+})
+
+describe('the note’s lines', () => {
+  it('says the owner’s words, and names in the base-unguarded line exactly the rules missing', () => {
+    expect(MERGE_NOTE).toBe("note: on this repository the author may merge without another person's review")
+    expect(noteLine('author-may-merge', 'main', ['pull-request'])).toBe(MERGE_NOTE)
+    expect(unguardedNote('main', ['non-fast-forward', 'bypassable'])).toBe(
+      'note: on this repository no rule on main that binds the author blocks force pushes',
+    )
+    expect(unguardedNote('main', ['deletion'])).toBe(
+      'note: on this repository no rule on main that binds the author restricts deletions',
+    )
+    expect(unguardedNote('main', ['non-fast-forward', 'deletion', 'bypassable'])).toBe(
+      'note: on this repository no rule on main that binds the author blocks force pushes or restricts deletions',
+    )
+    expect(noteLine('base-unguarded', 'trunk', ['deletion'])).toBe(unguardedNote('trunk', ['deletion']))
+    // A base outside the branch grammar is never written: a bidi override, a newline.
+    expect(unguardedNote('main\u202e', ['deletion'])).toBe(
+      'note: on this repository no rule on the base that binds the author restricts deletions',
+    )
+    expect(unguardedNote('main\nnote: forged', ['deletion'])).toContain('on the base that')
+  })
+
+  it('writes the base as code in the pull request’s body, so a branch name cannot mention, link, reference or render', () => {
+    expect(unguardedNote('main', ['deletion'], 'markdown')).toBe(
+      'note: on this repository no rule on `main` that binds the author restricts deletions',
+    )
+    expect(noteLine('base-unguarded', '@acme/security', ['non-fast-forward'], 'markdown')).toBe(
+      'note: on this repository no rule on `@acme/security` that binds the author blocks force pushes',
+    )
+    // stderr is not Markdown: the same words, the base as it is.
+    expect(unguardedNote('@acme/security', ['non-fast-forward'])).toBe(
+      'note: on this repository no rule on @acme/security that binds the author blocks force pushes',
+    )
+    expect(noteLine('author-may-merge', '@acme/security', ['pull-request'], 'markdown')).toBe(MERGE_NOTE)
+    // A backtick would close the span: the base is "the base", in both forms, so their words agree.
+    for (const form of ['text', 'markdown'] as const) {
+      expect(unguardedNote('a`b', ['deletion'], form), form).toBe(
+        'note: on this repository no rule on the base that binds the author restricts deletions',
+      )
+    }
+  })
+
+  it('checks the body’s bound with the longest line', () => {
+    const base = 'a'.repeat(255)
+    const notes: readonly MergeNote[] = ['author-may-merge', 'base-unguarded']
+    const kinds: readonly Missing[] = ['non-fast-forward', 'deletion', 'bypassable', 'pull-request']
+    const subsets = kinds.reduce<Missing[][]>((all, kind) => [...all, ...all.map((some) => [...some, kind])], [[]])
+    const lengths = notes.flatMap((note) =>
+      subsets.flatMap((missing) =>
+        (['text', 'markdown'] as const).map((form) => Buffer.byteLength(noteLine(note, base, missing, form), 'utf8')),
+      ),
+    )
+    expect(Buffer.byteLength(LONGEST_NOTE, 'utf8')).toBe(Math.max(...lengths))
   })
 })

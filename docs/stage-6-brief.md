@@ -622,6 +622,11 @@ logged in to github.com" (§ 9).
 
 ## 8. What the tool checks at run time
 
+*Amended 2026-10-01 by the owner: the pull request is always opened; where the rules below
+are missing, the run says so in one note and does not refuse (stage 6 plan, Task 6.3.4).
+Decisions 1, 5 and 7 are amended accordingly; the section below is the record of
+2026-09-30.*
+
 Design §7.2 says that from stage 6 the tool **verifies** the branch protection it prints,
 "including a live check that the supplied token can open a request but cannot merge one — and
 refuses to report success until that check passes" (`docs/design.md:1027-1030`). This section
@@ -1428,6 +1433,11 @@ side by side, the second to merge rebasing a few lines.
   test's pull request carries one.
 
 ## 18. The owner's answers (2026-09-30)
+
+*Amended 2026-10-01 by the owner: the pull request is always opened; where the rules below
+are missing, the run says so in one note and does not refuse (stage 6 plan, Task 6.3.4).
+Decisions 1, 5 and 7 are amended accordingly; the section below is the record of
+2026-09-30.*
 
 Every decision below is settled. 1, 2, 3, 4, 7 and 21 are the owner's own words or choices;
 the others take this note's recommendation, rewritten where the first draft assumed a
