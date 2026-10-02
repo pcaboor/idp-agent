@@ -1147,6 +1147,13 @@ four gates and no Reviewer. `idpa "<phrase>" --submit` submits a change as `plan
 --submit` does, the forge, gh and the base's rules read before the Supervisor; a question
 with `--submit` is refused (stage 6).
 
+At a terminal, a change previewed without `--submit` ends on the same question (2026-10-01):
+the engine reads what `--submit` would read before it asks — the road, gh, the base's rules,
+the clone level with GitHub — after the last model call, and asks only when it could do what it
+says; otherwise it says in one line why no pull request is proposed, and the preview stands.
+The question is the engine's; no model writes it, and no agent holds a tool that pushes. A run
+with no terminal is never asked, and submits only with `--submit`.
+
 The two `--repo` flags on this page name two different repositories, and the difference is
 the whole reason the flag exists. `plan --repo` is the **declarations** repository, which
 the preview is decided against (§ 4.4), and standing in it, `IDP_REPO` or the personal
