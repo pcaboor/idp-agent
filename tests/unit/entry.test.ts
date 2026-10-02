@@ -885,3 +885,167 @@ describe('idpa "<phrase>" --submit', () => {
     expect(JSON.parse(out)).toMatchObject({ submission: { outcome: 'created', pushed: true, pullRequest: { number: 1 } } })
   })
 })
+
+/**
+ * The proposal on the phrase's change road (the owner's decision of
+ * 2026-10-01): the Supervisor's `MUTATION` sends the phrase down `plan
+ * "<intent>"`'s road, and at a terminal the diff ends on the engine's
+ * question, after the last model call — the Supervisor's word included. A
+ * question is answered and proposes nothing. `propose` stands for the
+ * terminal, as `proposal.test.ts` explains.
+ */
+describe('idpa "<phrase>" at a terminal, without --submit', () => {
+  afterAll(removeClones)
+
+  const watching = (fake: FakeGitHub, inner: LlmClient) => {
+    const log: string[] = []
+    const gh: GhProcess = async (argv, options) => {
+      log.push(`gh ${argv.join(' ')}`)
+      return fake.process(argv, options)
+    }
+    const client: LlmClient = {
+      generate: async (request) => {
+        log.push(`model ${request.agent}`)
+        return inner.generate(request)
+      },
+    }
+    return { log, gh, client }
+  }
+
+  it('proposes after a change’s diff, and opens the pull request on y', async () => {
+    const clone = await githubClone()
+    const project = await application()
+    const { log, gh, client } = watching(clone.gh, changing())
+    const asked: string[] = []
+
+    const { code, out, err } = await run([INTENT, '--repo', clone.repo, '--project', project], {
+      env: clone.env,
+      gh,
+      client,
+      ask: answering('read'),
+      propose: async (summary) => {
+        log.push('proposed')
+        asked.push(summary.branch)
+        return true
+      },
+    })
+
+    expect(code, err).toBe(0)
+    expect(err).toMatch(/^· mutation$/m)
+    expect(asked).toHaveLength(1)
+    expect(out).toContain('Pull request #1 opened on github.com/acme/iac: https://github.com/acme/iac/pull/1')
+    // D4's words for a phrase: the road the forge was opened for.
+    expect(clone.gh.state.pulls?.[0]?.body).toContain('This change was drafted by a model from a phrase idpa took for a change')
+    // The Supervisor, then the agents, then the reads, the question, then the one POST.
+    const supervisor = log.indexOf('model supervisor')
+    const reviewed = log.lastIndexOf('model reviewer')
+    const firstGh = log.findIndex((line) => line.startsWith('gh '))
+    const proposed = log.indexOf('proposed')
+    const posted = log.findIndex((line) => line.includes('POST'))
+    expect(supervisor).toBe(0)
+    expect(firstGh).toBeGreaterThan(reviewed)
+    expect(proposed).toBeGreaterThan(firstGh)
+    expect(posted).toBeGreaterThan(proposed)
+    expect(log.filter((line) => line.includes('POST'))).toHaveLength(1)
+  })
+
+  it('answers a question and proposes nothing', async () => {
+    const clone = await githubClone()
+    const inner = scripted({
+      supervisor: [saying('QUESTION')],
+      analyst: [turnCalling('answer', { outcome: 'nothing' })],
+    })
+    const { log, gh, client } = watching(clone.gh, inner)
+    let asked = 0
+
+    const { code, err } = await run(['which databases are in prod?', '--repo', clone.repo], {
+      env: clone.env,
+      gh,
+      client,
+      propose: async () => {
+        asked += 1
+        return true
+      },
+    })
+
+    // `nothing` matched: a negative answer, as `ask` gives it.
+    expect(code, err).toBe(1)
+    expect(asked).toBe(0)
+    expect(agentsOf(inner)).toEqual(['supervisor', 'analyst'])
+    expect(log.filter((line) => line.startsWith('gh '))).toEqual([])
+    expect(err).not.toContain('no pull request proposed')
+    expect(clone.gh.state.pulls ?? []).toEqual([])
+  })
+
+  it('says the note before the question where the author may merge alone', async () => {
+    const clone = await githubClone()
+    unprotect(clone.gh)
+    const log: string[] = []
+    const out: string[] = []
+
+    const code = await main([INTENT, '--repo', clone.repo], {
+      env: clone.env,
+      gh: clone.gh.process,
+      client: changing(),
+      ask: answering('read'),
+      propose: async (summary) => {
+        log.push('proposed')
+        expect(summary.github?.authorMayMergeAlone).toBe(true)
+        return true
+      },
+      out: (chunk) => void out.push(chunk),
+      err: (chunk) => void log.push(`err ${chunk}`),
+    })
+
+    expect(code, log.join('')).toBe(0)
+    const noted = log.indexOf(`err ${MERGE_NOTE}\n`)
+    expect(noted).toBeGreaterThan(-1)
+    expect(log.filter((line) => line === `err ${MERGE_NOTE}\n`)).toHaveLength(1)
+    expect(noted).toBeLessThan(log.indexOf('proposed'))
+    expect(out.join('')).toContain('Pull request #1 opened on github.com/acme/iac: https://github.com/acme/iac/pull/1')
+    expect(clone.gh.state.pulls?.[0]?.body.split('\n')).toContain(MERGE_NOTE)
+  })
+
+  it('says why no pull request is proposed, and the preview stands at exit 0', async () => {
+    const clone = await githubClone()
+    clone.gh.logout()
+    let asked = 0
+
+    const { code, out, err } = await run([INTENT, '--repo', clone.repo], {
+      env: clone.env,
+      gh: clone.gh.process,
+      client: changing(),
+      ask: answering('read'),
+      propose: async () => {
+        asked += 1
+        return true
+      },
+    })
+
+    expect(code, err).toBe(0)
+    expect(asked).toBe(0)
+    expect(err).toMatch(/^no pull request proposed — main tracks github\.com\/acme\/iac, and gh is not logged in/m)
+    expect(out).toMatch(/^2 files · nothing written$/m)
+  })
+
+  it('sends the Supervisor, and every agent after it, the bytes it sends with no terminal', async () => {
+    const clone = await githubClone()
+    const project = await application()
+    const unattended = changing()
+    await run([INTENT, '--repo', clone.repo, '--project', project], { env: clone.env, client: unattended, ask: answering('read') })
+    const attended = changing()
+    const { code, out, err } = await run([INTENT, '--repo', clone.repo, '--project', project], {
+      env: clone.env,
+      gh: clone.gh.process,
+      client: attended,
+      ask: answering('read'),
+      propose: async () => true,
+    })
+
+    expect(code, err).toBe(0)
+    expect(out).toContain('Pull request #1 opened on github.com/acme/iac')
+    expect(agentsOf(attended)).toEqual(['supervisor', 'inspector', 'architect', 'reviewer'])
+    expect(JSON.stringify(attended.seen)).toBe(JSON.stringify(unattended.seen))
+    expect(JSON.stringify(attended.seen)).not.toContain('github.com')
+  })
+})

@@ -40,6 +40,8 @@ a phrase, prints a question's verified block without the model's commentary, and
 does nothing and says nothing. The refusals name
 `idpa`, which is what was typed, and the source line names `--demo` as the question's.
 `ask` still declines a change, and says `run it as idpa "<phrase>" to preview the plan`.
+At a terminal, without `--submit`, a change's diff ends on the engine's proposal (below), which
+`main` builds inside `change`, so a question never meets one.
 `tests/unit/entry.test.ts` holds both roads.
 
 **Commands.** `runGraph(graph, options)` and `runShow(graph, query)` take an `EntityGraph`
@@ -211,8 +213,8 @@ matches nothing, an ambiguous name, a relation that holds nothing, or a reposito
 not conform — and a model call that failed, in the one line `llm/failures.ts` wrote for it),
 `EXIT.badUsage` is 2 (the arguments were refused, or no model, no key or no usable
 `IDP_TIMEOUT` or `IDP_SUPERVISOR_MODEL` is configured), `EXIT.unsupported` is 3 (understood,
-and this build will not act on it), `EXIT.interrupted` is 130 (Ctrl-C at a question or at
-`--submit`'s confirmation, `InterruptedError`; Ctrl-D stays a decline). Only `cli/index.ts` turns `CommandResult.found`
+and this build will not act on it), `EXIT.interrupted` is 130 (Ctrl-C at a question, at
+`--submit`'s confirmation or at a proposal, `InterruptedError`; Ctrl-D stays a decline). Only `cli/index.ts` turns `CommandResult.found`
 into an exit code — a command states the fact and stays free of the process — and `bin.ts`
 assigns it to `process.exitCode`.
 
@@ -454,6 +456,27 @@ once per forge and base commit, so the phrase road's earlier read (6.3.3) is not
 twice — before the Inspector, the first model call. The re-check, the push and the pull
 request are `forge.submit`'s, reached through `submit()` only after the Reviewer; a
 question or a stop never reaches it, and reads nothing more of GitHub.
+
+**The proposal** (6.3.5, the owner's decision of 2026-10-01). Without `--submit`, at a
+terminal, `main` hands `runIntent` a `Proposal` — on the intent road beside where it would
+build `submit`, on the phrase's inside `change` — whose `confirm` is `proposeOf`'s: the
+injected `MainDeps.propose`, else `confirmOnTerminal(…, { discard: true })` only when stdin,
+stdout and stderr are each a TTY and no sink was injected, and never with `--json`. A
+separate seam from `confirmOf`, which reads stdin alone: with `--submit` the consent was typed
+on the command line, and here the `y` is the only one, so the diff must reach the screen the
+question is on, and `discardTypedAhead` reads away what was typed while the models ran (raw
+mode, until 50 ms quiet, at most 500 ms; a Ctrl-C among it is `InterruptedError`). Nothing of
+it runs before the Reviewer: `renderOutcome`, on a `planned` outcome that changes a byte,
+clears the plan, then `openToPropose` — `openForSubmission`, the road, `refuseOtherRepository`,
+`refuseDivergence`, `refuseUnprotected` — and `submit` with `proposal`, which asks `--submit`'s
+question byte for byte. Each refusal on the way, a submission recognised refused or closed,
+and GitHub failing to answer recognition's read, is said as one `no pull request proposed — …`
+line (`unproposedLine`; `--submit`'s offer of `--local` made `--submit --local`) and the preview
+stands at exit 0; one already submitted is named under the whole preview. The `submitting to`
+line and the note are held (`Proposable.held`) and said just before the question, never on a run
+that proposes nothing. A traced run's root
+carries `idp.forge.proposed`: `true` where the question was put, `false` where the line was
+said. No model writes the question, no prompt changed for it, and no agent reaches `forge/`.
 
 `plan "<intent>" --submit` moves the forge's opening earlier still: `main` opens it before the
 model is configured, so a directory that cannot take a branch is an argument error even with

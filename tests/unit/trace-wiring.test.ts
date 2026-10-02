@@ -12,6 +12,8 @@ import type { AgentName, GenerateResult, LlmClient } from '../../src/llm/client.
 import { disagreements, memorySink, onlyTrace, skeletonOf } from '../support/trace.js'
 import { confirmingEnvironment } from '../support/ask.js'
 import { committed } from '../support/git.js'
+import { removeClones } from '../support/forge-fixture.js'
+import { githubClone } from '../support/github-fixture.js'
 
 const FIXTURES = path.resolve(import.meta.dirname, '../../fixtures/si-demo')
 
@@ -46,6 +48,7 @@ const ask = async (deps: MainDeps = {}): Promise<{ code: number; out: string; er
 const dirs: string[] = []
 afterEach(async () => {
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
+  await removeClones()
 })
 
 describe('tracing an agent-backed run', () => {
@@ -494,6 +497,87 @@ describe('tracing a submission', () => {
       'idp.exit_code': 0,
     })
   })
+
+  it('puts idp.forge.proposed on the root of a run that proposed', async () => {
+    // At a terminal, without --submit (2026-10-01): `propose` stands for the terminal.
+    const clone = await githubClone()
+    const sink = memorySink()
+
+    const { code, err } = await running(['plan', INTENT, '--repo', clone.repo], {
+      client: changing(),
+      env: clone.env,
+      gh: clone.gh.process,
+      cwd: await scratch(),
+      propose: async () => true,
+      traceSinks: [sink],
+    })
+
+    expect(code, err).toBe(0)
+    expect(onlyTrace(sink).spans[0]?.attributes).toMatchObject({
+      'idp.forge.proposed': true,
+      'idp.forge.kind': 'github',
+      'idp.forge.outcome': 'created',
+      'idp.forge.pull_request': 1,
+    })
+  }, 30_000)
+
+  it('puts idp.forge.proposed on the root of a run whose proposal was declined: the question was put', async () => {
+    const clone = await githubClone()
+    const sink = memorySink()
+
+    const { code, err } = await running(['plan', INTENT, '--repo', clone.repo], {
+      client: changing(),
+      env: clone.env,
+      gh: clone.gh.process,
+      cwd: await scratch(),
+      propose: async () => false,
+      traceSinks: [sink],
+    })
+
+    expect(code, err).toBe(0)
+    expect(onlyTrace(sink).spans[0]?.attributes).toMatchObject({
+      'idp.forge.proposed': true,
+      'idp.forge.kind': 'github',
+      'idp.forge.outcome': 'declined',
+    })
+  }, 30_000)
+
+  it('puts idp.forge.proposed: false, and nothing else of the forge, on the root of a run that said why it did not', async () => {
+    const clone = await githubClone()
+    clone.gh.logout()
+    const sink = memorySink()
+
+    const { code, err } = await running(['plan', INTENT, '--repo', clone.repo], {
+      client: changing(),
+      env: clone.env,
+      gh: clone.gh.process,
+      cwd: await scratch(),
+      propose: async () => true,
+      traceSinks: [sink],
+    })
+
+    expect(code, err).toBe(0)
+    expect(err).toContain('no pull request proposed — ')
+    const root = onlyTrace(sink).spans[0]?.attributes ?? {}
+    expect(root['idp.forge.proposed']).toBe(false)
+    expect(Object.keys(root).filter((key) => key.startsWith('idp.forge.'))).toEqual(['idp.forge.proposed'])
+  }, 30_000)
+
+  it('puts no idp.forge.proposed on a run that was not proposed', async () => {
+    const clone = await githubClone()
+    const sink = memorySink()
+
+    const { code } = await running(['plan', INTENT, '--repo', clone.repo], {
+      client: changing(),
+      env: clone.env,
+      gh: clone.gh.process,
+      cwd: await scratch(),
+      traceSinks: [sink],
+    })
+
+    expect(code).toBe(0)
+    expect(Object.keys(onlyTrace(sink).spans[0]?.attributes ?? {}).filter((key) => key.startsWith('idp.forge.'))).toEqual([])
+  }, 30_000)
 })
 
 describe('what the root says a run printed', () => {

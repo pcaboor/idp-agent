@@ -15,7 +15,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 4818, no API key" src="https://img.shields.io/badge/tests-4818%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 4880, no API key" src="https://img.shields.io/badge/tests-4880%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -198,7 +198,8 @@ branch, `idp-agent/…`, from `HEAD`, and moves nothing else. In a clone whose b
 one on github.com, that branch is pushed with your git and a pull request opened with your
 gh, and `--submit --local` keeps it in the clone; a directory that cannot take the branch is
 refused before any model is paid, and a question put to `--submit` is refused after the
-Supervisor's one word ([details](#commands)). The CLI reads its environment and never loads a
+Supervisor's one word ([details](#commands)). Without `--submit`, at a terminal, the diff
+ends on the same question, and your `y` opens the pull request. The CLI reads its environment and never loads a
 `.env` file: [`.env.example`](.env.example) lists every variable it reads, for
 `node --env-file=.env dist/cli/bin.js "<question>" --demo` from the clone. For a change,
 stand in the declarations repository and name the clone by path —
@@ -446,7 +447,11 @@ With `--submit`, a change is submitted as `plan "<intent>" --submit` submits it 
 declarations repository, the road and gh read before a catalogue or a model, the
 repository and the base's rules before the Supervisor — and a question is refused after the Supervisor's one word,
 exit 3, nothing answered and nothing written; `--submit --demo` is refused, since the demo
-SI is never written. `ask` and `plan` below force a road: `plan` previews without classifying, and `ask`
+SI is never written. Without `--submit`, at a terminal, a change's diff ends on the engine's
+proposal: the very question `--submit` asks, put after the last model call once the engine
+has read what `--submit` reads; on your `y` it opens the pull request and prints its URL, and
+where it could not, one `no pull request proposed — …` line on stderr says why and the
+preview stands. A script, a pipe or `--json` is never asked. `ask` and `plan` below force a road: `plan` previews without classifying, and `ask`
 classifies and only answers, declining a change.
 
 ```text

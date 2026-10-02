@@ -1,6 +1,6 @@
 # Stage 6 — a GitHub pull request, with the person's own git and gh
 
-**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2 built ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3 built ([#131](https://github.com/pcaboor/idp-agent/pull/131)); 6.3.4 built ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5 and 6.3.6 planned (the owner's decisions of 2026-10-01, before 6.4); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
+**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2 built ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3 built ([#131](https://github.com/pcaboor/idp-agent/pull/131)); 6.3.4 built ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5 built ([#134](https://github.com/pcaboor/idp-agent/pull/134)); 6.3.6 planned (the owner's decisions of 2026-10-01, before 6.4); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
 § 19 (Q1–Q4) were settled on 2026-09-30, each as recommended, and this plan takes them as
 given; so were the four questions the plan itself asked, the same day ([Questions for the
 owner](#questions-for-the-owner)). Fourteen stacked pull requests (eleven at first; 6.3.4 to 6.3.6 were added on 2026-10-01): thirteen, 6.1.1 to 6.4.2, then 6.4.3, the owner's step: every tape
@@ -6888,10 +6888,10 @@ does:
 |---|---|---|
 | 1 | `renderOutcome` reaches a `planned` outcome with a diff that changes a byte, no `--submit`, no `--json`, and a `propose` handed in | the preview, as today |
 | 2 | `clearPlan` | `no pull request proposed — <its first reason>` |
-| 3 | `openForSubmission(root, 'declarations', { route, … })`: the local forge, the road, the configuration keys, gh's identity; the `submitting to …` line on a GitHub road | a `ForgeInputError` or a `GitHubAnswerError`: `no pull request proposed — <its first line>` |
+| 3 | `openForSubmission(root, 'declarations', { route, … })`: the local forge, the road, the configuration keys, gh's identity; the `submitting to …` line on a GitHub road, held until step 6 puts the question (as built) | a `ForgeInputError` or a `GitHubAnswerError`: `no pull request proposed — <its first line>` |
 | 4 | the road | a local road: `no pull request proposed — <why>` (below) |
 | 5 | `refuseOtherRepository` (with an inspected project), `refuseDivergence`, `refuseUnprotected` (6.3.4: item 1 and the base level only; the note said here) | `no pull request proposed — <the refusal's first line>` |
-| 6 | `submit({ …, confirm, proposal })`: recognition, then the question | a recognised refusal or a closed pull request: `no pull request proposed — <its reason>`; already submitted: the preview, then its closing lines, not asked |
+| 6 | `submit({ …, confirm, proposal })`: recognition, then the held lines, then the question | a recognised refusal, a closed pull request, or GitHub failing to answer recognition's read (as built): `no pull request proposed — <its reason>`; already submitted: the preview, then its closing lines, not asked |
 | 7 | the person's answer | `n`, an empty line or Ctrl-D: declined, exit 0; Ctrl-C: exit 130 |
 | 8 | step 8 to step 11, the forge's, after `y` | as `--submit`: exit 1 on a refusal at the moment of acting |
 
@@ -7047,15 +7047,16 @@ injects a confirmation for `--submit` never meets a proposal it did not ask for.
   reads `no pull request proposed — github.com/acme/iac cannot take a pull request from this run:
   missing: push access: gh's account cannot push to acme/iac`; or, e.g. `no pull request proposed — main tracks github.com/acme/iac, and gh is not
   logged in to github.com, so idpa cannot read the rules that keep a pull request from merging
-  unreviewed. Run \`gh auth login --hostname github.com\`, then run this again; or add --local to
-  cut the branch in this clone only.`
+  unreviewed. Run \`gh auth login --hostname github.com\`, then run this again; or add --submit
+  --local to cut the branch in this clone only.` (as built: `--submit`'s offer of `--local` is made
+  `--submit --local`, since `--local` alone is refused without `--submit`)
 - the question: `questionOf`'s, unchanged (6.3.4's tail where the author may merge alone).
 
 Every `<…>` passes `inertLine`. `idp.forge.proposed`: `true` on a run that put the question (its
 outcome `created`, `declined`, or what step 8 to 11 answered), `false` on a run that said
 `no pull request proposed`, absent where nothing was proposed or submitted; never a login.
 
-- [ ] **Step 1: Design §7.4 first (its own commit)**
+- [x] **Step 1: Design §7.4 first (its own commit)**
 
 `docs/design.md` §7.4 step 7 gains, after the confirmation's paragraph:
 
@@ -7073,7 +7074,7 @@ git add docs/design.md
 git commit -m "docs(design): a change previewed at a terminal ends on the engine's proposal"
 ```
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 `tests/unit/proposal.test.ts` (new): `unproposedLine` over each `LocalRoad['why']` but `asked`
 (`--local` is refused without `--submit`, so `asked` never reaches it: the test asserts it throws),
@@ -7275,7 +7276,7 @@ provider request holds `github.com`, the login or the canary, and the trace's ro
 reads GitHub, so no question is asked, no pull request is opened and no line is said; the new
 exports do not exist.
 
-- [ ] **Step 3: Run them to verify they fail**
+- [x] **Step 3: Run them to verify they fail**
 
 ```bash
 df -h "$TMPDIR"
@@ -7286,7 +7287,7 @@ pnpm vitest run tests/unit/trace-wiring.test.ts tests/contract/key-reach.test.ts
 Expected: FAIL — the missing exports, `propose` an unknown key of `MainDeps` (a type error the
 typecheck reports, and at run time a preview that never asks).
 
-- [ ] **Step 4: `submit.ts`**
+- [x] **Step 4: `submit.ts`**
 
 `openToPropose`: `openForSubmission(root, 'declarations', { env, gh, notice, local: false, route })`
 inside a `try` whose `catch` turns a `ForgeInputError` or a `GitHubAnswerError` into `{ why:
@@ -7308,7 +7309,7 @@ true } }` after `proposal.notice(unproposedLine({ why: 'refused', line: <its rea
 of `submitting` moves, so `--submit` is unchanged byte for byte (its tests unchanged).
 `submit()` adds `'idp.forge.proposed': true` to the attributes it returns when `proposal` is set.
 
-- [ ] **Step 5: `plan.ts`**
+- [x] **Step 5: `plan.ts`**
 
 `IntentOptions.propose`. `runIntent` throws when handed both `submit` and `propose` (`main` never
 hands both; a test asserts the throw). `renderOutcome`'s options gain
@@ -7339,7 +7340,7 @@ In the human path of a `planned` outcome:
 
 `renderOutcome`'s other branches are untouched: a question, a stop and `--json` never propose.
 
-- [ ] **Step 6: `main`**
+- [x] **Step 6: `main`**
 
 `MainDeps.propose`; `proposeOf`, `Terminals` and `discardTypedAhead` beside `confirmOf`;
 `confirmOnTerminal` gains its `discard` option (left out, as `confirmOf` calls it, it behaves byte
@@ -7354,7 +7355,7 @@ and its sentence "None of them writes, and neither do a phrase, plan and init wi
 (`index.ts:331-332`) becomes "None of them writes, and neither do a phrase, plan and init without
 --submit, unless you answer y to the proposal a change previewed at a terminal ends on."
 
-- [ ] **Step 7: The documents this task makes true**
+- [x] **Step 7: The documents this task makes true**
 
 - `AGENTS.md`: *The trust boundary* — "`plan … --submit` cuts the branch" gains "and at a terminal a
   change previewed without it ends on the engine's proposal, the same question; the person's `y`
@@ -7401,7 +7402,58 @@ forge/ at run time* together with *agents/ reaches no disk, transitively*: the q
 forge and the launchers stay in `cli/`, `forge/` and `process/`, and `plan.ts` imports `submit.ts`
 as it does today.
 
-- [ ] **Step 8: Checks**
+**As built (6.3.5), where the code led.**
+- *Every read of `openToPropose` is in its `try`*, not only `openForSubmission`: the preflight
+  reads GitHub too, and a `GitHubAnswerError` there is, by the plan's own reading, why nothing is
+  proposed — the preview stands at exit 0 rather than ending on exit 1 after a model call. A
+  `GitError` or any other error is still thrown (*throws what is not a refusal*, a gh process that
+  throws a `TypeError`).
+- *`reasonOf` joins every indented line* under a heading that ends on `:`, not only the `missing:`
+  lines: a divergence's paths are indented the same way (`  catalog/…`), and a heading with nothing
+  after its colon would say nothing. A line that is not indented ends it, so the ruleset to add and
+  `Then run this again` never reach the line (*joins § 8 item 1's missing lines to its heading, and
+  names no login*; *answers a repository whose working tree is not HEAD as why nothing is
+  proposed*).
+- *`idp.forge.proposed`* is `true` only where the question was put (asked, then `created`,
+  `declined` or what steps 8 to 11 answered), `false` where a `no pull request proposed` line was
+  said — before the forge (with no other `idp.forge.*`) or for a submission recognised refused or
+  closed (beside its forge attributes) — and absent on a submission recognised as already made,
+  which was neither proposed nor declined: `submit` returns it beside its result rather than
+  setting `true` whenever `proposal` is handed.
+- *`confirmOnTerminal` with `discard`* answers `false` without opening readline when the input
+  ended while it was discarded: readline over a stream that has already ended would wait for an
+  `end` it never sees.
+- *Three tests the text did not list*, beside its own: the base not level and a working tree that
+  is not `HEAD` (`openToPropose`, and through `main`), and a closed pull request recognised before
+  the question (*says why no pull request is proposed when this change's pull request was closed,
+  and reopens nothing*), which the code's `closed` branch would otherwise leave unpinned. A
+  `trace-wiring.test.ts` case pins the absence too (*puts no idp.forge.proposed on a run that was
+  not proposed*).
+- *`submittingRun`* (`key-reach.test.ts`) takes `MainDeps`' `propose` as a seventh parameter: its
+  fourth to sixth are positional already.
+- *No commit was made by the agent that built it*: Step 1's design edit is in the working tree,
+  for the owner to commit first, as the plan says.
+- *After review.* Recognition's read of the pull requests is GitHub's too, and the last before the
+  question: a `GitHubAnswerError` (or a `ForgeInputError`) there is caught in `submitting` when
+  `proposal` is set and said as why nothing is proposed, the preview standing at exit 0, `false` on
+  the trace; under `--submit` it still ends the run, exit 1 (*says why no pull request is proposed
+  when GitHub fails to answer before the question, and the diff stands at exit 0*). `reasonOf` makes
+  the identity's and the branch's offer of `--local` read `--submit --local`: `--local` alone is an
+  exit 2 here (*offers --submit --local where --submit would offer --local*). The `submitting to …`
+  line and 6.3.4's note are held by `openToPropose` (`Proposable.held`) and said by `submit` just
+  before the question, so a run that proposes nothing never says it was submitting; the order a
+  person sees where the question is put is unchanged. A refusal leg (an answer refused at the
+  prompt) joins *proposes nothing when the run ends on questions, a refusal or a stop*, and three
+  pins were added: the service's `iacRepo` naming another repository on the proposal road (§ 13),
+  a plan the repository already declares (no gh, no line), and `idp.forge.proposed: true` on a
+  declined proposal. `runIntent`'s own `--json` guard on the proposal is pinned by *builds no
+  proposal for --json, even handed one directly*, which holds with or without the guard:
+  `renderOutcome`'s `--json` branch returns before the proposal's, so the guard is a second line no
+  test can tell from the first. The comment over `confirmOnTerminal`'s discard no longer calls a
+  Ctrl-D typed ahead a decline: on a terminal, in raw mode, it is one more key discarded; only an
+  input that ended during the discard (a closed pipe) declines.
+
+- [x] **Step 8: Checks**
 
 ```bash
 df -h "$TMPDIR"
