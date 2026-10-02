@@ -4,7 +4,7 @@ import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
-import { main } from '../../src/cli/index.js'
+import { main, type MainDeps } from '../../src/cli/index.js'
 import { MERGE_NOTE } from '../../src/core/github/protection.js'
 import { VERDICT_TOOL } from '../../src/agents/reviewer.js'
 import { REPORT_TOOL } from '../../src/agents/tools/project-tools.js'
@@ -922,6 +922,7 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
     arrange: (clone: GitHubClone) => void = () => {},
     cloned: { readonly source: string; readonly repository: string } = { source: FIXTURES, repository: 'acme/iac' },
     catalogue?: ReturnType<typeof fakeBackstage>,
+    more: Pick<MainDeps, 'propose'> = {},
   ): Promise<Submitted> => {
     const clone = await githubClone({ ...cloned, login: LOGIN })
     arrange(clone)
@@ -967,6 +968,7 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
       ...(catalogue === undefined ? {} : { catalogueFetch: catalogue.fetch }),
       fetch: keeping(toMlflow, () => new Response('{}', { status: 200 })),
       traceSinks: [sink],
+      ...more,
       out: (chunk) => void out.push(chunk),
       err: (chunk) => void err.push(chunk),
       events: () => {},
@@ -1083,6 +1085,21 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
     expect(supervisor[0]).toBe(ran.toProvider[0])
     expect(supervisor[0]?.body).toContain(JSON.stringify(`request: ${example.intent}`).slice(1, -1))
     expect(wire.offered(JSON.parse(supervisor[0]?.body ?? '{}') as Body)).toEqual([])
+    heldToGitHub(ran, 'acme/iac')
+  }, 30_000)
+
+  it('reaches its provider in its header, and nothing of GitHub reaches it, when idpa "<phrase>" proposes at a terminal and is answered y', async () => {
+    // The proposal road (2026-10-01): no --submit typed, and gh started only
+    // after the last model call; the question's answer stands for the terminal.
+    const example = JSON.parse(await readFile(EXAMPLE, 'utf8')) as { intent: string; operations: unknown[] }
+    const { project } = await repositories()
+    const ran = await submittingRun([example.intent, '--project', project], 'MUTATION', example.operations, undefined, undefined, undefined, {
+      propose: async () => true,
+    })
+
+    expect(ran.code, ran.err).toBe(0)
+    expect(ran.out).toContain('Pull request #1 opened on github.com/acme/iac')
+    expect(ran.root['idp.forge.proposed']).toBe(true)
     heldToGitHub(ran, 'acme/iac')
   }, 30_000)
 

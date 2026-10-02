@@ -254,7 +254,10 @@ describe('HELP: --submit', () => {
     )
     // The sentence stage 4 said, whatever its case and however it is wrapped.
     expect(HELP.replace(/\s+/g, ' ').toLowerCase()).not.toContain('none of them writes.')
-    expect(HELP.replace(/\s+/g, ' ')).toContain('None of them writes, and neither do a phrase, plan and init without --submit.')
+    expect(HELP.replace(/\s+/g, ' ')).toContain(
+      'None of them writes, and neither do a phrase, plan and init without --submit, unless you answer y to the ' +
+        'proposal a change previewed at a terminal ends on.',
+    )
     expect(HELP).toContain('four gates')
     expect(HELP).toContain('the merge authorises')
   })
@@ -264,6 +267,13 @@ describe('HELP: --submit', () => {
       'idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json] [--submit [--local]]',
     )
     expect(HELP.replace(/\s+/g, ' ')).toContain('plan "<intent>" --submit crosses five gates, the Reviewer last')
+  })
+
+  it('says a change previewed at a terminal ends on the same question, and a script is never asked', () => {
+    expect(HELP.replace(/\s+/g, ' ')).toContain(
+      'At a terminal, a change previewed without --submit ends on the same question: the pull request is opened ' +
+        'only on your y. A script, a pipe or --json is never asked.',
+    )
   })
 
   it('names --submit and --local on the phrase, and says a question is refused', () => {

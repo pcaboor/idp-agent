@@ -42,6 +42,13 @@ import type { CommandResult } from './result.js'
  * Analyst is never called, and the `--json` line is not said: nothing is
  * answered, as text or otherwise. The Supervisor is sent exactly what it is
  * sent without the flag.
+ *
+ * Without `--submit`, at a terminal (the owner's decision of 2026-10-01): a
+ * change's diff ends on the engine's proposal, `--submit`'s own question,
+ * which `change` puts after the last model call — `main` hands `runIntent`
+ * the proposal inside `change`, so a question never builds one. No model
+ * writes a word of it, and the Supervisor holds no tool: its `MUTATION` only
+ * chooses the road the proposal is at the end of.
  */
 export async function runEntry(
   options: AskOptions & {

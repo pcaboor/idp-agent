@@ -275,6 +275,63 @@ model call of this road. In this order:
 working tree costs here is one Supervisor turn: it is judged with the catalogue's bytes, which the
 change road reads after the Supervisor's word.
 
+## Without `--submit`: the proposal
+
+```bash
+cd ~/my-service
+idpa "give component:default/billing-api read access to resource:default/orders-db-prod" --repo ~/my-iac
+```
+
+At a terminal, a change previewed without `--submit` ends on a proposal (the owner's decision of
+2026-10-01): the diff, then the very question `--submit` asks, naming the push and the pull request.
+Your `y` authorises it, and the engine opens the pull request exactly as `--submit` would, and prints
+`Pull request #<n> opened on github.com/<owner>/<repository>: <url>`. `n`, an empty line or Ctrl-D
+declines, exit 0, nothing written; Ctrl-C stops the run, exit 130.
+
+| Road | At a terminal, no `--submit` | With `--submit` | No terminal, or `--json` |
+|---|---|---|---|
+| `idpa "<phrase>"`, a change | the diff, then the proposal | submitted | the preview |
+| `idpa "<phrase>"`, a question | the answer; nothing proposed | refused, exit 3 | the answer |
+| `plan "<intent>"` | the diff, then the proposal | submitted | the preview |
+| `plan --from <plan.json>` | the preview | submitted | the preview |
+| `init` | the preview | submitted | the preview |
+
+`plan --from` is the road with no model, and a file someone hands over is submitted by typing
+`--submit`, as a script would; `init` writes into the service's own repository, and its proposal
+comes with stage 8's discovery.
+
+**The question is the engine's.** No model writes a word of it, and no agent holds a tool that
+pushes: the Supervisor's `MUTATION` only chooses the road the proposal is at the end of. The question
+is `--submit`'s, byte for byte, so you learn one question.
+
+**What is read, and when.** After the Reviewer and the diff — after the last model call, so nothing
+of GitHub reaches a model and a preview's order before its diff is unchanged — the engine clears the
+plan, then opens what `--submit` opens: the clone, its upstream, its own configuration and gh; then
+the service's `iacRepo`, the working tree against `HEAD`, the base's rules and whether the clone is
+level with GitHub; then whether this change was submitted before. It asks only when it could do what
+the question says. Otherwise it says why in one line on stderr, and the preview stands at exit 0:
+
+```text
+no pull request proposed — main tracks no remote; --submit cuts the branch in this clone
+no pull request proposed — the remote is on gitlab.example.com, where this build opens no pull request; --submit cuts the branch in this clone
+no pull request proposed — main tracks github.com/acme/iac, and gh is not logged in to github.com, so idpa cannot read the rules that keep a pull request from merging unreviewed. Run `gh auth login --hostname github.com`, then run this again; or add --submit --local to cut the branch in this clone only.
+no pull request proposed — github.com/acme/iac cannot take a pull request from this run: missing: push access: gh's account cannot push to acme/iac
+```
+
+Each is the reason `--submit` would have printed for the same refusal, without its `not submitted —`
+and its `Nothing was written.`, and with its offer of `--local` made `--submit --local`: `--local`
+alone is refused without `--submit`. GitHub failing to answer one of these reads — a 502, a gh that
+times out — is said the same way, and the preview still stands. A submission already made is named
+under the whole preview, and nothing is asked. The `submitting to …` line, and the note where the
+rules let you merge alone, are said only when the question is put, just before it, and the question
+then promises no approval; a run that proposes nothing does not say it was submitting.
+
+**Who is asked.** Only a person at a terminal: stdin, stdout and stderr must each be one, so the diff
+reaches the screen the question is on — `> preview.txt` or `| tee` is never asked — and whatever was
+typed while the models ran is discarded before the question is written, so a `y` typed early answers
+nothing. A script, a pipe or `--json` is never asked and reads nothing of GitHub on this road: it
+still types `--submit`.
+
 ## A service's own repository: `init --submit`
 
 ```bash

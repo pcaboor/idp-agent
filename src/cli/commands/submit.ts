@@ -3,10 +3,21 @@ import type { PullRequestInput } from '../../core/github/pull-request.js'
 import { locatorRepository, printedRepository, sameRepository } from '../../core/github/remote.js'
 import type { Cleared, ClearRefusal, Expectation, Repository } from '../../core/plan/clear.js'
 import { CONFIG_FILE, type RepositoryConfig } from '../../core/schemas/config.js'
-import type { GitHubApi } from '../../forge/github/api.js'
+import { ForgeInputError } from '../../forge/errors.js'
+import { GitHubAnswerError, type GitHubApi } from '../../forge/github/api.js'
 import { preflight } from '../../forge/github/preflight.js'
 import { openSubmissionForge, type OpenedForge } from '../../forge/open.js'
-import type { Base, ForgeProvider, GhIdentity, GitHubRoad, PullRequest, Road, Submitted } from '../../forge/provider.js'
+import type {
+  Base,
+  ForgeProvider,
+  GhIdentity,
+  GitHubRoad,
+  LocalRoad,
+  PullRequest,
+  Recognised,
+  Road,
+  Submitted,
+} from '../../forge/provider.js'
 import type { GhProcess } from '../../process/gh.js'
 import type { Attributes } from '../../trace/model.js'
 import { baseOf, closingLines, type PreviewStatus } from '../render/footer.js'
@@ -26,7 +37,10 @@ import type { CommandResult } from './result.js'
  * (the owner's decision of 2026-10-01) — then clear,
  * recognise a submission already made, confirm and submit — so both roads of
  * `plan`, and `init` after them, take the same steps rather than three copies
- * of them.
+ * of them. At a terminal, a change previewed without `--submit` takes the
+ * same steps after its diff (`openToPropose`, the owner's decision of
+ * 2026-10-01), and a step that would have refused is why no pull request is
+ * proposed.
  *
  * Nothing here authorises anything. The branch is a request; the merge, which
  * nobody can perform from this terminal, is what authorises it (§4.2).
@@ -357,6 +371,147 @@ async function unprotected(
 }
 
 /**
+ * Why a change previewed at a terminal ends without the question: what `--submit`
+ * would have refused with, said as the reason nothing is proposed.
+ */
+export type Unproposed =
+  | { readonly why: 'local-road'; readonly road: LocalRoad }
+  | { readonly why: 'refused'; readonly line: string }
+
+/** What a local road leaves a person who wants the branch anyway. */
+const CUTS_HERE = '--submit cuts the branch in this clone'
+
+/**
+ * The one stderr line, at most once per run: `no pull request proposed — <reason>`.
+ * A local road's is built from the road itself, not from `localRoadLine`, whose
+ * "nothing pushed" would be the wrong advice here: `--submit` is. `asked` never
+ * reaches it — `--local` without `--submit` is refused at parse time — so it
+ * throws rather than say something about a road nobody can be on.
+ */
+export function unproposedLine(unproposed: Unproposed): string {
+  const said = (reason: string): string => `no pull request proposed — ${reason}`
+  switch (unproposed.why) {
+    case 'local-road': {
+      const { road } = unproposed
+      switch (road.why) {
+        case 'no-upstream':
+          return said(`${one(road.branch)} tracks no remote; ${CUTS_HERE}`)
+        case 'other-host':
+          return said(`the remote is on ${one(road.host)}, where this build opens no pull request; ${CUTS_HERE}`)
+        case 'asked':
+          throw new Error('--local is refused without --submit, and never reaches a proposal')
+        default: {
+          const _exhaustive: never = road
+          return _exhaustive
+        }
+      }
+    }
+    case 'refused':
+      return said(one(unproposed.line))
+    default: {
+      const _exhaustive: never = unproposed
+      return _exhaustive
+    }
+  }
+}
+
+/**
+ * The reason `--submit` would have printed for the same refusal, as one line:
+ * its first, without the `not submitted — ` it opens on or the ` Nothing was
+ * written.` it may end on (the preview wrote nothing either); and when that
+ * line ends on `:`, the indented lines under it — § 8 item 1's `missing:`
+ * lines, a divergence's paths — joined to it by `; `. A line that is not
+ * indented ends it, so a ruleset to add, or "Then run this again", is never
+ * part of it; and § 8 item 1's block names `gh's account`, never a login.
+ *
+ * `--submit`'s offer of `--local` becomes `--submit --local`: this run had no
+ * `--submit`, and `--local` without it is refused at parse time (exit 2), so
+ * the offer as `--submit` words it would be advice that fails.
+ */
+const reasonOf = (text: string): string => {
+  const [first = '', ...rest] = text.split('\n')
+  const line = first
+    .replace(/^not submitted — /, '')
+    .replace(/\s*Nothing was written\.$/, '')
+    .replaceAll(LOCAL_OFFER, PROPOSAL_LOCAL_OFFER)
+  if (!line.endsWith(':')) return line
+  const under: string[] = []
+  for (const next of rest) {
+    if (!next.startsWith('  ') || next.trim() === '') break
+    under.push(next.trim())
+  }
+  return under.length === 0 ? line : `${line} ${under.join('; ')}`
+}
+
+/** How `--submit`'s refusals offer stage 5's branch (`forge/github/identity.ts`, `road.ts`), and how a proposal's do. */
+const LOCAL_OFFER = 'add --local to cut the branch in this clone only'
+const PROPOSAL_LOCAL_OFFER = 'add --submit --local to cut the branch in this clone only'
+
+/** What `main` hands a change road previewed at a terminal without `--submit`. */
+export interface Proposal extends Pick<SubmitOptions, 'env' | 'gh' | 'notice'> {
+  /** The person at the keyboard: `--submit`'s question, asked after the diff. */
+  readonly confirm: Confirm
+  readonly route: 'intent' | 'phrase'
+}
+
+/** A forge a proposal can be put through, and the lines it holds until the question. */
+export interface Proposable extends Opened {
+  /** The `submitting to …` line and 6.3.4's note, in that order: `submit` says them just before the question. */
+  readonly held: readonly string[]
+}
+
+/**
+ * Steps 3 to 5 of the proposal road: the forge, the road, gh, the service's iacRepo,
+ * divergence and the base's rules — everything `--submit` checks before it previews —
+ * after the last model call. A refusal is never thrown here: it is why nothing is
+ * proposed. Anything else (a programming error, git failing unexpectedly) is thrown.
+ *
+ * A question is put only where the engine could do what it says, so every read
+ * `--submit` makes before its question comes first; and since this runs after
+ * the Reviewer, an exit 2 of `--submit`'s — gh logged out, a clone configured
+ * to redirect the push — is not one here: the person asked for a preview, and
+ * the preview stands (Global Constraint 9, no exit 2 after a model call).
+ * GitHub's answer to the preflight is a refusal too, by the same reading.
+ *
+ * The `submitting to …` line and 6.3.4's note are held, not said: they are
+ * returned with the forge, and `submit` says them just before the question.
+ * Said here, a run that then proposes nothing — a check below, or recognition
+ * in `submit` — would read `submitting to …` above `no pull request proposed`,
+ * and nothing was being submitted.
+ */
+export async function openToPropose(input: {
+  readonly root: string
+  readonly proposal: Proposal
+  readonly project?: string
+  readonly config?: RepositoryConfig
+  readonly contents: ReadonlyMap<string, string>
+}): Promise<Proposable | Unproposed> {
+  const { proposal } = input
+  const held: string[] = []
+  const notice = (line: string): void => void held.push(line)
+  try {
+    const opened = await openForSubmission(input.root, 'declarations', {
+      ...(proposal.env === undefined ? {} : { env: proposal.env }),
+      ...(proposal.gh === undefined ? {} : { gh: proposal.gh }),
+      notice,
+      local: false,
+      route: proposal.route,
+    })
+    if (opened.road.kind === 'local') return { why: 'local-road', road: opened.road }
+    const refused =
+      (input.project === undefined ? undefined : refuseOtherRepository(opened, input.config, input.project)) ??
+      (await refuseDivergence(opened, { files: input.contents, scope: 'catalogue' })) ??
+      (await refuseUnprotected(opened, { notice }))
+    return refused === undefined ? { ...opened, held } : { why: 'refused', line: reasonOf(refused.text) }
+  } catch (error) {
+    if (error instanceof ForgeInputError || error instanceof GitHubAnswerError) {
+      return { why: 'refused', line: reasonOf(error.message) }
+    }
+    throw error
+  }
+}
+
+/**
  * What `--json` reports under `submission` (D11). Its shape is pinned by tests
  * in `plan-command.test.ts` and `submit-github.test.ts`; versioning the report
  * is cli-ux-10's. `pushed` is whether THIS run pushed the branch: false on a
@@ -481,12 +636,31 @@ export async function submit(input: {
   readonly confirm?: Confirm
   /** Where a note line the preflight did not say is said, above the closing lines: stderr. */
   readonly notice?: (line: string) => void
+  /**
+   * The person did not type --submit: a recognised refusal or closed pull request ends
+   * the run on the preview and `unproposedLine`, exit 0, and a submission recognised
+   * before the question prints the whole preview, not only its closing lines. So does
+   * GitHub failing to answer recognition's read: it comes before the question, and the
+   * person asked for a preview. `held` is said just before the question, and only then.
+   */
+  readonly proposal?: ProposalEnding
 }): Promise<{ readonly result: CommandResult; readonly report: SubmissionReport }> {
   const { opened } = input
   const done = await submitting(input)
-  // Where it went, for a traced run's root (stage 6 brief § 12).
-  const attributes = forgeAttributes(done.report, opened.road, callsOf(opened))
+  // Where it went, for a traced run's root (stage 6 brief § 12) — and, on the
+  // proposal road, whether the question was put (true) or the run said why
+  // not (false); a submission named before the question was neither.
+  const attributes = {
+    ...forgeAttributes(done.report, opened.road, callsOf(opened)),
+    ...(done.proposed === undefined ? {} : { 'idp.forge.proposed': done.proposed }),
+  }
   return { report: done.report, result: { ...done.result, attributes } }
+}
+
+/** What `submit` is handed on the proposal road: where its lines go, and the ones `openToPropose` held. */
+interface ProposalEnding {
+  readonly notice: (line: string) => void
+  readonly held?: readonly string[]
 }
 
 /** `submit`'s steps, before its result is given where it went. */
@@ -496,8 +670,9 @@ async function submitting(input: {
   readonly render: (status: PreviewStatus) => CommandResult
   readonly confirm?: Confirm
   readonly notice?: (line: string) => void
-}): Promise<{ readonly result: CommandResult; readonly report: SubmissionReport }> {
-  const { opened, cleared, render, confirm } = input
+  readonly proposal?: ProposalEnding
+}): Promise<{ readonly result: CommandResult; readonly report: SubmissionReport; readonly proposed?: boolean }> {
+  const { opened, cleared, render, confirm, proposal } = input
 
   if ('outcome' in cleared) {
     // No prompt was shown: the diff is printed here, with why it goes no further.
@@ -524,7 +699,22 @@ async function submitting(input: {
   // pull request is left, and it is asked about (stage 6 brief § 14, row 2).
   // The forge only reads to say so; `submit` below looks again at the moment
   // of writing, for a branch created while the person read the diff.
-  const known = await opened.forge.recognise(cleared, opened.base)
+  let known: Recognised | undefined
+  try {
+    known = await opened.forge.recognise(cleared, opened.base)
+  } catch (error) {
+    // On the proposal road, a read before the question that GitHub failed to
+    // answer is why nothing is proposed, as the preflight's is in
+    // `openToPropose`: the preview stands, exit 0. Under `--submit` it is the
+    // run's answer, exit 1, as it always was.
+    if (proposal === undefined || !(error instanceof GitHubAnswerError || error instanceof ForgeInputError)) throw error
+    proposal.notice(unproposedLine({ why: 'refused', line: reasonOf(error.message) }))
+    return {
+      report: { outcome: 'refused', reasons: [error.message] },
+      result: { text: render({ kind: 'preview' }).text, found: true },
+      proposed: false,
+    }
+  }
   const noted = await preflightNote(opened)
   // The note step 11's read calls for, said on stderr just above the closing
   // lines when the preflight did not say those words: the rules changed while
@@ -534,8 +724,42 @@ async function submitting(input: {
     if (line !== noted?.line) input.notice?.(line)
   }
   if (known !== undefined && known.outcome !== 'pushed-without-pull-request') {
-    return outcomeOf(known, opened.base, opened.road, said, after)
+    if (proposal === undefined) return outcomeOf(known, opened.base, opened.road, said, after)
+    // Recognised before a proposal: the person asked for a preview, and gets
+    // it whole. A submission already made is named under it; a refusal or a
+    // closed pull request is why nothing is proposed, and the preview stands.
+    let ended: PreviewStatus = { kind: 'preview' }
+    const whole = outcomeOf(
+      known,
+      opened.base,
+      opened.road,
+      (status) => {
+        ended = status
+        return render(status).text
+      },
+      after,
+    )
+    if (known.outcome === 'already-submitted') return whole
+    // A closed pull request's reason is its closing line's, so one sentence says it.
+    const shown = closingLines(ended, changed)
+    proposal.notice(
+      unproposedLine({
+        why: 'refused',
+        line:
+          known.outcome === 'refused'
+            ? reasonOf(unwritten(known.reason))
+            : (shown[0] ?? '').replace(/^\d+ files? · not submitted — /, '').replace(/ · nothing written$/, ''),
+      }),
+    )
+    return {
+      report: whole.report,
+      result: { text: render({ kind: 'preview' }).text, found: true },
+      proposed: false,
+    }
   }
+
+  // The question is about to be put: what `openToPropose` held is true now.
+  for (const line of proposal?.held ?? []) proposal?.notice(line)
 
   if (confirm !== undefined) {
     const { road } = opened
@@ -565,11 +789,13 @@ async function submitting(input: {
       return {
         report: { outcome: 'declined', branch: cleared.branch },
         result: { text: said({ kind: 'declined' }), found: true },
+        ...(proposal === undefined ? {} : { proposed: true }),
       }
     }
   }
 
-  return outcomeOf(await opened.forge.submit(cleared, opened.base), opened.base, opened.road, said, after)
+  const done = outcomeOf(await opened.forge.submit(cleared, opened.base), opened.base, opened.road, said, after)
+  return { report: done.report, result: done.result, ...(proposal === undefined ? {} : { proposed: true }) }
 }
 
 /** A reason the forge ended on "Nothing was written.": the closing lines say it, or say what was kept. */

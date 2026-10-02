@@ -53,6 +53,7 @@ import {
   reopening,
   type Confirm,
   type Opened,
+  type Proposal,
   type SubmissionSummary,
   type SubmitOptions,
 } from './commands/submit.js'
@@ -329,7 +330,8 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   IDP_BACKSTAGE_CACHE=off keeps nothing.
   A phrase, ask, plan "<intent>" and init need IDP_PROVIDER and IDP_MODEL.
   None of them writes, and neither do a phrase, plan and init without
-  --submit. With it, plan cuts a branch idp-agent/… from HEAD in the
+  --submit, unless you answer y to the proposal a change previewed at a
+  terminal ends on. With it, plan cuts a branch idp-agent/… from HEAD in the
   declarations repository, which must be a git clone's root, for review. When
   the checked-out branch tracks one on github.com, both forms of plan push
   that branch with your git and open a pull request into it with your gh, once
@@ -342,6 +344,9 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   repository; plan --from crosses four gates and no Reviewer.
   Either way the merge authorises. A phrase takes --submit too: a change is
   submitted as plan "<intent>" --submit submits it, and a question is refused.
+  At a terminal, a change previewed without --submit ends on the same
+  question: the pull request is opened only on your y. A script, a pipe or
+  --json is never asked.
   Every model-backed command also needs that provider's key
   (ANTHROPIC_API_KEY, MISTRAL_API_KEY or OPENAI_API_KEY);
   IDP_TIMEOUT bounds each model call, in seconds, 120 by default.
@@ -1075,6 +1080,11 @@ export interface MainDeps {
    */
   confirm?: Confirm
   /**
+   * How a proposal is answered (§7.4 step 7, 2026-10-01). Injected for the reason `confirm`
+   * is; left out, `proposeOf` decides from the terminals whether anyone is there.
+   */
+  propose?: Confirm
+  /**
    * Where a finished run's trace goes, beside the sinks the environment
    * configures (`IDP_MLFLOW_TRACKING_URI`, `IDP_TRACE_DIR`). Injected so a test
    * reads the trace itself rather than a file or a server. With neither this
@@ -1553,6 +1563,12 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     // model configured answers "no model configured" first, and the
     // divergence once one is. Neither order pays a model for a refusal.
     let submit: SubmitOptions | undefined
+    // Without --submit, at a terminal: the diff ends on the engine's proposal
+    // (2026-10-01), whose reads all come after the last model call — nothing
+    // is opened here, and a preview's order before its diff is unchanged.
+    const proposing = command.submit === true ? undefined : proposeOf(deps, command.json)
+    const propose: Proposal | undefined =
+      proposing === undefined ? undefined : { confirm: proposing, route: 'intent', ...submissionOf(deps, false, err) }
     if (command.submit === true) {
       const confirm = confirmOf(deps, command.json)
       try {
@@ -1604,6 +1620,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
         colour,
         notice: toStderr(err),
         ...(submit !== undefined ? { submit } : {}),
+        ...(propose !== undefined ? { propose } : {}),
       }),
     )
   }
@@ -1894,6 +1911,10 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
                 planNeedsRepository(sourceContextOf(deps), 'that is a change request, and it'),
               )
             }
+            // A change, and no --submit: at a terminal, its diff ends on the
+            // engine's proposal. Built here, after the Supervisor's word, so a
+            // question never builds one.
+            const proposing = submit === undefined ? proposeOf(deps, command.json) : undefined
             return runIntent({
               intent: command.phrase,
               repo: roots.repo,
@@ -1905,6 +1926,9 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
               colour: colourOf(deps),
               notice: toStderr(err),
               ...(submit !== undefined ? { submit } : {}),
+              ...(proposing !== undefined
+                ? { propose: { confirm: proposing, route: 'phrase', ...submissionOf(deps, false, err) } }
+                : {}),
             })
           },
         })
@@ -2253,8 +2277,17 @@ export const confirmOnTerminal = (
   input: NodeJS.ReadableStream = process.stdin,
   output: NodeJS.WritableStream = process.stderr,
   diff: NodeJS.WritableStream = process.stdout,
+  options: { readonly discard?: boolean } = {},
 ): Confirm => async (summary) => {
   diff.write(`${summary.preview}\n`)
+  // The proposal's: what was typed while the models ran answers nothing. On a
+  // terminal, in raw mode, a Ctrl-D typed ahead is one more key discarded, and
+  // the answer typed after the question decides; an input that ended during the
+  // discard — a closed pipe, never a terminal — is a decline.
+  if (options.discard === true) {
+    await discardTypedAhead(input)
+    if ((input as { readableEnded?: boolean }).readableEnded === true) return false
+  }
   const reader = createInterface({ input, output })
   try {
     const closed = new Promise<undefined>((resolve) => {
@@ -2329,6 +2362,86 @@ const confirmOf = (deps: MainDeps, json: boolean): Confirm | undefined => {
   if (deps.confirm !== undefined) return deps.confirm
   if (deps.out !== undefined || deps.err !== undefined) return undefined
   return process.stdin.isTTY === true ? confirmOnTerminal() : undefined
+}
+
+/** The three streams a proposal needs to be terminals; `process`'s unless a test hands its own. */
+export interface Terminals {
+  readonly stdin: { readonly isTTY?: boolean }
+  readonly stdout: { readonly isTTY?: boolean }
+  readonly stderr: { readonly isTTY?: boolean }
+}
+
+/**
+ * Who answers a proposal, or nobody: `confirmOf`'s twin, and exported for its
+ * test, as `confirmOnTerminal` is (the owner's decision of 2026-10-01).
+ *
+ * `confirmOf` reads stdin alone: with `--submit` the person typed their
+ * consent on the command line, and its question is a second look. Here the
+ * `y` is the only consent, so the diff must reach the screen the question is
+ * on — `idpa "…" > out.txt` or `| tee` sends it elsewhere, and is never
+ * asked — and stdin, stdout and stderr must each be a terminal. A separate
+ * seam from `deps.confirm`, so a test that injects a confirmation for
+ * `--submit` never meets a proposal it did not ask for; and an injected
+ * stream, as in every test and every scenario, means nobody is there, so no
+ * tape and no golden sees a proposal.
+ */
+export function proposeOf(deps: MainDeps, json: boolean, terminals: Terminals = process): Confirm | undefined {
+  if (json) return undefined
+  if (deps.propose !== undefined) return deps.propose
+  if (deps.out !== undefined || deps.err !== undefined) return undefined
+  const { stdin, stdout, stderr } = terminals
+  return stdin.isTTY === true && stdout.isTTY === true && stderr.isTTY === true
+    ? confirmOnTerminal(process.stdin, process.stderr, process.stdout, { discard: true })
+    : undefined
+}
+
+/** How long the input must be quiet before the question, and the longest the discard waits. */
+const TYPED_AHEAD = { quietMs: 50, maxMs: 500 } as const
+
+/**
+ * Reads and discards what was typed before the question: raw mode on a terminal (so a line
+ * typed but not ended is discarded too), until the input has been quiet for 50 ms, at most
+ * 500 ms; a Ctrl-C among it is `InterruptedError`. Exported for its test.
+ *
+ * A run can take tens of seconds while the models answer, and a `y` typed into
+ * the terminal then must not answer a question it was typed before. The
+ * terminal's mode is put back as it was, whatever happens.
+ */
+export async function discardTypedAhead(input: NodeJS.ReadableStream): Promise<void> {
+  const tty = input as NodeJS.ReadableStream & { isTTY?: boolean; isRaw?: boolean; setRawMode?: (on: boolean) => unknown }
+  const raw = tty.isTTY === true && typeof tty.setRawMode === 'function'
+  const wasRaw = tty.isRaw === true
+  if (raw) tty.setRawMode?.(true)
+  try {
+    await new Promise<void>((resolve, reject) => {
+      let quiet: NodeJS.Timeout | undefined
+      const done = (error?: Error): void => {
+        clearTimeout(quiet)
+        clearTimeout(bound)
+        input.removeListener('data', read)
+        input.removeListener('end', ended)
+        input.pause()
+        if (error === undefined) resolve()
+        else reject(error)
+      }
+      const wait = (): void => {
+        clearTimeout(quiet)
+        quiet = setTimeout(() => done(), TYPED_AHEAD.quietMs)
+      }
+      const read = (chunk: Buffer | string): void => {
+        if (String(chunk).includes('\u0003')) done(new InterruptedError())
+        else wait()
+      }
+      const ended = (): void => done()
+      const bound = setTimeout(() => done(), TYPED_AHEAD.maxMs)
+      input.on('data', read)
+      input.once('end', ended)
+      input.resume()
+      wait()
+    })
+  } finally {
+    if (raw) tty.setRawMode?.(wasRaw)
+  }
 }
 
 /**

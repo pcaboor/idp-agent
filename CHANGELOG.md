@@ -292,6 +292,13 @@ Each pull request adds its line here.
   question put to `--submit` is refused after the Supervisor's one word, exit 3 as `ask`
   declines a change, nothing answered and nothing written (D8 lifted)
   ([#131](https://github.com/pcaboor/idp-agent/pull/131)).
+- At a terminal, a change previewed without `--submit` — `idpa "<phrase>"` or `plan "<intent>"` —
+  ends on a proposal: the same question `--submit` asks, naming the push and the pull request,
+  put by the engine after the last model call once it has read what `--submit` reads; on `y`
+  the engine opens the pull request and prints its URL. Where it could not open one, one line
+  says why no pull request is proposed, and the preview stands at exit 0. No model writes the
+  question or holds a tool that pushes; a script, a pipe or `--json` is never asked and still
+  needs `--submit` ([#134](https://github.com/pcaboor/idp-agent/pull/134)).
 
 ### Changed
 

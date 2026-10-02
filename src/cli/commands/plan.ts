@@ -39,13 +39,17 @@ import { paintDiff } from '../render/diff.js'
 import { CLOSING, closingLines, type PreviewStatus } from '../render/footer.js'
 import {
   openForSubmission,
+  openToPropose,
   refuseDivergence,
   refuseOtherRepository,
   refuseUnprotected,
   submit,
+  unproposedLine,
   type Confirm,
   type Opened,
+  type Proposal,
   type SubmitOptions,
+  type Unproposed,
 } from './submit.js'
 import type { CommandResult } from './result.js'
 import { inertLine, visible } from '../render/plain.js'
@@ -1391,6 +1395,12 @@ export interface IntentOptions {
    * writes nothing, and prints what stage 4 printed, byte for byte.
    */
   readonly submit?: SubmitOptions
+  /**
+   * At a terminal, without --submit: the diff ends on the proposal (the owner's
+   * decision of 2026-10-01) — the question `--submit` asks, put after the last
+   * model call once the engine has read what `--submit` reads. Never with `submit`.
+   */
+  readonly propose?: Proposal
 }
 
 /** What `--submit` needs once the loop has planned: the forge, the prompt, and what to clear against. */
@@ -1400,6 +1410,15 @@ interface Submission {
   readonly clear: ClearInput
   /** Where a note line the preflight did not say goes: stderr. */
   readonly notice?: (line: string) => void
+}
+
+/** What the proposal needs once the loop has planned: who answers, and what `--submit` would read. */
+interface ProposalInput {
+  readonly propose: Proposal
+  readonly root: string
+  readonly project?: string
+  readonly config?: RepositoryConfig
+  readonly clear: ClearInput
 }
 
 /**
@@ -1413,6 +1432,12 @@ interface Submission {
  * decision in it is about what must NOT reach where.
  */
 export async function runIntent(options: IntentOptions): Promise<CommandResult> {
+  // One consent or the other: `--submit` typed, or a `y` at the proposal.
+  // `main` never hands both, and a caller that did would leave which one
+  // authorises to the order of two branches below.
+  if (options.submit !== undefined && options.propose !== undefined) {
+    throw new Error('runIntent was handed both a submission and a proposal')
+  }
   const root = await declarationsRoot('plan', options.repo)
   // Before anything is read, and before any model is paid: a repository that
   // cannot take a branch — not a clone's root, nobody to commit as, a detached
@@ -1496,7 +1521,24 @@ export async function runIntent(options: IntentOptions): Promise<CommandResult> 
           ...(options.submit?.confirm !== undefined ? { confirm: options.submit.confirm } : {}),
           ...(options.submit?.notice !== undefined ? { notice: options.submit.notice } : {}),
         }
-  const ending = { ...options, ...(submission !== undefined ? { submission } : {}) }
+  // The proposal: everything it reads is read after the Reviewer, in
+  // `renderOutcome`, so a preview's order before its diff is today's, and
+  // `--json` is a program's, never asked.
+  const proposal: ProposalInput | undefined =
+    options.propose === undefined || options.json === true
+      ? undefined
+      : {
+          propose: options.propose,
+          root,
+          ...(options.project !== undefined ? { project: options.project } : {}),
+          ...(config !== undefined ? { config } : {}),
+          clear: { policy: contexts.policy, snapshot, contents },
+        }
+  const ending = {
+    ...options,
+    ...(submission !== undefined ? { submission } : {}),
+    ...(proposal !== undefined ? { proposal } : {}),
+  }
   const summary = formatSummary(contexts.summary, contexts.vocabulary)
 
   // No repository, no Inspector: the Architect is told that nothing was
@@ -1659,6 +1701,7 @@ async function renderOutcome(
     readonly json?: boolean
     readonly colour?: boolean
     readonly submission?: Submission
+    readonly proposal?: ProposalInput
   },
 ): Promise<CommandResult> {
   if (outcome.outcome === 'planned') {
@@ -1712,6 +1755,39 @@ async function renderOutcome(
         return { text: asJson({ ...report, submission: { outcome: 'unchanged' } }), found: true }
       }
       return { text: asJson(report), found: true, ...(nothing ? { unsupported: true } : {}) }
+    }
+
+    if (submission === undefined && options.proposal !== undefined && changed.length > 0) {
+      // 2026-10-01: at a terminal, the diff ends on the engine's proposal. Every read below
+      // comes after the last model call; a refusal is why nothing is proposed, and the
+      // preview stands.
+      const { propose, root, project, config, clear } = options.proposal
+      const notice = propose.notice ?? (() => {})
+      const said = (unproposed: Unproposed): CommandResult => {
+        notice(unproposedLine(unproposed))
+        return { ...render({ kind: 'preview' }), attributes: { 'idp.forge.proposed': false } }
+      }
+      const proposed = clearPlan(outcome.signed, clear)
+      if ('outcome' in proposed) {
+        return said({ why: 'refused', line: proposed.reasons[0] ?? 'the change cannot be cleared' })
+      }
+      const opened = await openToPropose({
+        root,
+        proposal: propose,
+        contents: clear.contents,
+        ...(project !== undefined ? { project } : {}),
+        ...(config !== undefined ? { config } : {}),
+      })
+      if ('why' in opened) return said(opened)
+      const { result } = await submit({
+        opened,
+        cleared: proposed,
+        render,
+        confirm: propose.confirm,
+        notice,
+        proposal: { notice, held: opened.held },
+      })
+      return result
     }
 
     if (submission === undefined || cleared === undefined) return render({ kind: 'preview' })

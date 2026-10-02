@@ -1,11 +1,12 @@
 import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { PassThrough } from 'node:stream'
 import { afterAll, describe, expect, it } from 'vitest'
-import { main, renderEvent } from '../../src/cli/index.js'
+import { confirmOnTerminal, InterruptedError, main, renderEvent } from '../../src/cli/index.js'
 import { runInitPlatform } from '../../src/cli/commands/init.js'
 import { runIntent } from '../../src/cli/commands/plan.js'
-import { reopening, type SubmissionSummary } from '../../src/cli/commands/submit.js'
+import { reopening, type Confirm, type SubmissionSummary } from '../../src/cli/commands/submit.js'
 import type { ForgeProvider } from '../../src/forge/provider.js'
 import { CONFIG_FILE } from '../../src/cli/config.js'
 import type { AgentEvent } from '../../src/agents/events.js'
@@ -24,7 +25,7 @@ import { confirmingEnvironment } from '../support/ask.js'
 import { ForgeInputError } from '../../src/forge/errors.js'
 import { clearedFor, clone, removeClones, scratch } from '../support/forge-fixture.js'
 import { committed, git, observable, show, stored } from '../support/git.js'
-import { githubClone, moveGitHubBase, unprotect, type GitHubClone } from '../support/github-fixture.js'
+import { githubClone, moveGitHubBase, remoteRefs, unprotect, type GitHubClone } from '../support/github-fixture.js'
 import { protectedMain } from '../support/fake-gh.js'
 import { MERGE_NOTE } from '../../src/core/github/protection.js'
 import { memorySink, onlyTrace } from '../support/trace.js'
@@ -1807,5 +1808,548 @@ describe('plan "<intent>" --submit and iacRepo', { timeout: PUSHING }, () => {
     expect(code).toBe(1)
     expect(Object.keys(JSON.parse(out) as object)).toEqual(['submission'])
     expect(JSON.parse(out)).toMatchObject({ submission: { outcome: 'refused' } })
+  })
+})
+
+/**
+ * The proposal (the owner's decision of 2026-10-01): at a terminal, a change
+ * previewed without `--submit` ends on `--submit`'s own question, which the
+ * engine puts after the last model call, once it has read what `--submit`
+ * reads; `y` opens the pull request, as `--submit` would. A test has no
+ * terminal, so it hands `main` the answer as `propose`, the seam `proposeOf`
+ * fills at a terminal (`proposal.test.ts` holds that seam to the three
+ * streams). Nothing of it reaches a model: no prompt moves, so no tape does.
+ */
+describe('plan "<intent>" at a terminal, without --submit', { timeout: PUSHING }, () => {
+  afterAll(removeClones)
+
+  const proposing = (answer: boolean | Error) => {
+    const asked: SubmissionSummary[] = []
+    const propose: Confirm = async (summary) => {
+      asked.push(summary)
+      if (answer instanceof Error) throw answer
+      return answer
+    }
+    return { asked, propose }
+  }
+
+  const previewing = (clone: GitHubClone, project: string, extra: string[] = []): string[] =>
+    ['plan', INTENT, '--repo', clone.repo, '--project', project, ...extra]
+
+  it('proposes after the diff, and the engine opens the pull request on y', async () => {
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+    const { asked, propose } = proposing(true)
+
+    const { code, out, err } = await run(clone, previewing(clone, project), { gh, client, ask: answering('read'), propose })
+
+    expect(code, err).toBe(0)
+    expect(asked).toHaveLength(1)
+    expect(asked[0]?.github).toMatchObject({ host: 'github.com', repository: 'acme/iac', base: 'main', pushedAlready: false })
+    expect(err).toMatch(/^submitting to github\.com\/acme\/iac, into main \(origin, main's upstream\), as ada \(gh\)$/m)
+    expect(out).toMatch(/^2 files · submitted as idp-agent\/orders-db-prod-[0-9a-f]{8} on top of main@[0-9a-f]{7} · main untouched$/m)
+    expect(out).toContain('Pull request #1 opened on github.com/acme/iac: https://github.com/acme/iac/pull/1')
+    expect(out.trimEnd().endsWith(CLOSING)).toBe(true)
+    // Nothing of GitHub before the last model call: the order of a preview is today's.
+    const reviewed = log.lastIndexOf('model reviewer')
+    expect(reviewed).toBeGreaterThan(0)
+    expect(log.slice(0, reviewed).some((line) => line.startsWith('gh '))).toBe(false)
+    expect(log.filter((line) => line.includes('POST'))).toHaveLength(1)
+    // The body names the road the change took: the intent's.
+    expect(clone.gh.state.pulls?.[0]?.body).toContain('drafted by a model')
+    const [ref] = await ours(clone.repo)
+    expect(await ours(clone.bare)).toEqual([ref])
+  })
+
+  it('asks the very question --submit asks for the same change', async () => {
+    const summaries = async (flag: 'propose' | 'confirm'): Promise<SubmissionSummary> => {
+      const clone = await githubClone()
+      const project = await application(CONFIGURED)
+      const { asked, propose } = proposing(false)
+      await run(clone, flag === 'propose' ? previewing(clone, project) : submitting(clone, project), {
+        client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+        ask: answering('read'),
+        [flag]: propose,
+      })
+      expect(asked).toHaveLength(1)
+      return asked[0] as SubmissionSummary
+    }
+    const proposed = await summaries('propose')
+    const confirmed = await summaries('confirm')
+
+    // Two clones: their paths and their commits differ, and nothing else does.
+    const same = (summary: SubmissionSummary) => ({
+      ...summary,
+      root: '',
+      base: { ...summary.base, commit: '' },
+      preview: summary.preview.replaceAll(summary.root, ''),
+    })
+    expect(same(proposed)).toStrictEqual(same(confirmed))
+    const shown = async (summary: SubmissionSummary): Promise<string> => {
+      const output = new PassThrough() as PassThrough & { isTTY?: boolean }
+      output.isTTY = true
+      const chunks: Buffer[] = []
+      output.on('data', (chunk: Buffer) => chunks.push(chunk))
+      const input = new PassThrough()
+      const answered = confirmOnTerminal(input, output, new PassThrough().resume())(summary)
+      input.write('n\n')
+      await answered
+      return Buffer.concat(chunks).toString('utf8')
+    }
+    expect(await shown(proposed)).toBe(await shown(confirmed))
+  })
+
+  it('writes nothing on either side when the proposal is declined', async () => {
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+    const { asked, propose } = proposing(false)
+    const before = { here: await observable(clone.repo), there: await remoteRefs(clone.bare) }
+
+    const { code, out, err } = await run(clone, previewing(clone, project), { gh, client, ask: answering('read'), propose })
+
+    expect(code, err).toBe(0)
+    expect(asked).toHaveLength(1)
+    expect(out).toMatch(/^2 files · not submitted · nothing written$/m)
+    expect(out.trimEnd().endsWith(CLOSING)).toBe(true)
+    expect(await observable(clone.repo)).toBe(before.here)
+    expect(await remoteRefs(clone.bare)).toBe(before.there)
+    expect(log.some((line) => line.includes('POST'))).toBe(false)
+    expect(clone.gh.state.pulls ?? []).toEqual([])
+  })
+
+  it('throws when handed both a submission and a proposal', async () => {
+    const clone = await githubClone()
+    const client = converging([CREATE_DATABASE, CREATE_ACCESS])
+    const { propose } = proposing(true)
+
+    await expect(
+      runIntent({
+        intent: INTENT,
+        repo: clone.repo,
+        project: undefined,
+        client,
+        emit: collect().emit,
+        submit: { env: clone.env, gh: clone.gh.process },
+        propose: { confirm: propose, route: 'intent', env: clone.env, gh: clone.gh.process },
+      }),
+    ).rejects.toThrow()
+    expect(client.seen).toEqual([])
+  })
+
+  it('stops the run on Ctrl-C at the proposal, exit 130, nothing written', async () => {
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    const { asked, propose } = proposing(new InterruptedError())
+    const before = { here: await observable(clone.repo), there: await remoteRefs(clone.bare) }
+
+    const { code, err } = await run(clone, previewing(clone, project), {
+      client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+      ask: answering('read'),
+      propose,
+    })
+
+    expect(code).toBe(130)
+    expect(asked).toHaveLength(1)
+    expect(err).toContain('interrupted; nothing was written')
+    expect(await observable(clone.repo)).toBe(before.here)
+    expect(await remoteRefs(clone.bare)).toBe(before.there)
+  })
+
+  it('says why no pull request is proposed when gh is logged out, and the preview stands at exit 0', async () => {
+    const clone = await githubClone()
+    clone.gh.logout()
+    const project = await application(CONFIGURED)
+    const { asked, propose } = proposing(true)
+
+    const { code, out, err } = await run(clone, previewing(clone, project), {
+      client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+      ask: answering('read'),
+      propose,
+    })
+
+    expect(code, err).toBe(0)
+    expect(asked).toEqual([])
+    expect(err).toMatch(/^no pull request proposed — main tracks github\.com\/acme\/iac, and gh is not logged in/m)
+    expect(err.split('\n').filter((line) => line.startsWith('no pull request proposed'))).toHaveLength(1)
+    expect(err).not.toContain('Nothing was written.')
+    expect(out).toContain(`+++ b/${DATABASE_PATH}`)
+    expect(out).toMatch(/^2 files · nothing written$/m)
+    expect(out.trimEnd().endsWith(CLOSING)).toBe(true)
+    expect(await ours(clone.repo)).toEqual([])
+    expect(await ours(clone.bare)).toEqual([])
+  })
+
+  it('says why no pull request is proposed when the clone is not level with GitHub, and pushes nothing', async () => {
+    const clone = await githubClone()
+    await moveGitHubBase(clone)
+    const project = await application(CONFIGURED)
+    const { asked, propose } = proposing(true)
+
+    const { code, out, err } = await run(clone, previewing(clone, project), {
+      client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+      ask: answering('read'),
+      propose,
+    })
+
+    expect(code, err).toBe(0)
+    expect(asked).toEqual([])
+    expect(err).toMatch(/^no pull request proposed — github\.com\/acme\/iac's main is at [0-9a-f]{7} and this clone's main is at [0-9a-f]{7}: bring them level/m)
+    // Nothing is submitted, so nothing says it is being: the line is held until the question.
+    expect(err).not.toContain('submitting to')
+    expect(out).toMatch(/^2 files · nothing written$/m)
+    expect(await ours(clone.bare)).toEqual([])
+  })
+
+  it('says why no pull request is proposed when GitHub fails to answer before the question, and the diff stands at exit 0', async () => {
+    // The read of the pull requests recognition makes, the last before the
+    // question: a 502 there is GitHub's answer, read after three paid model
+    // calls, and the person asked for a preview.
+    const clone = await githubClone()
+    clone.gh.fault({ route: 'pulls', status: 502, times: 10 })
+    const project = await application(CONFIGURED)
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+    const { asked, propose } = proposing(true)
+    const before = { here: await observable(clone.repo), there: await remoteRefs(clone.bare) }
+
+    const { code, out, err } = await run(clone, previewing(clone, project), { gh, client, ask: answering('read'), propose })
+
+    expect(code, err).toBe(0)
+    expect(asked).toEqual([])
+    expect(err).toMatch(/^no pull request proposed — github\.com answered 502 through gh on pulls; try again later\.$/m)
+    expect(err.split('\n').filter((line) => line.startsWith('no pull request proposed'))).toHaveLength(1)
+    expect(err).not.toContain('submitting to')
+    expect(out).toContain(`+++ b/${DATABASE_PATH}`)
+    expect(out).toMatch(/^2 files · nothing written$/m)
+    expect(out.trimEnd().endsWith(CLOSING)).toBe(true)
+    expect(log.some((line) => line.includes('POST'))).toBe(false)
+    expect(await observable(clone.repo)).toBe(before.here)
+    expect(await remoteRefs(clone.bare)).toBe(before.there)
+  })
+
+  it('says why no pull request is proposed when the service names another repository, and pushes nothing (§ 13)', async () => {
+    // A service never chooses where its pull request goes: on the proposal road
+    // as under --submit, the clone's repository and the service's iacRepo agree,
+    // or the person's y is never asked for.
+    const clone = await githubClone()
+    const project = await application('iacRepo: github.com/acme/other-iac\nenvironments: [dev, staging, prod]\n')
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+    const { asked, propose } = proposing(true)
+    const before = { here: await observable(clone.repo), there: await remoteRefs(clone.bare) }
+
+    const { code, out, err } = await run(clone, previewing(clone, project), { gh, client, ask: answering('read'), propose })
+
+    expect(code, err).toBe(0)
+    expect(asked).toEqual([])
+    expect(err).toMatch(
+      /^no pull request proposed — \.idp-agent\.yml in .+ names github\.com\/acme\/other-iac as this service's declarations repository, and .+'s main tracks github\.com\/acme\/iac: run this with --repo naming a clone of the repository it names, or change iacRepo in a reviewed change\.$/m,
+    )
+    expect(err.split('\n').filter((line) => line.startsWith('no pull request proposed'))).toHaveLength(1)
+    expect(err).not.toContain('submitting to')
+    expect(out).toContain(`+++ b/${DATABASE_PATH}`)
+    expect(out).toMatch(/^2 files · nothing written$/m)
+    expect(log.some((line) => line.includes('POST'))).toBe(false)
+    expect(await observable(clone.repo)).toBe(before.here)
+    expect(await remoteRefs(clone.bare)).toBe(before.there)
+  })
+
+  it('proposes nothing for a plan the repository already declares, and reads nothing of GitHub', async () => {
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    await run(clone, submitting(clone, project), { client: converging([CREATE_DATABASE, CREATE_ACCESS]), ask: answering('read') })
+    const [branch] = await ours(clone.repo)
+    if (branch === undefined) throw new Error('no branch was cut')
+    // Merged, on both sides: the repository now says it, and the clone is level with GitHub.
+    await git(clone.repo, 'merge', '-q', '--ff-only', branch)
+    const merged = await git(clone.repo, 'rev-parse', 'main')
+    await git(clone.bare, 'update-ref', 'refs/heads/main', merged)
+    await git(clone.repo, 'update-ref', 'refs/remotes/origin/main', merged)
+    const plain = await run(clone, previewing(clone, project), {
+      client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+      ask: answering('read'),
+    })
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+    const { asked, propose } = proposing(true)
+
+    const { code, out, err } = await run(clone, previewing(clone, project), { gh, client, ask: answering('read'), propose })
+
+    expect(code, err).toBe(plain.code)
+    expect(out).toBe(plain.out)
+    expect(asked).toEqual([])
+    expect(err).not.toContain('no pull request proposed')
+    expect(err).not.toContain('submitting to')
+    expect(log.filter((line) => line.startsWith('gh '))).toEqual([])
+  })
+
+  it('builds no proposal for --json, even handed one directly', async () => {
+    // `main` hands none with --json (`proposeOf`); `runIntent` holds the line
+    // on its own, so a caller that did hand one gets a program's report.
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    const started: string[] = []
+    const gh: GhProcess = async (argv, options) => {
+      started.push(argv.join(' '))
+      return clone.gh.process(argv, options)
+    }
+    const { asked, propose } = proposing(true)
+    const intent = (extra: Partial<Parameters<typeof runIntent>[0]>) =>
+      runIntent({
+        intent: INTENT,
+        repo: clone.repo,
+        project,
+        client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+        emit: collect().emit,
+        ask: answering('read'),
+        json: true,
+        ...extra,
+      })
+
+    const plain = await intent({})
+    const handed = await intent({ propose: { confirm: propose, route: 'intent', env: clone.env, gh } })
+
+    expect(handed).toStrictEqual(plain)
+    expect(asked).toEqual([])
+    expect(started).toEqual([])
+  })
+
+  it('says the line before the diff, and the submitting line before the diff it asks about', async () => {
+    // Where gh is logged out: the line, then the result `main` prints, the diff first.
+    const loggedOut = await githubClone()
+    loggedOut.gh.logout()
+    const order: string[] = []
+    await main(previewing(loggedOut, await application(CONFIGURED)), {
+      env: loggedOut.env,
+      gh: loggedOut.gh.process,
+      client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+      ask: answering('read'),
+      propose: proposing(true).propose,
+      out: (chunk) => void order.push(`out ${chunk}`),
+      err: (chunk) => void order.push(`err ${chunk}`),
+    })
+    const unproposed = order.findIndex((line) => line.startsWith('err no pull request proposed — '))
+    expect(unproposed).toBeGreaterThan(-1)
+    expect(unproposed).toBeLessThan(order.findIndex((line) => line.startsWith('out ') && line.includes(`+++ b/${DATABASE_PATH}`)))
+
+    // Where it proposes: the agents, then the submitting line, then the diff
+    // `confirmOnTerminal` writes, then its question.
+    const clone = await githubClone()
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+    const input = new PassThrough()
+    const question = new PassThrough() as PassThrough & { isTTY?: boolean }
+    question.isTTY = true
+    question.on('data', (chunk: Buffer) => {
+      if (chunk.toString('utf8').includes('[y/N]')) {
+        log.push('question')
+        input.write('n\n')
+      }
+    })
+    const diff = new PassThrough()
+    diff.on('data', (chunk: Buffer) => void log.push(`diff ${chunk.toString('utf8')}`))
+    const code = await main(previewing(clone, await application(CONFIGURED)), {
+      env: clone.env,
+      gh,
+      client,
+      ask: answering('read'),
+      propose: confirmOnTerminal(input, question, diff, { discard: true }),
+      out: (chunk) => void log.push(`out ${chunk}`),
+      err: (chunk) => void log.push(`err ${chunk}`),
+    })
+
+    expect(code).toBe(0)
+    const reviewed = log.lastIndexOf('model reviewer')
+    const submittingAt = log.findIndex((line) => line.startsWith('err submitting to github.com/acme/iac'))
+    const diffAt = log.findIndex((line) => line.startsWith('diff ') && line.includes(`+++ b/${DATABASE_PATH}`))
+    const askedAt = log.indexOf('question')
+    expect(reviewed).toBeGreaterThan(-1)
+    expect(submittingAt).toBeGreaterThan(reviewed)
+    expect(diffAt).toBeGreaterThan(submittingAt)
+    expect(askedAt).toBeGreaterThan(diffAt)
+    // The result is the closing lines alone: the diff is not printed twice.
+    const printed = log.filter((line) => line.startsWith('out ')).join('')
+    expect(printed).not.toContain(`+++ b/${DATABASE_PATH}`)
+    expect(printed).toMatch(/2 files · not submitted · nothing written/)
+  })
+
+  it('proposes nothing on a clone that tracks no remote, and says so', async () => {
+    const repo = await clone()
+    const project = await application(CONFIGURED)
+    let started = 0
+    const gh: GhProcess = async () => {
+      started += 1
+      throw new Error('no gh on a local road')
+    }
+    const { asked, propose } = proposing(true)
+    const out: string[] = []
+    const err: string[] = []
+
+    const code = await main(['plan', INTENT, '--repo', repo, '--project', project], {
+      env: { PATH: process.env['PATH'] },
+      gh,
+      client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+      ask: answering('read'),
+      propose,
+      out: (chunk) => void out.push(chunk),
+      err: (chunk) => void err.push(chunk),
+    })
+
+    expect(code, err.join('')).toBe(0)
+    expect(asked).toEqual([])
+    expect(started).toBe(0)
+    expect(err.join('')).toContain('no pull request proposed — main tracks no remote; --submit cuts the branch in this clone\n')
+    expect(out.join('')).toMatch(/^2 files · nothing written$/m)
+    expect(await ours(repo)).toEqual([])
+  })
+
+  it('proposes nothing in --json, nor with no terminal, and starts no gh', async () => {
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    const { asked, propose } = proposing(true)
+
+    const plain = await run(clone, previewing(clone, project, ['--json']), {
+      client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+      ask: answering('read'),
+    })
+    const json = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+    const proposed = await run(clone, previewing(clone, project, ['--json']), {
+      gh: json.gh,
+      client: json.client,
+      ask: answering('read'),
+      propose,
+    })
+    expect(proposed.code).toBe(0)
+    expect(proposed.out).toBe(plain.out)
+    expect(proposed.err).not.toContain('no pull request proposed')
+    expect(json.log.filter((line) => line.startsWith('gh '))).toEqual([])
+
+    // No `propose` handed in, and a stream that is not a terminal: the preview, and no gh.
+    const piped = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+    const preview = await run(clone, previewing(clone, project), { gh: piped.gh, client: piped.client, ask: answering('read') })
+    expect(preview.code).toBe(0)
+    expect(preview.out).toMatch(/^2 files · nothing written$/m)
+    expect(preview.err).not.toContain('no pull request proposed')
+    expect(preview.err).not.toContain('submitting to')
+    expect(piped.log.filter((line) => line.startsWith('gh '))).toEqual([])
+    expect(asked).toEqual([])
+  })
+
+  it('proposes nothing when the run ends on questions, a refusal or a stop', async () => {
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    const { asked, propose } = proposing(true)
+
+    // Nobody to ask: the level is a question, and the run ends on it (exit 3).
+    const questions = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+    const asking = await run(clone, previewing(clone, project), { gh: questions.gh, client: questions.client, propose })
+    expect(asking.code).toBe(3)
+    expect(questions.log.filter((line) => line.startsWith('gh '))).toEqual([])
+
+    // Three refusals by the Reviewer: a stop (exit 1).
+    const rejected = turnCalling(VERDICT_TOOL, { verdict: 'reject', reason: 'the request named no cache' })
+    const proposed = turnCalling(PROPOSE_TOOL, { operations: [CREATE_DATABASE, CREATE_ACCESS] })
+    const stopping = watching(
+      clone,
+      scripted({
+        inspector: [turnCalling(REPORT_TOOL, FACTS)],
+        architect: [proposed, proposed, proposed],
+        reviewer: [rejected, rejected, rejected],
+      }),
+    )
+    const stopped = await run(clone, previewing(clone, project), {
+      gh: stopping.gh,
+      client: stopping.client,
+      ask: answering('read'),
+      propose,
+    })
+    expect(stopped.code).toBe(1)
+    expect(stopping.log.filter((line) => line.startsWith('gh '))).toEqual([])
+
+    // A level outside the closed set, typed again and again: the answer is refused (exit 1).
+    const refusing = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+    const refused = await run(clone, previewing(clone, project), {
+      gh: refusing.gh,
+      client: refusing.client,
+      ask: answering('lecture'),
+      propose,
+    })
+    expect(refused.code).toBe(1)
+    expect(refused.out).toMatch(/^the answer was refused — /)
+    expect(refusing.log.filter((line) => line.startsWith('gh '))).toEqual([])
+
+    for (const err of [asking.err, stopped.err, refused.err]) {
+      expect(err).not.toContain('no pull request proposed')
+      expect(err).not.toContain('submitting to')
+    }
+    expect(asked).toEqual([])
+    expect(await ours(clone.bare)).toEqual([])
+  })
+
+  it('names a submission already made, with the diff, and asks nothing', async () => {
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    await run(clone, submitting(clone, project), { client: converging([CREATE_DATABASE, CREATE_ACCESS]), ask: answering('read') })
+    const before = await observable(clone.repo)
+    const { log, gh, client } = watching(clone, converging([CREATE_DATABASE, CREATE_ACCESS]))
+    const { asked, propose } = proposing(true)
+
+    const { code, out, err } = await run(clone, previewing(clone, project), { gh, client, ask: answering('read'), propose })
+
+    expect(code, err).toBe(0)
+    expect(asked).toEqual([])
+    expect(out).toContain(`+++ b/${DATABASE_PATH}`)
+    expect(out).toMatch(/^2 files · already submitted as idp-agent\/orders-db-prod-[0-9a-f]{8} · pull request #1 is open · nothing written$/m)
+    expect(out.trimEnd().endsWith(CLOSING)).toBe(true)
+    expect(err).not.toContain('no pull request proposed')
+    expect(log.some((line) => line.includes('POST'))).toBe(false)
+    expect(await observable(clone.repo)).toBe(before)
+  })
+
+  it('says why no pull request is proposed when this change’s pull request was closed, and reopens nothing', async () => {
+    const clone = await githubClone()
+    const project = await application(CONFIGURED)
+    await run(clone, submitting(clone, project), { client: converging([CREATE_DATABASE, CREATE_ACCESS]), ask: answering('read') })
+    const [pull] = clone.gh.state.pulls ?? []
+    if (pull === undefined) throw new Error('no pull request was opened')
+    Object.assign(pull, { state: 'closed' as const, closed_at: '2026-10-02T09:00:00Z', merged_at: null })
+    const before = { here: await observable(clone.repo), there: await remoteRefs(clone.bare) }
+    const { asked, propose } = proposing(true)
+
+    const { code, out, err } = await run(clone, previewing(clone, project), {
+      client: converging([CREATE_DATABASE, CREATE_ACCESS]),
+      ask: answering('read'),
+      propose,
+    })
+
+    expect(code, err).toBe(0)
+    expect(asked).toEqual([])
+    expect(err).toMatch(
+      /^no pull request proposed — idp-agent\/orders-db-prod-[0-9a-f]{8} was submitted as pull request #1 and closed on 2026-10-02$/m,
+    )
+    expect(out).toContain(`+++ b/${DATABASE_PATH}`)
+    expect(out).toMatch(/^2 files · nothing written$/m)
+    expect(out.trimEnd().endsWith(CLOSING)).toBe(true)
+    expect(clone.gh.state.pulls?.[0]?.state).toBe('closed')
+    expect(await observable(clone.repo)).toBe(before.here)
+    expect(await remoteRefs(clone.bare)).toBe(before.there)
+  })
+
+  it('sends every agent the bytes it sends with no terminal', async () => {
+    const clone = await githubClone({ login: LOGIN })
+    const project = await application(CONFIGURED)
+    const unattended = converging([CREATE_DATABASE, CREATE_ACCESS])
+    await run(clone, previewing(clone, project), { client: unattended, ask: answering('read') })
+    const attended = converging([CREATE_DATABASE, CREATE_ACCESS])
+    const { code, out, err } = await run(clone, previewing(clone, project), {
+      client: attended,
+      ask: answering('read'),
+      propose: proposing(true).propose,
+    })
+
+    expect(code, err).toBe(0)
+    expect(out).toContain('Pull request #1 opened on github.com/acme/iac')
+    expect(attended.seen.length).toBeGreaterThan(0)
+    expect(JSON.stringify(attended.seen)).toBe(JSON.stringify(unattended.seen))
+    expect(JSON.stringify(attended.seen)).not.toContain('github.com')
+    expect(JSON.stringify(attended.seen)).not.toContain(LOGIN)
   })
 })

@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 4818 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 4880 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -65,7 +65,8 @@ number in the same commit as the change.
 **Exit codes:** `0` succeeded — a diff rendered, or a run with nothing to change because
 the repository already declares everything each operation states, the file and fields named,
 or a branch submitted, already submitted, or declined at the confirmation, nothing written
-— on GitHub whatever the base's rules, a note saying when its author may merge it alone
+— on GitHub whatever the base's rules, a note saying when its author may merge it alone — or a
+proposal declined, or not made, the preview standing
 · `1` the answer is negative — nothing matched, a name was ambiguous (two entities sharing it
 included), a relation holds nothing, two entities are linked by no declared path and reach
 nothing in common (a near miss alone does not count), an entity was asked about its paths
@@ -106,8 +107,8 @@ request was understood and this build will not act on it: a change request put t
 `idpa "<phrase>" --submit` (which names the same phrase without `--submit`), a question the model
 refused, a plan holding values nobody can vouch for, **asked rather than guessed**, or a
 plan that produces no bytes while the repository does not already declare what it states —
-in prose and in `--json` alike · `130` Ctrl-C at a question or at `--submit`'s
-confirmation: the person stopped the run, which is not a declined question (Ctrl-D is one).
+in prose and in `--json` alike · `130` Ctrl-C at a question, at `--submit`'s
+confirmation or at a proposal: the person stopped the run, which is not a declined question (Ctrl-D is one).
 `idpa protection` has three of its own: `0` the rules hold, `1` they do not or GitHub
 answered a failure, `2` the arguments, the clone's configuration, its upstream or gh
 refused. A command returns
@@ -153,7 +154,7 @@ service's catalog-info and its `.idp-agent.yml` on one branch of its own reposit
 | 3 | `init platform` — scaffold, CI, CODEOWNERS, witnesses, `validate` | done |
 | 4 | Preview only — Inspector, Architect, `Plan`, diff; writes nothing | done |
 | 5 | Write + local branch — `ForgeProvider`, atomicity, idempotence | done |
-| 6 | GitHub pull request — the person's git and gh, the base's ruleset, the merge refused | in progress: `idpa protection`, `plan --from … --submit`, `plan "<intent>" --submit`, `init --submit`, `idpa "<phrase>" --submit`, the pull request opened whatever the base's rules, with a note where its author may merge it alone (6.3.4) |
+| 6 | GitHub pull request — the person's git and gh, the base's ruleset, the merge refused | in progress: `idpa protection`, `plan --from … --submit`, `plan "<intent>" --submit`, `init --submit`, `idpa "<phrase>" --submit`, the pull request opened whatever the base's rules, with a note where its author may merge it alone (6.3.4), and, at a terminal, a change's diff ending on the engine's proposal to open it (6.3.5) |
 | 7 | Polish — Ink TUI, README, asciinema, npm publish | |
 
 The order is imposed by the doctrine: read first, validate before the first write,
@@ -191,7 +192,8 @@ own?", "who is in tiger?", "which system is billing-api in?", answered with the 
 block `relations` prints (`backstage-http` slice 3.3; recorded and replayed with no key in
 `tests/scenarios/backstage-mode.test.ts`, with slice 1's question); and stage 4's two
 previews, which write nothing to a repository — unless `plan`, `init` or a phrase is given `--submit`,
-stage 5's writes, a local branch for review; a branch already there is named, or refused,
+stage 5's writes, or, at a terminal, a person answers `y` to the engine's proposal a change's
+preview ends on, a local branch for review; a branch already there is named, or refused,
 before anyone is asked to confirm:
 
 ```bash
@@ -208,8 +210,13 @@ under it. `plan … --submit`, `idpa "<phrase>" --submit` and
 `init --submit` write one new ref and the objects it reaches, and nothing else, and, on a
 GitHub road, `plan --from … --submit`, `plan "<intent>" --submit`, `idpa "<phrase>" --submit` and `init --submit` push that
 one ref to the same name on github.com with your git and open one pull request with your gh** — never `HEAD`, the index, the
-working tree or a ref that exists; every other road pushes nothing and opens no pull
-request. With
+working tree or a ref that exists; and so do `idpa "<phrase>"` and `plan "<intent>"` without
+`--submit` when a person answers `y` at a terminal to the engine's proposal a change's diff ends
+on; every other road pushes nothing and opens no pull request (`plan-command.test.ts`'s *still writes nothing — .git
+included — without --submit* and `plan-intent.test.ts`'s *leaves the declarations repository
+byte-identical*, neither run at a terminal; `plan-intent.test.ts`'s *writes nothing on either
+side when the proposal is declined* and *proposes nothing in --json, nor with no terminal, and
+starts no gh*). With
 `IDP_TRACE_DIR` set, `idpa "<phrase>"`, `plan "<intent>"`, `ask` and `init` also write one
 trace file there, and nothing else. A run that reads a Backstage catalogue keeps the read
 under `$XDG_CACHE_HOME/idp-agent/backstage` (else `~/.cache/…`), for the running account
@@ -446,7 +453,14 @@ configuration check and the same preflight before the Inspector, its refusal on 
 naming `--local` (decision 17). `idpa "<phrase>" --submit` crosses it as `plan "<intent>"`
 does (D8 lifted): the forge, gh and the base's rules are read before the Supervisor, a
 change is then submitted through `runIntent`, and a question is refused after the
-Supervisor's one word, exit 3.
+Supervisor's one word, exit 3. And at a terminal a change previewed without `--submit` — a
+phrase the Supervisor calls a `MUTATION`, or `plan "<intent>"` — ends on the engine's
+proposal, the same question (2026-10-01): the person's `y` is the authorisation, nothing is
+read on GitHub before the last model call on that road, and where the engine could not do
+what the question says, one `no pull request proposed — …` line says why and the preview
+stands at exit 0. No model writes the question and no agent holds a tool that pushes; stdin,
+stdout and stderr must each be a terminal, and what was typed before the question is
+discarded (`proposeOf`, `discardTypedAhead`).
 
 One object crosses **per direction of authority** (design §5.1, ADR-0007). The **`Plan`**
 crosses when the AI side asks for a change. The **`Answer`** crosses when it reports a
