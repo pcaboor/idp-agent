@@ -5,9 +5,9 @@ import { z } from 'zod'
  *
  * It is committed, so a whole team shares one configuration and a newcomer has
  * nothing to set up. It holds **no secret** — model credentials come from the
- * environment and the forge token from `GITHUB_TOKEN`, and nothing below reads
- * either: what is shared is versioned, what is personal never enters the
- * repository.
+ * environment, and there is no forge credential of idpa's — the person's git
+ * and gh hold theirs (ADR-0015) —, and nothing below reads any: what is shared
+ * is versioned, what is personal never enters the repository.
  *
  * Its absence is a fact about a repository, not a failure of one. §7.0 says so
  * in as many words — the missing file is what makes the CLI offer a guided tour

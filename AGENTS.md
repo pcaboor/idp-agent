@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 5047 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 5055 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -151,13 +151,19 @@ registration**, which `init platform` writes with the path registry's folders as
 silence, fails on what Backstage would refuse or what reads outside the repository
 (`registration`, an error), and warns when no target reaches one of the registry's folders.
 
-## Current state — 2026-10-01
+## Current state — 2026-10-03
 
-`main` carries stages 0 through 5; history is linear, no merge commits. Each stage lands
-as a stack of branches, one per task of its plan in `docs/plans/`, rebased and merged
-bottom-up. Stage 5 landed that way, one task per pull request: `Cleared`, the forge layer,
-the local forge, `plan … --submit` on both roads, and `init --submit`, which writes a
-service's catalog-info and its `.idp-agent.yml` on one branch of its own repository.
+`main` carries stages 0 through 6; stage 6 was proved on GitHub by the owner's live test of
+2026-10-02 and is recorded in ADR-0015, and what is left of it is 6.4.3, the owner's
+re-recording of the tapes recorded before 2026-09-30. History is linear, no merge commits.
+Each stage lands as a stack of branches, one per task of its plan in `docs/plans/`, rebased
+and merged bottom-up. Stage 5 landed that way, one task per pull request: `Cleared`, the forge
+layer, the local forge, `plan … --submit` on both roads, and `init --submit`, which writes a
+service's catalog-info and its `.idp-agent.yml` on one branch of its own repository. Stage 6
+lands the same way, in fourteen pull requests (`docs/plans/stage-6-github.md`): thirteen of
+them, 6.1.1 to 6.4.2, have landed — the allow-list and `idpa protection`, the GitHub forge on
+`plan --from`, the intent, `init` and phrase roads, the three tasks the owner added on
+2026-10-01, the live test, and ADR-0015 — and 6.4.3 is next.
 
 | # | Stage | State |
 |---|---|---|
@@ -167,11 +173,11 @@ service's catalog-info and its `.idp-agent.yml` on one branch of its own reposit
 | 3 | `init platform` — scaffold, CI, CODEOWNERS, witnesses, `validate` | done |
 | 4 | Preview only — Inspector, Architect, `Plan`, diff; writes nothing | done |
 | 5 | Write + local branch — `ForgeProvider`, atomicity, idempotence | done |
-| 6 | GitHub pull request — the person's git and gh, the base's ruleset, the merge refused | in progress: `idpa protection`, `plan --from … --submit`, `plan "<intent>" --submit`, `init --submit`, `idpa "<phrase>" --submit`, the pull request opened whatever the base's rules, with a note where its author may merge it alone (6.3.4), at a terminal, a change's diff ending on the engine's proposal to open it (6.3.5), and what is in flight read first — the open idp-agent pull requests into the base, before any model and again before writing: the same change named, a competing one refused, one beside proposed beside it (6.3.6) |
+| 6 | GitHub pull request — the person's git and gh, the ruleset checked, the live test | built, proved live on 2026-10-02 (ADR-0015); the owner's re-recorded tapes (6.4.3) land next: `idpa protection`, `plan --from … --submit`, `plan "<intent>" --submit`, `init --submit`, `idpa "<phrase>" --submit`, the pull request opened whatever the base's rules, with a note where its author may merge it alone (6.3.4), at a terminal, a change's diff ending on the engine's proposal to open it (6.3.5), and what is in flight read first — the open idp-agent pull requests into the base, before any model and again before writing: the same change named, a competing one refused, one beside proposed beside it (6.3.6) |
 | 7 | Polish — Ink TUI, README, asciinema, npm publish | |
 
 The order is imposed by the doctrine: read first, validate before the first write,
-preview before the merge request. Writing arrives only at stage 5.
+preview before the pull request. Writing arrives only at stage 5.
 
 Shipped and working: `idpa "<phrase>"`, the one gesture of §7.4, from any directory — the
 Supervisor classifies the phrase once, a question takes `ask`'s road and a change `plan
@@ -206,8 +212,10 @@ block `relations` prints (`backstage-http` slice 3.3; recorded and replayed with
 `tests/scenarios/backstage-mode.test.ts`, with slice 1's question); and stage 4's two
 previews, which write nothing to a repository — unless `plan`, `init` or a phrase is given `--submit`,
 stage 5's writes, or, at a terminal, a person answers `y` to the engine's proposal a change's
-preview ends on, a local branch for review; a branch already there is named, or refused,
-before anyone is asked to confirm:
+preview ends on, a local branch for review — and, from a clone whose branch tracks one on
+github.com, that branch pushed with the person's git and one pull request opened with their
+gh, or with `--local` the local branch alone; a branch or a pull request already there is
+named, or refused, before anyone is asked to confirm:
 
 ```bash
 idpa "<phrase>" [--repo <dir> | --demo | --backstage] [--refresh | --cached] [--project <dir>] [--json] [--quiet] [--submit [--local]]  # question or change
@@ -429,8 +437,7 @@ changing that section first.
   scoped out of merging, and what refuses the merge is the base's ruleset, which the tool
   reads before it writes anything and again at the moment of acting; a test asserts that the
   merge **fails** there: offline against a fake (`tests/unit/merge-refused.test.ts`), live on
-  a throwaway repository by the owner (the stage 6 note, `docs/stage-6-brief.md` §§ 8 and 10,
-  amended 2026-10-01).
+  a throwaway repository by the owner (ADR-0015).
 - Any anti-destruction check is repeated engine-side, at the moment of acting.
 
 **Writing**
@@ -453,28 +460,30 @@ changing that section first.
 ## The trust boundary — built as far as a pull request, on every road that submits
 
 Everything from the Supervisor to the unified diff runs, and on both roads of `plan` one
-step further: `plan … --submit` cuts the branch, locally — `plan
-"<intent>"` after all five gates, having refused a repository that cannot take it before any
-model was paid. `init --submit` does the same in the service's own repository, for its
-catalog-info and `.idp-agent.yml`. Both roads of `plan … --submit` cross it on a GitHub
-road — they push that branch with the person's git and open one pull request with their gh,
-after the base's rules and its tip were read through gh, and again at the moment of acting;
-`plan "<intent>"` reads the road and gh before the model is configured and the rules before
-the first model call, and holds a service's `iacRepo` to the clone's repository as a
-cross-check. `init --submit` crosses it in the service's own clone, held to the same
-configuration check and the same preflight before the Inspector, its refusal on the rules
-naming `--local` (decision 17). `idpa "<phrase>" --submit` crosses it as `plan "<intent>"`
-does (D8 lifted): the forge, gh and the base's rules are read before the Supervisor, a
-change is then submitted through `runIntent`, and a question is refused after the
-Supervisor's one word, exit 3. And at a terminal a change previewed without `--submit` — a
-phrase the Supervisor calls a `MUTATION`, or `plan "<intent>"` — ends on the engine's
+step further: `plan … --submit` cuts the branch, locally — `plan "<intent>"` after all five
+gates, having refused a repository that cannot take it before any model was paid. `init
+--submit` does the same in the service's own repository, for its catalog-info and
+`.idp-agent.yml`. Both roads of `plan … --submit` cross it on a GitHub road — they push that
+branch with the person's git and open one pull request with their gh, after the base's rules
+and its tip were read through gh, and again at the moment of acting; `plan "<intent>"` reads
+the road and gh before the model is configured and the rules before the first model call,
+and holds a service's `iacRepo` to the clone's repository as a cross-check. `init --submit`
+crosses it in the service's own clone, held to the same configuration check and the same
+preflight before the Inspector, its refusal on § 8 item 1 — a repository archived, renamed
+or not pushable — naming `--local` (decision 17). `idpa "<phrase>" --submit` crosses it as
+`plan "<intent>"` does (D8 lifted): the forge, gh and the base's rules are read before the
+Supervisor, a change is then submitted through `runIntent`, and a question is refused after
+the Supervisor's one word, exit 3. And at a terminal a change previewed without `--submit` —
+a phrase the Supervisor calls a `MUTATION`, or `plan "<intent>"` — ends on the engine's
 proposal, the same question (2026-10-01): the person's `y` is the authorisation, nothing is
 read on GitHub before the last model call on that road, and where the engine could not do
 what the question says, one `no pull request proposed — …` line says why and the preview
 stands at exit 0. No model writes the question and no agent holds a tool that pushes; stdin,
 stdout and stderr must each be a terminal, and what was typed before the question is
-discarded (`proposeOf`, `discardTypedAhead`).
-
+discarded (`proposeOf`, `discardTypedAhead`). What is not built is the merge, by design —
+idpa has no command and no forge method that merges, approves or closes (ADR-0015) — and
+ADR-0012's required check, which is the downstream system's: `idpa protection` and a
+submission's closing lines print the status checks merging waits for.
 One object crosses **per direction of authority** (design §5.1, ADR-0007). The **`Plan`**
 crosses when the AI side asks for a change. The **`Answer`** crosses when it reports a
 read — a union of `entities` / `nothing` / `overview` / `relation` / `unanswerable` that
@@ -497,7 +506,7 @@ which is why the write side has a signature of its own.
 ```
 Supervisor → Inspector → Architect → Reviewer  │  Zod → signature → policies
                                                │  → re-check → Reviewer → Diff
-                                               │  → [submit] → branch
+                                               │  → [submit] → branch → push → pull request
 ```
 
 The AI chooses the name, owner, environment and `dependsOn`. The **engine** chooses the
@@ -643,7 +652,7 @@ in `repair.test.ts`). Three attempts, then a clean stop.
 ## Conventions
 
 - **English throughout** — code, comments, commit messages, test names, CLI output.
-- Conventional Commits. Work on a branch; `main` is reached through a merge request.
+- Conventional Commits. Work on a branch; `main` is reached through a pull request.
 - **What was done is traceable in the repository, not only in a pull request's description.**
   Every pull request adds its line to [`CHANGELOG.md`](CHANGELOG.md) under Unreleased. It
   updates [`docs/roadmap.md`](docs/roadmap.md) when it closes a queue item, a debt or an open
@@ -759,11 +768,20 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   an answered round, which stales the `link-db-missing` tape, so it waits for a re-record.
 - **A submission ignores the repository's hooks** (ADR-0010): no `pre-commit`, no
   `reference-transaction`, no fsmonitor. A team relying on a hook reviews the branch in the
-  merge request instead, where CI runs.
+  pull request instead, where CI runs.
 - **Declared is not provisioned.** A merged declaration can still be refused or fail
-  downstream, and nothing detects it yet (ADR-0012, proposed). `init platform` names the
-  status check, among the ruleset `idpa protection` checks; the reconciler that reports a failure after the merge
-  arrives with the real integrations.
+  downstream, and nothing detects it yet (ADR-0012, proposed). `idpa protection` prints the
+  status checks merging waits for, and `init platform` advises one among the settings it
+  prints; the reconciler that reports a failure after the merge arrives with the real
+  integrations.
+- **The push credential is not proven to be gh's account** (the stage 6 note's § 19, Q4;
+  ADR-0015). The ruleset's `current_user_can_bypass` answers for gh's account, and git
+  pushes with whatever key or helper the person configured: a deploy key or another
+  account's key in the bypass list could move the base without a pull request; a deploy key
+  idpa can see there is said in the note, and one it cannot see is not. `docs/submitting.md`
+  recommends pushing as gh's account. A company's answer to the note's § 17 — its submitters
+  pushing with other keys — would make it worth proving, through the person's ssh greeting
+  or gh's credential helper, each of which reads or overrides what the person configured.
 - **`init --submit` is not offered for a service in a subfolder of its repository** (D12):
   the forge cuts a branch at a clone's root, and the service's paths would need the
   folder's prefix. `init` without `--submit` previews one.

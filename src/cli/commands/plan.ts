@@ -58,8 +58,9 @@ import { inertLine, visible } from '../render/plain.js'
 import { budgetNotice, declarationsRoot, selectionNotice } from '../repository.js'
 
 /**
- * Steps 3 to 7 of §7.4, wired end to end: the branch with `--submit` on both
- * roads (`commands/submit.ts`), and never the merge request, which is stage 6.
+ * Steps 3 to 8 of §7.4, wired end to end: the branch with `--submit` on both
+ * roads (`commands/submit.ts`), pushed and opened as a pull request where the
+ * clone tracks github.com, and never the merge (ADR-0015).
  *
  * **Two ways in, one way out.** `runPlan` reads a Plan from a file — no model is
  * involved and none can be — and `runIntent` drafts one: Inspector, Architect,

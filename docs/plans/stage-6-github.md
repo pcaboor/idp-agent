@@ -1,6 +1,6 @@
 # Stage 6 — a GitHub pull request, with the person's own git and gh
 
-**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2 built ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3 built ([#131](https://github.com/pcaboor/idp-agent/pull/131)); 6.3.4 built ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5 built ([#134](https://github.com/pcaboor/idp-agent/pull/134)); 6.3.6 built ([#135](https://github.com/pcaboor/idp-agent/pull/135)); 6.4.1 built ([#136](https://github.com/pcaboor/idp-agent/pull/136)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
+**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2 built ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3 built ([#131](https://github.com/pcaboor/idp-agent/pull/131)); 6.3.4 built ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5 built ([#134](https://github.com/pcaboor/idp-agent/pull/134)); 6.3.6 built ([#135](https://github.com/pcaboor/idp-agent/pull/135)); 6.4.1 built ([#136](https://github.com/pcaboor/idp-agent/pull/136)); 6.4.2 built ([#137](https://github.com/pcaboor/idp-agent/pull/137)); 6.4.3 planned.** The owner's answers to the note's § 18 (22 decisions) and
 § 19 (Q1–Q4) were settled on 2026-09-30, each as recommended, and this plan takes them as
 given; so were the four questions the plan itself asked, the same day ([Questions for the
 owner](#questions-for-the-owner)). Fourteen stacked pull requests (eleven at first; 6.3.4 to 6.3.6 were added on 2026-10-01): thirteen, 6.1.1 to 6.4.2, then 6.4.3, the owner's step: every tape
@@ -9229,7 +9229,7 @@ complete.
 - Modify: `docs/stage-6-brief.md` (its status line: built, and where the plan departed),
   `docs/roadmap.md`, `CHANGELOG.md`, `docs/plans/stage-6-github.md` (ticks)
 
-- [ ] **Step 1: The wording test (fails: ADR-0015 does not exist; design §4.2, `AGENTS.md`
+- [x] **Step 1: The wording test (fails: ADR-0015 does not exist; design §4.2, `AGENTS.md`
   and `SECURITY.md` state the invariant since 6.3.4)**
 
 ```typescript
@@ -9257,7 +9257,7 @@ missing ADR, and on `docs/submitting.md` if it does not yet state the invariant 
 `docs/design.md`, `AGENTS.md` and `SECURITY.md` pass (6.2.2), which is the check that 6.2.2
 wrote the owner's words and not a paraphrase.
 
-- [ ] **Step 2: ADR-0015**
+- [x] **Step 2: ADR-0015**
 
 `docs/adr/0015-a-submission-is-a-pull-request-the-rules-hold.md`, titled *ADR-0015 — a
 submission is a pull request the rules keep from merging until someone else approves it*.
@@ -9312,7 +9312,7 @@ ADR-0010, ADR-0011, ADR-0012. Sections:
   ADR of its own; github.com only, GitHub Enterprise later through gh's own host configuration
   (decision 16); ADR-0012 stays proposed; D6 and D12 stay refused.
 
-- [ ] **Step 3: The records it amends**
+- [x] **Step 3: The records it amends**
 
 - **ADR-0006**, *Consequences*: the sentence "`init platform` will print the required settings
   and verify them, including a live check that the supplied token cannot merge (§ 7.2)" becomes:
@@ -9350,7 +9350,7 @@ ADR-0010, ADR-0011, ADR-0012. Sections:
   someone else approves it`, and ADR-0012's line "(proposed; stage 6 reads and prints the
   required check)".
 
-- [ ] **Step 4: `docs/design.md`**
+- [x] **Step 4: `docs/design.md`**
 
 - **§4.2.** Written in 6.3.4; this step re-reads it and replaces its closing reference to the
   note by "(ADR-0015)". The bullet, as 6.3.4 writes it and this step leaves it:
@@ -9419,7 +9419,7 @@ ADR-0010, ADR-0011, ADR-0012. Sections:
   `process/  git.ts · gh.ts — the only two launchers, each checking its argument vector` line
   under `src/`, and `core/github/` under `core/`.
 
-- [ ] **Step 5: `SECURITY.md`**
+- [x] **Step 5: `SECURITY.md`**
 
 *Where it stands*: "stage 6 of 7", and the sentence says what a submission writes on either road
 and that idpa holds no forge credential. The invariant, word for word, heads the *Guaranteed*
@@ -9431,7 +9431,7 @@ proven gh's (Q4); the live test named as the evidence for the merge refused, wit
 file; *Reporting a vulnerability*'s surfaces gain `process/gh.ts`, `process/git.ts`'s push
 grammar and `forge/github/`.
 
-- [ ] **Step 6: `docs/submitting.md`, completed**
+- [x] **Step 6: `docs/submitting.md`, completed**
 
 It is the page a person follows (the note's § 16): gh installed (`https://cli.github.com`) and
 logged in as a person, the minimum version (6.4.1); git able to push as they already do, and the
@@ -9442,7 +9442,7 @@ three exits; the refused configuration keys and the one-line move of each to the
 configuration; `--local`; what each road prints; the rows of § 14 as a person meets them; what no
 read can see; the live test (6.4.1). The invariant word for word in its opening paragraph.
 
-- [ ] **Step 7: `README.md`**
+- [x] **Step 7: `README.md`**
 
 The first screen's sentence ("Nothing is pushed yet: the pull request, whose merge is the
 approval, is stage 6") → the branch is pushed with your git and the pull request opened with your
@@ -9453,7 +9453,7 @@ plan linked; *Next, in order* without stage 6; the FAQ answers (`:729`, `:740`);
 gains `docs/submitting.md` and ADR-0015. Every line the keyless first screen's test holds byte for
 byte (`#78`'s test) is re-run; a line that test pins changes only with the test, in this commit.
 
-- [ ] **Step 8: `AGENTS.md`**
+- [x] **Step 8: `AGENTS.md`**
 
 *Invariants*, **Authorisation**: the owner's invariant, written in 6.2.2, re-read; its closing
 reference to the note becomes "(ADR-0015)". *Current state*:
@@ -9475,7 +9475,7 @@ names the status check stage 6 will require" → "`idpa protection` prints the s
 merging waits for"; a new item, the push credential not proven gh's account (Q4), with what a
 company's answer to § 17 would change.
 
-- [ ] **Step 9: The rest**
+- [x] **Step 9: The rest**
 
 - `src/core/schemas/config.ts:7-8`: "model credentials come from the environment and the forge
   token from `GITHUB_TOKEN`, and nothing below reads either" → "model credentials come from the
@@ -9496,7 +9496,7 @@ company's answer to § 17 would change.
   measured live.
 - `CHANGELOG.md`, `### Documentation`, the line below.
 
-- [ ] **Step 10: The sweep, and checks**
+- [x] **Step 10: The sweep, and checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -9520,12 +9520,14 @@ git add docs/adr/0015-a-submission-is-a-pull-request-the-rules-hold.md \
   docs/adr/0006-the-merge-request-is-authorisation.md docs/adr/0010-a-submission-is-a-create-only-ref.md \
   docs/adr/0012-declared-is-not-provisioned.md docs/adr/0003-provider-interfaces.md docs/design.md \
   SECURITY.md docs/submitting.md README.md AGENTS.md src/core/schemas/config.ts \
-  tests/unit/invariant-wording.test.ts docs/stage-6-brief.md docs/roadmap.md CHANGELOG.md \
-  docs/plans/stage-6-github.md
+  src/cli/commands/plan.ts tests/unit/invariant-wording.test.ts docs/stage-6-brief.md \
+  docs/roadmap.md CHANGELOG.md docs/plans/stage-6-github.md
 git commit -m "docs: record that a submission is a pull request the rules keep from merging until someone else approves it"
 ```
 
-Base `test/s6-live-github`. CHANGELOG, `### Documentation`:
+Every file named, never `git add -A` or `git add .`: a worktree's `node_modules` may be a symlink
+to the main checkout's, which the `node_modules/` pattern does not ignore, and it would be
+committed. Base `test/s6-live-github`. CHANGELOG, `### Documentation`:
 
 > - ADR-0015: a submission is a pull request, and the base's rules decide who may merge it —
 >   "idpa never merges and never writes to the base: it opens a pull request, and the base's
@@ -9538,22 +9540,91 @@ Base `test/s6-live-github`. CHANGELOG, `### Documentation`:
 **What changes that a person sees:** documents only, and one comment in `src/`; every command's
 output is the same byte for byte.
 
-**What the owner can run:**
+**What the owner can run** (offline, after the merge, from the main checkout):
 
 ```bash
-cd "$HOME/Documents/idp-agent-worktrees/s6-adr-0015"
+cd "$HOME/Documents/idp-agent-main"
+git pull --ff-only
+pnpm install
 pnpm vitest run tests/unit/invariant-wording.test.ts
 git grep -n -e 'One token per capability' -e 'token that opens a merge request' -- docs AGENTS.md SECURITY.md README.md
+sed -n '1,12p' docs/adr/0015-a-submission-is-a-pull-request-the-rules-hold.md
+sed -n '/^## How it is proved/,/^## Rejected alternatives/p' docs/adr/0015-a-submission-is-a-pull-request-the-rules-hold.md
 pnpm build
 pnpm demo:github
 ```
 
 Attendu :
-- the wording test passes, five files and the sweep;
-- the `git grep` lists only `docs/plans/`, `docs/reviews/`, `docs/stage-5-check.md`,
-  `docs/stage-6-brief.md` and the sentences that say ADR-0015 replaced them;
+- the wording test passes, 8 tests: the invariant word for word in `docs/design.md`, `AGENTS.md`,
+  `SECURITY.md`, ADR-0015 and `docs/submitting.md`, the old sentence nowhere as a guarantee, and
+  a table row or a list item stating it reported whatever else its table or list cites;
+- the `git grep` lists only `docs/plans/stage-6-github.md`, `docs/stage-5-brief.md`,
+  `docs/stage-6-brief.md` and ADR-0015's own line 24, the sentence saying ADR-0015 replaced it;
+- ADR-0015's head reads `**Status** accepted, 2026-10-03`, then the italic paragraph naming the
+  owner's choices;
+- *How it is proved* names `answers-2026-10-02.json`, gh 2.96.0, `current_user_can_bypass`
+  `never`, the fourteen doors with their answers, and step 5 **not tried live**, resting on the
+  fake and the rule's read;
 - `pnpm demo:github` runs every road offline against the fake gh and a bare remote, each step
   printing what `docs/submitting.md` says it prints, and ends on success, exit 0.
+
+**As built (the draft, before the owner's session).** Where the code, or the owner's decisions
+of 2026-10-01, differ from the text above, they were followed, to the same end:
+
+- ADR-0015's title is *a submission is a pull request, and the base's rules decide who may
+  merge it*, the decision as built: since 6.3.4 the rules no longer keep the pull request from
+  being opened. The file keeps the name this plan and the wording test give it.
+- Its *Decision* states the 2026-10-01 change in the owner's words — the pull request always
+  opened, the `note:` where its author may merge it alone, item 1 alone refusing the push — and
+  the proposal at a terminal (6.3.5) and what is in flight (6.3.6); its table of intermediate
+  states is § 4's as built, the rules after the read-back deciding the note, never whether to
+  open. The live half of *How it is proved* names the second account for the approval step
+  only, which the owner made optional.
+- Design §8's new row says what 6.3.4 built — the pull request opened with the note, exit 0, and
+  item 1 refused, exit 1 — not "refused … exit 1" for missing rules. §5.5 and `AGENTS.md`
+  already counted the rules: **thirty**, measured, not 29. §11's stage 6 row and §12.1's
+  missing ADR-0013 and ADR-0014 lines were corrected too.
+- Item 1 (the repository) is read once, in the preflight before any model; the moment of acting
+  reads the road, the rules (items 2 and 3) and the base's tip again (`roadMoved`, `readRules`),
+  and a clone key refused there is exit 1, not 2: design §8 and ADR-0015 say so. Of the five
+  things no read can see, `idpa protection` prints three (the administrator, the push
+  credential's bypass, an approval by a workflow or an app); `SECURITY.md`, ADR-0015 and
+  `docs/submitting.md` say which.
+- `src/cli/commands/plan.ts`'s header comment ("never the merge request, which is stage 6") is
+  a second comment reworded; no behaviour changes.
+- `docs/submitting.md`'s minimum gh and its live-test section are 6.4.1's (its file list), so
+  this draft left them to the rebase. Every value only the live run gives was written
+  `<measured>` in the draft.
+
+**As built (finished after the rebase onto 6.4.1, `d7a6396`).**
+
+- Every `<measured>` is filled from `tests/contract/github/answers-2026-10-02.json` and the
+  owner's run: gh 2.96.0; an administrator with an empty bypass list answered
+  `current_user_can_bypass: never`; the fourteen doors refused with the base unchanged
+  (`merge-async` 202, never merged over 30 s and still unmerged at the end); one read-back read,
+  no lag; the fenced `@mention` rendered as code. The second account was not used, so step 5
+  (and 3b) is said, in ADR-0015, `SECURITY.md`, `docs/submitting.md` and the roadmap, to rest
+  on the fake and the rule's read.
+- The defect 6.4.1's review found — a ruleset supplying none of the three required rules
+  reported "classic branch protection only" — is stated as a known limit, not as fixed, in
+  ADR-0015, `SECURITY.md`, `docs/submitting.md`, the note's status and the roadmap's follow-ups.
+- ADR-0015 is **accepted, 2026-10-03**, with the italic paragraph naming the owner's choices;
+  the note's status line says **built**, with the plan's departures one line each; the
+  roadmap's stage 6 row and `AGENTS.md`'s say **built**, with 6.4.3 next. Stage 6 stays in the
+  roadmap's queue, as item 1, until 6.4.3 lands, rather than being removed and renumbered.
+- The test counts are the shipping script's; this task sets none by hand.
+- After review, the wording test judges the old sentence in the unit that states it — each table
+  row, and each sentence of a list item or of prose — and exempts one only where it names ADR-0015
+  and says it was replaced. Step 1's paragraph made `SECURITY.md`'s *Guaranteed* table and
+  `AGENTS.md`'s *Authorisation* list one unit each, so a row or a bullet restating the stage-5
+  guarantee passed beside any that cited ADR-0015; an eighth test feeds it both, seen failing
+  first. The narrower check found one sentence the paragraph had let through: ADR-0006's
+  rejected alternative, which now says ADR-0015 replaced the test it names.
+- Design §8 gained the row the first list above relied on: a clone's own configuration that
+  redirects the push is refused, exit 2 before any model, exit 1 at the moment of acting,
+  nothing written.
+- `AGENTS.md` counts stage 6's pull requests as fourteen, thirteen of them landed with this one,
+  6.4.3 next; 6.4.3's pull request puts it in the past tense.
 
 ---
 
