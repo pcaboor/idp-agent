@@ -1,6 +1,6 @@
 # Stage 6 — a GitHub pull request, with the person's own git and gh
 
-**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2 built ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3 built ([#131](https://github.com/pcaboor/idp-agent/pull/131)); 6.3.4 built ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5 built ([#134](https://github.com/pcaboor/idp-agent/pull/134)); 6.3.6 built ([#135](https://github.com/pcaboor/idp-agent/pull/135)); 6.4.1 built ([#136](https://github.com/pcaboor/idp-agent/pull/136)); 6.4.2 built ([#137](https://github.com/pcaboor/idp-agent/pull/137)); 6.4.3 planned.** The owner's answers to the note's § 18 (22 decisions) and
+**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2 built ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3 built ([#131](https://github.com/pcaboor/idp-agent/pull/131)); 6.3.4 built ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5 built ([#134](https://github.com/pcaboor/idp-agent/pull/134)); 6.3.6 built ([#135](https://github.com/pcaboor/idp-agent/pull/135)); 6.4.1 built ([#136](https://github.com/pcaboor/idp-agent/pull/136)); 6.4.2 built ([#137](https://github.com/pcaboor/idp-agent/pull/137)); 6.4.3 built ([#138](https://github.com/pcaboor/idp-agent/pull/138)).** The owner's answers to the note's § 18 (22 decisions) and
 § 19 (Q1–Q4) were settled on 2026-09-30, each as recommended, and this plan takes them as
 given; so were the four questions the plan itself asked, the same day ([Questions for the
 owner](#questions-for-the-owner)). Fourteen stacked pull requests (eleven at first; 6.3.4 to 6.3.6 were added on 2026-10-01): thirteen, 6.1.1 to 6.4.2, then 6.4.3, the owner's step: every tape
@@ -9690,7 +9690,7 @@ stays in the roadmap.
 - Modify: `AGENTS.md` and `README.md` (the test count), `docs/roadmap.md`,
   `docs/reviews/2026-09-23-deep-review.md` (Status), `CHANGELOG.md`, `docs/plans/stage-6-github.md`
 
-- [ ] **Step 1: The tests the re-record makes pass (implementer, before the session; fail on the
+- [x] **Step 1: The tests the re-record makes pass (implementer, before the session; fail on the
   twelve tapes of `2b2250e`)**
 
 `tests/scenarios/plan-mode.test.ts`, in *the recordings themselves*, beside `no shipped recording is
@@ -9739,7 +9739,20 @@ request and the summary, and the Analyst the request and the same summary, never
 words (`ask.ts`, `classified` and `answered`). It passes now and must pass unchanged after the
 recording. The branch is not pushed.
 
-- [ ] **Step 2: The owner's recordings** (owner only; "What the owner can run" below)
+*As built (Step 1, on `d8b334e`).* The twelve tapes are unchanged since `2b2250e`: the table above
+holds, 75 turns, every one `sha256:`. `records every turn under the digest of what the provider is
+sent` fails listing those 75; `question-mode.test.ts` fails on the three question tapes (the
+Analyst's turns) and on `mutation-classified-link` (the Supervisor's), so also on its two tests that
+replay `question-prod-databases`; `FIRST_SENT` passes. `prompt-digests.test.ts` gains two tests
+beside the one it had: the first request of each agent equals `FIRST_SENT`, and `FIRST_SENT` names
+every question tape and no other. The commands below differ from Step 2's text in three places, to
+the same end: the worktree is `idp-agent-worktrees/s643`, whose `node_modules` is a link to the main
+checkout's, so no `pnpm install` is run there; the keys come from the owner's
+`~/Documents/idp-agent/.env`, loaded with `set -a`; and `IDP_SUPERVISOR_MODEL` and `IDP_TRACE_DIR`
+are unset after it, since the recording shell is kept whole and either would change what a tape
+holds (a second model on the Supervisor's turns) or what the run writes (a trace file).
+
+- [x] **Step 2: The owner's recordings** (owner only; "What the owner can run" below)
 
 One scenario at a time, `-t` naming it, each provider's key exported in the owner's shell, never
 typed into a file of the repository. `tests/setup/shell.ts` keeps the shell whole while a scenario
@@ -9755,7 +9768,23 @@ merges when all twelve are recorded, or with the owner's decision, dated in the 
 one — which is then the one entry of `LEFT_BY_THE_OWNER`, in this pull request, so the tests
 above stay green and say which tape was left.
 
-- [ ] **Step 3: `SENT` re-measured, and the tapes read (implementer)**
+*As built (Step 2, 2026-10-02).* The owner recorded all twelve, so `LEFT_BY_THE_OWNER` stays
+empty. Eight with openai `gpt-6-luna` as above. Of the four question-mode tapes, only
+`question-prod-databases` was recorded with mistral `mistral-small-2603`: on
+`question-consumers-of-billing-db` it answered `nothing`, having searched for Components of type
+`service` in `prod`, which the demo SI does not declare, and the owner chose to record that tape
+and the two left, `question-unanswerable-ranking` and `mutation-classified-link`, with openai
+`gpt-6-luna` instead — so eleven tapes are `gpt-6-luna`'s and one is Mistral's (the roadmap's
+decisions of 2026-10-02). Recording turned up two assertions of the harness that held only on a
+replay, fixed in this pull request and not in a tape: `plan-mode.test.ts` and
+`question-mode.test.ts` expected the trace's `idp.mode` to be `replay` while recording too (now
+`record` then, as `backstage-mode.test.ts` already expected); and `question-mode.test.ts`'s first
+test expected the answer's table alone on stdout, from before ADR-0008
+([#64](https://github.com/pcaboor/idp-agent/pull/64)) — the new tape frames it with a `› `
+introduction, so the test holds the engine's block byte for byte and every other line marked
+`› `.
+
+- [x] **Step 3: `SENT` re-measured, and the tapes read (implementer)**
 
 ```bash
 pnpm vitest run tests/scenarios
@@ -9770,7 +9799,64 @@ tape held. Then each tape is read before it is committed: it holds what the scen
 temporary repositories and the demo catalogue contain, and `carries no credential` is green. A
 difference in turn count from the table above is expected and said in the pull request, per tape.
 
-- [ ] **Step 4: The documents**
+*As built (Step 3).* Replayed with no key, every scenario passed but the three `SENT` comparisons
+of `question-prod-databases` (its third request), `question-consumers-of-billing-db` (four
+Analyst requests where it had three) and `question-unanswerable-ranking` (three where it had four);
+`mutation-classified-link`'s one request did not move, and `FIRST_SENT` passed unchanged. The new
+values are in `SENT`, its comment says where they were measured, and its test, which named
+`f8bcb43`, is now `%s sends the requests its tape was recorded with`. The loop does not print
+nothing, and the plan was wrong to expect it: it compares the list of each agent's first system
+prompt, so it prints a tape where another set of agents was reached — `link-db-missing` no longer
+reaches the Reviewer, `repair-malformed-owner` now does — and the three question tapes, whose
+Analyst prompt was the one before [#54](https://github.com/pcaboor/idp-agent/pull/54) (the
+staleness this task closes). Compared agent by agent, every agent both tapes reached holds the
+same first system prompt, the three old Analyst prompts aside. The loop also needs `HEAD` (or
+`10bae9b`) where it says `main`: this worktree's local `main` is `389fe3a`, from before B2. Turns,
+on `10bae9b` then now: `link-db-exists` 12 → 12, `link-db-missing` 12 → 5, `link-ambiguous-env` 11
+→ 15, `link-already-declared` 9 → 8, `repair-malformed-owner` 7 → 12,
+`question-backstage-owner` 3 → 4, `question-organisation-owns` 4 → 4,
+`question-organisation-system` 4 → 4, `question-prod-databases` 3 → 3,
+`question-consumers-of-billing-db` 4 → 5, `question-unanswerable-ranking` 5 → 4,
+`mutation-classified-link` 1 → 1: 75 → 77, every one `sent:sha256:`. Each tape was read: the
+scenario's own repositories (a `package.json` and the declarations it writes) and the demo
+catalogue, nothing else; the OpenAI turns carry `reasoningEncryptedContent`, opaque, as the
+OpenAI tapes did before, and `carries no credential` is green.
+
+*Review (2026-10-03).* That reading was wrong about one tape. In `link-ambiguous-env` the
+Inspector reads no file: its `read_file` call carries, as `content`, a `package.json` the model
+wrote itself (`@thronecode/gorilla-service`, with fastify, redis, jsonwebtoken and bcrypt) and no
+`path`, and is refused; it then reports `gorilla-service`, Node.js, PostgreSQL and Redis, which
+the engine accepts and the Architect is sent as facts, where the scenario's `package.json` is
+`billing-api`'s with `pg` alone. Neither `thronecode` nor `gorilla` is anywhere else in the
+repository or its history. The other four plan-mode tapes read `package.json` and report
+`billing-api`. `plan-mode.test.ts`'s *the recordings themselves* gains *holds an Inspector that
+reports what a file it read says* — every `report_facts` follows a `read_file` that returned a
+file, in the conversation that turn was sent, and the name it reports is in one — seen failing
+on that tape's turns 2 and 3 and on nothing else; it stays red until the owner records the tape
+again, or keeps it with the decision dated in the roadmap and the guard naming it. The product
+gap, an Inspector's facts held to no file on the plan road, is in the roadmap's *Behaviour*,
+beside the review's security-5 and gap-init-real-repos-5 for `init`. Two more things the
+reading missed. `link-db-missing` no longer redrafts: one draft, then the owner of the new
+database, the environments and the level asked in one round, exit 3 — the tape before it was
+the only one where an answer typed at a prompt had to survive a model's redraft, and no tape
+recorded on 2026-10-02 refuses or redrafts after an answered round. That case stays pinned with
+a scripted client (`tests/unit/reapply.test.ts`, `plan-answered-level.test.ts`); the scenario's
+comment, `AGENTS.md` and the roadmap say so now, and the comments that still cite the old tape —
+`src/core/plan/reapply.ts`, `src/agents/repair.ts` and those two unit tests — are left for the
+next change that touches them, since this task changes nothing under `src/`. And
+`question-consumers-of-billing-db`'s `gpt-6-luna` frames the English question in Spanish (`En
+prod, la base de datos de facturación es utilizada por estos servicios; …`), where the Analyst is
+told to write in the language of the question; the replay prints it marked `› ` and the scenario
+asserts only that `billing-api` is named. It is in the roadmap for the owner, who decides whether
+to record it again.
+
+*The owner's answer (2026-10-03).* Both recorded again with OpenAI `gpt-6-luna`: in
+`link-ambiguous-env` the Inspector now reads `package.json` and reports `billing-api`, and the
+guard passes; `question-consumers-of-billing-db` answers in English with the relation the engine
+computes, so its `SENT` entry is re-measured. The product gap is the roadmap queue's first item,
+before stage 8.
+
+- [x] **Step 4: The documents**
 
 - `tests/README.md`, *What makes a tape stale*: the paragraph on turns "recorded before" says no
   tape holds one since this re-record, and that the replay still compares a `sha256:` turn in its
@@ -9784,7 +9870,17 @@ difference in turn count from the table above is expected and said in the pull r
   (this pull request); agents-llm-9, the re-record done, the two remainders named.
 - `AGENTS.md` and the README's badge: the test count re-measured (one test added).
 
-- [ ] **Step 5: Checks**
+*As built (Step 4).* As listed, with four differences. tests-4 is closed here, not left: its fix is
+the freshness guard in `question-mode.test.ts`, which Step 1 built, so the review's Status names it
+fixed and the sweep's *Recordings and what the scenarios pin* leaves only the forced-turn
+fallback's digest of agents-llm-9. The stale question tapes' item carried #54's suggestion of a
+`question-overview` scenario, which is not a re-record: it stays, as a debt of its own under
+*Recordings that need the owner's key*. The README's provider table says which tapes each provider
+recorded, and `AGENTS.md`, the README and the roadmap mark stage 6 done, the roadmap's queue item
+leaving as stage 5's did. The test count in `AGENTS.md` and on the badge is set when the pull
+request ships, not by hand.
+
+- [x] **Step 5: Checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -9796,7 +9892,22 @@ git diff main --stat -- src tests/golden fixtures/si-demo
 Expected: green, with no key and no network; 29 rules; the diff lists nothing under `src/`,
 `tests/golden/` or `fixtures/si-demo/`.
 
+*As built (Step 5, 2026-10-03).* Green with no key and no network: `pnpm typecheck`; `pnpm test`,
+180 files, 5061 passed, one expected failure (`repair.test.ts`'s `it.fails`) and one skipped, both
+in files this task does not touch, and no line says
+`the prompt changed since recording`; `pnpm build`; `pnpm smoke`, 79 checks. The architecture
+rules are the thirty `AGENTS.md` counts since 6.3.6 (47 tests): this task adds no layer, so the
+plan's 29 is the count it was written against, not one to restore. The diff is taken against
+`10bae9b`, not `main`, for the reason Step 3 gives, and lists nothing under `src/`,
+`tests/golden/`, `fixtures/si-demo/` or `tests/invariants/`.
+
 - [ ] **Step 6: The pull request** (after the owner's go-ahead; the owner has read the tapes' diff)
+
+The owner answered about `link-ambiguous-env` on 2026-10-03 (Step 3's review): recorded again,
+the guard green. The files are staged by name, as below, and never with `git add -A`
+or `git add .`: the worktree's `node_modules` is a link to the main checkout's, which
+`.gitignore`'s `node_modules/` does not match, so either would commit a link to a path in the
+owner's home.
 
 ```bash
 git add tests/recordings/link-db-exists.json tests/recordings/link-db-missing.json \

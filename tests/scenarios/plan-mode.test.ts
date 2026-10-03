@@ -6,10 +6,13 @@ import { describe, expect, it } from 'vitest'
 import { main } from '../../src/cli/index.js'
 import { runInitPlatform } from '../../src/cli/commands/init.js'
 import type { AgentEvent } from '../../src/agents/events.js'
+import type { Transcript } from '../../src/llm/client.js'
+import type { Recording } from '../../src/llm/recording.js'
 import { secretIn } from '../../src/context/project-fs/secrets.js'
 import { hashTree } from '../support/tree.js'
 import { disagreements, memorySink, onlyTrace } from '../support/trace.js'
 import { confirmingEnvironment } from '../support/ask.js'
+import { LEFT_BY_THE_OWNER } from './left.js'
 
 /**
  * The whole chain, against a recorded model: Inspector → Architect → the five
@@ -31,6 +34,9 @@ import { confirmingEnvironment } from '../support/ask.js'
 // seconds killed four recordings mid-run and lost every turn they had already
 // paid for, because a tape is written when the run ends.
 const TIMEOUT = 600_000
+// A run being recorded traces itself as one: `idp.mode` says `record`, as
+// backstage-mode.test.ts already expects.
+const RECORDING = process.env['IDP_RECORDING'] === 'record'
 
 const RECORDINGS = path.resolve(import.meta.dirname, '../recordings')
 
@@ -164,7 +170,7 @@ const run = async (
   expect(disagreements(trace, events), `${scenario}: the trace and the stream disagree`).toEqual([])
   // A replayed trace's latencies measure the tape, not the model — `idp.mode`
   // and `idp.scenario` are how a reader of the trace knows that.
-  expect(trace.spans[0]?.attributes).toMatchObject({ 'idp.mode': 'replay', 'idp.scenario': scenario })
+  expect(trace.spans[0]?.attributes).toMatchObject({ 'idp.mode': RECORDING ? 'record' : 'replay', 'idp.scenario': scenario })
   return { code, out: out.join(''), err: stderr, events }
 }
 
@@ -258,10 +264,14 @@ describe('plan "<intent>"', () => {
       expect(await hashTree(repo)).toBe(before)
       endedWell(code, out)
       reachedTheModel(events)
-      // One consumer, one database: its level is one question, whatever the
-      // redraft names the database. The tape's redraft keeps the grant and its
-      // consumer and moves its `dependsOn` to another reference, and an answer
-      // held by the access alone was lost there and asked a second time.
+      // One consumer, one database: its level is one question. The tape
+      // recorded on 2026-10-02 drafts once — the database and the grant over
+      // it — and stops at exit 3 on the owner of the new database, which
+      // nobody here answers; it never redrafts. The tape before it did, after
+      // the level was answered, and an answer held by the access alone was lost
+      // there and asked a second time: that redraft is pinned with a scripted
+      // client, in tests/unit/reapply.test.ts and plan-answered-level.test.ts.
+      // On this tape the bound below is a floor, not that proof.
       const levels = events.filter(
         (event) => event.type === 'ask' && event.question.path.endsWith('.access'),
       )
@@ -382,8 +392,10 @@ describe('an owner the request names, against a real model', () => {
       //
       // The repair loop itself is covered by scripted clients in
       // tests/unit/repair.test.ts, where a refusal can be guaranteed. No
-      // scenario can force a real model to be wrong, and the current five
-      // record zero refusals between them.
+      // scenario can force a real model to be wrong. The tapes recorded on
+      // 2026-10-02 do hold refusals, this one's among them, but each is the
+      // policy gate's consumer-on-an-object, and none refuses the owner the
+      // request named.
       const repo = await declarations({
         'catalog/databases/orders-db-prod.yml': ORDERS_DB,
         'systems/billing-api.yml': BILLING_API,
@@ -437,6 +449,65 @@ describe('the recordings themselves', () => {
         `${file} carries a hand-authored turn`,
       ).toBe(true)
     }
+  })
+
+  it('records every turn under the digest of what the provider is sent', async () => {
+    // The owner's decision of 2026-09-30: every tape recorded before was recorded again, so no
+    // turn holds the digest blind to a tool's .describe(), .max() and .regex() (#116).
+    const { readdir, readFile } = await import('node:fs/promises')
+    const files = (await readdir(RECORDINGS)).filter((name) => name.endsWith('.json'))
+    const old: string[] = []
+
+    expect(files.length).toBeGreaterThan(0)
+    for (const file of files) {
+      const tape = JSON.parse(await readFile(path.join(RECORDINGS, file), 'utf8')) as Recording
+      if (LEFT_BY_THE_OWNER.includes(tape.scenario)) continue
+      for (const turn of tape.turns) {
+        if (!turn.digest.startsWith('sent:sha256:')) {
+          old.push(`${tape.scenario} ${turn.agent} turn ${turn.turn}`)
+        }
+      }
+    }
+    expect(old).toEqual([])
+  })
+
+  it('holds an Inspector that reports what a file it read says', async () => {
+    // Declare, never infer. What the Inspector reports reaches the Architect as established
+    // facts, and no gate holds them to the files it was given: a tape whose Inspector reported a
+    // repository it never read would replay that invention as canonical, green. So each tape is
+    // read here, turn by turn: a report_facts follows a read_file that returned a file, in the
+    // conversation that turn was sent, and the name it reports is in one of those files.
+    const { readdir, readFile } = await import('node:fs/promises')
+    const files = (await readdir(RECORDINGS)).filter((name) => name.endsWith('.json'))
+    const invented: string[] = []
+
+    expect(files.length).toBeGreaterThan(0)
+    for (const file of files) {
+      const tape = JSON.parse(await readFile(path.join(RECORDINGS, file), 'utf8')) as Recording
+      for (const turn of tape.turns.filter((each) => each.agent === 'inspector')) {
+        const { transcript } = turn.call as { transcript: Transcript[] }
+        const read = transcript.flatMap((entry) => {
+          if (entry.role !== 'tool' || entry.name !== 'read_file') return []
+          const { text } = entry.result as { text?: unknown }
+          return typeof text === 'string' ? [text] : []
+        })
+        const parts = turn.result.content as {
+          type?: string
+          toolName?: string
+          input?: { name?: unknown }
+        }[]
+        for (const part of parts) {
+          if (part.type !== 'tool-call' || part.toolName !== 'report_facts') continue
+          const where = `${tape.scenario} inspector turn ${turn.turn}`
+          const name = part.input?.name
+          if (read.length === 0) invented.push(`${where}: reports with no file read`)
+          else if (typeof name === 'string' && !read.some((text) => text.includes(name))) {
+            invented.push(`${where}: reports ${name}, which no file it read holds`)
+          }
+        }
+      }
+    }
+    expect(invented).toEqual([])
   })
 
   it('carries no credential', async () => {

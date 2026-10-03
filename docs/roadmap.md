@@ -24,7 +24,7 @@ each:
 | 3 | `init platform` and `validate` | done |
 | 4 | Preview only: nothing is written | done |
 | 5 | Write + local branch | done ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)): task 1, `Cleared` for the declarations repository ([#105](https://github.com/pcaboor/idp-agent/pull/105)); task 2, `Cleared` for the service repository ([#106](https://github.com/pcaboor/idp-agent/pull/106)); task 3, the shared git launcher and the `forge/` types ([#107](https://github.com/pcaboor/idp-agent/pull/107)); task 4, the local forge — create-only, idempotent, atomic ([#108](https://github.com/pcaboor/idp-agent/pull/108)); task 5, `plan --from … --submit` ([#109](https://github.com/pcaboor/idp-agent/pull/109)); task 6, `plan "<intent>" --submit`, refused before a model is paid ([#110](https://github.com/pcaboor/idp-agent/pull/110)); task 7, `init --submit` and `.idp-agent.yml`, and a branch already there answered before the confirmation ([#111](https://github.com/pcaboor/idp-agent/pull/111)) |
-| 6 | GitHub pull request | built ([the note](stage-6-brief.md), [the plan](plans/stage-6-github.md), [ADR-0015](adr/0015-a-submission-is-a-pull-request-the-rules-hold.md)); 6.4.3, the owner's re-recorded tapes, lands next. Slice 6.1 done: 6.1.1, the allow-list ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2, the remote and who gh is ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3, the preflight and `idpa protection` ([#125](https://github.com/pcaboor/idp-agent/pull/125)); slice 6.2 done: 6.2.1, the GitHub forge ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2, `plan --from … --submit` to GitHub ([#127](https://github.com/pcaboor/idp-agent/pull/127)); slice 6.3: 6.3.1, `plan "<intent>" --submit` to GitHub, and `iacRepo` as a cross-check ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2, `init --submit` to GitHub ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3, `idpa "<phrase>" --submit` ([#131](https://github.com/pcaboor/idp-agent/pull/131)), which closes slice 6.3 as the plan drew it; 6.3.4, the pull request always opened, with a `note:` where its author may merge it alone ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5, at a terminal, a change's diff ending on the engine's proposal to open the pull request ([#134](https://github.com/pcaboor/idp-agent/pull/134)); 6.3.6, what is in flight read first — the open `idp-agent` pull requests into the base, before any model and again before writing ([#135](https://github.com/pcaboor/idp-agent/pull/135)); slice 6.4: 6.4.1, the live test ([#136](https://github.com/pcaboor/idp-agent/pull/136)), made on GitHub on 2026-10-02; 6.4.2, ADR-0015 and the documents that describe stage 6 as built ([#137](https://github.com/pcaboor/idp-agent/pull/137)) |
+| 6 | GitHub pull request | done ([the note](stage-6-brief.md), [the plan](plans/stage-6-github.md), [ADR-0015](adr/0015-a-submission-is-a-pull-request-the-rules-hold.md)). Slice 6.1 done: 6.1.1, the allow-list ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2, the remote and who gh is ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3, the preflight and `idpa protection` ([#125](https://github.com/pcaboor/idp-agent/pull/125)); slice 6.2 done: 6.2.1, the GitHub forge ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2, `plan --from … --submit` to GitHub ([#127](https://github.com/pcaboor/idp-agent/pull/127)); slice 6.3: 6.3.1, `plan "<intent>" --submit` to GitHub, and `iacRepo` as a cross-check ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2, `init --submit` to GitHub ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3, `idpa "<phrase>" --submit` ([#131](https://github.com/pcaboor/idp-agent/pull/131)), which closes slice 6.3 as the plan drew it; 6.3.4, the pull request always opened, with a `note:` where its author may merge it alone ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5, at a terminal, a change's diff ending on the engine's proposal to open the pull request ([#134](https://github.com/pcaboor/idp-agent/pull/134)); 6.3.6, what is in flight read first — the open `idp-agent` pull requests into the base, before any model and again before writing ([#135](https://github.com/pcaboor/idp-agent/pull/135)); slice 6.4: 6.4.1, the live test ([#136](https://github.com/pcaboor/idp-agent/pull/136)), made on GitHub on 2026-10-02; 6.4.2, ADR-0015 and the documents that describe stage 6 as built ([#137](https://github.com/pcaboor/idp-agent/pull/137)); 6.4.3, every tape recorded before 2026-09-30 recorded again by the owner, every turn under the digest of what the provider is sent ([#138](https://github.com/pcaboor/idp-agent/pull/138)) |
 | 7 | Polish: Ink TUI, asciinema, npm publish | not started |
 | 8 | Discovery | designed ([the design note](stage-8-brief.md), [#76](https://github.com/pcaboor/idp-agent/pull/76)); not started |
 
@@ -56,62 +56,20 @@ Each line says what the item is for. The sweep of the review is done
 ([its verdicts](reviews/2026-09-23-deep-review.md#the-sweep-2026-09-27)); its batches are
 here, one pull request each, each naming the check run together at the end.
 
-1. **Stage 6, GitHub pull request.** A real forge, and the pull request as the act of
-   authorisation (ADR-0006), designed in [the stage 6 note](stage-6-brief.md): the person's own
-   git pushes the branch and their own gh opens the pull request, idpa holds no GitHub
-   credential, and the base's ruleset is checked before any write and again at the moment of
-   acting. Four slices: 6.1 the git/gh allow-list and `idpa protection`; 6.2 push and pull
-   request on `plan --from`; 6.3 the intent, `init` and phrase roads; 6.4 the owner's live test,
-   ADR-0015 and the documents. Planned ([the plan](plans/stage-6-github.md),
-   [#121](https://github.com/pcaboor/idp-agent/pull/121)): eleven pull requests, 6.1.1 to
-   6.4.3, the last the owner's re-recording of the tapes. 6.1.1, the allow-list — two
-   launchers, a grammar each, and a floor under every child process the suite starts — is on
-   `main` ([#123](https://github.com/pcaboor/idp-agent/pull/123)); so is 6.1.2, the remote
-   the checked-out branch tracks, the clone's own configuration refused by key and scope, and
-   who gh is ([#124](https://github.com/pcaboor/idp-agent/pull/124)); and so is 6.1.3, the
-   preflight and `idpa protection` ([#125](https://github.com/pcaboor/idp-agent/pull/125)),
-   which closes slice 6.1. 6.2.1, the GitHub forge — recognition, the re-check, the
-   create-only push, the read-back and the one pull request, proved offline against the fake gh
-   and a bare repository — is on `main`
-   ([#126](https://github.com/pcaboor/idp-agent/pull/126)); so is 6.2.2, `plan --from …
-   --submit` to GitHub — gh's identity before anything, the ruleset and the base's tip before
-   anything is written, one question naming the push and the pull request, the closing lines
-   with the engine-built URL, `--local`, and the intent and `init` roads refused toward GitHub
-   until theirs land ([#127](https://github.com/pcaboor/idp-agent/pull/127)), which closes
-   slice 6.2. 6.3.1, `plan "<intent>" --submit` to GitHub — the road and gh's identity before
-   the model is configured, the base's rules before the first model call and again after the
-   Reviewer, and `.idp-agent.yml`'s `iacRepo` read as a cross-check that refuses a service
-   pointed at another repository's clone — is on `main`
-   ([#128](https://github.com/pcaboor/idp-agent/pull/128)); so is 6.3.2, `init --submit` to
-   GitHub — a pull request on the service's own repository once it passes the same
-   configuration check and the same preflight, refused with `--local` named when its rules
-   would let the opener merge
-   ([#130](https://github.com/pcaboor/idp-agent/pull/130)); and so is 6.3.3, `idpa "<phrase>"
-   --submit` — D8 lifted: the forge, gh and the base's rules read before the Supervisor, a
-   change submitted as `plan "<intent>" --submit` submits it, a question refused after the
-   Supervisor's one word, exit 3 ([#131](https://github.com/pcaboor/idp-agent/pull/131)),
-   which closes slice 6.3 as the plan drew it.
-   Three tasks the owner added on 2026-10-01 follow them, before
-   6.4: 6.3.4, the pull request always opened whatever the base's rules, with a neutral `note:`
-   when its author may merge it alone, is built
-   ([#133](https://github.com/pcaboor/idp-agent/pull/133)); so is 6.3.5, the Supervisor proposing to open the pull request
-   after the diff, the person's `y` authorising it and the engine opening it and reporting it,
-   with no `--submit` typed in a terminal
-   ([#134](https://github.com/pcaboor/idp-agent/pull/134)); and so is what is in flight — the open `idp-agent` pull
-   requests touching the same service read before any model is paid, so two people never open
-   competing ones ([#135](https://github.com/pcaboor/idp-agent/pull/135)). Each was planned in
-   `docs/plans/stage-6-github.md` before it was built. The live proof is made: 6.4.1, the
-   owner's live test, ran on GitHub on 2026-10-02 — a submission opened its pull request and a
-   second named it, every door was refused to the identity that opened it with the base
-   unchanged — and its recorded answers hold the fake gh to GitHub in `pnpm test` and pin the
-   oldest gh this build reads ([#136](https://github.com/pcaboor/idp-agent/pull/136)). 6.4.2,
-   ADR-0015, accepted, and the documents that describe stage 6 as built, closes it
-   ([#137](https://github.com/pcaboor/idp-agent/pull/137)); 6.4.3, the owner's re-recording
-   of the tapes recorded before 2026-09-30, lands next.
+1. **Two fixes before stage 8** (owner's decision, 2026-10-03). The Inspector's facts held to
+   the files it read: the engine keeps a fact only where a file the Inspector really read
+   states it, as it already holds an answer to the references a tool returned, proved with a
+   scripted client that reproduces the invented `package.json` of 2026-10-02, no tape needed.
+   And `idpa protection`'s reason for a base whose ruleset supplies none of the three rules,
+   reported today as classic branch protection only (the exit code and the note are right,
+   the reason is not).
 2. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence; two people discovering the same service see what
-   the other has in flight rather than a competing pull request (2026-10-01).
+   the other has in flight rather than a competing pull request (2026-10-01). It goes on top of
+   stage 6, which is done ([#123](https://github.com/pcaboor/idp-agent/pull/123) to
+   [#138](https://github.com/pcaboor/idp-agent/pull/138); its follow-ups are under *Known
+   debts*), and whose submission road its own takes.
 3. **Removing and changing an access, and company rules** (2026-10-01). Revoking a right,
    changing its level or decommissioning a service, always as a pull request a person merges —
    today the tool only appends, and least privilege needs the other half; and gates a company
@@ -365,7 +323,8 @@ The owner's decisions, dated, each with where it is recorded.
   is stated, and `gh auth setup-git` recommended.
 - The tapes recorded before 2026-09-30 keep the digest that does not see the tools a turn was
   sent; the owner chose to re-record them with their key during stage 6's live session, rather
-  than warn on every replay of an old turn or store the tools from the next recording on.
+  than warn on every replay of an old turn or store the tools from the next recording on. Done
+  on 2026-10-02, all twelve ([#138](https://github.com/pcaboor/idp-agent/pull/138)).
 - `init --iac-repo` keeps refusing a locator carrying userinfo, a query or a fragment, the
   SSH form `git@github.com:acme/iac.git` included: a user name cannot be told from a token by
   its shape, and `.idp-agent.yml` is committed. `acme/iac`, `github.com/acme/iac` and
@@ -491,6 +450,17 @@ The owner's decisions, dated, each with where it is recorded.
     string, the repository owned by a person, with no description and `maintain` true for an
     administrator, `protected` true under a ruleset, the base's ref moved answered 422 where the
     fake said 409, and `merge-async` 202.
+- The tapes recorded before 2026-09-30, recorded again by the owner with their key (stage 6,
+  Task 6.4.3): all twelve, none left, so `tests/scenarios/left.ts` names none. Which provider
+  recorded each is the owner's choice of that day. The five plan-mode tapes and the three
+  Backstage questions with openai `gpt-6-luna`, as before; `question-prod-databases` with
+  mistral `mistral-small-2603`, as before. The three other question-mode tapes —
+  `question-consumers-of-billing-db`, `question-unanswerable-ranking` and
+  `mutation-classified-link`, Mistral's until then — with openai `gpt-6-luna`:
+  `mistral-small-2603` answered `nothing` to "which services use the billing database in
+  prod?", having searched for Components of type `service` in `prod`, which the demo SI does
+  not declare, so that tape and the two left after it were recorded with `gpt-6-luna` instead
+  ([#138](https://github.com/pcaboor/idp-agent/pull/138)).
 
 **2026-10-03**
 
@@ -504,6 +474,11 @@ The owner's decisions, dated, each with where it is recorded.
   account being optional, and rests on the fake and the rule's read. Stage 6 is built; 6.4.3,
   the owner's re-recording of the tapes, lands next
   ([#137](https://github.com/pcaboor/idp-agent/pull/137)).
+- The owner recorded `link-ambiguous-env` and `question-consumers-of-billing-db` again with
+  OpenAI `gpt-6-luna` rather than keep a tape whose Inspector invented a service, or one
+  answering in Spanish; and put the fix of the product gap that tape showed — the Inspector's
+  facts held to no file read — right after stage 6, before stage 8, with `idpa protection`'s
+  wrong reason ([#138](https://github.com/pcaboor/idp-agent/pull/138)).
 
 ## Known debts and open items
 
@@ -621,32 +596,6 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
 
 **Recordings that need the owner's key**
 
-- **Every tape recorded before 2026-09-30 keeps the old digest, blind to part of a tool's
-  schema.** Batch B2 ([#116](https://github.com/pcaboor/idp-agent/pull/116)) digests a turn
-  recorded since over what the provider is sent, each tool's advertised JSON Schema among
-  it; a turn recorded before holds `sha256:`, taken over each tool's Zod object, which
-  misses a `.describe()`, a `.max()` or a `.regex()`. It
-  is still compared as before, so no verdict moved, and it cannot be recomputed from the
-  tape. The options are the owner's: re-record every tape, which moves each to the new
-  digest; or say, on every replay of an old turn, that its tool schema was not recorded;
-  and, for the next scheme change, store the tools and the tool choice in the tape from the
-  next recording on, which makes a digest recomputable offline at the cost of a larger tape.
-  **The owner chose the first on 2026-09-30:** every tape is re-recorded with their key during
-  stage 6's live session (slice 6.4).
-
-- **The question-mode recordings are stale.** `tests/scenarios/question-mode.test.ts`'s
-  question tapes (`question-prod-databases.json`, `question-consumers-of-billing-db.json`,
-  `question-unanswerable-ranking.json`) warn "the prompt changed since recording" on the
-  Analyst's turns. So does `mutation-classified-link.json`
-  on the Supervisor's, for another reason: `tests/scenarios/question-mode.test.ts` asks it
-  "give billing-api read access to orders-db in prod", and the tape was recorded on "give
-  billing-api access to orders-db in prod" — that one needs no key, only the scenario's
-  words (seen by batch A5, which sends every one of them the bytes `5bbe537` did). The
-  question tapes have been stale since
-  [#54](https://github.com/pcaboor/idp-agent/pull/54), which changed the Analyst's prompt
-  and answer tool ([#55](https://github.com/pcaboor/idp-agent/pull/55) says so). They still
-  replay and pass. A re-record needs the owner's key, and #54 suggests recording a
-  `question-overview` scenario at the same time.
 - **Commentary on plans is not built** (ADR-0008, "Consequences"). It changes what plan mode
   sends, and `tests/scenarios/plan-mode.test.ts` fails on a stale plan-mode recording, so it
   waits for a re-record with a key.
@@ -657,13 +606,27 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
   `src/agents/repair.ts` still tells the Reviewer that update "would be written to the
   repository". The recorded `link-already-declared` scenario is exactly that update, so
   saying "changes nothing" stales its Reviewer turn; it waits for a re-record.
-- **No Anthropic recording exists.** The twelve recordings are OpenAI's and Mistral's; the
-  provider contract test checks Anthropic's request shape, not a live run.
+- **No Anthropic recording exists.** The twelve recordings are OpenAI's, `gpt-6-luna` for
+  eleven, and Mistral's, `mistral-small-2603` for `question-prod-databases` (recorded again on
+  2026-10-02); the provider contract test checks Anthropic's request shape, not a live run.
+- **No `question-overview` scenario is recorded** ([#54](https://github.com/pcaboor/idp-agent/pull/54)
+  suggested one): an overview answered from the demo SI is replayed by no tape. It is a new
+  scenario, not a re-record, and needs the owner's key.
 - **The Architect is told the user's answers only when a refusal is at them.** Listing them
-  on every repair report would let it converge sooner, but changes what it is sent after an
-  answered round and stales the `link-db-missing` recording
+  on every repair report would let it converge sooner, and changes what it is sent after an
+  answered round. The `link-db-missing` tape that refused and redrafted after one is gone: no
+  tape recorded on 2026-10-02 refuses or redrafts after an answered round (measured on a
+  replay of the five plan-mode tapes), so the change stales none and no longer waits for a
+  re-record; no scenario would show it either, and a scripted client is where it is tested
   ([`AGENTS.md`'s Open questions](../AGENTS.md#open-questions);
   [#61](https://github.com/pcaboor/idp-agent/pull/61)).
+- **Two tapes recorded on 2026-10-02 were recorded again by the owner on 2026-10-03** and close
+  here. `link-ambiguous-env`'s Inspector had read no file and reported a service of its own
+  invention (`@thronecode/gorilla-service`, a model's invention found nowhere in the
+  repository); recorded again, it reads `package.json` and reports `billing-api`, and
+  `plan-mode.test.ts`'s *holds an Inspector that reports what a file it read says* passes.
+  `question-consumers-of-billing-db` had framed an English question in Spanish; recorded
+  again, it answers in English with the relation the engine computes.
 - **The Architect's searches on a value nobody uses still answer empty.** The Analyst's are
   refused with the values in use; turning that on for the Architect is an open decision,
   because four of the five plan-mode recordings search on such values and would need
@@ -727,6 +690,14 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
   purpose ("being stricter than Backstage for the two kinds it manages is what `validate`
   is for"). [#53](https://github.com/pcaboor/idp-agent/pull/53) names case-insensitive
   names out of scope.
+- **What the Inspector reports is not held to the files it read, on the plan road too.**
+  security-5 and gap-init-real-repos-5 (under *Left from the sweep of the review*) name it
+  for `init`; `plan "<intent>"` hands the Architect the Inspector's facts the same way, as
+  established, with nothing checking that a file it read states them. The
+  `link-ambiguous-env` tape recorded on 2026-10-02 is the case: an Inspector that read no file
+  reported a service of its own invention, and the run went on (that tape was recorded again
+  on 2026-10-03). `plan-mode.test.ts` now checks the tapes for it; nothing checks a live run
+  yet. The fix is the queue's first item (owner's decision, 2026-10-03).
 - **`get_apis` does not witness the reference it was asked about.**
   [#75](https://github.com/pcaboor/idp-agent/pull/75) made `get_dependencies` witness its
   starting entity on the Analyst's registry; `get_apis` witnesses only the rows it returns
@@ -883,11 +854,13 @@ vocabulary), product-gap-6 (no offset and no system, lifecycle or tag criteria i
 - **Providers.** agents-llm-4, architecture-8 and product-gap-9 (an `openai-compatible`
   adapter, a model per agent, an Anthropic recording), gap-provider-matrix-7 (tool errors
   and reasoning in the transcript), agents-llm-2 (a context and call budget).
-- **Recordings and what the scenarios pin.** agents-llm-9, tests-4, wip-diff-6,
+- **Recordings and what the scenarios pin.** agents-llm-9, wip-diff-6,
   gap-ask-grounding-13, and wip-diff-7 with tests-2 (pin each replayed exit code and diff).
   Batch B2 closed agents-llm-9's harness half
-  ([#116](https://github.com/pcaboor/idp-agent/pull/116)); its re-record and the forced-turn
-  fallback's digest are left.
+  ([#116](https://github.com/pcaboor/idp-agent/pull/116)), and stage 6's 6.4.3 its re-record,
+  with tests-4: every tape recorded again, and `question-mode.test.ts` failing on a stale tape
+  as the other two scenario files do ([#138](https://github.com/pcaboor/idp-agent/pull/138));
+  the forced-turn fallback's digest is left.
 - **What the Reviewer and the Analyst may accept** (each also a re-record). wip-diff-3 (the
   Reviewer vetoes declaring a missing resource the request needs; high), security-6 (no rule
   ties a grant's consumer and target to the request), gap-ask-grounding-2, -3, -4 and -8

@@ -5,128 +5,16 @@
     {
       "agent": "analyst",
       "turn": 0,
-      "provider": "mistral",
-      "model": "mistral-small-2603",
-      "digest": "sha256:ad67876625c34d39a7c67fc7dadd9b90a527cd0cf5901123f4f07a466babf9f3",
-      "recordedAt": "2026-09-21T11:37:30.000Z",
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "digest": "sent:sha256:d73826216cfd786e970b96842ee8972ca9737fd2b2d73c87f8875190b29cb0ce",
+      "recordedAt": "2026-10-03T14:19:44.000Z",
       "call": {
-        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  nothing       when no entity matches\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
+        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\nA reference marked \"declared\": false is written in the catalogue and names no entity:\nsay so, and never treat it as the entity that shares its name.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  relation      with \"ref\" and \"relation\", when asked how an entity is related:\n                what it consumes or reaches (\"consumes\"), who consumes or uses\n                it (\"consumed-by\"), what it depends on (\"depends-on\"), what\n                breaks or is affected if it fails (\"impacts\"), the APIs it\n                provides or who provides one (\"provides\", \"provided-by\"), or\n                how two entities are related (\"between\", the other one as\n                \"to\": the paths where one depends on the other, else what both\n                reach). The engine computes every path and writes it; \"ref\"\n                and \"to\" must be references a tool returned. get_relations\n                shows you those paths; read them before you conclude on them.\n  nothing       when no entity matches\n  overview      when asked to describe, summarise or give an overview of the\n                catalogue, SI, repository or project as a whole. The engine\n                writes the description; call it straight away, and never answer\n                \"unanswerable\" for such a request\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nWith \"entities\", \"relation\", \"nothing\" or \"overview\" you may add \"intro\", one\nshort sentence introducing the answer, and \"conclusion\", at most three short\nsentences on what the result means for the question. Write both in the\nlanguage of the question. Say only what the tool results state; where they do\nnot say, say it is not declared rather than guess. Do not restate the list or its figures: the engine\nprints them. Name only entities a tool returned in this conversation: the\nengine deletes any sentence that names anything else, an identifier nobody\nreturned included. Both are optional: omit them rather than pad.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
         "transcript": [
           {
             "role": "user",
             "text": "question: which services use the billing database in prod?\n\nsi:\n  entities: 10-99\n  components: 1-9\n  resources: 10-99\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: api, cache, database, database-access, network-access, service\n  environments: dev, prod, staging\n  owners: group:default/common, group:default/dodowarriors, group:default/elephant, group:default/tiger\n"
-          },
-          {
-            "role": "assistant",
-            "text": "",
-            "toolCalls": [
-              {
-                "id": "modEGsx5V",
-                "name": "search_entities",
-                "args": {
-                  "kind": "Resource",
-                  "type": "database",
-                  "env": "prod"
-                }
-              }
-            ]
-          },
-          {
-            "role": "tool",
-            "id": "modEGsx5V",
-            "name": "search_entities",
-            "result": {
-              "rows": [
-                {
-                  "ref": "resource:default/billing-db-prod",
-                  "name": "billing-db-prod",
-                  "kind": "Resource",
-                  "type": "database",
-                  "env": "prod",
-                  "owner": "group:default/tiger"
-                },
-                {
-                  "ref": "resource:default/compliance-db-prod",
-                  "name": "compliance-db-prod",
-                  "kind": "Resource",
-                  "type": "database",
-                  "env": "prod",
-                  "owner": "group:default/common"
-                },
-                {
-                  "ref": "resource:default/mysql-prod-01",
-                  "name": "mysql-prod-01",
-                  "kind": "Resource",
-                  "type": "database",
-                  "env": "prod",
-                  "owner": "group:default/common"
-                },
-                {
-                  "ref": "resource:default/orders-db-prod",
-                  "name": "orders-db-prod",
-                  "kind": "Resource",
-                  "type": "database",
-                  "env": "prod",
-                  "owner": "group:default/tiger"
-                }
-              ]
-            }
-          },
-          {
-            "role": "assistant",
-            "text": "",
-            "toolCalls": [
-              {
-                "id": "1LimH8Ax7",
-                "name": "get_dependencies",
-                "args": {
-                  "ref": "resource:default/billing-db-prod",
-                  "direction": "consumers"
-                }
-              }
-            ]
-          },
-          {
-            "role": "tool",
-            "id": "1LimH8Ax7",
-            "name": "get_dependencies",
-            "result": {
-              "rows": [
-                {
-                  "ref": "component:default/billing-api",
-                  "name": "billing-api",
-                  "kind": "Component",
-                  "type": "service",
-                  "env": "(undeclared)",
-                  "owner": "group:default/tiger"
-                },
-                {
-                  "ref": "component:default/reporting-worker",
-                  "name": "reporting-worker",
-                  "kind": "Component",
-                  "type": "service",
-                  "env": "(undeclared)",
-                  "owner": "group:default/common"
-                }
-              ]
-            }
-          },
-          {
-            "role": "assistant",
-            "text": "",
-            "toolCalls": [
-              {
-                "id": "29tTKMnva",
-                "name": "answer",
-                "args": {
-                  "outcome": "entities",
-                  "refs": [
-                    "component:default/billing-api",
-                    "component:default/reporting-worker"
-                  ]
-                }
-              }
-            ]
           }
         ]
       },
@@ -134,27 +22,38 @@
         "content": [
           {
             "type": "tool-call",
-            "toolCallId": "modEGsx5V",
+            "toolCallId": "call_8ZmxUznSagMHAhbL1cuKrfT7",
             "toolName": "search_entities",
             "input": {
               "kind": "Resource",
               "type": "database",
-              "env": "prod"
+              "env": "prod",
+              "nameContains": "billing"
+            },
+            "providerMetadata": {
+              "openai": {
+                "itemId": "fc_04f20e4323b474fc016ac10f00d8dc87d2a02cff8e37073c45"
+              }
             }
           }
         ],
-        "finishReason": "tool-calls"
+        "finishReason": "tool-calls",
+        "usage": {
+          "inputTokens": 2001,
+          "outputTokens": 31,
+          "totalTokens": 2032
+        }
       }
     },
     {
       "agent": "analyst",
       "turn": 1,
-      "provider": "mistral",
-      "model": "mistral-small-2603",
-      "digest": "sha256:b598da2b8e5689dffc1913b2aeb2e81e9a34e37da06063ddea277ebabad37c64",
-      "recordedAt": "2026-09-21T11:37:31.000Z",
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "digest": "sent:sha256:a9434d8e605bd413c0d09735191e7ce1666d9c3e6d5c2a4ad7e2ab1dc6ee1161",
+      "recordedAt": "2026-10-03T14:19:45.000Z",
       "call": {
-        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  nothing       when no entity matches\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
+        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\nA reference marked \"declared\": false is written in the catalogue and names no entity:\nsay so, and never treat it as the entity that shares its name.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  relation      with \"ref\" and \"relation\", when asked how an entity is related:\n                what it consumes or reaches (\"consumes\"), who consumes or uses\n                it (\"consumed-by\"), what it depends on (\"depends-on\"), what\n                breaks or is affected if it fails (\"impacts\"), the APIs it\n                provides or who provides one (\"provides\", \"provided-by\"), or\n                how two entities are related (\"between\", the other one as\n                \"to\": the paths where one depends on the other, else what both\n                reach). The engine computes every path and writes it; \"ref\"\n                and \"to\" must be references a tool returned. get_relations\n                shows you those paths; read them before you conclude on them.\n  nothing       when no entity matches\n  overview      when asked to describe, summarise or give an overview of the\n                catalogue, SI, repository or project as a whole. The engine\n                writes the description; call it straight away, and never answer\n                \"unanswerable\" for such a request\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nWith \"entities\", \"relation\", \"nothing\" or \"overview\" you may add \"intro\", one\nshort sentence introducing the answer, and \"conclusion\", at most three short\nsentences on what the result means for the question. Write both in the\nlanguage of the question. Say only what the tool results state; where they do\nnot say, say it is not declared rather than guess. Do not restate the list or its figures: the engine\nprints them. Name only entities a tool returned in this conversation: the\nengine deletes any sentence that names anything else, an identifier nobody\nreturned included. Both are optional: omit them rather than pad.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
         "transcript": [
           {
             "role": "user",
@@ -165,19 +64,20 @@
             "text": "",
             "toolCalls": [
               {
-                "id": "modEGsx5V",
+                "id": "call_8ZmxUznSagMHAhbL1cuKrfT7",
                 "name": "search_entities",
                 "args": {
                   "kind": "Resource",
                   "type": "database",
-                  "env": "prod"
+                  "env": "prod",
+                  "nameContains": "billing"
                 }
               }
             ]
           },
           {
             "role": "tool",
-            "id": "modEGsx5V",
+            "id": "call_8ZmxUznSagMHAhbL1cuKrfT7",
             "name": "search_entities",
             "result": {
               "rows": [
@@ -188,89 +88,9 @@
                   "type": "database",
                   "env": "prod",
                   "owner": "group:default/tiger"
-                },
-                {
-                  "ref": "resource:default/compliance-db-prod",
-                  "name": "compliance-db-prod",
-                  "kind": "Resource",
-                  "type": "database",
-                  "env": "prod",
-                  "owner": "group:default/common"
-                },
-                {
-                  "ref": "resource:default/mysql-prod-01",
-                  "name": "mysql-prod-01",
-                  "kind": "Resource",
-                  "type": "database",
-                  "env": "prod",
-                  "owner": "group:default/common"
-                },
-                {
-                  "ref": "resource:default/orders-db-prod",
-                  "name": "orders-db-prod",
-                  "kind": "Resource",
-                  "type": "database",
-                  "env": "prod",
-                  "owner": "group:default/tiger"
                 }
               ]
             }
-          },
-          {
-            "role": "assistant",
-            "text": "",
-            "toolCalls": [
-              {
-                "id": "1LimH8Ax7",
-                "name": "get_dependencies",
-                "args": {
-                  "ref": "resource:default/billing-db-prod",
-                  "direction": "consumers"
-                }
-              }
-            ]
-          },
-          {
-            "role": "tool",
-            "id": "1LimH8Ax7",
-            "name": "get_dependencies",
-            "result": {
-              "rows": [
-                {
-                  "ref": "component:default/billing-api",
-                  "name": "billing-api",
-                  "kind": "Component",
-                  "type": "service",
-                  "env": "(undeclared)",
-                  "owner": "group:default/tiger"
-                },
-                {
-                  "ref": "component:default/reporting-worker",
-                  "name": "reporting-worker",
-                  "kind": "Component",
-                  "type": "service",
-                  "env": "(undeclared)",
-                  "owner": "group:default/common"
-                }
-              ]
-            }
-          },
-          {
-            "role": "assistant",
-            "text": "",
-            "toolCalls": [
-              {
-                "id": "29tTKMnva",
-                "name": "answer",
-                "args": {
-                  "outcome": "entities",
-                  "refs": [
-                    "component:default/billing-api",
-                    "component:default/reporting-worker"
-                  ]
-                }
-              }
-            ]
           }
         ]
       },
@@ -278,26 +98,36 @@
         "content": [
           {
             "type": "tool-call",
-            "toolCallId": "1LimH8Ax7",
+            "toolCallId": "call_7odNXWTqdTjgE7CgqUzmo83Q",
             "toolName": "get_dependencies",
             "input": {
               "ref": "resource:default/billing-db-prod",
               "direction": "consumers"
+            },
+            "providerMetadata": {
+              "openai": {
+                "itemId": "fc_011554598f70dc36016ac10f0255f087d2bdc584f3219df1f5"
+              }
             }
           }
         ],
-        "finishReason": "tool-calls"
+        "finishReason": "tool-calls",
+        "usage": {
+          "inputTokens": 2084,
+          "outputTokens": 29,
+          "totalTokens": 2113
+        }
       }
     },
     {
       "agent": "analyst",
       "turn": 2,
-      "provider": "mistral",
-      "model": "mistral-small-2603",
-      "digest": "sha256:4c9842e244c963bf678de9218292ff3710a04fef0472695db10254efe65136b0",
-      "recordedAt": "2026-09-21T11:37:31.000Z",
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "digest": "sent:sha256:be10cae5cb7a049d3f64c6d6e6796b2bd3b7bb6d2615791057cdefcaefcf8a2b",
+      "recordedAt": "2026-10-03T14:19:47.000Z",
       "call": {
-        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  nothing       when no entity matches\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
+        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\nA reference marked \"declared\": false is written in the catalogue and names no entity:\nsay so, and never treat it as the entity that shares its name.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  relation      with \"ref\" and \"relation\", when asked how an entity is related:\n                what it consumes or reaches (\"consumes\"), who consumes or uses\n                it (\"consumed-by\"), what it depends on (\"depends-on\"), what\n                breaks or is affected if it fails (\"impacts\"), the APIs it\n                provides or who provides one (\"provides\", \"provided-by\"), or\n                how two entities are related (\"between\", the other one as\n                \"to\": the paths where one depends on the other, else what both\n                reach). The engine computes every path and writes it; \"ref\"\n                and \"to\" must be references a tool returned. get_relations\n                shows you those paths; read them before you conclude on them.\n  nothing       when no entity matches\n  overview      when asked to describe, summarise or give an overview of the\n                catalogue, SI, repository or project as a whole. The engine\n                writes the description; call it straight away, and never answer\n                \"unanswerable\" for such a request\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nWith \"entities\", \"relation\", \"nothing\" or \"overview\" you may add \"intro\", one\nshort sentence introducing the answer, and \"conclusion\", at most three short\nsentences on what the result means for the question. Write both in the\nlanguage of the question. Say only what the tool results state; where they do\nnot say, say it is not declared rather than guess. Do not restate the list or its figures: the engine\nprints them. Name only entities a tool returned in this conversation: the\nengine deletes any sentence that names anything else, an identifier nobody\nreturned included. Both are optional: omit them rather than pad.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
         "transcript": [
           {
             "role": "user",
@@ -308,49 +138,26 @@
             "text": "",
             "toolCalls": [
               {
-                "id": "modEGsx5V",
+                "id": "call_8ZmxUznSagMHAhbL1cuKrfT7",
                 "name": "search_entities",
                 "args": {
                   "kind": "Resource",
                   "type": "database",
-                  "env": "prod"
+                  "env": "prod",
+                  "nameContains": "billing"
                 }
               }
             ]
           },
           {
             "role": "tool",
-            "id": "modEGsx5V",
+            "id": "call_8ZmxUznSagMHAhbL1cuKrfT7",
             "name": "search_entities",
             "result": {
               "rows": [
                 {
                   "ref": "resource:default/billing-db-prod",
                   "name": "billing-db-prod",
-                  "kind": "Resource",
-                  "type": "database",
-                  "env": "prod",
-                  "owner": "group:default/tiger"
-                },
-                {
-                  "ref": "resource:default/compliance-db-prod",
-                  "name": "compliance-db-prod",
-                  "kind": "Resource",
-                  "type": "database",
-                  "env": "prod",
-                  "owner": "group:default/common"
-                },
-                {
-                  "ref": "resource:default/mysql-prod-01",
-                  "name": "mysql-prod-01",
-                  "kind": "Resource",
-                  "type": "database",
-                  "env": "prod",
-                  "owner": "group:default/common"
-                },
-                {
-                  "ref": "resource:default/orders-db-prod",
-                  "name": "orders-db-prod",
                   "kind": "Resource",
                   "type": "database",
                   "env": "prod",
@@ -364,7 +171,7 @@
             "text": "",
             "toolCalls": [
               {
-                "id": "1LimH8Ax7",
+                "id": "call_7odNXWTqdTjgE7CgqUzmo83Q",
                 "name": "get_dependencies",
                 "args": {
                   "ref": "resource:default/billing-db-prod",
@@ -375,7 +182,7 @@
           },
           {
             "role": "tool",
-            "id": "1LimH8Ax7",
+            "id": "call_7odNXWTqdTjgE7CgqUzmo83Q",
             "name": "get_dependencies",
             "result": {
               "rows": [
@@ -397,23 +204,6 @@
                 }
               ]
             }
-          },
-          {
-            "role": "assistant",
-            "text": "",
-            "toolCalls": [
-              {
-                "id": "29tTKMnva",
-                "name": "answer",
-                "args": {
-                  "outcome": "entities",
-                  "refs": [
-                    "component:default/billing-api",
-                    "component:default/reporting-worker"
-                  ]
-                }
-              }
-            ]
           }
         ]
       },
@@ -421,27 +211,37 @@
         "content": [
           {
             "type": "tool-call",
-            "toolCallId": "29tTKMnva",
+            "toolCallId": "call_r0UGAwa7hzYBSCaNeNZfhiQW",
             "toolName": "answer",
             "input": {
-              "outcome": "entities",
-              "refs": [
-                "component:default/billing-api",
-                "component:default/reporting-worker"
-              ]
+              "outcome": "relation",
+              "ref": "resource:default/billing-db-prod",
+              "relation": "consumed-by",
+              "intro": "These services are declared as using the billing database in prod.",
+              "conclusion": "The services’ environments are undeclared, so the catalogue does not establish that either service itself runs in prod."
+            },
+            "providerMetadata": {
+              "openai": {
+                "itemId": "fc_086c835b111df27c016ac10f04211487d29bf41082d199e548"
+              }
             }
           }
         ],
-        "finishReason": "tool-calls"
+        "finishReason": "tool-calls",
+        "usage": {
+          "inputTokens": 2203,
+          "outputTokens": 74,
+          "totalTokens": 2277
+        }
       }
     },
     {
       "agent": "supervisor",
       "turn": 0,
-      "provider": "mistral",
-      "model": "mistral-small-2603",
-      "digest": "sha256:10a76bc6dc9d810695131ef10fec847abd1d8a6781ff94d7b3c59f146ae04b46",
-      "recordedAt": "2026-09-21T11:37:30.000Z",
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "digest": "sent:sha256:449a33eb1be62cf5a624e653c1dd667e8124384f24075a9a7d4dc0ca0a8b4a89",
+      "recordedAt": "2026-10-03T14:19:42.000Z",
       "call": {
         "system": "You classify a request about an infrastructure catalogue.\n\nAnswer with exactly one word:\n  QUESTION  the request asks about what exists\n  MUTATION  the request asks for something to change\n\nNo explanation, no punctuation, no other word.",
         "transcript": [
@@ -454,11 +254,32 @@
       "result": {
         "content": [
           {
+            "type": "reasoning",
+            "text": "",
+            "providerMetadata": {
+              "openai": {
+                "itemId": "rs_002ebbd78008d533016ac10effab3c87d28580374b7df57601",
+                "reasoningEncryptedContent": "gAAAAABqwQ7_jU9YoTlOAirtgmyMkW-7iodvMOyF4_zD0UFzZYP7Z-vI3LiM3pN_32EpgDb-3h1_CFqaJro_5xXmyzHUu9m-UrDEjFO6ocAUczHOXKVHG6-QYGtoqsTmRBhtkh0pb8Z7uDf8Nn20XkBAT0ZyNBUY81jJA20RB1f-QRBm61tvLrS9nlekE_-QNxdwL80WF6Cd3ijURm_DqB6pg2pH15G32QyqMQJn5oGyep71jV7rhD3G3ZD6zzNOCrpqm8iSWNaxmm_4aRUJeBj82v718hhhfWHtiYOLL69KevwpJVgF0GxkETq6DIxCSxuAG5zQ_KpJrfrMaLCW1PntbTdrIjx327-lK3yueEnYrXesEz0zkz2OlcDOaDyK15Nbu-ALIVa8OAaLOZwYEZuPQXuCnAYg-2qWjlx52i9SJh2Fimb_aJ1ie32XbKZ2kM1dNVMp2CPU0p6TQxpObFyqus19zZNyoE_n-tqdioxdvllDmefuCRkqVMSD8Be8UOXO926t1u75D6NBgmhkf7Wth7DhE3_YjVfg-jW00dTZXY5aQDF03zAJDT0fUfqo-aNGYzfaXfiMWr33_VvPI_YBlq3IyG9aCZKSVnMLbUsWwTwhknbpU6gnCYCOhlbQHvZAONgm9ExvTeCoXP_ZHQnMyAlcYTPMeeoeLcaO0SgUsRSfgunSczIgwa8gghRs-OA2g4P4epgP7-OvXI5eCDlnuUvbvC4I0l-f2VEaVjCFoA4pVcRz3kRRKp1G1uTKgQxkMy2sIdQ1zs7XXfKr3TWDhjZR9i_rh0iYyVvfJjYWtTK5Y0_i6qJOkvNKjCdnJ_PrjJtxRFj8lUkwjAaGHJJFLXrQlOJrGq00pbp6hOauRtrVwUJC9WKoWAsGJEPqTmcBhKwNTIctHgzoUTjnW4CIZPNbR3ZG5j3kwhqPI_Lm58-WtRz8bLPPKfexUsN7NQf2XWjND4MyVxTJiAO0HKbfXS0v4gCcX8cUvKOjGrm06r5iO-dU82FxaWgswGOVYEaPm5WrJQZwcCDdSILNrJxPiaLu25CAciF4JMqfbV0fRaSMKn7-1CCX82ZFcd41ltjWn3sdiSwdVGQ14ieiRY2N58RaGEYqFpLFbew3Ek8fmkbbSwusAQe-PJ4py2ctQkKO3hfvDWNgVbmdun7hqytE9RyFT4mmx5yq2mZGt42DGznsXLyia3ZuRc13tD-4mGW6UaZdpC7q5IV4HSkgkiX1JMZiPdZQqA=="
+              }
+            }
+          },
+          {
             "type": "text",
-            "text": "QUESTION"
+            "text": "QUESTION",
+            "providerMetadata": {
+              "openai": {
+                "itemId": "msg_002ebbd78008d533016ac10effd00887d2823c803dee256d30",
+                "phase": "final_answer"
+              }
+            }
           }
         ],
-        "finishReason": "stop"
+        "finishReason": "stop",
+        "usage": {
+          "inputTokens": 166,
+          "outputTokens": 20,
+          "totalTokens": 186
+        }
       }
     }
   ]

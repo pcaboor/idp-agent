@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 5055 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 5062 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -154,16 +154,16 @@ silence, fails on what Backstage would refuse or what reads outside the reposito
 ## Current state — 2026-10-03
 
 `main` carries stages 0 through 6; stage 6 was proved on GitHub by the owner's live test of
-2026-10-02 and is recorded in ADR-0015, and what is left of it is 6.4.3, the owner's
-re-recording of the tapes recorded before 2026-09-30. History is linear, no merge commits.
+2026-10-02 and is recorded in ADR-0015, and every tape recorded before 2026-09-30 was recorded
+again by the owner on 2026-10-02 (6.4.3). History is linear, no merge commits.
 Each stage lands as a stack of branches, one per task of its plan in `docs/plans/`, rebased
 and merged bottom-up. Stage 5 landed that way, one task per pull request: `Cleared`, the forge
 layer, the local forge, `plan … --submit` on both roads, and `init --submit`, which writes a
 service's catalog-info and its `.idp-agent.yml` on one branch of its own repository. Stage 6
-lands the same way, in fourteen pull requests (`docs/plans/stage-6-github.md`): thirteen of
-them, 6.1.1 to 6.4.2, have landed — the allow-list and `idpa protection`, the GitHub forge on
-`plan --from`, the intent, `init` and phrase roads, the three tasks the owner added on
-2026-10-01, the live test, and ADR-0015 — and 6.4.3 is next.
+landed the same way, in fourteen pull requests (`docs/plans/stage-6-github.md`): the
+allow-list and `idpa protection`, the GitHub forge on `plan --from`, the intent, `init` and
+phrase roads, the three tasks the owner added on 2026-10-01, the live test, ADR-0015, and the
+owner's re-recorded tapes, every turn under the digest of what the provider is sent.
 
 | # | Stage | State |
 |---|---|---|
@@ -173,7 +173,7 @@ them, 6.1.1 to 6.4.2, have landed — the allow-list and `idpa protection`, the 
 | 3 | `init platform` — scaffold, CI, CODEOWNERS, witnesses, `validate` | done |
 | 4 | Preview only — Inspector, Architect, `Plan`, diff; writes nothing | done |
 | 5 | Write + local branch — `ForgeProvider`, atomicity, idempotence | done |
-| 6 | GitHub pull request — the person's git and gh, the ruleset checked, the live test | built, proved live on 2026-10-02 (ADR-0015); the owner's re-recorded tapes (6.4.3) land next: `idpa protection`, `plan --from … --submit`, `plan "<intent>" --submit`, `init --submit`, `idpa "<phrase>" --submit`, the pull request opened whatever the base's rules, with a note where its author may merge it alone (6.3.4), at a terminal, a change's diff ending on the engine's proposal to open it (6.3.5), and what is in flight read first — the open idp-agent pull requests into the base, before any model and again before writing: the same change named, a competing one refused, one beside proposed beside it (6.3.6) |
+| 6 | GitHub pull request — the person's git and gh, the ruleset checked, the live test | done, proved live on 2026-10-02 (ADR-0015), every tape recorded again (6.4.3): `idpa protection`, `plan --from … --submit`, `plan "<intent>" --submit`, `init --submit`, `idpa "<phrase>" --submit`, the pull request opened whatever the base's rules, with a note where its author may merge it alone (6.3.4), at a terminal, a change's diff ending on the engine's proposal to open it (6.3.5), and what is in flight read first — the open idp-agent pull requests into the base, before any model and again before writing: the same change named, a competing one refused, one beside proposed beside it (6.3.6) |
 | 7 | Polish — Ink TUI, README, asciinema, npm publish | |
 
 The order is imposed by the doctrine: read first, validate before the first write,
@@ -591,8 +591,9 @@ not ask it again. A level is recorded by its **access** as well — the consumer
 thing — because that is what the person answered: `read` typed for billing-api joined to
 orders-api's grant follows the redraft into a grant of billing-api's own. A level is
 always about **one consumer**: held by its grant too, it is put back there only for the
-consumer it was typed for, and only when no operation states its access (the
-`link-db-missing` redraft keeps the grant and moves its `dependsOn`), so it puts nothing
+consumer it was typed for, and only when no operation states its access (a redraft that
+keeps the grant and moves its `dependsOn`, as the `link-db-missing` tape recorded before
+2026-10-02 did, and `reapply.test.ts` pins), so it puts nothing
 on another consumer's access through the grant it was typed into; a level typed for a
 grant of two consumers stays at its path. Two updates of one grant for two consumers are
 two accesses, and each level follows its own. Only a right whose type states a level is
@@ -765,7 +766,8 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   round still hands back no answers: the redraft can propose a different owner the engine
   then overwrites, or rename the entity and have the question asked again. Listing them on
   every report would let it converge sooner; it changes what the Architect is sent after
-  an answered round, which stales the `link-db-missing` tape, so it waits for a re-record.
+  an answered round, and no tape recorded on 2026-10-02 refuses or redrafts after one, so
+  it stales none and no longer waits for a re-record — and no scenario would show it either.
 - **A submission ignores the repository's hooks** (ADR-0010): no `pre-commit`, no
   `reference-transaction`, no fsmonitor. A team relying on a hook reviews the branch in the
   pull request instead, where CI runs.

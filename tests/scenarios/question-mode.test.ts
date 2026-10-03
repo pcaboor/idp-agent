@@ -9,6 +9,7 @@ import { runGraph } from '../../src/cli/commands/graph.js'
 import type { AgentEvent } from '../../src/agents/events.js'
 import type { Recording } from '../../src/llm/recording.js'
 import { disagreements, memorySink, onlyTrace } from '../support/trace.js'
+import { LEFT_BY_THE_OWNER } from './left.js'
 
 /**
  * Replay is instant; recording talks to a provider and takes seconds per turn,
@@ -51,9 +52,15 @@ const run = async (
     err: (chunk) => void err.push(chunk),
     events: (event) => void events.push(event),
   })
+  // A replay under a request the code no longer sends is a stale tape, as in
+  // plan-mode.test.ts and backstage-mode.test.ts: the warning is the harness's
+  // only signal of it. A tape the owner decided to leave is named in left.ts.
+  if (!LEFT_BY_THE_OWNER.includes(scenario)) {
+    expect(err.join(''), `${scenario}: the recording is stale — re-record it`).not.toMatch(
+      /prompt changed since recording/,
+    )
+  }
   // A tape turn the run never reached fails the run, as in plan-mode.test.ts.
-  // The staleness of three of these tapes is known and asserted elsewhere
-  // (prompt-digests.test.ts, docs/roadmap.md), so it is not asserted here.
   expect(err.join(''), `${scenario}: the tape holds turns the run never makes`).not.toMatch(
     /never replayed/,
   )
@@ -61,7 +68,7 @@ const run = async (
   // stream did, as a replayed plan's does (plan-mode.test.ts).
   const trace = onlyTrace(sink)
   expect(disagreements(trace, events), `${scenario}: the trace and the stream disagree`).toEqual([])
-  expect(trace.spans[0]?.attributes).toMatchObject({ 'idp.mode': 'replay', 'idp.scenario': scenario })
+  expect(trace.spans[0]?.attributes).toMatchObject({ 'idp.mode': RECORDING ? 'record' : 'replay', 'idp.scenario': scenario })
   return { code, out: out.join(''), err: err.join(''), events }
 }
 
@@ -69,12 +76,16 @@ describe('question mode, end to end', () => {
   it(
     'answers a question with the table the graph itself would print',
     async () => {
-      // The load-bearing assertion of the whole stage: what reaches stdout is
-      // renderTable's output, byte for byte, never something a model wrote.
+      // The load-bearing assertion of the whole stage: the answer's block is
+      // renderTable's output, byte for byte, never something a model wrote. A
+      // model may frame it (ADR-0008, #64): every other line is its, marked `› `.
       const { code, out } = await run('question-prod-databases', 'which databases are in prod?')
       const graph = EntityGraph.from((await new FixtureProvider(FIXTURES).load()).entities)
+      const table = runGraph(graph, { type: 'database', env: 'prod' }).text
       expect(code).toBe(0)
-      expect(out).toBe(`${runGraph(graph, { type: 'database', env: 'prod' }).text}\n`)
+      expect(`\n${out}`).toContain(`\n${table}\n`)
+      const framing = out.replace(table, '').split('\n').filter((line) => line !== '')
+      expect(framing.filter((line) => !line.startsWith('› ')), "every line outside the block is marked as the model's").toEqual([])
     },
     TIMEOUT,
   )

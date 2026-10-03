@@ -15,7 +15,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 5055, no API key" src="https://img.shields.io/badge/tests-5055%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 5062, no API key" src="https://img.shields.io/badge/tests-5062%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -170,8 +170,8 @@ provider, which you choose; none is the default.
 
 | `IDP_PROVIDER` | key variable | recorded with (`tests/recordings/`) |
 |---|---|---|
-| `openai` | `OPENAI_API_KEY` | `gpt-6-luna` — the plan tapes, and the Backstage and organisation questions |
-| `mistral` | `MISTRAL_API_KEY` | `mistral-small-2603` — the first question tapes and a classification |
+| `openai` | `OPENAI_API_KEY` | `gpt-6-luna` — the plan tapes, the Backstage and organisation questions, two of the demo's questions and a classification |
+| `mistral` | `MISTRAL_API_KEY` | `mistral-small-2603` — one of the demo's questions, `question-prod-databases` |
 | `anthropic` | `ANTHROPIC_API_KEY` | no tape yet; what it is sent is checked by `tests/contract/providers.test.ts` |
 
 From the clone, `pnpm link --global` puts `idpa` on your PATH (pnpm may ask for
@@ -787,7 +787,7 @@ firewall automation and ticketing) and adds the multi-agent layer that system ne
 | 3 | `init platform` + `validate` | ✅ |
 | 4 | Preview only: Inspector, Architect, `Plan`, diff; writes nothing | ✅ |
 | 5 | Write + local branch: `--submit` cuts one create-only branch, idempotent and atomic ([the check](docs/stage-5-check.md)) | ✅ |
-| 6 | [GitHub pull request](docs/stage-6-brief.md) ([the plan](docs/plans/stage-6-github.md)): your own git pushes, your own gh opens the pull request, the base's ruleset read; `idpa protection` and every road done — `plan --from`, `plan "<intent>"`, `init` and the phrase, the proposal at a terminal, what is in flight read first; proved on GitHub by the owner's live test ([ADR-0015](docs/adr/0015-a-submission-is-a-pull-request-the-rules-hold.md)); the owner's re-recorded tapes next | ✅ |
+| 6 | [GitHub pull request](docs/stage-6-brief.md) ([the plan](docs/plans/stage-6-github.md)): your own git pushes, your own gh opens the pull request, the base's ruleset read; `idpa protection` and every road done — `plan --from`, `plan "<intent>"`, `init` and the phrase, the proposal at a terminal, what is in flight read first; proved on GitHub by the owner's live test ([ADR-0015](docs/adr/0015-a-submission-is-a-pull-request-the-rules-hold.md)); every tape recorded again by the owner | ✅ |
 | 6b | [Read the live catalogue](docs/backstage-http-brief.md) (`backstage-http`): questions and relations against a running Backstage, the organisation included (slices 1 and 3, done); large catalogues answered in part and a read kept five minutes (slice 2, done); both sources side by side and namespaces (slices 4–5) with stage 8. No Backstage needed to use the tool | 🚧 |
 | 7 | Polish: Ink TUI, asciinema, npm publish | |
 | 8 | [Discovery](docs/stage-8-brief.md): catalogue an existing service and its dependencies; designed, not started; its submission takes stage 6's road | |
@@ -801,7 +801,7 @@ local branch and nothing else, which the suite checks for both and `pnpm smoke` 
 opens one pull request, which the suite checks against a fake gh and a bare repository on
 disk, and `pnpm demo:github` runs offline.
 
-Next, in order: the tapes re-recorded by the owner, stage 8 with `backstage-http` slices 4 and 5,
+Next, in order: stage 8 with `backstage-http` slices 4 and 5,
 removing and changing an access, and stage 7 last, the Claude-Code-like chat in the
 terminal that is the project's end goal.
 After stage 7, a discussion rather than a stage: what a company needs around the tool,

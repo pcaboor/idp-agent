@@ -5,27 +5,48 @@
     {
       "agent": "supervisor",
       "turn": 0,
-      "provider": "mistral",
-      "model": "mistral-small-2603",
-      "digest": "sha256:37c65966223e6a6ef50d7eb65d8d56fa6e71e126e0b2cbcbc8ccd94935b4981f",
-      "recordedAt": "2026-09-21T11:37:35.000Z",
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "digest": "sent:sha256:328db56f6955de738698d12f76ec76818779e4d6d0f5421628a24761464da3f6",
+      "recordedAt": "2026-10-02T16:56:23.000Z",
       "call": {
         "system": "You classify a request about an infrastructure catalogue.\n\nAnswer with exactly one word:\n  QUESTION  the request asks about what exists\n  MUTATION  the request asks for something to change\n\nNo explanation, no punctuation, no other word.",
         "transcript": [
           {
             "role": "user",
-            "text": "request: give billing-api access to orders-db in prod\n\nsi:\n  entities: 10-99\n  components: 1-9\n  resources: 10-99\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: api, cache, database, database-access, network-access, service\n  environments: dev, prod, staging\n  owners: group:default/common, group:default/dodowarriors, group:default/elephant, group:default/tiger"
+            "text": "request: give billing-api read access to orders-db in prod\n\nsi:\n  entities: 10-99\n  components: 1-9\n  resources: 10-99\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: api, cache, database, database-access, network-access, service\n  environments: dev, prod, staging\n  owners: group:default/common, group:default/dodowarriors, group:default/elephant, group:default/tiger"
           }
         ]
       },
       "result": {
         "content": [
           {
+            "type": "reasoning",
+            "text": "",
+            "providerMetadata": {
+              "openai": {
+                "itemId": "rs_0ff121c587e37cde016abfe23807b887d2be2d5b89328a7041",
+                "reasoningEncryptedContent": "gAAAAABqv-I4FhmGhomyreRIr-jqnyctq9QPuDZd0ReKnzG-TTUYBlLRJYWQ2lbMp5wFzHL8fZC414-wWe93MO7QBZ0YEjb0wVA652_K6mQMcRIVWjAQq67oVhiEDhVP6Awb35cTd0Q54LjyVjYHbLZsP70TB0wO32ouveHlZ8iEonXdxc8FRXWblgZpvjz9_4KdPgY-206yBAMkr-QCdI1kRzNFZEhb8kIBxAfRBIG7eeSSCdx4pjbjVdUOo44pLRMvLq5mS2dxxHrSjj_nYSnwU4RSq0x7x5nX0LCiczeyf2vsEvmWB0i8zQx6kJTTwKFLCE8JiqwfXmOBllK4T0svBMkH1a9LtTv2DsrDhVGc4AxH8vpMsXZ8x1LPQiumLUG9HQKtXLf8GrDwq0PRrRa_miAOmzOfN_EOH2kEpC4NV5C9unJag7R9CZ7uxlqmY7vR7-P8onHK6U4O1tGKQ1CAE4F33arj_ZsAqVJaKffhFKokKrVZlrffpvACShuv8nlS_yDFU4XWEcjs7wENoYxWzNCqIbLXOsx93_efsHdwJtDFA8LU1ij3N3izA76Hf_lCOgmImv7sogOHQRE4H1SjQI_47UXKHWjR3wboXSo_80dryI_ZxjwgHQD_UcLWLwU-5X3uUIiixC-UsY06XfgmhXceDGhmsIJzZV3BFLo3xVKckG28DkBZ_EIG9MTeoik_zaUUOgvcVNbNU4ArRSxrBUGCHsIlqvDoqG1xRCpYWxzU76S3bXjC9V6loPB5Rg5uGsUuz1oOq-nOJfhQ7FLhrKXwrt3E1O_oQHb67sxT--GCrnFkx6LxlX5BVRgr3KUKlxQ043Ma58eO7vegqE4a9M0MucnMdwtLi2XmTM7kVe6ZqEIzh3Yl_m0bUlH-OaGNRNkDhLy4c1vzhu_ptRri4BrL3HTfnqOYv40qE1GFKR1_0q0G0Rn7RzOA7OpfrMPnqG0Cck-Nmg0oisEYZlPxHXJLfdyR7zEkIYM33qFytW3ZlFujIw53cujWpQC6AgQC6jv3xN5HB6goduWTIYmo-05Z4rMpZlIFIp4jwubEXFxVWSuy-ewB43pjSg8ThqAqxp0q6NZVqtlq0BsbuhpRln-UZxfAqPwlaqbl5IbhZ0Jqiu-jnA4wUUv40X5oeuJWwrWcuAhHxzVGFYigxKakyJ6xZoj7SX-G5k8k-er7ZITJETFU_4_O5RoW8yRsGr29dONGnlWp6o209ZW8F6UsDeAjYa8jfw=="
+              }
+            }
+          },
+          {
             "type": "text",
-            "text": "MUTATION"
+            "text": "MUTATION",
+            "providerMetadata": {
+              "openai": {
+                "itemId": "msg_0ff121c587e37cde016abfe238294c87d2a50d2102ac20e1ae",
+                "phase": "final_answer"
+              }
+            }
           }
         ],
-        "finishReason": "stop"
+        "finishReason": "stop",
+        "usage": {
+          "inputTokens": 168,
+          "outputTokens": 22,
+          "totalTokens": 190
+        }
       }
     }
   ]

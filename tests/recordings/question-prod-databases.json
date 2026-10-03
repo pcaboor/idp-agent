@@ -7,89 +7,14 @@
       "turn": 0,
       "provider": "mistral",
       "model": "mistral-small-2603",
-      "digest": "sha256:3746e0f86ed24cc95bb1ad3a0a26e278f16d99610389b911a8dbbfaa07c89f7e",
-      "recordedAt": "2026-09-21T11:37:35.000Z",
+      "digest": "sent:sha256:47588570e07e11dec9658f6326dfbb0df993b43a5391367f3f61406c4f6f43a9",
+      "recordedAt": "2026-10-02T16:50:04.000Z",
       "call": {
-        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  nothing       when no entity matches\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
+        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\nA reference marked \"declared\": false is written in the catalogue and names no entity:\nsay so, and never treat it as the entity that shares its name.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  relation      with \"ref\" and \"relation\", when asked how an entity is related:\n                what it consumes or reaches (\"consumes\"), who consumes or uses\n                it (\"consumed-by\"), what it depends on (\"depends-on\"), what\n                breaks or is affected if it fails (\"impacts\"), the APIs it\n                provides or who provides one (\"provides\", \"provided-by\"), or\n                how two entities are related (\"between\", the other one as\n                \"to\": the paths where one depends on the other, else what both\n                reach). The engine computes every path and writes it; \"ref\"\n                and \"to\" must be references a tool returned. get_relations\n                shows you those paths; read them before you conclude on them.\n  nothing       when no entity matches\n  overview      when asked to describe, summarise or give an overview of the\n                catalogue, SI, repository or project as a whole. The engine\n                writes the description; call it straight away, and never answer\n                \"unanswerable\" for such a request\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nWith \"entities\", \"relation\", \"nothing\" or \"overview\" you may add \"intro\", one\nshort sentence introducing the answer, and \"conclusion\", at most three short\nsentences on what the result means for the question. Write both in the\nlanguage of the question. Say only what the tool results state; where they do\nnot say, say it is not declared rather than guess. Do not restate the list or its figures: the engine\nprints them. Name only entities a tool returned in this conversation: the\nengine deletes any sentence that names anything else, an identifier nobody\nreturned included. Both are optional: omit them rather than pad.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
         "transcript": [
           {
             "role": "user",
             "text": "question: which databases are in prod?\n\nsi:\n  entities: 10-99\n  components: 1-9\n  resources: 10-99\n  dangling references: 0\nvocabulary:\n  kinds: Component, Resource\n  types: api, cache, database, database-access, network-access, service\n  environments: dev, prod, staging\n  owners: group:default/common, group:default/dodowarriors, group:default/elephant, group:default/tiger\n"
-          },
-          {
-            "role": "assistant",
-            "text": "",
-            "toolCalls": [
-              {
-                "id": "rRsYUNvaa",
-                "name": "search_entities",
-                "args": {
-                  "kind": "Resource",
-                  "type": "database",
-                  "env": "prod"
-                }
-              }
-            ]
-          },
-          {
-            "role": "tool",
-            "id": "rRsYUNvaa",
-            "name": "search_entities",
-            "result": {
-              "rows": [
-                {
-                  "ref": "resource:default/billing-db-prod",
-                  "name": "billing-db-prod",
-                  "kind": "Resource",
-                  "type": "database",
-                  "env": "prod",
-                  "owner": "group:default/tiger"
-                },
-                {
-                  "ref": "resource:default/compliance-db-prod",
-                  "name": "compliance-db-prod",
-                  "kind": "Resource",
-                  "type": "database",
-                  "env": "prod",
-                  "owner": "group:default/common"
-                },
-                {
-                  "ref": "resource:default/mysql-prod-01",
-                  "name": "mysql-prod-01",
-                  "kind": "Resource",
-                  "type": "database",
-                  "env": "prod",
-                  "owner": "group:default/common"
-                },
-                {
-                  "ref": "resource:default/orders-db-prod",
-                  "name": "orders-db-prod",
-                  "kind": "Resource",
-                  "type": "database",
-                  "env": "prod",
-                  "owner": "group:default/tiger"
-                }
-              ]
-            }
-          },
-          {
-            "role": "assistant",
-            "text": "",
-            "toolCalls": [
-              {
-                "id": "sOwctbj85",
-                "name": "answer",
-                "args": {
-                  "outcome": "entities",
-                  "refs": [
-                    "resource:default/billing-db-prod",
-                    "resource:default/compliance-db-prod",
-                    "resource:default/mysql-prod-01",
-                    "resource:default/orders-db-prod"
-                  ]
-                }
-              }
-            ]
           }
         ]
       },
@@ -97,7 +22,7 @@
         "content": [
           {
             "type": "tool-call",
-            "toolCallId": "rRsYUNvaa",
+            "toolCallId": "MwJqcckud",
             "toolName": "search_entities",
             "input": {
               "kind": "Resource",
@@ -106,7 +31,12 @@
             }
           }
         ],
-        "finishReason": "tool-calls"
+        "finishReason": "tool-calls",
+        "usage": {
+          "inputTokens": 2549,
+          "outputTokens": 24,
+          "totalTokens": 2573
+        }
       }
     },
     {
@@ -114,10 +44,10 @@
       "turn": 1,
       "provider": "mistral",
       "model": "mistral-small-2603",
-      "digest": "sha256:278526176cefbe048a5429e944e9b5cb59b9887debd101c5ae85207b86734bd5",
-      "recordedAt": "2026-09-21T11:37:36.000Z",
+      "digest": "sent:sha256:31ad68302e9be45420aeeb4fda85034b2dec8f180ebe4c88c2ee06b86d6836e6",
+      "recordedAt": "2026-10-02T16:50:06.000Z",
       "call": {
-        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  nothing       when no entity matches\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
+        "system": "You answer questions about an infrastructure catalogue.\n\nUse the tools to read the catalogue. You may not state anything you have not read:\nevery reference you give must have come back from a tool in this conversation.\nA reference marked \"declared\": false is written in the catalogue and names no entity:\nsay so, and never treat it as the entity that shares its name.\n\nFinish by calling \"answer\":\n  entities      with the references you read, when they answer the question\n  relation      with \"ref\" and \"relation\", when asked how an entity is related:\n                what it consumes or reaches (\"consumes\"), who consumes or uses\n                it (\"consumed-by\"), what it depends on (\"depends-on\"), what\n                breaks or is affected if it fails (\"impacts\"), the APIs it\n                provides or who provides one (\"provides\", \"provided-by\"), or\n                how two entities are related (\"between\", the other one as\n                \"to\": the paths where one depends on the other, else what both\n                reach). The engine computes every path and writes it; \"ref\"\n                and \"to\" must be references a tool returned. get_relations\n                shows you those paths; read them before you conclude on them.\n  nothing       when no entity matches\n  overview      when asked to describe, summarise or give an overview of the\n                catalogue, SI, repository or project as a whole. The engine\n                writes the description; call it straight away, and never answer\n                \"unanswerable\" for such a request\n  unanswerable  with a reason, when the catalogue cannot answer this question\n\nRefusing is a valid outcome. Do not approximate to produce one.\n\nWith \"entities\", \"relation\", \"nothing\" or \"overview\" you may add \"intro\", one\nshort sentence introducing the answer, and \"conclusion\", at most three short\nsentences on what the result means for the question. Write both in the\nlanguage of the question. Say only what the tool results state; where they do\nnot say, say it is not declared rather than guess. Do not restate the list or its figures: the engine\nprints them. Name only entities a tool returned in this conversation: the\nengine deletes any sentence that names anything else, an identifier nobody\nreturned included. Both are optional: omit them rather than pad.\n\nIf the request is not a question about this catalogue at all — a greeting, small\ntalk, something about the weather — call \"answer\" with \"unanswerable\" straight\naway. Do not search first.",
         "transcript": [
           {
             "role": "user",
@@ -128,7 +58,7 @@
             "text": "",
             "toolCalls": [
               {
-                "id": "rRsYUNvaa",
+                "id": "MwJqcckud",
                 "name": "search_entities",
                 "args": {
                   "kind": "Resource",
@@ -140,7 +70,7 @@
           },
           {
             "role": "tool",
-            "id": "rRsYUNvaa",
+            "id": "MwJqcckud",
             "name": "search_entities",
             "result": {
               "rows": [
@@ -178,25 +108,6 @@
                 }
               ]
             }
-          },
-          {
-            "role": "assistant",
-            "text": "",
-            "toolCalls": [
-              {
-                "id": "sOwctbj85",
-                "name": "answer",
-                "args": {
-                  "outcome": "entities",
-                  "refs": [
-                    "resource:default/billing-db-prod",
-                    "resource:default/compliance-db-prod",
-                    "resource:default/mysql-prod-01",
-                    "resource:default/orders-db-prod"
-                  ]
-                }
-              }
-            ]
           }
         ]
       },
@@ -204,7 +115,7 @@
         "content": [
           {
             "type": "tool-call",
-            "toolCallId": "sOwctbj85",
+            "toolCallId": "T4lfcCXnp",
             "toolName": "answer",
             "input": {
               "outcome": "entities",
@@ -213,11 +124,17 @@
                 "resource:default/compliance-db-prod",
                 "resource:default/mysql-prod-01",
                 "resource:default/orders-db-prod"
-              ]
+              ],
+              "intro": "The following databases are deployed in the production environment."
             }
           }
         ],
-        "finishReason": "tool-calls"
+        "finishReason": "tool-calls",
+        "usage": {
+          "inputTokens": 2738,
+          "outputTokens": 71,
+          "totalTokens": 2809
+        }
       }
     },
     {
@@ -225,8 +142,8 @@
       "turn": 0,
       "provider": "mistral",
       "model": "mistral-small-2603",
-      "digest": "sha256:cfdbd5db34a0c21501ccde70968e7de6671a535ea0d8bd34266b38f6398567b3",
-      "recordedAt": "2026-09-21T11:37:35.000Z",
+      "digest": "sent:sha256:7c6ed654cf36934b57a075d364c4104cb762b86c68c9dede738a992f3c1aec0a",
+      "recordedAt": "2026-10-02T16:50:03.000Z",
       "call": {
         "system": "You classify a request about an infrastructure catalogue.\n\nAnswer with exactly one word:\n  QUESTION  the request asks about what exists\n  MUTATION  the request asks for something to change\n\nNo explanation, no punctuation, no other word.",
         "transcript": [
@@ -243,7 +160,12 @@
             "text": "QUESTION"
           }
         ],
-        "finishReason": "stop"
+        "finishReason": "stop",
+        "usage": {
+          "inputTokens": 179,
+          "outputTokens": 3,
+          "totalTokens": 182
+        }
       }
     }
   ]

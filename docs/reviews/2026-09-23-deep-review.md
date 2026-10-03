@@ -129,7 +129,7 @@ plugin.
 
 ## Status
 
-Updated 2026-10-01.
+Updated 2026-10-03.
 
 Not part of the review as delivered: this section tracks what later pull requests did about
 it, and the review around it is left as it was. The pull request that closes a priority or
@@ -158,7 +158,7 @@ priority 6.
 Review ids that a later pull request names as fixed, outside the ids the priorities list:
 
 - agents-llm-5 → [#75](https://github.com/pcaboor/idp-agent/pull/75)
-- agents-llm-9 → [#116](https://github.com/pcaboor/idp-agent/pull/116), batch B2, the harness half: a recording starts from an empty tape, stores the transcript as sent, is digested over the advertised JSON Schema, and a replay that leaves a turn unplayed fails; the re-record, tests-4's guard and the forced-turn fallback's digest are left
+- agents-llm-9 → [#116](https://github.com/pcaboor/idp-agent/pull/116), batch B2, the harness half: a recording starts from an empty tape, stores the transcript as sent, is digested over the advertised JSON Schema, and a replay that leaves a turn unplayed fails; the re-record → [#138](https://github.com/pcaboor/idp-agent/pull/138), stage 6's 6.4.3, every tape recorded again by the owner on 2026-10-02, with tests-4's guard; the forced-turn fallback's digest is left
 - agents-llm-10 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5, for the abort signal; no command passes one yet, and calls are still not streamed
 - agents-llm-11 → [#59](https://github.com/pcaboor/idp-agent/pull/59)
 - architecture-9 → [#109](https://github.com/pcaboor/idp-agent/pull/109), stage 5 task 5, in part: the confirmation is frozen as a seam taking a structured `SubmissionSummary` — root, repository, branch, base, files — beside the rendered preview (D5); the structured Preview/PlanReport apart from rendering and the session ADR are still open
@@ -224,8 +224,9 @@ Review ids that a later pull request names as fixed, outside the ids the priorit
 - security-9 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
 - security-10 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2, for a real key's shape in a tape; `providerMetadata` is still recorded, and dropping it rewrites every tape, so it waits for a re-record
 - tests-3 → [#113](https://github.com/pcaboor/idp-agent/pull/113), batch B1: the `signPlan` properties run over plans valid by construction — every Resource type, Components, levelled grants, updates, questions — with `fc.pre` for a refusal, and count what they met over the accepted plans, each floor naming the seed that replays it; the generator the coverage test sampled before the schema is gone, and that test samples the valid plans through it
+- tests-4 → [#138](https://github.com/pcaboor/idp-agent/pull/138), stage 6's 6.4.3: `question-mode.test.ts` fails on a stale tape, as `plan-mode.test.ts` and `backstage-mode.test.ts` do, once its four tapes were recorded again; `mutation-classified-link` is recorded on the scenario's own words
 - tests-5 → [#116](https://github.com/pcaboor/idp-agent/pull/116), batch B2, with the 16 dead turns pruned offline
-- tests-6 → [#116](https://github.com/pcaboor/idp-agent/pull/116), batch B2, for a turn recorded since; the tapes recorded before keep the Zod digest, compared as before, until re-recorded
+- tests-6 → [#116](https://github.com/pcaboor/idp-agent/pull/116), batch B2, for a turn recorded since; for every tape → [#138](https://github.com/pcaboor/idp-agent/pull/138), stage 6's 6.4.3: the twelve recorded again by the owner, every turn under the digest of what the provider is sent, which `plan-mode.test.ts` asserts
 - tests-7 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2
 - tests-8 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2
 - tests-9 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2, for the tape lifecycle in `tests/README.md`; freshness is still asserted inside each plan scenario, and there is no record-from-the-stale-turn mode
@@ -237,7 +238,7 @@ Review ids that a later pull request names as fixed, outside the ids the priorit
 - wip-diff-8 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4
 - wip-diff-9 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4; the vocabulary holds every annotation the repository declares, so what keeps a planted one from the Reviewer is that an environment is one word
 - wip-diff-10 → [#90](https://github.com/pcaboor/idp-agent/pull/90), batch A4; the already-declared update is an `it.fails` until wip-diff-2
-- wip-diff-12 → [#116](https://github.com/pcaboor/idp-agent/pull/116), batch B2, as tests-6
+- wip-diff-12 → [#116](https://github.com/pcaboor/idp-agent/pull/116), batch B2, and [#138](https://github.com/pcaboor/idp-agent/pull/138), as tests-6: no digest was rewritten offline; every tape was recorded again
 
 Named as left open, and still open: runtime-probe-15, `plan --repo` resolved against
 `process.cwd()` rather than `MainDeps.cwd` ([#46](https://github.com/pcaboor/idp-agent/pull/46);
@@ -316,7 +317,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | agents-llm-6 | still true | medium | trivial |  | re-record | `turn >= maxTurns - 1` in the Analyst's, Inspector's and Architect's loops, as the Reviewer has. |
 | agents-llm-7 | still true | medium | trivial |  | re-record | Word the `propose` description as the prompt does (no empty list) and fix the comment on the operation count. |
 | agents-llm-8 | still true | medium | small |  | re-record | Carry the refused operations' JSON into the repair report, or the last proposal into the next opening message. |
-| agents-llm-9 | partly fixed | medium | medium | B2 (part), the harness half fixed in [#116](https://github.com/pcaboor/idp-agent/pull/116): an empty tape, the transcript copied before the call, the sent digest, every turn replayed; left: the re-record, and the forced-turn fallback's digest | re-record, owner | Record from an empty map, clone the transcript at call time, digest the JSON Schema, assert every turn replayed. |
+| agents-llm-9 | partly fixed | medium | medium | B2 (part), the harness half fixed in [#116](https://github.com/pcaboor/idp-agent/pull/116): an empty tape, the transcript copied before the call, the sent digest, every turn replayed; the re-record fixed in [#138](https://github.com/pcaboor/idp-agent/pull/138) (stage 6, 6.4.3); left: the forced-turn fallback's digest | re-record, owner | Record from an empty map, clone the transcript at call time, digest the JSON Schema, assert every turn replayed. |
 | architecture-1 | still true | medium | medium |  | owner | One pure `evaluatePlan()` in `core/plan` called by repair, `--from` and `init`, with a parity test; `contextsOf` out of `cli/`. |
 | architecture-6 | partly fixed | medium | medium | A4 (part), in [#90](https://github.com/pcaboor/idp-agent/pull/90): `planEdits`, the signature, the policies and the re-check |  | `never` defaults or a `HANDLERS` table at the 44 remaining `op ===` branches; a switch on `patch.patch`. |
 | architecture-7 | still true | medium | large |  | owner | `Policy` and `Rule` objects enabled per repository, factory tables for providers, a `./plugin` export — after the foundation. |
@@ -371,9 +372,9 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | security-9 | partly fixed | medium | trivial | A3, fixed in [#89](https://github.com/pcaboor/idp-agent/pull/89) |  | Same fix as docs-3: its four points are gone, and the gate-order row is the one guarantee left that contradicts the code and the test it names. |
 | tests-2 | partly fixed | medium | small |  | owner | Pin each replayed scenario's exit code and diff; same work as wip-diff-7. |
 | tests-3 | still true | medium | small | B1, fixed in [#113](https://github.com/pcaboor/idp-agent/pull/113) |  | Plans valid by construction (Component, levelled grant, update), `fc.pre` instead of `return`. |
-| tests-4 | still true | medium | small |  | re-record, owner | The freshness guard in question mode, after the question tapes are re-recorded. |
+| tests-4 | still true | medium | small | fixed in [#138](https://github.com/pcaboor/idp-agent/pull/138) (stage 6, 6.4.3) | re-record, owner | The freshness guard in question mode, after the question tapes are re-recorded. |
 | tests-5 | still true | medium | small | B2, fixed in [#116](https://github.com/pcaboor/idp-agent/pull/116) (16 dead turns pruned) | owner | Record from an empty map, assert every turn replayed, prune the dead turns offline. |
-| tests-6 | still true | medium | small | B2, fixed in [#116](https://github.com/pcaboor/idp-agent/pull/116) for a turn recorded since; a turn recorded before keeps the old digest until it is re-recorded | owner | Digest the JSON Schema the provider is sent; same fix as wip-diff-12. |
+| tests-6 | still true | medium | small | B2, fixed in [#116](https://github.com/pcaboor/idp-agent/pull/116) for a turn recorded since, and for every tape in [#138](https://github.com/pcaboor/idp-agent/pull/138) (stage 6, 6.4.3), every tape recorded again | owner | Digest the JSON Schema the provider is sent; same fix as wip-diff-12. |
 | tests-8 | still true | medium | small | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | Delete `IDP_PROVIDER`, `IDP_MODEL`, `IDP_*_MODEL` and `*_API_KEY` in the setup unless recording; record only with a scenario. |
 | tests-9 | still true | medium | small | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | `tests/README.md` on the tape lifecycle, linked from CONTRIBUTING. |
 | tests-11 | still true | medium | trivial | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | Same fix as core-plan-13, plus a sentinel so a crash counts as neither open nor closed. |
@@ -428,7 +429,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | wip-diff-8 | still true | low | trivial | A4, fixed in [#90](https://github.com/pcaboor/idp-agent/pull/90) |  | `ReviewInput = ReviewFacts & {plan; intent}` and the two comments fixed. |
 | wip-diff-9 | still true | low | small | A4, fixed in [#90](https://github.com/pcaboor/idp-agent/pull/90) |  | Render an environment only when the vocabulary holds it; otherwise say it is outside the vocabulary. |
 | wip-diff-10 | still true | low | small | A4, fixed in [#90](https://github.com/pcaboor/idp-agent/pull/90) (the repair test of an already-declared update is an `it.fails` until wip-diff-2) |  | `sign.test` cases for a self `dependsOn` and a Component `dependsOn`; a repair test of an already-declared update, `it.fails` until wip-diff-2. |
-| wip-diff-12 | still true | low | small | B2, fixed in [#116](https://github.com/pcaboor/idp-agent/pull/116) for a turn recorded since; no tape's digest was rewritten, since none stores the tools it was sent | owner | Digest over each tool's `z.toJSONSchema` plus `toolChoice`; rewrite the tapes' digests offline in the same PR. |
+| wip-diff-12 | still true | low | small | B2, fixed in [#116](https://github.com/pcaboor/idp-agent/pull/116) for a turn recorded since; no tape's digest was rewritten, since none stores the tools it was sent; every tape recorded again in [#138](https://github.com/pcaboor/idp-agent/pull/138) (stage 6, 6.4.3) | owner | Digest over each tool's `z.toJSONSchema` plus `toolChoice`; rewrite the tapes' digests offline in the same PR. |
 
 ## 3. Findings by theme
 
