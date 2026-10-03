@@ -61,8 +61,10 @@ here, one pull request each, each naming the check run together at the end.
    states it, as it already holds an answer to the references a tool returned, proved with a
    scripted client that reproduces the invented `package.json` of 2026-10-02, no tape needed.
    And `idpa protection`'s reason for a base whose ruleset supplies none of the three rules,
-   reported today as classic branch protection only (the exit code and the note are right,
-   the reason is not).
+   reported as classic branch protection only (the exit code and the note were right, the
+   reason was not) — done ([#139](https://github.com/pcaboor/idp-agent/pull/139)): the
+   branch route is read only when the rules route answers no rule at all, so that base is told
+   the four rules it lacks.
 2. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence; two people discovering the same service see what
@@ -436,11 +438,12 @@ The owner's decisions, dated, each with where it is recorded.
     never carried out**: the pull request watched 30 seconds, never merged, the base never moved,
     and every pull request the run opened read unmerged before the cleanup and after it.
   - **A branch a ruleset covers answers `protected: true`** on the branch route, with no
-    classic protection set. The preflight reads that route only when no ruleset supplies a
+    classic protection set. The preflight read that route only when no ruleset supplied a
     required rule, so the run's verdict did not depend on it; a ruleset supplying none of the
-    three required rules makes `idpa protection` say "classic branch protection only" where it
-    is a ruleset that is missing the rules, and leave those rules unnamed (an open question
-    below).
+    three required rules made `idpa protection` say "classic branch protection only" where it
+    is a ruleset that is missing the rules, and leave those rules unnamed — fixed since: the
+    route is read only when the rules route answers no rule at all
+    ([#139](https://github.com/pcaboor/idp-agent/pull/139)).
   - **No read-back lag was seen**: GitHub answered the pushed branch on the first read.
   - **The request's `@mention`, inside the body's fence, rendered as code** with no mention link.
   - The three fields no read settles, filled by the owner for the throwaway repository: GitHub
@@ -497,9 +500,17 @@ Each was checked against `main` at `3b642fa`, except stage 6's follow-ups, check
   a person, and a runner, whose token would make a bot the author, needs an ADR of its own.
 - **A ruleset restricting the creation of `idp-agent/` branches** is printed as advised and
   was not measured live: what GitHub's push rejection says for it is unknown.
-- **A ruleset supplying none of the three required rules is called classic protection** by
-  `idpa protection`, the exit and the note right and the reason wrong: a known limit, not fixed
-  in stage 6 (*Open questions* below, "`protected: true` is not classic protection alone").
+- **A ruleset supplying none of the three required rules was called classic protection** by
+  `idpa protection`, the exit and the note right and the reason wrong. Closed,
+  [#139](https://github.com/pcaboor/idp-agent/pull/139): the branch route, which answers
+  `protected: true` for a branch any active ruleset covers, is read only when the rules route
+  answers no rule at all, so such a base is told the four rules it lacks (a pull request rule
+  requiring 1 approval, approval of the most recent push, block force pushes, restrict
+  deletions), and classic protection alone is still said as such
+  (`tests/unit/protection-command.test.ts`, `tests/unit/preflight.test.ts`). What is left: an
+  active ruleset holding no rule at all leaves the rules route empty as classic protection
+  does, so it would still be said as classic protection only; GitHub's answer for one was not
+  measured.
 - **Step 5 of the live test, an approval followed by the author's push, was not made on
   GitHub**: the second account is optional and was not used on 2026-10-02, so that claim rests
   on the fake and on the rule's read until a run with a second account is committed.
@@ -773,20 +784,6 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
   push with the same account their gh is logged in as, and whether a deploy key sits in a bypass
   list; whether its GitHub Actions may approve pull requests. `idpa protection` reads what it can
   of each and says what no read can see.
-- **`protected: true` is not classic protection alone.** GitHub answers it for a branch a
-  ruleset covers (measured 2026-10-02). The preflight reads the branch route only when no ruleset
-  supplies a pull request, force-push or deletion rule, so a base whose ruleset supplies none of
-  the three is reported as protected by classic branch protection only. The exit (1) and the
-  pull request's note are the same; what `idpa protection` says is not: one false line, "protected
-  by classic branch protection only", in place of the four true ones — the pull request rule, the
-  approval of the last push, force pushes, deletions — so nobody is told force pushes and
-  deletions are unguarded, and it is told to add a ruleset that already exists. Pinned as it is
-  by `tests/unit/protection-command.test.ts` ("a ruleset that supplies none of the three required
-  rules"). The likely fix is the owner's call: read `branches/<b>` only when the `rules` route
-  answered no rule at all, since any rule means a ruleset covers the branch; or read classic
-  protection itself (`branches/<b>/protection`, which needs administrator rights); or say
-  "rulesets or classic protection".
-
 - **Should a mistyped command followed by words be caught before the model?** Today it is
   not, by design: the typo guard judges a one-word phrase only, because "a sentence is never
   a typo" (`parsePhrase` in `src/cli/index.ts`), and the "did you mean" hint is said only

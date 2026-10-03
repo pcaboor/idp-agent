@@ -233,13 +233,21 @@ workflow or app approves in someone else's place. The push credential is not pro
 account in stage 6 (the note's § 19, Q4); `docs/submitting.md` recommends `gh auth setup-git`
 over HTTPS and a key of the same account over SSH.
 
-**A known limit, not fixed in stage 6.** GitHub answers `protected: true` on the branch route
+**A known limit of stage 6, now fixed.** GitHub answers `protected: true` on the branch route
 for a branch a ruleset covers, with no classic protection set (measured on 2026-10-02), and the
-preflight reads that route only when no ruleset supplies a required rule. So a base covered by
-a ruleset that supplies none of the three required rules is reported by `idpa protection` as
-"protected by classic branch protection only": the exit, 1, and a submission's note are right;
-the reason is wrong — the missing rules go unnamed, and the person is told to add a ruleset
-that exists. Its fix is a follow-up after stage 6 (`docs/roadmap.md`, *Open questions*).
+preflight read that route whenever no ruleset supplied a required rule. So a base covered by a
+ruleset that supplied none of the three required rules was reported by `idpa protection` as
+"protected by classic branch protection only": the exit, 1, and a submission's note were
+right; the reason was wrong — the missing rules went unnamed, and the base was said to lack a
+ruleset when it had one. Fixed after stage 6
+([#139](https://github.com/pcaboor/idp-agent/pull/139)): the route is read only when the
+rules route answers no rule at all, as § 8 item 4 of the note says, so that base is told the
+four rules it lacks; an active ruleset holding no rule at all is the one shape still said as
+classic protection (`docs/roadmap.md`, *Known debts*). The line after the four,
+`Add a ruleset on <base>`, is unchanged: it is the one every base missing a rule is given, a
+ruleset that supplies some of them included, and GitHub layers rulesets, so a second one or an
+edit of the existing one supplies them alike. Wording it for a base that has a ruleset is a
+change to what `idpa protection` prints, left to the owner.
 
 Stage 6 is a laptop tool, not a CI step (Q1): gh must be logged in as a person, and a
 server-side runner needs an ADR of its own. github.com only; GitHub Enterprise comes later,

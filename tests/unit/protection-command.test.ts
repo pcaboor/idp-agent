@@ -186,27 +186,21 @@ describe('idpa protection: the rules do not hold', () => {
     )
   })
 
-  it('exits 1 on a ruleset that supplies none of the three required rules, and today calls it classic protection (an open question)', async () => {
-    // Pinned, not endorsed (docs/roadmap.md, "`protected: true` is not classic protection
-    // alone"): GitHub answers `protected: true` for a branch a ruleset covers (2026-10-02),
-    // and the preflight reads that route when no ruleset supplies a required rule. So this
-    // base is said to be protected by classic branch protection only, the four rules it
-    // lacks go unnamed, and the ruleset it already has is the one it is told to add. The
-    // exit and the note are right; the reason is the owner's to settle.
+  it('exits 1 on a ruleset that supplies none of the three required rules, naming the four it lacks', async () => {
+    // GitHub answers `protected: true` for a branch a ruleset covers (2026-10-02), so the
+    // branch route is no read of classic protection once any rule covers the base: this
+    // one has a ruleset, and what it lacks is the four rules, not a ruleset.
     const signaturesOnly = protectingRuleset(1, { rules: [{ type: 'required_signatures' }] })
     const ran = await check(fakeGitHub({ repositories: [repository({ rulesets: [signaturesOnly] })] }))
-    expect(ran).toEqual({
-      code: 1,
-      out: lines([
-        "github.com/acme/iac's main does not stop the person who would open a pull request from merging it:",
-        '  missing: a ruleset: main is protected by classic branch protection only, which idpa does not read',
-        'Add a ruleset on main (Settings → Rules → Rulesets):',
-        ...protectionText(),
-        `A submission still opens its pull request here, and says: ${MERGE_NOTE}`,
-        'Then run idpa protection again.',
-      ]),
-      err: CHECKING,
-    })
+    expect(ran).toEqual({ code: 1, out: lines(UNPROTECTED), err: CHECKING })
+  })
+
+  it('exits 1 naming the four rules on a ruleset that supplies none of them beside classic protection, which idpa does not count', async () => {
+    const signaturesOnly = protectingRuleset(1, { rules: [{ type: 'required_signatures' }] })
+    const ran = await check(
+      fakeGitHub({ repositories: [repository({ rulesets: [signaturesOnly], branches: { main: { protected: true } } })] }),
+    )
+    expect(ran).toEqual({ code: 1, out: lines(UNPROTECTED), err: CHECKING })
   })
 
   it('exits 1 on an archived repository, and offers no ruleset, which would not help', async () => {

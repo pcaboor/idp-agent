@@ -109,10 +109,9 @@ export interface ProtectionInput {
   readonly rulesets: ReadonlyMap<number, RulesetAnswer>
   /**
    * Whether the branch route calls the base protected, read as classic branch
-   * protection and only when no ruleset supplies a required rule. GitHub says
-   * `true` under a ruleset alone as well (2026-10-02), so a ruleset supplying
-   * none of the three reads as `classic-only`: an open question in
-   * `docs/roadmap.md`, "`protected: true` is not classic protection alone".
+   * protection only when `rules` holds no rule at all: GitHub says `true` for
+   * a branch any active ruleset covers (2026-10-02), so beside a rule it says
+   * nothing of classic protection, and is not counted.
    */
   readonly classic?: boolean
 }
@@ -206,7 +205,7 @@ export function judgeProtection(input: ProtectionInput): ProtectionVerdict {
   const bound = (type: string): boolean => supplying.some((rule) => rule.type === type && binds(rule.ruleset_id))
 
   const missing = new Set<Missing>()
-  if (supplying.length === 0 && input.classic === true) {
+  if (rules.length === 0 && input.classic === true) {
     missing.add('classic-only')
   } else {
     if (bindingPullRequests.length === 0) missing.add('pull-request')

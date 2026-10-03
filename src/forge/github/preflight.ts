@@ -15,8 +15,10 @@ import { GITHUB_LIMITS } from './limits.js'
  *   2. the rules for the base, one page, refused past it;
  *   3. each ruleset that supplies a required rule, at most ten, refused
  *      before the first is read when there are more;
- *   4. the branch, for classic protection, only when no ruleset supplies a
- *      required rule — so the two reads are never both made;
+ *   4. the branch, for classic protection, only when the rules route answered
+ *      no rule at all — GitHub answers `protected: true` for a branch any
+ *      active ruleset covers (2026-10-02), so after one rule the route says
+ *      nothing of classic protection — and the two reads are never both made;
  *   5. what is reported without being required, from the same answers.
  *
  * `readProtection` is those; `preflight` adds the base's ref, what a
@@ -60,9 +62,10 @@ export async function readProtection(api: GitHubApi, road: GitHubRoad): Promise<
   }
 
   const { rules, rulesets } = await rulesOf(api, road)
-  if (rulesets.size > 0) return judgeProtection({ expected, repository, rules, rulesets })
-  // Named `classic`, though GitHub answers `protected: true` under a ruleset too (2026-10-02;
-  // docs/roadmap.md, "`protected: true` is not classic protection alone").
+  // Any rule means a ruleset covers the base, and GitHub then answers `protected: true`
+  // on the branch route whatever classic protection says (2026-10-02): read only when
+  // no rule came back, it is classic protection's answer.
+  if (rules.length > 0) return judgeProtection({ expected, repository, rules, rulesets })
   const { protected: classic } = await api.branch(road.base)
   return judgeProtection({ expected, repository, rules, rulesets, classic })
 }

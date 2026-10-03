@@ -201,7 +201,7 @@ export interface GitHubApi {
   /**
    * `GET repos/<o>/<r>/branches/<base>`: whether anything protects it (item 4) —
    * classic branch protection, and, as GitHub answered on 2026-10-02, an active
-   * ruleset too (`docs/roadmap.md`, "`protected: true` is not classic protection alone").
+   * ruleset too; so it is read only when the rules route answered no rule.
    */
   branch(base: string): Promise<BranchAnswer>
   /** `GET repos/<o>/<r>/git/ref/heads/<branch>`: the commit the branch is at on GitHub. */

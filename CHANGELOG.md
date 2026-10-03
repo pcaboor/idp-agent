@@ -396,6 +396,13 @@ Each pull request adds its line here.
 
 ### Fixed
 
+- `idpa protection`, and a submission's preflight, no longer call a base covered by a ruleset
+  that supplies none of the three required rules — one that requires signed commits only —
+  protected by classic branch protection only: GitHub answers `protected: true` for a branch
+  any active ruleset covers, so the branch route is read only when the rules route answers no
+  rule at all, and that base is told the four rules it lacks; the exit (1) and the note are
+  unchanged, and classic protection alone is still said as such
+  ([#139](https://github.com/pcaboor/idp-agent/pull/139)).
 - The suite no longer fails on a loaded machine: a test may take 20 s instead of vitest's 5 s
   default, since many start git or node in real repositories on disk, and fourteen once timed
   out in one run and passed in the next ([#129](https://github.com/pcaboor/idp-agent/pull/129)).
