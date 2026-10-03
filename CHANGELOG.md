@@ -570,6 +570,16 @@ Each pull request adds its line here.
 
 ### Documentation
 
+- The Inspector's facts held to the files it read are planned
+  ([the plan](docs/plans/inspector-witness.md)): one rule per field — a keyed line for the name,
+  the type and the lifecycle, a whole token for the runtime, the forge handle and a dependency's
+  name, a reference in full for the owner, and never for a dependency's type — a value no file
+  the Inspector read states becomes an unknown with the engine's reason, said on stderr and
+  asked where it matters, on `plan` and `init`, and an inspection with no report no longer hands
+  the Architect the model's prose; measured on the twelve tapes, it stales
+  `link-already-declared` alone, which the owner records again; the reason a model writes for
+  its own unknown stays unchecked, a stated and pinned limit, until the owner chooses now or
+  stage 8 ([#140](https://github.com/pcaboor/idp-agent/pull/140)).
 - ADR-0015, accepted: a submission is a pull request, and the base's rules decide who may merge
   it — "idpa never merges and never writes to the base: it opens a pull request, and the base's
   rules decide who may merge it", word for word in the design, `AGENTS.md`, `SECURITY.md`,

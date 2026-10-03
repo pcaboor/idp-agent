@@ -65,6 +65,11 @@ here, one pull request each, each naming the check run together at the end.
    reason was not) — done ([#139](https://github.com/pcaboor/idp-agent/pull/139)): the
    branch route is read only when the rules route answers no rule at all, so that base is told
    the four rules it lacks.
+   The first is planned ([the plan](plans/inspector-witness.md),
+   [#140](https://github.com/pcaboor/idp-agent/pull/140)): one pull request, and the
+   owner's re-record of `link-already-declared`, whose Inspector classified `pg` as a database
+   no file states. It holds the values a report states; the reasons a model writes for its own
+   unknowns wait for stage 8 (owner's decision, 2026-10-03).
 2. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence; two people discovering the same service see what
@@ -482,6 +487,13 @@ The owner's decisions, dated, each with where it is recorded.
   answering in Spanish; and put the fix of the product gap that tape showed — the Inspector's
   facts held to no file read — right after stage 6, before stage 8, with `idpa protection`'s
   wrong reason ([#138](https://github.com/pcaboor/idp-agent/pull/138)).
+- The Inspector's facts held to the files it read ([the plan](plans/inspector-witness.md),
+  [#140](https://github.com/pcaboor/idp-agent/pull/140)), the owner's five answers, each as
+  recommended: an unwitnessed value is withdrawn after the report, never handed back to the
+  model; one unstated dependency name makes the whole list unknown, said with every name
+  reported; `link-already-declared`, the one tape the change stales, is re-recorded by the
+  owner in the same pull request; and the engine-written reason for an unknown, with `init`'s
+  `answered` signature, wait for stage 8, which re-records the same tapes anyway.
 
 ## Known debts and open items
 
