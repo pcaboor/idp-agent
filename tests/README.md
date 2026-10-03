@@ -7,7 +7,7 @@ one stale, and what to do when your change does.
 | Folder | What it holds |
 |---|---|
 | `unit/` | one module or one command at a time; an agent-backed command is driven by a scripted client (`MainDeps.client`), never by a tape |
-| `contract/` | what each provider is sent over HTTP, with `fetch` stubbed |
+| `contract/` | what each provider is sent over HTTP, with `fetch` stubbed; and the fakes held to what the real systems answered, `backstage/` and `github/` |
 | `architecture/` | the import rules of `AGENTS.md`, and checks that they cannot pass on an empty tree |
 | `invariants/` | properties over generated input (`fast-check`) |
 | `golden/` | small catalogues the unit tests read, each built for one case |
@@ -15,7 +15,7 @@ one stale, and what to do when your change does.
 | `recordings/` | the tapes those three replay, one JSON file per scenario |
 | `setup/` | what runs before every test file, below |
 | `support/` | helpers shared by tests; `fake-backstage.ts`, the fake catalogue as an injected `fetch`, and `fake-gh.ts`, the fake gh and the doors, below; `stub-gh.ts`, a recording `gh` or `git` put first on `PATH` |
-| `live/` | from Task 6.4.1 of the stage 6 plan, not there yet; never collected by `pnpm test` (`vitest.config.ts` already excludes it): stage 6's live test, run by hand with the owner's own gh |
+| `live/` | stage 6's live test, `pnpm test:live:github`, run by hand with the owner's own gh against a throwaway repository on GitHub; never collected by `pnpm test` (`vitest.config.ts` excludes it), below |
 
 ## Before every test file
 
@@ -90,7 +90,8 @@ suite starts Docker.
 ## The fake gh, the stubs and the doors
 
 No test runs the real gh or ssh. `tools/fake-gh.ts` is a model of what `gh api` answers — the
-accounts, the one gh is logged in as, `--version` and `GET user` so far — and reads each
+accounts and the one gh is logged in as, `--version`, the repositories, their rulesets, refs,
+commits and pull requests, and the doors its model judges — and reads each
 argument vector with its own patterns, apart from the launcher's grammar, so a drift between
 the two fails. `support/fake-gh.ts` wraps it as the process a test hands the launcher
 (`ghIn({ run })`), keeps every call in `sent`, and holds the doors: `DOORS` and `GIT_DOORS`,
@@ -100,6 +101,30 @@ allowed to name a door; every other test takes them from it (`unit/launcher-door
 titles each case with its door's name). `support/stub-gh.ts` writes a `gh` or a `git` that
 records its vector, its environment's names and its working directory, for the launcher
 tests (`unit/process-gh.test.ts`, `unit/process-git.test.ts`).
+
+## The fake gh and the live test
+
+The fake gh is held to GitHub the way the fake Backstage is held to Backstage.
+`contract/github/` keeps one file per run of the owner's live test, logins removed: the status
+and the shape of each route GitHub answered, each door's answer, the `remote:` lines of the
+refused push and what `--include` printed for a 404. `contract/github-answers.test.ts` reads each
+file and asks the fake, offline, in the state the run reached (`support/github-fixture.ts`'s
+`openedPullRequest()`): the same status for each route and no field GitHub did not send, the
+same answer to each door it models, the recorded push rejection classified as a ruleset's, and
+`GH_MINIMUM_VERSION` equal to the oldest gh a committed run used — 2.96.0, from the run of
+2026-10-02. When a file says something the fake does not, the fake moves to GitHub's answer,
+never the other way round. `support/github-answers.ts` is what the recorder and the contract
+test share: the shape of an answer (a value kept only under the keys that are enumerations), the
+comparison, the scrub, and the check that no login, name, email or token's shape is left.
+
+`pnpm test:live:github` re-records (`docs/submitting.md`, *Proving it on your repository*): it
+runs `vitest.live.config.ts`, which collects `live/**/*.live.test.ts` and nothing else, loads
+`live/setup.ts` and no setup file of the default suite, and stops before any test file is
+imported unless `IDP_GITHUB_LIVE_REPO` names a repository whose name holds `idpa-live`. It needs a
+gh logged in to github.com and the owner's ssh key, so CI never runs it. What decides what it
+sends — the guard, the environments, the doors and their refusals, the cleanup's targets — is
+pure, in `live/guard.ts` and `live/github/doors.ts`, and tested in the default suite
+(`unit/live-config.test.ts`); nothing in `pnpm test` starts gh.
 
 ## The tapes
 

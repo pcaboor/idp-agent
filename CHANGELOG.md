@@ -310,6 +310,19 @@ Each pull request adds its line here.
   person's pull request is never edited, commented on, closed or linked to, its title is never
   read, and their login, branch and patch go to the terminal alone, never to a trace or `--json`
   ([#135](https://github.com/pcaboor/idp-agent/pull/135)).
+- `pnpm test:live:github`, the owner's live test of stage 6, run by hand against a public
+  throwaway repository with their own gh and git — and a second account's gh when one is set —
+  never in CI and stopping at once without `IDP_GITHUB_LIVE_REPO`: a submission opens a pull
+  request, a second one names it, a competing change is refused, every door — each merge method,
+  `--admin`, the REST merge and `merge-async`, `POST merges`, a contents write, the base's ref
+  moved, a push onto the base, the GraphQL merge and commit, the author's own approval — is
+  refused to the identity that opened it with the base unchanged, and a base no ruleset covers
+  still gets its pull request, with the note. It ran on 2026-10-02 and passed, without a second
+  account; its recorded answers, logins removed, hold the fake gh to GitHub in `pnpm test`
+  (`tests/contract/github-answers.test.ts`), and gh 2.96.0, the version it ran with, is the
+  oldest this build reads, where 2.40.0 was provisional. The fake now answers as GitHub did:
+  a base's ref moved by its author is 422, `merge-async` is 202 and never carried out, a branch a
+  ruleset covers is `protected` ([#136](https://github.com/pcaboor/idp-agent/pull/136)).
 
 ### Changed
 

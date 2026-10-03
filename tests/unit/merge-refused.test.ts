@@ -3,8 +3,8 @@ import { MERGE_NOTE, noteOf } from '../../src/core/github/protection.js'
 import { preflight } from '../../src/forge/github/preflight.js'
 import { GH_LIMITS, parseIncluded, type GhExit } from '../../src/process/gh.js'
 import { clearedFor, removeClones } from '../support/forge-fixture.js'
-import { DOORS, MERGE_DOOR, MODELLED_DOORS, protectedMain, protectingRuleset, repository, type FakeGitHub } from '../support/fake-gh.js'
-import { githubClone, githubForge, type GitHubClone } from '../support/github-fixture.js'
+import { DOORS, MERGE_DOOR, MODELLED_DOORS, QUEUED_MERGE_DOOR, protectedMain, protectingRuleset, repository, type FakeGitHub } from '../support/fake-gh.js'
+import { PULL_ACCOUNTS, PUSHER, githubClone, githubForge, openedPullRequest, type GitHubClone } from '../support/github-fixture.js'
 import { git } from '../support/git.js'
 import { REFUSED_EXIT, type FakeRepository } from '../../tools/fake-gh.js'
 
@@ -27,23 +27,21 @@ import { REFUSED_EXIT, type FakeRepository } from '../../tools/fake-gh.js'
 afterAll(removeClones)
 
 /** `ada` opened it; `grace` and `linus` may review it. */
-const ACCOUNTS = [
-  { login: 'ada', type: 'User' as const },
-  { login: 'grace', type: 'User' as const },
-  { login: 'linus', type: 'User' as const },
-]
-const GRACE = { admin: false, maintain: false, push: true }
+const GRACE = PUSHER
 
 /**
  * How the fake answered a door: a door its model judges is refused as GitHub
- * would refuse it — a 4xx through `gh api`, or `gh pr`'s own failure — and
- * any other is refused as a vector idp-agent never sends (`REFUSED_EXIT`),
- * which proves nothing of GitHub: 6.4.1's live test tries those there.
+ * would refuse it — a 4xx through `gh api`, or `gh pr`'s own failure — the
+ * merge GitHub judges later accepted (202) and never carried out while the
+ * rules refuse it, and any other refused as a vector idp-agent never sends
+ * (`REFUSED_EXIT`), which proves nothing of GitHub: 6.4.1's live test tries
+ * those there.
  */
 const answered = (door: (typeof DOORS)[number], exit: GhExit): string => {
   if (!MODELLED_DOORS.has(door.name)) return exit.code === REFUSED_EXIT ? 'not modelled' : `exit ${String(exit.code)}`
   if (door.argv[0] === 'api') {
     const status = parseIncluded(exit.stdout)?.status ?? 0
+    if (door.name === QUEUED_MERGE_DOOR.name) return status === 202 && exit.code === 0 ? 'queued by the model' : `status ${String(status)}`
     return status >= 400 && status < 500 ? 'refused by the model' : `status ${String(status)}`
   }
   return exit.code === 1 && /was not (merged|approved)/.test(exit.stderr) ? 'refused by the model' : `exit ${String(exit.code)}`
@@ -58,19 +56,9 @@ const tryDoor = (gh: FakeGitHub, door: (typeof DOORS)[number]): Promise<GhExit> 
 
 /** A clone whose GitHub is `change` of `protectedMain`, with `grace` beside `ada`. */
 const withModel = async (change: (bare: string) => FakeRepository): Promise<GitHubClone> => {
-  const clone = await githubClone({ model: { accounts: ACCOUNTS } })
+  const clone = await githubClone({ model: { accounts: [...PULL_ACCOUNTS] } })
   clone.gh.state.repositories = [change(clone.bare)]
   return clone
-}
-
-/** Pull request #1, opened by the forge as `ada`: its head. */
-const opened = async (clone: GitHubClone) => {
-  const change = await clearedFor(clone.repo)
-  const { forge, api, road } = await githubForge(clone)
-  const base = await forge.base()
-  const result = await forge.submit(change, base)
-  if (result.outcome !== 'created') throw new Error(result.outcome)
-  return { change, api, road, base, head: result.commit }
 }
 
 /** A commit on top of `head`, its objects on GitHub's side under a ref of the test's own. */
@@ -84,23 +72,63 @@ const onTop = async (clone: GitHubClone, head: string): Promise<string> => {
 // vitest's 5 s default beside the rest of the suite (github-forge.test.ts).
 describe('the identity that opened the pull request cannot merge it', { timeout: 30_000 }, () => {
   it('refuses every door to the identity that opened the pull request, and leaves it open and main where it was', async () => {
-    const clone = await withModel((bare) =>
+    const { clone } = await openedPullRequest((bare) =>
       protectedMain({ bare, permissions: { ada: { admin: true, maintain: false, push: true }, grace: GRACE } }),
     )
-    await opened(clone)
     const main = await git(clone.bare, 'rev-parse', 'main')
 
     for (const door of DOORS) {
       const exit = await tryDoor(clone.gh, door)
-      expect(answered(door, exit), door.name).toBe(MODELLED_DOORS.has(door.name) ? 'refused by the model' : 'not modelled')
+      const expected = door.name === QUEUED_MERGE_DOOR.name ? 'queued by the model' : MODELLED_DOORS.has(door.name) ? 'refused by the model' : 'not modelled'
+      expect(answered(door, exit), door.name).toBe(expected)
       expect(clone.gh.state.pulls?.[0]?.state, door.name).toBe('open')
+      expect(clone.gh.state.pulls?.[0]?.merged_at, door.name).toBeNull()
       expect(await git(clone.bare, 'rev-parse', 'main'), door.name).toBe(main)
     }
   })
 
+  it('accepts the merge GitHub judges later (202), never carries it out while a review is lacking, and carries it out once someone else approved', async () => {
+    // GitHub's answer of 2026-10-02: 202 Accepted, and no merge, over 30 s or at the run's end.
+    const { clone } = await openedPullRequest((bare) => protectedMain({ bare, permissions: { ada: GRACE, grace: GRACE } }))
+    const main = await git(clone.bare, 'rev-parse', 'main')
+
+    const queued = await tryDoor(clone.gh, QUEUED_MERGE_DOOR)
+    expect(queued.code).toBe(0)
+    expect(parseIncluded(queued.stdout)?.status).toBe(202)
+    expect(clone.gh.state.pulls?.[0]).toMatchObject({ state: 'open', merged_at: null })
+    expect(await git(clone.bare, 'rev-parse', 'main')).toBe(main)
+
+    // Where the rules allow the merge, the fake carries it out, as the synchronous merge does.
+    clone.gh.approve(1, 'grace')
+    const carried = await tryDoor(clone.gh, QUEUED_MERGE_DOOR)
+    expect(parseIncluded(carried.stdout)?.status).toBe(202)
+    expect(await git(clone.bare, 'rev-parse', 'main')).not.toBe(main)
+    expect(clone.gh.state.pulls?.[0]?.state).toBe('closed')
+    expect(clone.gh.state.pulls?.[0]?.merged_at).not.toBeNull()
+  })
+
+  it('accepts (202) only a merge the rules judge: a closed pull request, or a head off the base, is refused at once, as the synchronous merge is', async () => {
+    // The run of 2026-10-02 measured 202 for an open pull request the rules refuse,
+    // nothing else: the fake answers anything else as it answers `…/merge`, its own guess.
+    const closed = await openedPullRequest((bare) => protectedMain({ bare, permissions: { ada: GRACE, grace: GRACE } }))
+    Object.assign(closed.clone.gh.state.pulls?.[0] ?? {}, { state: 'closed', closed_at: '2026-10-02T09:00:00Z' })
+    const queued = await tryDoor(closed.clone.gh, QUEUED_MERGE_DOOR)
+    expect(queued.code).toBe(1)
+    expect(parseIncluded(queued.stdout)?.status).toBe(405)
+    expect(parseIncluded((await tryDoor(closed.clone.gh, MERGE_DOOR)).stdout)?.status).toBe(405)
+
+    // main moved past the head's base: the head no longer sits on top of it.
+    const behind = await openedPullRequest((bare) => protectedMain({ bare, permissions: { ada: GRACE, grace: GRACE } }))
+    const main = await git(behind.clone.bare, 'rev-parse', 'main')
+    const moved = await onTop(behind.clone, main)
+    await git(behind.clone.bare, 'update-ref', 'refs/heads/main', moved, main)
+    expect(parseIncluded((await tryDoor(behind.clone.gh, QUEUED_MERGE_DOOR)).stdout)?.status).toBe(405)
+    expect(parseIncluded((await tryDoor(behind.clone.gh, MERGE_DOOR)).stdout)?.status).toBe(405)
+    expect(behind.clone.gh.state.pulls?.[0]).toMatchObject({ state: 'open', merged_at: null })
+  })
+
   it("refuses the author's merge after a push on top of an approved head, and lets it through once someone else approves the new head", async () => {
-    const clone = await withModel((bare) => protectedMain({ bare, permissions: { ada: GRACE, grace: GRACE } }))
-    const { change, head } = await opened(clone)
+    const { clone, change, head } = await openedPullRequest((bare) => protectedMain({ bare, permissions: { ada: GRACE, grace: GRACE } }))
     const main = await git(clone.bare, 'rev-parse', 'main')
 
     clone.gh.approve(1, 'grace')
@@ -124,8 +152,9 @@ describe('the identity that opened the pull request cannot merge it', { timeout:
   })
 
   it("counts neither the author's own approval nor the last pusher's", async () => {
-    const clone = await withModel((bare) => protectedMain({ bare, permissions: { ada: GRACE, grace: GRACE, linus: GRACE } }))
-    const { change, head } = await opened(clone)
+    const { clone, change, head } = await openedPullRequest((bare) =>
+      protectedMain({ bare, permissions: { ada: GRACE, grace: GRACE, linus: GRACE } }),
+    )
     const main = await git(clone.bare, 'rev-parse', 'main')
     const status = async (): Promise<number | undefined> => parseIncluded((await tryDoor(clone.gh, MERGE_DOOR)).stdout)?.status
 

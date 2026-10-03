@@ -3,10 +3,11 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { strippingRefusal } from '../../scripts/type-stripping.mjs'
+import { GH_MINIMUM_VERSION } from '../../src/core/github/gh-version.js'
 import { GH_LIMITS, ghArgv, ghIn, parseIncluded, type GhRequest } from '../../src/process/gh.js'
 import { answer, type FakePull } from '../../tools/fake-gh.js'
 import { removeClones, scratch } from '../support/forge-fixture.js'
-import { DOORS, FAKE_GH_VERSION, MODELLED_DOORS, fakeGitHub, protectedMain } from '../support/fake-gh.js'
+import { BASE_WRITES, DOORS, FAKE_GH_VERSION, MODELLED_DOORS, fakeGitHub, protectedMain, repository } from '../support/fake-gh.js'
 import { committed, git } from '../support/git.js'
 
 afterAll(removeClones)
@@ -27,12 +28,12 @@ afterAll(removeClones)
 const text = (bytes: Buffer): string => bytes.toString('utf8')
 
 describe('the fake gh', () => {
-  it('answers --version as gh 2.40.0 does', async () => {
+  it('answers --version as the oldest gh this build reads does, the gh of the live run of 2026-10-02', async () => {
     const fake = fakeGitHub()
-    expect(FAKE_GH_VERSION).toBe('2.40.0')
+    expect(FAKE_GH_VERSION).toBe(GH_MINIMUM_VERSION)
     const version = await ghIn({ run: fake.process }).version()
     expect(version).toBe(
-      'gh version 2.40.0 (2023-12-07)\nhttps://github.com/cli/cli/releases/tag/v2.40.0\n',
+      `gh version ${GH_MINIMUM_VERSION} (2026-07-02)\nhttps://github.com/cli/cli/releases/tag/v${GH_MINIMUM_VERSION}\n`,
     )
   })
 
@@ -41,6 +42,8 @@ describe('the fake gh', () => {
     const answer = await ghIn({ run: fake.process }).get({ route: 'user' })
     expect(answer.status).toBe(200)
     expect(JSON.parse(answer.body)).toMatchObject({ login: 'ada', type: 'User', id: expect.any(Number), site_admin: false })
+    // A string, as GitHub answered the owner's live run of 2026-10-02 (null only for an account that never set one).
+    expect(JSON.parse(answer.body)).toMatchObject({ name: expect.any(String) })
   })
 
   it('answers as a bot when logged in as one', async () => {
@@ -259,7 +262,15 @@ describe("the fake's own grammar", () => {
     const repo = { owner: 'acme', name: 'iac' }
     const read = await gh.get({ route: 'repository', ...repo })
     expect(read.status).toBe(200)
-    expect(JSON.parse(read.body)).toMatchObject({ full_name: 'acme/iac', archived: false, permissions: { admin: true, push: true } })
+    // As GitHub answered the live run of 2026-10-02: a repository a person owns, no description, and an
+    // administrator's permissions each true, maintain included.
+    expect(JSON.parse(read.body)).toMatchObject({
+      full_name: 'acme/iac',
+      archived: false,
+      owner: { type: 'User' },
+      description: null,
+      permissions: { admin: true, maintain: true, push: true, triage: true, pull: true },
+    })
     const rules = JSON.parse((await gh.get({ route: 'rules', ...repo, branch: 'main' })).body) as { type: string }[]
     expect(rules.map((rule) => rule.type)).toEqual(['pull_request', 'non_fast_forward', 'deletion'])
     expect(JSON.parse((await gh.get({ route: 'ruleset', ...repo, id: 1 })).body)).toMatchObject({
@@ -267,12 +278,30 @@ describe("the fake's own grammar", () => {
       current_user_can_bypass: 'never',
       bypass_actors: [],
     })
-    expect(JSON.parse((await gh.get({ route: 'branch', ...repo, branch: 'main' })).body)).toMatchObject({ protected: false })
+    // A branch a ruleset covers answers protected, with no classic protection, as GitHub answered the live run.
+    expect(JSON.parse((await gh.get({ route: 'branch', ...repo, branch: 'main' })).body)).toMatchObject({ protected: true })
     expect((await gh.get({ route: 'ruleset', ...repo, id: 2 })).status).toBe(404)
     // No bare repository: GitHub has no ref to give.
     expect((await gh.get({ route: 'ref', ...repo, branch: 'main' })).status).toBe(404)
     fake.logout()
     await expect(gh.get({ route: 'repository', ...repo })).rejects.toMatchObject({ kind: 'auth' })
+  })
+
+  it('answers protected for a branch classic protection covers, and not for one nothing covers', async () => {
+    const repo = { owner: 'acme', name: 'iac' }
+    const bare = ghIn({ run: fakeGitHub({ repositories: [repository()] }).process })
+    expect(JSON.parse((await bare.get({ route: 'branch', ...repo, branch: 'main' })).body)).toMatchObject({ protected: false })
+    const classic = ghIn({ run: fakeGitHub({ repositories: [repository({ branches: { main: { protected: true } } })] }).process })
+    expect(JSON.parse((await classic.get({ route: 'branch', ...repo, branch: 'main' })).body)).toMatchObject({ protected: true })
+  })
+
+  it('refuses each write to a protected base with the status GitHub answered it', async () => {
+    const fake = fakeGitHub({ repositories: [protectedMain()] })
+    for (const { door, status } of BASE_WRITES) {
+      const exit = await fake.process(door.argv, { ...(door.stdin === undefined ? {} : { stdin: Buffer.from(door.stdin) }), env: {}, limits: GH_LIMITS })
+      expect(parseIncluded(exit.stdout)?.status, door.name).toBe(status)
+      expect(exit.code, door.name).toBe(1)
+    }
   })
 
   // Five Node starts that strip types: well inside a minute, but past

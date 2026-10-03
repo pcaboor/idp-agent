@@ -198,7 +198,11 @@ export interface GitHubApi {
   rules(base: string): Promise<RulesAnswer>
   /** `GET repos/<o>/<r>/rulesets/<id>`: whether gh's account can bypass it, and who can (item 3). */
   ruleset(id: number): Promise<RulesetAnswer>
-  /** `GET repos/<o>/<r>/branches/<base>`: whether classic branch protection covers it (item 4). */
+  /**
+   * `GET repos/<o>/<r>/branches/<base>`: whether anything protects it (item 4) —
+   * classic branch protection, and, as GitHub answered on 2026-10-02, an active
+   * ruleset too (`docs/roadmap.md`, "`protected: true` is not classic protection alone").
+   */
   branch(base: string): Promise<BranchAnswer>
   /** `GET repos/<o>/<r>/git/ref/heads/<branch>`: the commit the branch is at on GitHub. */
   ref(branch: string): Promise<string>

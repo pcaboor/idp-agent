@@ -17,13 +17,14 @@ import {
 import { closingLines, CLOSING, inFlightLines, localRoadLine, pullRequestLines, type PreviewStatus } from '../../src/cli/render/footer.js'
 import { PATCH_LINES, type InFlightEntry, type InFlightPull, type InFlightVerdict } from '../../src/core/github/in-flight.js'
 import { configRefusal } from '../../src/core/github/config.js'
+import { GH_MINIMUM_VERSION } from '../../src/core/github/gh-version.js'
 import { MERGE_NOTE, unguardedNote } from '../../src/core/github/protection.js'
 import type { GitHubRoad, LocalRoad, PullRequest } from '../../src/forge/provider.js'
 import { GH_LIMITS, parseIncluded, type GhExit, type GhProcess } from '../../src/process/gh.js'
 import { REFUSED_EXIT } from '../../tools/fake-gh.js'
 import { confirmingEnvironment } from '../support/ask.js'
 import { DATABASE_PATH, INTENT, OPERATIONS, removeClones } from '../support/forge-fixture.js'
-import { DOORS, MODELLED_DOORS, protectedMain } from '../support/fake-gh.js'
+import { DOORS, MODELLED_DOORS, QUEUED_MERGE_DOOR, protectedMain } from '../support/fake-gh.js'
 import {
   BILLING_GRANT,
   BILLING_GRANT_PATH,
@@ -428,7 +429,7 @@ describe('plan --from --submit to GitHub', { timeout: RUNS }, () => {
         clone.gh.state.version = '2.30.0'
         return undefined
       },
-      'gh 2.30.0 is older than 2.40.0, the oldest this build reads; update gh, then run this again; or add --local to ' +
+      `gh 2.30.0 is older than ${GH_MINIMUM_VERSION}, the oldest this build reads; update gh, then run this again; or add --local to ` +
         'cut the branch in this clone only. Nothing was written.',
     ],
     [
@@ -700,6 +701,9 @@ describe('plan --from --submit to GitHub', { timeout: RUNS }, () => {
       })
       if (!MODELLED_DOORS.has(door.name)) {
         expect(exit.code, door.name).toBe(REFUSED_EXIT)
+      } else if (door.name === QUEUED_MERGE_DOOR.name) {
+        // Accepted, as GitHub accepts it (2026-10-02), and judged later: the pull request and main say it was refused.
+        expect(parseIncluded(exit.stdout)?.status, door.name).toBe(202)
       } else if (door.argv[0] === 'api') {
         const status = parseIncluded(exit.stdout)?.status ?? 0
         expect(status >= 400 && status < 500, `${door.name}: ${String(status)}`).toBe(true)
@@ -708,6 +712,7 @@ describe('plan --from --submit to GitHub', { timeout: RUNS }, () => {
         expect(exit.stderr, door.name).toMatch(/was not (merged|approved)/)
       }
       expect(clone.gh.state.pulls?.[0]?.state, door.name).toBe('open')
+      expect(clone.gh.state.pulls?.[0]?.merged_at, door.name).toBeNull()
       expect(await git(clone.bare, 'rev-parse', 'main'), door.name).toBe(main)
     }
   })

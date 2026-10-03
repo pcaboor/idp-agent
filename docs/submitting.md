@@ -14,8 +14,10 @@ The design is [`stage-6-brief.md`](stage-6-brief.md), § 3 to § 15.
 
 - **Your own git, able to push to the repository** as it already does: your SSH key and agent, or
   your credential helper, from your global configuration. idpa never reads either.
-- **gh, at least 2.40.0** (`GH_MINIMUM_VERSION`, provisional until the live run pins it), logged in
-  to github.com **as yourself**:
+- **gh, at least 2.96.0** (`GH_MINIMUM_VERSION`), the version the owner's live run of 2026-10-02
+  proved stage 6 with on GitHub ([below](#proving-it-on-your-repository-the-live-test)): an older gh
+  may work, and this build refuses it rather than vouch for what nobody ran; a later live run made
+  with an older gh, committed, lowers it. Logged in to github.com **as yourself**:
 
   ```bash
   gh auth login --hostname github.com
@@ -51,7 +53,9 @@ name can mention, reference or link anything there; the words are the same.
 On the repository's page: **Settings → Rules → Rulesets → New ruleset → New branch ruleset**, then
 
 1. a name, `idpa` for instance, and enforcement **Active**;
-2. the bypass list left **empty**;
+2. the bypass list left **empty** — which binds the repository's administrators too: with it
+   empty, GitHub answers `current_user_can_bypass: never` to an administrator, and refuses their
+   merge, `gh pr merge --admin` included (measured by the live run of 2026-10-02);
 3. target branches: **Include default branch** (or the branch you submit into);
 4. tick **Restrict deletions**;
 5. tick **Require a pull request before merging**, with **1** required approval and **Require
@@ -142,7 +146,9 @@ step can end the run with nothing written:
    are read again; then the branch is cut in the clone, your git pushes that very commit to the
    same name, create-only (a branch already there is never moved), gh reads it back, the rules are
    read once more — they decide the note in the body, never whether to open — and your gh opens one
-   pull request whose body the engine writes.
+   pull request whose body the engine writes. The request is quoted there inside a fenced block, so
+   an `@login` in it is shown as code, with no mention link (measured by the live run of
+   2026-10-02).
 
 It ends on the pull request, at a URL the engine builds from the repository and the number, and on
 what merging it waits for:
@@ -185,7 +191,7 @@ Each refusal, and its one fix:
 
 | Refused | Exit | Fix |
 |---|---|---|
-| gh not installed, logged out or expired, older than 2.40.0, or logged in as a bot or an app | 2 | `gh auth login --hostname github.com` as yourself, or update gh; or `--local` |
+| gh not installed, logged out or expired, older than 2.96.0, or logged in as a bot or an app | 2 | `gh auth login --hostname github.com` as yourself, or update gh; or `--local` |
 | a key of the clone's own configuration | 2 | move it to your global configuration ([below](#the-clones-own-configuration)) |
 | a remote URL carrying a credential, or one that does not parse | 2 | `git remote set-url origin https://github.com/<owner>/<name>` |
 | a checked-out branch that tracks one, named with a `%`, `{`, `}` or invisible character | 2 | `git branch -m <name>`; or `--local` |
@@ -493,3 +499,99 @@ git config --global credential.helper osxkeychain
 ```
 
 (`osxkeychain` on macOS; the helper you already use elsewhere.) Then run the command again.
+
+## Proving it on your repository: the live test
+
+`pnpm test` proves stage 6 against a fake gh. `pnpm test:live:github` proves it on GitHub, with your
+own gh and git, against a repository you made to be thrown away; it is run by hand and never in CI,
+because it needs a gh logged in as a person — a credential someone else's workflow could reach
+([`stage-6-brief.md`](stage-6-brief.md), § 20). Without `IDP_GITHUB_LIVE_REPO` it stops before
+anything starts:
+
+```text
+IDP_GITHUB_LIVE_REPO is not set: the live test runs only on purpose, against your throwaway repository (docs/submitting.md, "Proving it on your repository").
+```
+
+**The repository.** Public, with a name holding `idpa-live`, such as `<you>/idpa-live` (the test
+refuses any other name), the demo SI (`fixtures/si-demo/`) on its default branch, [the ruleset
+above](#the-ruleset-on-the-base-branch) on that branch with its bypass list empty, *Allow
+auto-merge* off (Settings → General) and no merge queue. Your ssh key loaded in your agent, so no
+passphrase is asked in the middle of a step, and gh logged in to github.com as you.
+
+**A second account, optional.** With one, the test also tries what only another person can do:
+the same change proposed by someone else, and an approval followed by your push. It needs write
+access and its own gh login, in a directory of its own, with `GH_TOKEN` and `GITHUB_TOKEN` unset
+for it, since either would make gh answer as you:
+
+```bash
+OWNER=your-login
+REVIEWER=your-second-login
+gh api --method PUT "repos/$OWNER/idpa-live/collaborators/$REVIEWER" -f permission=push
+env -u GH_TOKEN -u GITHUB_TOKEN GH_CONFIG_DIR="$HOME/.config/gh-idpa-reviewer" gh auth login --hostname github.com
+INVITATION=$(env -u GH_TOKEN -u GITHUB_TOKEN GH_CONFIG_DIR="$HOME/.config/gh-idpa-reviewer" gh api user/repository_invitations --jq '.[0].id')
+env -u GH_TOKEN -u GITHUB_TOKEN GH_CONFIG_DIR="$HOME/.config/gh-idpa-reviewer" gh api --method PATCH "user/repository_invitations/$INVITATION"
+```
+
+Without it, the steps that need another person are skipped, each saying on stderr that the claim
+then rests on the fake and the rule's read alone.
+
+**The run**, from a checkout of idp-agent:
+
+```bash
+OWNER=your-login
+pnpm build
+IDP_GITHUB_LIVE_REPO="$OWNER/idpa-live" pnpm test:live:github
+```
+
+(add `IDP_GITHUB_LIVE_REVIEWER_GH_CONFIG_DIR="$HOME/.config/gh-idpa-reviewer"` for the second
+account). It reads before it writes: gh's version and identity, the repository (public, not
+archived, yours to push to), then `node dist/cli/bin.js protection` on its own clone, which must
+exit 0, and every ruleset must answer `current_user_can_bypass: never` to you. Then, in order, each
+step skipped once one fails:
+
+| Step | What it proves |
+|---|---|
+| 1 | a base whose name holds a slash (`live/<stamp>/base`) is read back through gh's routes, the `/` kept between its components |
+| 2 | `plan --from … --submit` pushes with your git and opens one pull request, the URL the engine builds; GitHub holds the branch at the clone's commit, on one parent, the base; the request's `@mention` is shown as code |
+| 3 | the same command again names the pull request and writes nothing |
+| 3b | the same change, proposed by the second account, is named as already proposed, nothing written |
+| 3c | a different change to the same file is refused, the other pull request named, nothing written |
+| 4 | every door is refused to you, who opened the pull request — each merge method of `gh pr merge`, `--admin`, the REST merge and `merge-async`, `POST merges`, a file written to the base, the base's ref moved, a push onto it, GraphQL's `mergePullRequest` and `createCommitOnBranch`, your own approval through gh and through the API — the base's commit read and unchanged after each |
+| 5 | after the second account approved, a push of yours on top leaves your merge refused |
+| 6 | on a base no ruleset covers, the pull request is still opened, with the note on stderr and in its body |
+
+A door counts as refused only when GitHub answered it — a status, a GraphQL error, a `remote:` line
+naming a rule or a review; one that failed before reaching GitHub (a 401, a missing scope, a 404)
+stops the run as *not tried*, and one that succeeded stops it at once. Whatever happens, the test
+closes every pull request it opened, deletes the branches it pushed and nothing else, and checks
+that nothing it opened was merged, before the cleanup and after it.
+
+**What it writes.** `tests/contract/github/answers-<date>.json`: the status and the shape of each
+route GitHub answered, each door's answer, the `remote:` lines of the refused push and what
+`--include` printed for a 404, with every login, name and email removed — the file is not written
+when one is left. Three fields no read settles are yours to fill, `true` or `false`, before you
+commit the file:
+
+| Field | Where you read it |
+|---|---|
+| `actionsCanApprovePullRequests` | `gh api "repos/$OWNER/idpa-live/actions/permissions/workflow"`: `can_approve_pull_request_reviews` |
+| `gitPushesAsGhAccount` | `ssh -T git@github.com` names the account your git pushes as: `true` when it is gh's |
+| `bypassListEmpty` | Settings → Rules → Rulesets → the ruleset: its bypass list |
+
+From then on `tests/contract/github-answers.test.ts` holds the fake gh to the committed files in
+`pnpm test`, offline: each route's status and every field the fake sends, each door's answer, and
+the minimum gh, the oldest version a committed run used.
+
+**What the run of 2026-10-02 measured**, gh 2.96.0, without a second account: every door refused,
+the base never moved. The three methods of `gh pr merge` and `--admin` exit 1; the REST merge is
+405; `POST merges` and a file written to the base 409, the base's ref moved 422; the push onto the
+base is rejected with `GH013: Repository rule violations found` and the rule it breaks; both
+GraphQL mutations answer an error; your own approval is refused, 422 through the API.
+`merge-async` answers **202 Accepted**, and GitHub never carried the merge out: the test watched
+the pull request for 30 seconds, never merged and the base unmoved, and found it unmerged again at
+its end. A
+branch the ruleset covers answers `protected: true` on the branch route although no classic
+protection is set. GitHub held the pushed branch on the first read. What it cannot answer is how
+your company protects its own declarations repository, whether its people push as their gh account,
+and whether its Actions may approve: the three fields answer those for the throwaway repository
+only.

@@ -61,6 +61,8 @@ export async function readProtection(api: GitHubApi, road: GitHubRoad): Promise<
 
   const { rules, rulesets } = await rulesOf(api, road)
   if (rulesets.size > 0) return judgeProtection({ expected, repository, rules, rulesets })
+  // Named `classic`, though GitHub answers `protected: true` under a ruleset too (2026-10-02;
+  // docs/roadmap.md, "`protected: true` is not classic protection alone").
   const { protected: classic } = await api.branch(road.base)
   return judgeProtection({ expected, repository, rules, rulesets, classic })
 }

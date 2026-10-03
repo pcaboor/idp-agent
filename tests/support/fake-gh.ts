@@ -25,10 +25,14 @@ import {
  * must stay a door whatever a launcher's grammar comes to say.
  */
 
-/** The version the fake gh says it is: `GH_MINIMUM_VERSION` until the live run pins one (6.4.1). */
-export const FAKE_GH_VERSION = '2.40.0'
+/**
+ * The version the fake gh says it is: `GH_MINIMUM_VERSION`, the oldest gh a
+ * committed live run used (`tests/contract/github-answers.test.ts` holds the
+ * two together; 2.96.0 on 2026-10-02).
+ */
+export const FAKE_GH_VERSION = '2.96.0'
 
-/** What a test changes of the default world: gh 2.40.0, installed, `ada` (a person), logged in as her. */
+/** What a test changes of the default world: gh 2.96.0, installed, `ada` (a person), logged in as her. */
 export type FakeModel = Partial<FakeState>
 
 /** One call the fake received, as the launcher handed it. */
@@ -445,6 +449,39 @@ export const MERGE_DOOR: Door = (() => {
   const found = DOORS.find((door) => door.argv[4] === 'PUT' && door.argv[6] === `${PULLS}/1/merge`)
   if (found === undefined) throw new Error('DOORS holds no merge of pull request #1')
   return found
+})()
+
+/**
+ * The merge GitHub accepts and judges later, `merge-async`: GitHub answered it
+ * 202 Accepted to the identity that opened the pull request, and never merged
+ * it — not over the 30 s the run watched, not at the run's end (the owner's
+ * live run of 2026-10-02).
+ * Its 2xx is no refusal, and no merge either: what the pull request and the
+ * base say after it is.
+ */
+export const QUEUED_MERGE_DOOR: Door = (() => {
+  const found = DOORS.find((door) => door.argv[4] === 'PUT' && door.argv[6] === `${PULLS}/1/merge-async`)
+  if (found === undefined) throw new Error('DOORS holds no merge-async of pull request #1')
+  return found
+})()
+
+/**
+ * The writes to a base the rules protect, each with the status GitHub
+ * answered it to the identity that opened the pull request, an administrator
+ * outside the bypass list (the owner's live run of 2026-10-02): a merge of two
+ * branches into it and a file written to it, 409; its ref moved, 422.
+ */
+export const BASE_WRITES: readonly { readonly door: Door; readonly status: number }[] = (() => {
+  const named = (method: string, address: string): Door => {
+    const found = DOORS.find((door) => door.argv[4] === method && door.argv[6] === address)
+    if (found === undefined) throw new Error(`DOORS holds no ${method} of ${address}`)
+    return found
+  }
+  return [
+    { door: named('POST', 'repos/acme/iac/merges'), status: 409 },
+    { door: named('PUT', 'repos/acme/iac/contents/catalog/x.yml'), status: 409 },
+    { door: named('PATCH', 'repos/acme/iac/git/refs/heads/main'), status: 422 },
+  ]
 })()
 
 /**

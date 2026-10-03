@@ -4,6 +4,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { main, type MainDeps } from '../../src/cli/index.js'
 import { renderProtection, renderUnprotected } from '../../src/cli/render/protection.js'
 import { configRefusal } from '../../src/core/github/config.js'
+import { GH_MINIMUM_VERSION } from '../../src/core/github/gh-version.js'
 import {
   MERGE_NOTE,
   judgeProtection,
@@ -185,6 +186,29 @@ describe('idpa protection: the rules do not hold', () => {
     )
   })
 
+  it('exits 1 on a ruleset that supplies none of the three required rules, and today calls it classic protection (an open question)', async () => {
+    // Pinned, not endorsed (docs/roadmap.md, "`protected: true` is not classic protection
+    // alone"): GitHub answers `protected: true` for a branch a ruleset covers (2026-10-02),
+    // and the preflight reads that route when no ruleset supplies a required rule. So this
+    // base is said to be protected by classic branch protection only, the four rules it
+    // lacks go unnamed, and the ruleset it already has is the one it is told to add. The
+    // exit and the note are right; the reason is the owner's to settle.
+    const signaturesOnly = protectingRuleset(1, { rules: [{ type: 'required_signatures' }] })
+    const ran = await check(fakeGitHub({ repositories: [repository({ rulesets: [signaturesOnly] })] }))
+    expect(ran).toEqual({
+      code: 1,
+      out: lines([
+        "github.com/acme/iac's main does not stop the person who would open a pull request from merging it:",
+        '  missing: a ruleset: main is protected by classic branch protection only, which idpa does not read',
+        'Add a ruleset on main (Settings → Rules → Rulesets):',
+        ...protectionText(),
+        `A submission still opens its pull request here, and says: ${MERGE_NOTE}`,
+        'Then run idpa protection again.',
+      ]),
+      err: CHECKING,
+    })
+  })
+
   it('exits 1 on an archived repository, and offers no ruleset, which would not help', async () => {
     const ran = await check(fakeGitHub({ repositories: [protectedMain({ archived: true })] }))
     expect(ran.code).toBe(1)
@@ -226,7 +250,7 @@ describe('idpa protection: gh refused, exit 2', () => {
     [
       'gh too old',
       { version: '2.39.2' },
-      'gh 2.39.2 is older than 2.40.0, the oldest this build reads; update gh, then run this again. Nothing was written.',
+      `gh 2.39.2 is older than ${GH_MINIMUM_VERSION}, the oldest this build reads; update gh, then run this again. Nothing was written.`,
     ],
     [
       'gh logged in as a Bot',
