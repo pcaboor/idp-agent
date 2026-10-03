@@ -9,9 +9,10 @@ import { openLocalForge } from '../../src/forge/local/forge.js'
 import type { ForgeProvider, GhIdentity, GitHubRoad } from '../../src/forge/provider.js'
 import type { GhProcess } from '../../src/process/gh.js'
 import { gitIn, type Git, type Push } from '../../src/process/git.js'
-import type { FakePull } from '../../tools/fake-gh.js'
+import type { Cleared } from '../../src/core/plan/clear.js'
+import type { FakePull, FakeRepository } from '../../tools/fake-gh.js'
 import { fakeGitHub, protectedMain, type FakeGitHub, type FakeModel } from './fake-gh.js'
-import { clone, scratch } from './forge-fixture.js'
+import { clearedFor, clone, scratch } from './forge-fixture.js'
 import { committed, git } from './git.js'
 
 /**
@@ -338,4 +339,36 @@ export async function githubForge(
     ...(options.now === undefined ? {} : { now: options.now }),
   })
   return { forge, road: side.road, identity: side.identity, api: side.api }
+}
+
+/** The accounts of a pull request's tests: `ada` opens it; `grace` and `linus` may review it. */
+export const PULL_ACCOUNTS = [
+  { login: 'ada', type: 'User' as const },
+  { login: 'grace', type: 'User' as const },
+  { login: 'linus', type: 'User' as const },
+]
+
+/** What an account that may push, and no more, may do. */
+export const PUSHER = { admin: false, maintain: false, push: true }
+
+/**
+ * Pull request #1, opened through `openGitHubForge` as `ada` (6.2.1's route,
+ * stage 6 plan, Task 6.4.1): from its `idp-agent/` branch into `main`, on a
+ * GitHub whose repository is `model` — by default § 8's ruleset on `main`,
+ * `ada` its administrator outside the bypass list, as the owner is of the
+ * throwaway repository, and `grace` and `linus` able to push. What
+ * `merge-refused.test.ts` tries the doors in, and what the contract test
+ * holds the fake to GitHub's answers in.
+ */
+export async function openedPullRequest(
+  model: (bare: string) => FakeRepository = (bare) =>
+    protectedMain({ bare, permissions: { ada: { admin: true, maintain: false, push: true }, grace: PUSHER, linus: PUSHER } }),
+): Promise<{ readonly clone: GitHubClone; readonly change: Cleared; readonly head: string }> {
+  const opened = await githubClone({ model: { accounts: [...PULL_ACCOUNTS] } })
+  opened.gh.state.repositories = [model(opened.bare)]
+  const change = await clearedFor(opened.repo)
+  const { forge } = await githubForge(opened)
+  const result = await forge.submit(change, await forge.base())
+  if (result.outcome !== 'created') throw new Error(`pull request #1 was not opened: ${result.outcome}`)
+  return { clone: opened, change, head: result.commit }
 }

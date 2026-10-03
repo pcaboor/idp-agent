@@ -1,6 +1,6 @@
 # Stage 6 — a GitHub pull request, with the person's own git and gh
 
-**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2 built ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3 built ([#131](https://github.com/pcaboor/idp-agent/pull/131)); 6.3.4 built ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5 built ([#134](https://github.com/pcaboor/idp-agent/pull/134)); 6.3.6 built ([#135](https://github.com/pcaboor/idp-agent/pull/135)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
+**Status: 6.1.1 built ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2 built ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3 built ([#125](https://github.com/pcaboor/idp-agent/pull/125)); 6.2.1 built ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2 built ([#127](https://github.com/pcaboor/idp-agent/pull/127)); 6.3.1 built ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2 built ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3 built ([#131](https://github.com/pcaboor/idp-agent/pull/131)); 6.3.4 built ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5 built ([#134](https://github.com/pcaboor/idp-agent/pull/134)); 6.3.6 built ([#135](https://github.com/pcaboor/idp-agent/pull/135)); 6.4.1 built ([#136](https://github.com/pcaboor/idp-agent/pull/136)); the rest planned.** The owner's answers to the note's § 18 (22 decisions) and
 § 19 (Q1–Q4) were settled on 2026-09-30, each as recommended, and this plan takes them as
 given; so were the four questions the plan itself asked, the same day ([Questions for the
 owner](#questions-for-the-owner)). Fourteen stacked pull requests (eleven at first; 6.3.4 to 6.3.6 were added on 2026-10-01): thirteen, 6.1.1 to 6.4.2, then 6.4.3, the owner's step: every tape
@@ -564,7 +564,7 @@ with the exact lines; in short:
 - exit 2, configuration: `this clone's own configuration sets <key> (<scope>), which would decide who pushes for you; idpa pushes only with your global git configuration. Remove it with \`git config --<scope> --unset-all <key>\`, or set it globally, then run this again. Nothing was written.` (the phrase after the comma follows the key's section: *where your push goes* for `url`, `http`, `protocol` and the `remote.*` keys, *who pushes for you* for `credential`, *what program runs during your push* for `ssh`, `gpg`, `push`, `core.*`).
 - exit 2, userinfo: `<remote>'s URL carries a credential; set it to https://github.com/<o>/<r>. Nothing was written.`
 
-**Test helpers.** `fakeGitHub(model?: FakeModel): FakeGitHub` with `.process: GhProcess`, `.as(login)`, `.logout()`, `.state`, `.sent` (each call received: argv, stdin, environment), and from 6.2.1 `.approve(number, login)`, `.pushAs(actor, ref, commit)`, `.fault({ route, status, times, made? })` (`made`: the call carried out and only its answer replaced, by default for `lost` and never for a status); `FAKE_GH_VERSION = '2.40.0'`; `DOORS: readonly { name: string; argv: readonly string[]; stdin?: string }[]` (gh), `GIT_DOORS` (git, full vectors), `DOOR_WORDS` (§ 6's source-level strings, which the architecture rules import rather than spell), `MERGE_DOOR` and `MODELLED_DOORS` (6.2.1, the doors the fake's model answers, by name), all in `tests/support/fake-gh.ts`; `stubGh(options?: StubOptions)` and `stubGit(options?: StubOptions)`, each `Promise<{ bin: string; calls(): Promise<StubCall[]> }>`; `githubClone(options?: { model?: FakeModel; source?: string; repository?: string }): Promise<{ repo: string; bare: string; env: NodeJS.ProcessEnv; gh: FakeGitHub }>` (`source` and `repository` from 6.3.1), `githubForge(clone, options?)`, `fakeSsh(dir, bare, refuse?)`, `remoteRefs(bare)` (6.2.1), `unprotect(gh)`, `moveGitHubBase(clone)` (6.3.1), `openedPullRequest()` (6.4.1), in `tests/support/github-fixture.ts`; stage 5's `clone`, `clearedFor`, `committed`, `observable`, `stored`, `scratch`, `removeClones` reused as they are. 6.4.1: `tests/live/guard.ts` (`LIVE_VARIABLES`, `liveRepository`, `reviewerConfigDir`, `scrubLiveEnvironment`), `tests/live/github/doors.ts` (`LiveDoor`, `LIVE_DOORS`), `tests/support/github-answers.ts` (`Shape`, `KEPT_KEYS`, `shapeOf`, `fakeWithin`, `scrubbed`, `identifying`, `TOKEN_SHAPE`, `AnswersFile`, `answersFiles`). 6.4.2: `INVARIANT` in `tests/unit/invariant-wording.test.ts`, the one place in `tests/` that states the owner's words. 6.4.3: `FIRST_SENT` in `tests/scenarios/prompt-digests.test.ts`.
+**Test helpers.** `fakeGitHub(model?: FakeModel): FakeGitHub` with `.process: GhProcess`, `.as(login)`, `.logout()`, `.state`, `.sent` (each call received: argv, stdin, environment), and from 6.2.1 `.approve(number, login)`, `.pushAs(actor, ref, commit)`, `.fault({ route, status, times, made? })` (`made`: the call carried out and only its answer replaced, by default for `lost` and never for a status); `FAKE_GH_VERSION = '2.40.0'`; `DOORS: readonly { name: string; argv: readonly string[]; stdin?: string }[]` (gh), `GIT_DOORS` (git, full vectors), `DOOR_WORDS` (§ 6's source-level strings, which the architecture rules import rather than spell), `MERGE_DOOR` and `MODELLED_DOORS` (6.2.1, the doors the fake's model answers, by name), all in `tests/support/fake-gh.ts`; `stubGh(options?: StubOptions)` and `stubGit(options?: StubOptions)`, each `Promise<{ bin: string; calls(): Promise<StubCall[]> }>`; `githubClone(options?: { model?: FakeModel; source?: string; repository?: string }): Promise<{ repo: string; bare: string; env: NodeJS.ProcessEnv; gh: FakeGitHub }>` (`source` and `repository` from 6.3.1), `githubForge(clone, options?)`, `fakeSsh(dir, bare, refuse?)`, `remoteRefs(bare)` (6.2.1), `unprotect(gh)`, `moveGitHubBase(clone)` (6.3.1), `openedPullRequest()` (6.4.1), in `tests/support/github-fixture.ts`; stage 5's `clone`, `clearedFor`, `committed`, `observable`, `stored`, `scratch`, `removeClones` reused as they are. 6.4.1: `tests/live/guard.ts` (`LIVE_VARIABLES`, `liveRepository`, `reviewerConfigDir`, `scrubLiveEnvironment`; as built after review `prepareLiveRun`, `GH_TOKEN_VARIABLES`, `reviewerEnvironment`, `liveGitEnvironment`, `liveBaseOf`, `remembered`, `stampedBranches`, `cleanupTargets`), `tests/live/github/doors.ts` (`LiveDoor`, `LIVE_DOORS`; as built `LiveContext`, and after review `doorRefusals`, `doorOutcome`, `DoorRun`, `DoorOutcome`), `tests/support/github-answers.ts` (`Shape`, `KEPT_KEYS`, `shapeOf`, `fakeWithin`, `scrubbed`, `identifying`, `TOKEN_SHAPE`, `AnswersFile`, `answersFiles`; as built `StepOutcome`, `RouteEntry`, `DoorEntry`, `ANSWERS_DIRECTORY`, and after review `DoorRefusal`, `DoorUntried`, `DoorReason`), and beside `openedPullRequest()` `PULL_ACCOUNTS` and `PUSHER` (as built). 6.4.2: `INVARIANT` in `tests/unit/invariant-wording.test.ts`, the one place in `tests/` that states the owner's words. 6.4.3: `FIRST_SENT` in `tests/scenarios/prompt-digests.test.ts`.
 
 **Architecture rules** (exact titles). Renamed: *only the named modules write, and only process/git.ts and process/gh.ts start a process*. Unchanged titles, widened content: *every process src/ starts is given spawnedEnvironment* (both launchers; a `SPAWNS` entry names a list of environment functions, since `process/git.ts` makes two calls, `gitIn`'s with `gitEnvironment` and `pushIn`'s with `pushEnvironment`). New in 6.1.1: *nothing in src/ names a door the allow-list refuses*; *nothing in src/ reads a GitHub credential from the environment*; *in tests/, only tests/live/ and tests/support/fake-gh.ts name a door*. New in 6.1.2: *only forge/github/ loads the gh launcher* (`cli/` names `GhProcess` with `import type`, which is erased, as it names the forge's types today; `ghIn`'s default process is `spawnGh`, so no other module needs the launcher at run time). Their self-tests, in *the architecture rules themselves*: *refuses every way src/ can name a door*, *refuses every way src/ can read a GitHub credential*, *refuses every module but forge/github/ that loads the gh launcher*.
 
@@ -8711,7 +8711,7 @@ needing more than three reads (§ 4's bound, `GITHUB_LIMITS.readBack`, is too ti
 answer `parseIncluded` cannot read (`process/gh.ts`'s classification is wrong: fixed here, with
 its test, only on the owner's word).
 
-- [ ] **Step 1: The default-suite tests (fail: nothing of this exists)**
+- [x] **Step 1: The default-suite tests (fail: nothing of this exists)**
 
 `tests/unit/live-config.test.ts`, beside 6.1.1's assertion that the default configuration
 collects nothing under `tests/live/`, now over a file that exists:
@@ -8769,7 +8769,7 @@ Run: `pnpm vitest run tests/unit/live-config.test.ts tests/unit/github-answers.t
 tests/contract/github-answers.test.ts`. Expected: FAIL — `vitest.live.config.ts`,
 `tests/live/guard.ts` and `tests/support/github-answers.ts` not found, and no answers file.
 
-- [ ] **Step 2: The configuration, the guard and the setup file**
+- [x] **Step 2: The configuration, the guard and the setup file**
 
 `vitest.live.config.ts` as in *Files*; it imports nothing from `tests/setup/` and does not call
 `enterRunDirectory()`: the live test makes and removes its one temporary directory itself.
@@ -8785,7 +8785,7 @@ IDP_GITHUB_LIVE_REPO is not set: the live test runs only on purpose, against you
 nothing else. `pnpm typecheck` already covers `tests/**/*.ts`, so the live test is typechecked
 in CI though never run there. Run the two unit files: live-config green.
 
-- [ ] **Step 3: `tests/support/github-answers.ts`**
+- [x] **Step 3: `tests/support/github-answers.ts`**
 
 `shapeOf` walks a parsed JSON value; a primitive under a `KEPT_KEYS` key is kept when it is a
 boolean, a number, or a string of at most 40 characters matching `^[A-Za-z_]+$` (an
@@ -8798,7 +8798,7 @@ lowercases both sides and returns kinds. `answersFiles()` lists
 `tests/contract/github/answers-*.json` sorted by name, which is by date. Run
 `tests/unit/github-answers.test.ts`: green.
 
-- [ ] **Step 4: `LIVE_DOORS` and the live test**
+- [x] **Step 4: `LIVE_DOORS` and the live test**
 
 `tests/live/github/doors.ts` holds the doors of steps 4 and 5 with their argument vectors:
 every `gh pr` door carries `--repo <o>/<r>`, every `gh api` door `--hostname github.com
@@ -8824,7 +8824,7 @@ gh body or a git stderr but through `scrubbed`.
 **Exhaustive switches:** the recorder's switch over `LiveDoor['via']` and the contract test's
 over the recorded door's `via`, each with `const _exhaustive: never = via` in `default`.
 
-- [ ] **Step 5: The contract test's body**
+- [x] **Step 5: The contract test's body**
 
 Over each file of `answersFiles()`:
 
@@ -8853,7 +8853,7 @@ Over each file of `answersFiles()`:
 The entries a fake cannot be held to (`modelled: false`) are asserted only as refused with the
 base unchanged, read from the file. Run it: FAIL on the missing file alone.
 
-- [ ] **Step 6: Checks before the session**
+- [x] **Step 6: Checks before the session**
 
 ```bash
 df -h "$TMPDIR"
@@ -8867,7 +8867,92 @@ Expected: green; the architecture block reports **29** rules, unchanged — the 
 `tests/unit/` or `tests/contract/`. `tests/contract/github-answers.test.ts` is the one red test
 until Step 7, by design. The branch is not pushed.
 
-- [ ] **Step 7: The owner's live session** (owner only; "What the owner can run" below)
+*As built (Steps 1 to 6).* Where the code or the owner's decisions of 2026-10-01 differ from the
+text above, they were followed, to the same end:
+
+- **The second account is optional** (2026-10-01). Without
+  `IDP_GITHUB_LIVE_REVIEWER_GH_CONFIG_DIR`, g6 and the steps that need another person skip, each
+  saying on stderr what then rests on the fake alone; the request's mention is the owner's login.
+  The contract test accepts `afterApproval` `made` or `skipped` (decision 20 read through the
+  owner's later word), and holds the fake's after-approval merge only to a file that made it.
+- **Three steps more**, for what 6.3.4 and 6.3.6 built: *3b*, `proposedAgain`, the same command
+  as the second account in the same clone — `already proposed by <owner> in pull request #<n>`
+  on stderr, `already proposed in pull request #<n> on …` on stdout, exit 0, nothing written
+  (6.3.6's identical case, which it left to this run); *3c*, `competing`, a different change to
+  the same file (the consumer `billing-api`) as the owner — exit 1, `already changes
+  dependencies/network/<entity>.yml, differently`, the other pull request named on stderr,
+  nothing written; *6*, `noted`, the clone switched to `live/<stamp>/base`, which § 8's ruleset
+  on the default branch does not cover, and `plan --from … --submit` there — exit 0, the pull
+  request opened, `note: on this repository the author may merge without another person's
+  review` on stderr and in its body (6.3.4: the pull request is always opened); skipped, saying
+  so, when a ruleset requires a pull request on that base too. The answers file's `steps` gains
+  the three, and a `note` measure. The proposal of 6.3.5 is not tried live: it needs a terminal
+  and a model; its GitHub reads are the routes the file holds the fake to. The open pull requests
+  into the base and the pull request's files (6.3.6's two reads) are among the routes recorded.
+- `describe.sequential` does not exist in Vitest 5: one `describe`, whose tests run in the
+  order written. `LiveContext` gains `clone`, where the push door runs.
+- `merge-async` is modelled as built (`MODELLED_DOORS` holds it since 6.2.1), so it carries its
+  `DOORS` name; a modelled live door carries its `DOORS` name as the interface says — a door
+  string, which `tests/live/` may spell and a JSON file is not read for — and the three the fake
+  does not answer (the push, the two GraphQL mutations) a name of their own. Two modelled doors
+  more are tried as the author, both the author's own approval: `gh pr review --approve` and the
+  REST review. No door was added to `DOORS`: each modelled live door was already there.
+- A route entry carries `subject` (`base`, `live-base` or `submission`), since `ref`, `branch`
+  and `rules` are read for more than one branch; `pull` is compared on its shape alone, with the
+  element the fake's `pulls` route lists (the fake's answer to the one POST is the same object;
+  GitHub answers that POST 201 and the test's own read 200). `include` also keeps the status,
+  measured before step 1 on a branch GitHub does not hold (`live/<stamp>/absent`), through the
+  launcher's own pieces (`ghArgv`, `checkGhArgv`, `spawnGh`).
+- `answersFiles(directory?)` takes the folder, for its unit test; a second run on the same day
+  writes `answers-<date>-<hhmmss>.json`. The file's last check also looks for the reviewer's
+  name and email and the repository's owner, which the scrub replaces with `<owner>` too.
+- `openedPullRequest(model?)` takes the repository's model, so the first three tests of
+  `merge-refused.test.ts` reach pull request #1 through it; `PULL_ACCOUNTS` and `PUSHER` are
+  exported beside it.
+- The live configuration's listing asks Vitest itself, `vitest list --filesOnly --json` in a
+  child process, which imports no test file and no setup file.
+- The architecture block holds **30** rules on `main` at `d8b334e`, and still 30: this task adds
+  none. The suite: 5002 tests, the contract test's seven that read a file red, as designed.
+- **After review (2026-10-02), what reaches GitHub is proved in the default suite.** Everything
+  that decides what the live run sends is pure and tested in `tests/unit/live-config.test.ts`:
+  `prepareLiveRun`, the setup file's whole work, run under a scratch configuration (unset, the
+  run stops; set, the environment is scrubbed before any test); `reviewerEnvironment` (no
+  `GH_TOKEN`-like variable, whatever its case); `liveGitEnvironment`, the test's own git with no
+  `GIT_*` but the four `PUSH_VARIABLES` (`process/git.ts`'s `pushEnvironment`), and an `origin`
+  checked to be `git@github.com:<owner>/<name>.git`, fetch and push, before every push of its
+  own; `doorRefusals`, which every `LIVE_DOORS` vector passes and `tryDoor` checks before sending
+  any door (no force, deletion, `+` or `:` refspec, pattern, prune, `--all`, `--auto`; a push
+  exactly the head onto the base; a `gh pr` door with `--repo <owner>/<name>` once; a REST door
+  to `github.com` under `repos/<owner>/<name>/`, no `DELETE` and `force=false` on a ref; one
+  allowed GraphQL mutation on the run's pull request or repository); `doorOutcome`, which counts
+  a door refused only when GitHub names a rule, a review, the author's own review or
+  mergeability (a REST 405 included, and `merge-async`'s 404) — a 401, a token without the
+  scope, a 404, an unclassified refusal are *not tried* and stop the run — the class written as
+  `DoorEntry.reason`; `remembered`, which also reads the `pushed-without-pull-request` line;
+  `stampedBranches`, every `idp-agent/` branch `git ls-remote` lists with the run's stamp, so a
+  branch pushed without its pull request or by a run killed at its bound is deleted too, each
+  open pull request from one closed; and `cleanupTargets`, which deletes only `idp-agent/`
+  branches and `live/<stamp>/base`, never the base, the rest named on stderr. The guards refuse a
+  repository that allows auto-merge (g5) and a base a merge queue rules (g9), and step 5 reads
+  `auto_merge: null` on the pull request before the second account approves it.
+  `vitest.live.config.ts` pins `sequence: { shuffle: false, concurrent: false }` and `retry: 0`,
+  and the live file refuses a step run twice or before one written above it, whatever the
+  command line asked. The default suite's fixtures name fictional people only. The suite after
+  review: 5022 tests, the same seven of the contract test red, as designed.
+- **`merge-async` answers before it judges** (first seen in the owner's run of 2026-10-02).
+  Every merge door was refused but `PUT …/pulls/<n>/merge-async`, which GitHub answered 202
+  Accepted, and never carried out: the pull request was never merged, the base never moved. The harness read the 202 as `accepted` and stopped, NOT REFUSED. That door's 2xx is now
+  `queued`, refused only once `tryDoor` has read the pull request's `merged` and the base six
+  times, five seconds apart, and `queuedOutcome` found it never merged and the base unmoved; the
+  line reads `refused (queued, 202: accepted, never merged over 30 s)`. Before the cleanup and
+  after it, every pull request the run opened must read `merged: false` and the base its first
+  commit — `neverMerged` in the file, which a passed run needs and the contract test holds — so
+  a queued merge completing later fails the run. The fake answers it 202 for an open pull request
+  on top of its base, and merges only where its rules let the synchronous merge through; a pull
+  request closed, gone or off its base gets the synchronous merge's 405 or 404, which no run
+  measured (`merge-refused.test.ts`).
+
+- [x] **Step 7: The owner's live session** (owner only; "What the owner can run" below)
 
 The owner runs the live test once or more; each run writes its file and cleans up after
 itself. The owner fills the three fields of the file kept — *Allow GitHub Actions to create and
@@ -8877,7 +8962,7 @@ their git pushes as the account gh is logged in as (`ssh -T git@github.com` name
 the ruleset's bypass list is empty (Settings → Rules → Rulesets) — removes the files of runs not
 kept, and hands the branch back. The same session goes on to 6.4.3's recordings.
 
-- [ ] **Step 8: The fake moved to GitHub, the minimum gh pinned**
+- [x] **Step 8: The fake moved to GitHub, the minimum gh pinned**
 
 Run `pnpm vitest run tests/contract/github-answers.test.ts`. Each failure is a place where the
 fake said something GitHub did not: the status or shape is moved in `tools/fake-gh.ts` to
@@ -8887,7 +8972,7 @@ named in *What changes*. `GH_MINIMUM_VERSION` becomes the recorded `gh.version`,
 literal `2.40.0` is gone from `src/`, `tests/`, `tools/` and `scripts/`. A later run with an
 older gh, committed, lowers the minimum; nothing raises it but a newer oldest run.
 
-- [ ] **Step 9: The documents this task makes true**
+- [x] **Step 9: The documents this task makes true**
 
 - `docs/submitting.md`: "gh `<v>` or later", with the sentence that it is the version a live
   run was proved with, and a section *Proving it on your repository: the live test* — the
@@ -8913,7 +8998,52 @@ older gh, committed, lowers the minimum; nothing raises it but a newer oldest ru
   `idp-agent/` branches is not provoked (the live repository has one ruleset); the recorded
   `GH013` lines of the push onto `main` are what `classifyPushFailure` is held to.
 
-- [ ] **Step 10: Checks**
+*As built (Steps 7 to 9).* The owner's session ran on 2026-10-02 against the public
+`<owner>/idpa-live`, with gh 2.96.0 and no second account, and passed (exit 0): steps 1, 2, 3, 3c,
+4 and 6 passed, 3b and 5 skipped, all fourteen doors refused, every pull request it opened read
+unmerged before the cleanup and after it. The file kept is
+`tests/contract/github/answers-2026-10-02.json`, its three hand-filled fields the owner's
+(`actionsCanApprovePullRequests` false, `gitPushesAsGhAccount` true, `bypassListEmpty` true);
+it is evidence and was not edited. Two harness fixes made during the session are in the task:
+`mentionRenderedAsCode` (`tests/live/guard.ts`) ignores GitHub's copy-button attribute
+`data-snippet-clipboard-copy-content`, which repeats a fenced block's text outside `<pre>`; and
+`merge-async`'s `queued` reason, above. Against that file the contract test failed three tests,
+each a place where the fake said something GitHub did not, and Step 8 moved the fake:
+
+- `GH_MINIMUM_VERSION` is `2.96.0`; `FAKE_GH_VERSION`, `tools/fake-gh.ts`'s `initialState` and
+  its `--version` line (`gh version 2.96.0 (2026-07-02)`), and `scripts/demo-github.mjs`'s world
+  say the same. The tests that wrote `2.40.0` read the constant (`gh-identity`,
+  `protection-command`, `submit-github`, `fake-gh`), and `gh-identity`'s comparison examples use
+  `2.10.0`; the grep finds no `2.40.0` in `src/`, `tests/`, `tools/` or `scripts/`.
+- `GET user` answers `name` as a string (it was `null`).
+- `GET repos/<o>/<r>` answers `owner.type` `User` (it was `Organization`), `description` `null`
+  (it was a string) and `maintain` true for an administrator. `push` stays the model's: GitHub
+  never answers an administrator without push, and `key-reach.test.ts` builds exactly that model
+  to reach § 8 item 1, so making push follow `admin` would have changed what that test proves.
+- `GET …/branches/<b>` answers `protected` true where an active ruleset covers the branch, as
+  GitHub answered for `main`, and still from the model's classic flag. No test moved: the
+  preflight reads that route only when no ruleset supplies a required rule. The consequence for
+  a ruleset supplying none of the three — `idpa protection` saying "classic branch protection
+  only" in place of the four rules it lacks, and telling the person to add the ruleset they
+  have — is written in the roadmap's open questions for the owner, pinned as it is by a test of
+  `protection-command.test.ts`, and not changed here; the comments on the route (`answers.ts`,
+  `api.ts`, `protection.ts`, `preflight.ts`) say what GitHub answers and point at the question.
+- The base's ref moved by its author (`PATCH git/refs/heads/<base>`) answers 422 (it was 409);
+  `POST merges` and `PUT contents` stay 409, as GitHub answered them.
+- `tests/support/fake-gh.ts` gains `BASE_WRITES` (each write to a base with GitHub's status, so
+  `fake-gh.test.ts` pins the three without spelling a door), and `fake-gh.test.ts` two tests
+  (`protected` from the model alone; each base write's status) and the moved fields.
+
+No door was added to `DOORS`, no status of the CLI's own reads moved, and nothing a person sees
+changed but the version in gh's refusal (`gh 2.39.2 is older than 2.96.0, the oldest this build
+reads; …`). Step 9 wrote `docs/submitting.md`'s minimum gh, the administrator bound by an empty
+bypass list, the fenced mention shown as code, and *Proving it on your repository: the live
+test*; `tests/README.md`'s *The fake gh and the live test*; `AGENTS.md`'s commands block (its
+test count is the shipping script's); the roadmap's stage 6 row, queue item, the measured
+facts under 2026-10-02 and two open questions; the CHANGELOG line, written for a run without
+the second account.
+
+- [x] **Step 10: Checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -8926,22 +9056,36 @@ git grep -n --untracked -e '2\.40\.0' -- src tests tools scripts
 Expected: green; 29 rules; the diff of the four paths empty; the grep finds nothing. The test
 count is written into `AGENTS.md` and the badge.
 
+*As built.* Green: 5047 tests passed (one expected fail, one skipped), 79 smoke checks. The task
+touches no rule: `tests/architecture/` is unchanged, and `AGENTS.md`'s count (thirty, written
+since this step was) stands. The four paths were diffed against `origin/main` (`d8b334e`, the
+task's base), not a local `main` branch that may lag it: empty. The grep finds nothing.
+
 - [ ] **Step 11: The pull request** (after the owner's go-ahead)
 
 ```bash
 git add vitest.live.config.ts package.json tests/live/guard.ts tests/live/setup.ts \
   tests/live/github/doors.ts tests/live/github/submit.live.test.ts \
   tests/support/github-answers.ts tests/support/github-fixture.ts tests/support/fake-gh.ts \
-  tools/fake-gh.ts src/core/github/gh-version.ts tests/unit/live-config.test.ts \
+  tools/fake-gh.ts scripts/demo-github.mjs src/core/github/gh-version.ts \
+  src/core/github/answers.ts src/core/github/protection.ts src/forge/github/api.ts \
+  src/forge/github/preflight.ts tests/unit/live-config.test.ts \
   tests/unit/github-answers.test.ts tests/contract/github-answers.test.ts \
-  tests/contract/github/ tests/unit/merge-refused.test.ts \
-  docs/submitting.md tests/README.md AGENTS.md README.md CHANGELOG.md docs/roadmap.md \
+  tests/contract/github/ tests/unit/merge-refused.test.ts tests/unit/doc-symbols.test.ts \
+  tests/unit/fake-gh.test.ts tests/unit/gh-identity.test.ts \
+  tests/unit/protection-command.test.ts tests/unit/submit-github.test.ts \
+  docs/submitting.md tests/README.md AGENTS.md CHANGELOG.md docs/roadmap.md \
   docs/plans/stage-6-github.md
+git status --short
 git commit -m "test(github): prove on GitHub that the opener cannot merge, and hold the fake gh to what GitHub answered"
 ```
 
 The answers file's name is the run's date (`answers-<date>.json`), so its folder is added, which
-holds that one file; every other test file Step 8 changed is added by name. Base `feat/s6-phrase-submit`. CHANGELOG, `### Added`:
+holds that one file; every other file Step 8 changed is added by name — `scripts/demo-github.mjs`
+and six test files moved with the minimum gh and the fake's answers, and four `src/` files
+whose comments now say what the branch route answers — and `git status --short` before the
+commit must show nothing modified or untracked but `node_modules` and the owner's own files.
+`README.md` is not added: its badge is the shipping script's, and this task leaves it alone. Base `feat/s6-phrase-submit`. CHANGELOG, `### Added`:
 
 > - `pnpm test:live:github`, the owner's live test of stage 6, run by hand against a public
 >   throwaway repository with their own gh session and a second account's, never in CI and
@@ -9013,14 +9157,17 @@ ls tests/contract/github
 
 Attendu :
 - `gh auth status` says you are logged in to github.com; `ssh-add -l` lists your key;
-- the live test passes: the guards, then steps 1 to 5, each ✓ (step 5 is *made*, not
-  skipped), in a few minutes;
+- the guards pass: the repository's *Allow auto-merge* is off (Settings → General; off unless
+  someone turned it on) and no merge queue rules `main`, or the run stops there, naming which;
+- the live test passes: the guards, then steps 1 to 6, each ✓ (step 5 is *made*, not
+  skipped), in a few minutes; each door prints `live: <door>: refused (<class>…)`, and a door
+  printed `not tried` (a 401, a missing scope, a 404, a refusal no class reads) stops the run;
 - on the way, the CLI's stderr says
   `submitting to github.com/…/idpa-live, into main (origin, main's upstream), as … (gh)`,
   and a pull request is opened, then named again;
 - on GitHub afterwards: that pull request is closed, its `idp-agent/…` branch and
-  `live/…/base` are deleted, `main` is where it was, and the pull request's page shows an
-  approval from the second account followed by your push;
+  `live/…/base` are deleted (each named on stderr, `live: cleanup: …`), `main` is where it was,
+  and the pull request's page shows an approval from the second account followed by your push;
 - `ls` shows one new `answers-YYYY-MM-DD.json`.
 
 Then the three fields no read settles, written into that file by hand (`true` or `false` each):
@@ -9338,8 +9485,10 @@ company's answer to § 17 would change.
   `docs/plans/stage-6-github.md`", with the plan's departures in one sentence each (the pure
   parts in `core/github/`, the environment handed through `openSubmissionForge`, the forge's
   trace attributes from the intent road on, the interim refusal of `init --submit` until 6.3.2,
-  `pnpm demo:github`, the answers of § 17 measured by 6.4.1). The note's text is otherwise a
-  record and stays.
+  `pnpm demo:github`, the answers of § 17 measured by 6.4.1, and § 8 item 4's branch route,
+  which GitHub answers `protected: true` under a ruleset alone too, so it is not a read of
+  classic protection — the roadmap's open question, unless the owner settled it first). The
+  note's text is otherwise a record and stays.
 - `docs/roadmap.md`: the stage 6 row **done**, every pull request linked; the queue without stage
   6, renumbered; *Where the project stands* and its *Updated* line; ADR-0015 accepted, dated, in
   the decisions; *Known debts* gains stage 6's follow-ups: GitHub Enterprise (decision 16), the

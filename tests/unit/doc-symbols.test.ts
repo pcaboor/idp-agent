@@ -52,6 +52,12 @@ const NOT_OURS = new Map([
   ['WebSocket', "Node's global, which the suite's offline setup blocks"],
   ['NODE_USE_ENV_PROXY', "Node's own proxy switch, which the suite's forge setup removes"],
   ['NO_PROXY', "curl's and gh's proxy exemption, which the suite's forge setup removes"],
+  ['mergePullRequest', "GitHub's GraphQL mutation, a door the live test tries and idpa never sends"],
+  ['createCommitOnBranch', "GitHub's GraphQL mutation, a door the live test tries and idpa never sends"],
+  ['IDP_GITHUB_LIVE_REPO', "the live test's variable, read in tests/live/ alone: the CLI never reads it"],
+  ['actionsCanApprovePullRequests', "a field of the live test's answers file, filled by hand (tests/support/github-answers.ts)"],
+  ['gitPushesAsGhAccount', "a field of the live test's answers file, filled by hand (tests/support/github-answers.ts)"],
+  ['bypassListEmpty', "a field of the live test's answers file, filled by hand (tests/support/github-answers.ts)"],
 ])
 
 const IDENTIFIER =

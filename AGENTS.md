@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 4975 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 5047 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -54,6 +54,17 @@ The demo Backstage is optional too, needs Docker, and is never part of CI
 pnpm build && pnpm demo:backstage:docker         # build, start, wait, run idpa against it, check the 401, stop
 pnpm demo:backstage:docker --record              # also re-records tests/contract/backstage/, after moving the version
 pnpm backstage:up                                # leave it running on 127.0.0.1:7007 (guest sign-in); pnpm backstage:down
+```
+
+Stage 6's live test is optional too, needs gh logged in to github.com as a person, the owner's
+ssh key and their throwaway repository, and is never part of CI (`docs/submitting.md`,
+*Proving it on your repository*): it proves on GitHub that the identity that opened a pull
+request cannot merge it, and re-records `tests/contract/github/`, which holds the fake gh to
+GitHub in `pnpm test` and pins `GH_MINIMUM_VERSION` (2.96.0, from the run of 2026-10-02).
+
+```bash
+pnpm build && IDP_GITHUB_LIVE_REPO=<you>/idpa-live pnpm test:live:github    # without the variable it stops at once
+pnpm build && IDP_GITHUB_LIVE_REPO=<you>/idpa-live IDP_GITHUB_LIVE_REVIEWER_GH_CONFIG_DIR=<dir> pnpm test:live:github   # with a second account's gh, for the steps another person makes
 ```
 
 **Every number on this page is a measurement, and this page has drifted from all of them

@@ -24,7 +24,7 @@ each:
 | 3 | `init platform` and `validate` | done |
 | 4 | Preview only: nothing is written | done |
 | 5 | Write + local branch | done ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)): task 1, `Cleared` for the declarations repository ([#105](https://github.com/pcaboor/idp-agent/pull/105)); task 2, `Cleared` for the service repository ([#106](https://github.com/pcaboor/idp-agent/pull/106)); task 3, the shared git launcher and the `forge/` types ([#107](https://github.com/pcaboor/idp-agent/pull/107)); task 4, the local forge — create-only, idempotent, atomic ([#108](https://github.com/pcaboor/idp-agent/pull/108)); task 5, `plan --from … --submit` ([#109](https://github.com/pcaboor/idp-agent/pull/109)); task 6, `plan "<intent>" --submit`, refused before a model is paid ([#110](https://github.com/pcaboor/idp-agent/pull/110)); task 7, `init --submit` and `.idp-agent.yml`, and a branch already there answered before the confirmation ([#111](https://github.com/pcaboor/idp-agent/pull/111)) |
-| 6 | GitHub pull request | in progress ([the plan](plans/stage-6-github.md)): slice 6.1 done: 6.1.1, the allow-list ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2, the remote and who gh is ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3, the preflight and `idpa protection` ([#125](https://github.com/pcaboor/idp-agent/pull/125)); slice 6.2 done: 6.2.1, the GitHub forge ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2, `plan --from … --submit` to GitHub ([#127](https://github.com/pcaboor/idp-agent/pull/127)); slice 6.3: 6.3.1, `plan "<intent>" --submit` to GitHub, and `iacRepo` as a cross-check ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2, `init --submit` to GitHub ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3, `idpa "<phrase>" --submit` ([#131](https://github.com/pcaboor/idp-agent/pull/131)), which closes slice 6.3 as the plan drew it; 6.3.4, the pull request always opened, with a `note:` where its author may merge it alone ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5, at a terminal, a change's diff ending on the engine's proposal to open the pull request ([#134](https://github.com/pcaboor/idp-agent/pull/134)); 6.3.6, what is in flight read first — the open `idp-agent` pull requests into the base, before any model and again before writing ([#135](https://github.com/pcaboor/idp-agent/pull/135)) |
+| 6 | GitHub pull request | in progress ([the plan](plans/stage-6-github.md)): slice 6.1 done: 6.1.1, the allow-list ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2, the remote and who gh is ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3, the preflight and `idpa protection` ([#125](https://github.com/pcaboor/idp-agent/pull/125)); slice 6.2 done: 6.2.1, the GitHub forge ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2, `plan --from … --submit` to GitHub ([#127](https://github.com/pcaboor/idp-agent/pull/127)); slice 6.3: 6.3.1, `plan "<intent>" --submit` to GitHub, and `iacRepo` as a cross-check ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2, `init --submit` to GitHub ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3, `idpa "<phrase>" --submit` ([#131](https://github.com/pcaboor/idp-agent/pull/131)), which closes slice 6.3 as the plan drew it; 6.3.4, the pull request always opened, with a `note:` where its author may merge it alone ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5, at a terminal, a change's diff ending on the engine's proposal to open the pull request ([#134](https://github.com/pcaboor/idp-agent/pull/134)); 6.3.6, what is in flight read first — the open `idp-agent` pull requests into the base, before any model and again before writing ([#135](https://github.com/pcaboor/idp-agent/pull/135)); slice 6.4: 6.4.1, the live test ([#136](https://github.com/pcaboor/idp-agent/pull/136)), made on GitHub on 2026-10-02 |
 | 7 | Polish: Ink TUI, asciinema, npm publish | not started |
 | 8 | Discovery | designed ([the design note](stage-8-brief.md), [#76](https://github.com/pcaboor/idp-agent/pull/76)); not started |
 
@@ -100,7 +100,12 @@ here, one pull request each, each naming the check run together at the end.
    ([#134](https://github.com/pcaboor/idp-agent/pull/134)); and so is what is in flight — the open `idp-agent` pull
    requests touching the same service read before any model is paid, so two people never open
    competing ones ([#135](https://github.com/pcaboor/idp-agent/pull/135)). Each was planned in
-   `docs/plans/stage-6-github.md` before it was built; 6.4 is next.
+   `docs/plans/stage-6-github.md` before it was built. The live proof is made: 6.4.1, the
+   owner's live test, ran on GitHub on 2026-10-02 — a submission opened its pull request and a
+   second named it, every door was refused to the identity that opened it with the base
+   unchanged — and its recorded answers hold the fake gh to GitHub in `pnpm test` and pin the
+   oldest gh this build reads ([#136](https://github.com/pcaboor/idp-agent/pull/136)). 6.4.2, ADR-0015 and the documents, and 6.4.3, the
+   owner's re-recording, are next.
 2. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence; two people discovering the same service see what
@@ -447,6 +452,43 @@ The owner's decisions, dated, each with where it is recorded.
   pull requests in flight into one base are refused rather than compared in part; no new flag for
   a preview with no GitHub read; and design §4.2 takes the bullet 6.3.4's Step 1 quotes.
 
+**2026-10-02**
+
+- Stage 6's live test, run by the owner against a public throwaway repository with gh 2.96.0 and
+  no second account ([#136](https://github.com/pcaboor/idp-agent/pull/136)): it passed, steps 1, 2, 3, 3c, 4 and 6 passed and 3b and 5 were
+  skipped for want of the second account, which the owner made optional on 2026-10-01. What it
+  measured, committed in `tests/contract/github/answers-2026-10-02.json`:
+  - **gh 2.96.0 is the oldest gh this build reads** (`GH_MINIMUM_VERSION`, provisionally 2.40.0
+    until now): the version the run was made with. A later run with an older gh, committed,
+    lowers it.
+  - **An administrator outside an empty bypass list is bound**: GitHub answers
+    `current_user_can_bypass: never` to the repository's administrator (the note's § 17, first
+    unknown), and refuses their merge, `gh pr merge --admin` included. § 8 item 3 holds for the
+    owner's own repository, as decision 6 assumed.
+  - **Each door, as the identity that opened the pull request**: `gh pr merge` by merge, squash
+    and rebase, and `--admin`, exit 1; the REST merge 405; `POST merges` 409; a file written to
+    the base 409; the base's ref moved, non-forced, 422; a push of the head onto the base
+    rejected, `GH013: Repository rule violations found`, with the rule it breaks; GraphQL's
+    `mergePullRequest` and `createCommitOnBranch` an error each; the author's own approval
+    refused, through gh and 422 through the API. **`merge-async` answers 202 Accepted and is
+    never carried out**: the pull request watched 30 seconds, never merged, the base never moved,
+    and every pull request the run opened read unmerged before the cleanup and after it.
+  - **A branch a ruleset covers answers `protected: true`** on the branch route, with no
+    classic protection set. The preflight reads that route only when no ruleset supplies a
+    required rule, so the run's verdict did not depend on it; a ruleset supplying none of the
+    three required rules makes `idpa protection` say "classic branch protection only" where it
+    is a ruleset that is missing the rules, and leave those rules unnamed (an open question
+    below).
+  - **No read-back lag was seen**: GitHub answered the pushed branch on the first read.
+  - **The request's `@mention`, inside the body's fence, rendered as code** with no mention link.
+  - The three fields no read settles, filled by the owner for the throwaway repository: GitHub
+    Actions may not approve pull requests there, the owner's git pushes as their gh account, and
+    the ruleset's bypass list is empty.
+  - The fake gh moved to what GitHub answered, never the other way round: `GET user`'s `name` a
+    string, the repository owned by a person, with no description and `maintain` true for an
+    administrator, `protected` true under a ruleset, the base's ref moved answered 422 where the
+    fake said 409, and `merge-async` 202.
+
 ## Known debts and open items
 
 Each was checked against `main` at `3b642fa`.
@@ -716,6 +758,27 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
   1.2, which changes no behaviour.
 
 **Open questions**
+
+- **What a company adopting stage 6 answers for itself**, which the live run of 2026-10-02 (the
+  note's § 17) answered for the owner's throwaway repository only: whether its declarations
+  repository is protected by rulesets or by classic branch protection, at the organisation's
+  level or the repository's, and whether the people who submit sit in a bypass list; whether they
+  push with the same account their gh is logged in as, and whether a deploy key sits in a bypass
+  list; whether its GitHub Actions may approve pull requests. `idpa protection` reads what it can
+  of each and says what no read can see.
+- **`protected: true` is not classic protection alone.** GitHub answers it for a branch a
+  ruleset covers (measured 2026-10-02). The preflight reads the branch route only when no ruleset
+  supplies a pull request, force-push or deletion rule, so a base whose ruleset supplies none of
+  the three is reported as protected by classic branch protection only. The exit (1) and the
+  pull request's note are the same; what `idpa protection` says is not: one false line, "protected
+  by classic branch protection only", in place of the four true ones — the pull request rule, the
+  approval of the last push, force pushes, deletions — so nobody is told force pushes and
+  deletions are unguarded, and it is told to add a ruleset that already exists. Pinned as it is
+  by `tests/unit/protection-command.test.ts` ("a ruleset that supplies none of the three required
+  rules"). The likely fix is the owner's call: read `branches/<b>` only when the `rules` route
+  answered no rule at all, since any rule means a ruleset covers the branch; or read classic
+  protection itself (`branches/<b>/protection`, which needs administrator rights); or say
+  "rulesets or classic protection".
 
 - **Should a mistyped command followed by words be caught before the model?** Today it is
   not, by design: the typo guard judges a one-word phrase only, because "a sentence is never

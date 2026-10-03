@@ -107,7 +107,13 @@ export interface ProtectionInput {
   readonly rules?: RulesAnswer
   /** Each supplying ruleset that was read, by id. */
   readonly rulesets: ReadonlyMap<number, RulesetAnswer>
-  /** Whether classic branch protection covers the base: read only when no ruleset supplies a required rule. */
+  /**
+   * Whether the branch route calls the base protected, read as classic branch
+   * protection and only when no ruleset supplies a required rule. GitHub says
+   * `true` under a ruleset alone as well (2026-10-02), so a ruleset supplying
+   * none of the three reads as `classic-only`: an open question in
+   * `docs/roadmap.md`, "`protected: true` is not classic protection alone".
+   */
   readonly classic?: boolean
 }
 

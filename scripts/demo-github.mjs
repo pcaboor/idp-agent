@@ -233,10 +233,10 @@ if (servicePushUrl.status !== 0 || servicePushUrl.stdout.trim() !== 'git@github.
   process.exit(1)
 }
 
-/** The fake GitHub: gh 2.40.0, the person `ada` — logged in unless `loggedIn` is false — and `acme/iac` as `repository` says, its refs the bare repository's. */
+/** The fake GitHub: gh 2.96.0, the person `ada` — logged in unless `loggedIn` is false — and `acme/iac` as `repository` says, its refs the bare repository's. */
 const world = (repository, loggedIn = true) => ({
   installed: true,
-  version: '2.40.0',
+  version: '2.96.0',
   accounts: [{ login: 'ada', type: 'User' }],
   ...(loggedIn ? { session: { login: 'ada' } } : {}),
   repositories: [

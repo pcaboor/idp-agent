@@ -19,20 +19,20 @@ import { FAKE_GH_VERSION, fakeGitHub, type FakeGitHub, type FakeModel } from '..
 
 describe("gh's version", () => {
   it('reads the version gh prints first', () => {
-    expect(parseGhVersion('gh version 2.40.0 (2023-12-07)\nhttps://github.com/cli/cli/releases/tag/v2.40.0\n')).toBe('2.40.0')
+    expect(parseGhVersion('gh version 2.96.0 (2026-07-02)\nhttps://github.com/cli/cli/releases/tag/v2.96.0\n')).toBe('2.96.0')
     expect(parseGhVersion('gh version 2.62.0-rc.1 (2024-11-14)\n')).toBe('2.62.0')
     expect(parseGhVersion('gh version DEV\n')).toBeUndefined()
     expect(parseGhVersion('')).toBeUndefined()
-    expect(parseGhVersion('hub version 2.40.0\n')).toBeUndefined()
+    expect(parseGhVersion('hub version 2.96.0\n')).toBeUndefined()
     expect(parseGhVersion(`gh version ${'9'.repeat(12)}.0.0\n`)).toBeUndefined()
   })
 
   it('compares by number, part by part', () => {
-    expect(isAtLeast('2.9.0', '2.40.0')).toBe(false)
-    expect(isAtLeast('2.40.0', '2.40.0')).toBe(true)
-    expect(isAtLeast('2.40.1', '2.40.0')).toBe(true)
-    expect(isAtLeast('2.39.9', '2.40.0')).toBe(false)
-    expect(isAtLeast('3.0.0', '2.40.0')).toBe(true)
+    expect(isAtLeast('2.9.0', '2.10.0')).toBe(false)
+    expect(isAtLeast('2.10.0', '2.10.0')).toBe(true)
+    expect(isAtLeast('2.10.1', '2.10.0')).toBe(true)
+    expect(isAtLeast('2.9.9', '2.10.0')).toBe(false)
+    expect(isAtLeast('3.0.0', '2.10.0')).toBe(true)
     expect(isAtLeast('10.0.0', '9.99.99')).toBe(true)
   })
 
@@ -84,7 +84,7 @@ const REFUSALS: readonly { readonly name: string; readonly model: FakeModel; rea
   {
     name: 'gh older than the oldest this build reads',
     model: { version: '2.39.2' },
-    sentence: `gh 2.39.2 is older than 2.40.0, the oldest this build reads; update gh, then run this again${LOCAL}. Nothing was written.`,
+    sentence: `gh 2.39.2 is older than ${GH_MINIMUM_VERSION}, the oldest this build reads; update gh, then run this again${LOCAL}. Nothing was written.`,
   },
   {
     name: 'gh printing no version this build reads',
@@ -198,7 +198,7 @@ describe('readIdentity', () => {
 const clientOf = (options: { made?: number; answer?: GhAnswer; error?: Error }): GhClient & { gets: number } => {
   const client = {
     gets: 0,
-    version: async () => 'gh version 2.40.0 (2023-12-07)\n',
+    version: async () => `gh version ${GH_MINIMUM_VERSION} (2026-07-02)\n`,
     get: async () => {
       client.gets += 1
       if (options.error !== undefined) throw options.error

@@ -21,13 +21,22 @@
  * And the doors a person could try as the pull request's author (§ 10): a
  * merge, through `gh pr merge` or the API, judged as the rules would judge it
  * — refused (405) unless someone other than the author and the last pusher
- * approved the head, or the merger may bypass the ruleset; an approval by the
- * author (422); a write to a base the rules protect (409, "Repository rule
- * violations found"). Classic branch protection is not modelled: it binds
+ * approved the head, or the merger may bypass the ruleset; `merge-async`,
+ * which GitHub accepts first and judges later — 202 for an open pull request
+ * on top of its base, as GitHub answered the live run of 2026-10-02, the merge
+ * carried out only where the same judgement lets it through, and never said
+ * refused (a pull request closed or off its base is answered as `…/merge`
+ * answers it, 405, which no run measured); an
+ * approval by the author (422); a write to a base the rules protect ("Repository
+ * rule violations found": 409 for a merge into it and a file written to it,
+ * 422 for its ref moved). Classic branch protection is not modelled: it binds
  * nobody here, as it binds no administrator on GitHub without "Do not allow
- * bypassing". Each answer is the fake's guess until the owner's live run
- * records GitHub's (6.4.1). Every other vector is "not a vector idp-agent
- * sends", exit 97; a write the fake does not model is "not modelled".
+ * bypassing". The statuses and the fields are held to what GitHub answered
+ * the owner's live run (`tests/contract/github-answers.test.ts` over
+ * `tests/contract/github/`, first recorded on 2026-10-02); a body that run
+ * did not keep is the fake's own. Every other vector is "not a vector
+ * idp-agent sends", exit 97; a write the fake does not model is "not
+ * modelled".
  *
  * It runs under Node's type stripping (22.18 or later), so it holds no syntax
  * stripping cannot erase, and imports only `node:` built-ins:
@@ -147,7 +156,7 @@ export interface FakeFault {
 
 export interface FakeState {
   installed: boolean
-  /** What `gh --version` says, e.g. `2.40.0`. */
+  /** What `gh --version` says, e.g. `2.96.0`. */
   version: string
   accounts: Account[]
   /** Whom gh is logged in as, or nobody; an expired login answers 401. */
@@ -170,11 +179,11 @@ export interface FakeExit {
 /** The exit a vector outside what idp-agent sends gets, and a route not modelled yet. */
 export const REFUSED_EXIT = 97
 
-/** A fresh model: gh 2.40.0, installed, one person `ada`, logged in as her. */
+/** A fresh model: gh 2.96.0, installed, one person `ada`, logged in as her. */
 export function initialState(): FakeState {
   return {
     installed: true,
-    version: '2.40.0',
+    version: '2.96.0',
     accounts: [{ login: 'ada', type: 'User' }],
     session: { login: 'ada' },
     repositories: [],
@@ -191,6 +200,7 @@ const exit = (code: number | string, stdout: string, stderr = ''): FakeExit => (
 const REASONS: Readonly<Record<number, string>> = {
   200: 'OK',
   201: 'Created',
+  202: 'Accepted',
   401: 'Unauthorized',
   403: 'Forbidden',
   404: 'Not Found',
@@ -390,7 +400,8 @@ const user = (state: FakeState): FakeExit => {
     node_id: `U_${who.login}`,
     type: account?.type,
     site_admin: false,
-    name: null,
+    // A string, as GitHub answered the owner's live run of 2026-10-02; nothing reads it.
+    name: who.login,
   })
 }
 
@@ -599,18 +610,28 @@ const mayMerge = (repository: FakeRepository, pull: FakePull, who: Who, head: st
 
 const MERGED_AT = '2026-10-01T00:00:00Z'
 
-/** A merge of pull request `number` by `who`, judged by the model: the status, and the bare base moved on 200. */
-const merged = (state: FakeState, repository: FakeRepository, number: number, who: Who): { status: number; body: unknown } => {
+/**
+ * A merge of pull request `number` by `who`, judged by the model: the status,
+ * and the bare base moved on 200. `judged` says the rules decided it — a merge
+ * carried out, or one they refused — rather than a pull request closed, gone
+ * or off its base, which no rule is asked about.
+ */
+const merged = (
+  state: FakeState,
+  repository: FakeRepository,
+  number: number,
+  who: Who,
+): { status: number; body: unknown; judged: boolean } => {
   const pull = (state.pulls ?? []).find(
     (one) => one.number === number && same(one.owner, repository.owner) && same(one.name, repository.name),
   )
-  if (pull === undefined) return { status: 404, body: NOT_FOUND }
-  const refusal = { status: 405, body: { message: 'Pull Request is not mergeable', status: '405' } }
+  if (pull === undefined) return { status: 404, body: NOT_FOUND, judged: false }
+  const refusal = { status: 405, body: { message: 'Pull Request is not mergeable', status: '405' }, judged: false }
   if (pull.state !== 'open' || repository.bare === undefined) return refusal
   const head = refIn(repository.bare, pull.head)
   const base = refIn(repository.bare, pull.base)
   if (head === undefined || base === undefined || !isAncestor(repository.bare, base, head)) return refusal
-  if (!mayMerge(repository, pull, who, head)) return refusal
+  if (!mayMerge(repository, pull, who, head)) return { ...refusal, judged: true }
   const tree = inBare(repository.bare, ['rev-parse', `${head}^{tree}`])
   const merge = inBare(repository.bare, [
     'commit-tree',
@@ -624,7 +645,7 @@ const merged = (state: FakeState, repository: FakeRepository, number: number, wh
   ])
   inBare(repository.bare, ['update-ref', `refs/heads/${pull.base}`, merge, base])
   Object.assign(pull, { state: 'closed', merged_at: MERGED_AT, closed_at: MERGED_AT })
-  return { status: 200, body: { sha: merge, merged: true, message: 'Pull Request successfully merged' } }
+  return { status: 200, body: { sha: merge, merged: true, message: 'Pull Request successfully merged' }, judged: true }
 }
 
 /** An approval of pull request `number` by `who`: GitHub refuses the author's own (422). */
@@ -651,23 +672,31 @@ const ofRepository = (state: FakeState, read: Read): FakeExit => {
   const permission = permissionOf(repository, who.login)
   const source = `${repository.owner}/${repository.name}`
   switch (read.route) {
-    case 'repository':
+    case 'repository': {
+      // As GitHub answered the live run of 2026-10-02: a repository a person owns, with no
+      // description, and `maintain` true for an administrator. `push` stays the model's, so a
+      // test can take push access from an administrator, which GitHub itself never answers.
+      const maintain = permission.admin || permission.maintain
       return included(200, {
         id: 1,
         node_id: 'R_1',
         name: repository.name,
         full_name: repository.fullName ?? source,
-        owner: { login: repository.owner, type: 'Organization' },
+        owner: { login: repository.owner, type: 'User' },
         private: false,
-        description: 'the declarations',
+        description: null,
         archived: repository.archived,
         default_branch: 'main',
-        permissions: { ...permission, triage: permission.push, pull: true },
+        permissions: { admin: permission.admin, maintain, push: permission.push, triage: permission.push, pull: true },
       })
+    }
     case 'branch': {
       const branch = repository.branches[read.branch]
       if (branch === undefined) return included(404, { ...NOT_FOUND, message: 'Branch not found' })
-      return included(200, { name: read.branch, protected: branch.protected, protection_url: 'https://api.github.com/…' })
+      // `protected` is true under classic protection and, as GitHub answered the live run of
+      // 2026-10-02, under an active ruleset with no classic protection at all.
+      const covered = branch.protected || rulesetsOn(repository, read.branch).length > 0
+      return included(200, { name: read.branch, protected: covered, protection_url: 'https://api.github.com/…' })
     }
     case 'rules': {
       const rules = rulesetsOn(repository, read.branch).flatMap((ruleset) =>
@@ -834,11 +863,13 @@ const door = (state: FakeState, argv: readonly string[], stdin: Buffer | undefin
   if (!input && rest.length !== 0) return undefined
   const path = parts[3] ?? ''
   const pullRoute = /^pulls\/([1-9][0-9]*)\/(merge|merge-async|reviews)$/.exec(path)
-  const writesTo = (branch: string): FakeExit => {
+  // A merge into the base and a file written to it are 409, the base's ref moved 422, as
+  // GitHub answered the live run of 2026-10-02; its bodies were not recorded.
+  const writesTo = (branch: string, status: 409 | 422 = 409): FakeExit => {
     if (isExit(who)) return who
     if (repository === undefined) return included(404, NOT_FOUND)
     if (guarded(repository, branch, who)) {
-      return included(409, { message: 'Repository rule violations found', status: '409' })
+      return included(status, { message: 'Repository rule violations found', status: String(status) })
     }
     return notModelled(`a write to ${branch}`)
   }
@@ -846,6 +877,12 @@ const door = (state: FakeState, argv: readonly string[], stdin: Buffer | undefin
     if (isExit(who)) return who
     if (repository === undefined) return included(404, NOT_FOUND)
     const answered = merged(state, repository, Number(pullRoute[1]), who)
+    // merge-async: accepted before the rules judge it, the judgement never said — 202 for an
+    // open pull request on top of its base, as GitHub answered the live run of 2026-10-02. A
+    // pull request closed, gone or off its base is answered as `…/merge` answers it, the
+    // fake's guess: the run measured none. Its body is not recorded (the run keeps the
+    // status alone), so the fake says nothing in it.
+    if (pullRoute[2] === 'merge-async' && answered.judged) return included(202, {})
     return included(answered.status, answered.body)
   }
   if (method === 'POST' && input && pullRoute?.[2] === 'reviews') {
@@ -866,7 +903,7 @@ const door = (state: FakeState, argv: readonly string[], stdin: Buffer | undefin
   }
   if (method === 'PUT' && input && path.startsWith('contents/')) return writesTo('main')
   const ref = /^git\/refs\/heads\/(.+)$/.exec(path)
-  if (method === 'PATCH' && input && ref !== null) return writesTo(ref[1] ?? '')
+  if (method === 'PATCH' && input && ref !== null) return writesTo(ref[1] ?? '', 422)
   return undefined
 }
 
@@ -904,9 +941,10 @@ export function answer(state: FakeState, argv: readonly string[], stdin: Buffer 
 function carried(state: FakeState, argv: readonly string[], stdin: Buffer | undefined): FakeExit {
   if (argv.length === 1 && argv[0] === '--version') {
     if (stdin !== undefined) return refused()
+    // The date is 2.96.0's, the gh the owner's live run of 2026-10-02 used; nothing reads it.
     return exit(
       0,
-      `gh version ${state.version} (2023-12-07)\nhttps://github.com/cli/cli/releases/tag/v${state.version}\n`,
+      `gh version ${state.version} (2026-07-02)\nhttps://github.com/cli/cli/releases/tag/v${state.version}\n`,
     )
   }
   const modelled = door(state, argv, stdin)
