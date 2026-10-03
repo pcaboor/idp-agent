@@ -94,11 +94,11 @@ idpa protection --repo ~/my-iac
 
 It reads the branch the clone's checked-out branch tracks on github.com, through your gh, with
 `GET` requests only: who gh acts as (`GET user`), the repository, the rules for that branch, each
-ruleset that supplies one of the required rules, and — only when none does — the branch, for
-classic protection. Before them it runs `gh --version`, which stays on your machine. No model, and
-nothing written, in the clone or on GitHub. Without `--repo` it finds the declarations repository
-as `plan` does: the current directory when it is one, then `IDP_REPO`, then `repo` in your personal
-`config.yml`.
+ruleset that supplies one of the required rules, and — only when the rules route answers no rule
+at all — the branch, for classic protection. Before them it runs `gh --version`, which stays on
+your machine. No model, and nothing written, in the clone or on GitHub. Without `--repo` it finds
+the declarations repository as `plan` does: the current directory when it is one, then
+`IDP_REPO`, then `repo` in your personal `config.yml`.
 
 | Exit | When |
 |---|---|
@@ -123,17 +123,27 @@ by classic protection alone gets the note — and whether the account your git p
 gh opens the pull request as, since nothing idpa reads ties them ([push as gh's
 account](#push-as-ghs-account)).
 
-**A known limit**, a follow-up after stage 6: a base covered by a ruleset that supplies none of
-the three required rules (a pull request, force pushes, deletions) is reported as
+A base covered by a ruleset that supplies none of the three required rules (a pull request,
+force pushes, deletions) — one that requires signed commits only, say — is told the four rules it
+lacks:
 
 ```text
-  missing: a ruleset: main is protected by classic branch protection only, which idpa does not read
+  missing: a pull request rule requiring 1 approval
+  missing: approval of the most recent push
+  missing: block force pushes
+  missing: restrict deletions
 ```
 
-because GitHub answers `protected: true` for a branch a ruleset covers, and that route is read
-only when no ruleset supplies a required rule. The exit, 1, and a submission's note are right; the
-reason is not: the base has a ruleset, missing the rules [above](#the-ruleset-on-the-base-branch),
-which is what to add to it ([`roadmap.md`](roadmap.md), *Open questions*).
+The list after them, `Add a ruleset on main`, is the one every base missing a rule is given: the
+four can go in the ruleset that exists or in a new one, since GitHub layers the rulesets that
+cover a branch.
+
+The line `missing: a ruleset: main is protected by classic branch protection only, which idpa
+does not read` is for a base no rule covers that GitHub still calls protected. GitHub answers
+`protected: true` for a branch a ruleset covers too, so that route is read only when the rules
+route answers no rule at all; an active ruleset holding no rule would still get that line.
+Beside a ruleset, classic protection is not said: GitHub's answer cannot tell it from the
+ruleset, and it is not counted either way.
 
 Where the rules require another person's approval, the invariant therefore binds the identity
 that opens the pull request and every credential that person pushes with, as long as the ruleset

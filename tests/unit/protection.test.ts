@@ -313,6 +313,16 @@ describe('judgeProtection: classic branch protection (§ 8, item 4)', () => {
     expect(verdict).toMatchObject({ holds: false, missing: ['classic-only'], rulesets: [] })
   })
 
+  it('names the four rules a covering ruleset lacks, whatever the branch route answered: any rule means a ruleset covers the base', () => {
+    // GitHub answers `protected: true` for a branch an active ruleset covers (2026-10-02).
+    const verdict = judged({ rules: [rule('required_signatures', 1)], classic: true })
+    expect(verdict).toMatchObject({
+      holds: false,
+      missing: ['pull-request', 'last-push', 'non-fast-forward', 'deletion'],
+      rulesets: [],
+    })
+  })
+
   it('refuses a base protected by nothing, naming every rule', () => {
     const verdict = judged({ rules: [], classic: false })
     expect(verdict).toMatchObject({

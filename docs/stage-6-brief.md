@@ -28,8 +28,9 @@ written. Where the plan departed from it, to the same end:
   was not used;
 - § 8 item 4's branch route is not a read of classic protection: GitHub answers `protected:
   true` for a branch a ruleset alone covers, so a ruleset supplying none of the three required
-  rules is reported as classic protection only, the exit and the note right and the reason
-  wrong — an open question in `docs/roadmap.md`, a follow-up after stage 6.
+  rules was reported as classic protection only, the exit and the note right and the reason
+  wrong — fixed after stage 6 (#139): the route is read only when item 2 finds no rule, as
+  item 4 below says.
 
 This is a design note, not a plan. It says what stage 6 builds, in what order, and why each
 guard exists. The plan in `docs/plans/` comes after it. The line numbers below are those of

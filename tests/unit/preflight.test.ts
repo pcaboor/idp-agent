@@ -76,7 +76,7 @@ describe('readProtection: § 8, items 1 to 5', () => {
     for (const sent of fake.sent) expect(sent.argv.slice(0, 6)).toEqual(['api', '--hostname', 'github.com', '--method', 'GET', '--include'])
   })
 
-  it('reads the branch only when no ruleset supplies a rule', async () => {
+  it('reads the branch only when the rules route answers no rule at all', async () => {
     const classic = fakeGitHub({ repositories: [repository({ branches: { main: { protected: true } } })] })
     expect(await readProtection(over(classic), ROAD)).toMatchObject({ holds: false, missing: ['classic-only'] })
     expect(paths(classic)).toEqual([
@@ -88,6 +88,23 @@ describe('readProtection: § 8, items 1 to 5', () => {
     const guarded = fakeGitHub({ repositories: [protectedMain({ branches: { main: { protected: true } } })] })
     expect((await readProtection(over(guarded), ROAD)).holds).toBe(true)
     expect(paths(guarded).some((sent) => sent.includes('/branches/main') && !sent.includes('/rules/'))).toBe(false)
+  })
+
+  it('does not read the branch under a ruleset that supplies none of the three, and names the four rules it lacks', async () => {
+    // GitHub answers `protected: true` for a branch any active ruleset covers (2026-10-02):
+    // read here, it would call this base protected by classic protection only.
+    const signaturesOnly = protectingRuleset(1, { rules: [{ type: 'required_signatures' }] })
+    for (const classic of [false, true]) {
+      const fake = fakeGitHub({ repositories: [repository({ rulesets: [signaturesOnly], branches: { main: { protected: classic } } })] })
+      const verdict = await readProtection(over(fake), ROAD)
+      expect(verdict, `classic: ${String(classic)}`).toMatchObject({
+        holds: false,
+        missing: ['pull-request', 'last-push', 'non-fast-forward', 'deletion'],
+        rulesets: [],
+      })
+      expect(verdict.reported.signatures).toBe(true)
+      expect(paths(fake)).toEqual(['repos/acme/iac', 'repos/acme/iac/rules/branches/main?per_page=100'])
+    }
   })
 
   it('reads a ruleset in evaluate mode as no ruleset, as GitHub returns none of its rules', async () => {

@@ -90,9 +90,9 @@ export type RulesetAnswer = z.infer<typeof rulesetAnswer>
 
 /**
  * `GET repos/<o>/<r>/branches/<b>` (§ 8, item 4): whether anything protects it.
- * Read for classic branch protection, but GitHub answers `protected: true` for a
- * branch an active ruleset covers too (the live run of 2026-10-02): an open
- * question in `docs/roadmap.md`, "`protected: true` is not classic protection alone".
+ * GitHub answers `protected: true` for a branch an active ruleset covers too
+ * (the live run of 2026-10-02), so it is read for classic branch protection
+ * only when the rules route answered no rule at all.
  */
 export const branchAnswer = z.object({ protected: z.boolean() })
 
