@@ -7,15 +7,15 @@
   a running Backstage's catalogue; ask it for a change and it returns a checked plan,
   rendered as a unified diff of the YAML it would add. With <code>--submit</code> the diff
   becomes a git branch for review, and, from a clone whose branch tracks one on github.com,
-  <code>plan --from … --submit</code> pushes it with your own git and opens the pull
-  request, whose merge is the approval, with your own gh.
+  that branch is pushed with your own git and the pull request, whose merge is the
+  approval, opened with your own gh.
 </p>
 
 <p align="center">
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 5047, no API key" src="https://img.shields.io/badge/tests-5047%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 5055, no API key" src="https://img.shields.io/badge/tests-5055%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -346,7 +346,7 @@ flowchart LR
     INS --> A["Architect<br/>drafts a typed Plan"]
     A --> G["Five gates<br/>shape · provenance · policy<br/>re-check · blind Reviewer"]
     G -- pass --> D["Unified diff"]
-    D -->|"with --submit"| B["Local branch<br/>idp-agent/…"]
+    D -->|"with --submit, or y at a terminal"| B["Local branch<br/>idp-agent/…"]
     B --> PR["Pull request<br/><i>your git and gh</i>"]
     G -. refused, up to 3 attempts .-> A
     G -. value nobody vouches for .-> Q["Question to you<br/>a prompt, or exit 3"]
@@ -361,9 +361,10 @@ flowchart LR
    Reviewer that never sees the Architect's reasoning.
 4. After three failed attempts it stops cleanly.
 5. With `--submit`, the engine, not the model, commits the diff to one new local branch,
-   `idp-agent/…`, cut from `HEAD`. On a clone tracking github.com, both forms of `plan`
-   push it with your git and open the pull request with your gh; the merge is what
-   authorises it.
+   `idp-agent/…`, cut from `HEAD`. On a clone tracking github.com, every road that submits
+   pushes it with your git and opens the pull request with your gh, and at a terminal a
+   change's diff ends on the engine's proposal to do the same; the merge is what authorises
+   it.
 
 The model decides *what to ask*. The deterministic engine answers, validates and renders.
 A reference the tools never returned is refused, not printed.
@@ -470,14 +471,14 @@ idp-agent plan --from <plan.json> [--repo <dir>]   # no model, and none is possi
     [--json] [--submit [--local]]                  # a branch, pushed and a pull request on github.com
 idp-agent plan "<intent>" [--repo <dir>] [--json]  # needs IDP_PROVIDER, IDP_MODEL and its key
     [--project <dir>]                              # the service's repository, if not where you stand
-    [--submit [--local]]                           # a local branch, after all five gates
+    [--submit [--local]]                           # a branch, after all five gates; pushed and a pull request on github.com
 idp-agent protection [--repo <dir>]                # through your gh, reads only; no model
 idp-agent init [--repo <dir>]                      # needs IDP_PROVIDER, IDP_MODEL and its key
     [--name <name>]                                # what its files do not state; asked at a terminal
     [--lifecycle experimental|production|deprecated]
     [--owner group:<namespace>/<name>]
     [--iac-repo <locator>] [--environment <name>]… # its .idp-agent.yml, from what you type
-    [--submit [--local]]                           # both on a local branch of the service's repository
+    [--submit [--local]]                           # both on a branch of the service's repository; pushed and a pull request on github.com
 idp-agent version                                  # or --version, -v
 idp-agent <command> --help                         # its usage; -h or --help alone, every one
 ```
@@ -508,10 +509,10 @@ said where they let you merge alone, and a repository you cannot push to refused
 | `idpa "<phrase>"` | A question is answered, a change is previewed; the classification is said on stderr (`· question`, `· mutation`). Needs a model. |
 | `ask` | Answers a question about your platform. The model picks the queries; the engine answers them, and prints the model's short introduction and conclusion around the answer, checked and marked `›`. Asked about the catalogue as a whole — *talk about this project* — it prints an overview the engine writes: counts by kind, type, environment, owner, system and tag, a few entities in their own descriptions, rights and their levels, the most-reached resources, dangling references, and what it could not read. |
 | `init platform` | Scaffolds the declarations repository, its CI, its Backstage registration, and prints the ruleset `idpa protection` checks. |
-| `init` | Drafts the `catalog-info.yaml` of the service you stand in, or adds to the one it keeps, and its `.idp-agent.yml` from `--iac-repo` and `--environment`. It previews a diff; with `--submit` it cuts a local branch in the service's repository. Needs a model. |
+| `init` | Drafts the `catalog-info.yaml` of the service you stand in, or adds to the one it keeps, and its `.idp-agent.yml` from `--iac-repo` and `--environment`. It previews a diff; with `--submit` it cuts a branch in the service's repository, and pushes it and opens a pull request there when the clone tracks github.com. Needs a model. |
 | `protection` | Checks, through your own gh and with reads only, that the branch your clone tracks on github.com keeps a pull request from merging until someone other than its opener approves its latest commit; prints the ruleset to add when it does not, and that a submission still opens its pull request there, with a note ([`docs/submitting.md`](docs/submitting.md)). Exit 0 when the rules hold, 1 when they do not, 2 when gh or the clone is refused. No model, nothing written. |
 | `validate` | Checks a repository against the schemas. This is what the scaffolded CI runs. |
-| `plan` | Turns an intent, or a `Plan` file, into a checked and previewed diff. With `--submit`, either form makes it a local branch `idp-agent/…`, for review; `plan --from` also pushes it and opens a pull request when the clone tracks github.com. |
+| `plan` | Turns an intent, or a `Plan` file, into a checked and previewed diff. With `--submit`, either form makes it a branch `idp-agent/…`, for review, pushed and opened as a pull request when the clone tracks github.com; at a terminal, an intent's diff ends on the proposal to open it. |
 
 `plan --from … --submit` writes one new branch, `idp-agent/<file>-<8 hex>`, cut from `HEAD`
 in the declarations repository, and nothing else: not the branch you are on, not the index,
@@ -760,10 +761,12 @@ The full doctrine is in [`docs/design.md`](docs/design.md) §4, and it isn't neg
 
 - **The merge is the act of authorisation.** `--submit` commits a change on a new local
   branch, `idp-agent/…`, cut from `HEAD`, and never moves the main branch
-  ([ADR-0010](docs/adr/0010-a-submission-is-a-create-only-ref.md)); `plan --from … --submit`
-  pushes it and opens the pull request on github.com, where the identity that opens it
-  cannot merge it until someone else has approved its latest commit, and the other roads
-  follow. A merged declaration is authorised, not provisioned
+  ([ADR-0010](docs/adr/0010-a-submission-is-a-create-only-ref.md)); toward github.com it
+  pushes that branch with your git and opens the pull request with your gh. idpa never
+  merges and never writes to the base: it opens a pull request, and the base's rules decide
+  who may merge it — where they let its author merge it alone, a note says so
+  ([ADR-0015](docs/adr/0015-a-submission-is-a-pull-request-the-rules-hold.md)). A merged
+  declaration is authorised, not provisioned
   ([ADR-0012](docs/adr/0012-declared-is-not-provisioned.md), proposed).
 - **Textual surgery, never a reparse.** A reviewer must see an added line, not a
   reformatted file.
@@ -784,22 +787,23 @@ firewall automation and ticketing) and adds the multi-agent layer that system ne
 | 3 | `init platform` + `validate` | ✅ |
 | 4 | Preview only: Inspector, Architect, `Plan`, diff; writes nothing | ✅ |
 | 5 | Write + local branch: `--submit` cuts one create-only branch, idempotent and atomic ([the check](docs/stage-5-check.md)) | ✅ |
-| 6 | [GitHub pull request](docs/stage-6-brief.md): your own git pushes, your own gh opens the pull request, the base's ruleset checked; `idpa protection` and `plan --from … --submit` done, the intent, `init` and phrase roads next | 🚧 |
+| 6 | [GitHub pull request](docs/stage-6-brief.md) ([the plan](docs/plans/stage-6-github.md)): your own git pushes, your own gh opens the pull request, the base's ruleset read; `idpa protection` and every road done — `plan --from`, `plan "<intent>"`, `init` and the phrase, the proposal at a terminal, what is in flight read first; proved on GitHub by the owner's live test ([ADR-0015](docs/adr/0015-a-submission-is-a-pull-request-the-rules-hold.md)); the owner's re-recorded tapes next | ✅ |
 | 6b | [Read the live catalogue](docs/backstage-http-brief.md) (`backstage-http`): questions and relations against a running Backstage, the organisation included (slices 1 and 3, done); large catalogues answered in part and a read kept five minutes (slice 2, done); both sources side by side and namespaces (slices 4–5) with stage 8. No Backstage needed to use the tool | 🚧 |
 | 7 | Polish: Ink TUI, asciinema, npm publish | |
-| 8 | [Discovery](docs/stage-8-brief.md): catalogue an existing service and its dependencies; designed, not started; preview-only until stage 6 lands, submission after it | |
+| 8 | [Discovery](docs/stage-8-brief.md): catalogue an existing service and its dependencies; designed, not started; its submission takes stage 6's road | |
 
 The order follows the doctrine: read first, validate before the first write, preview
 before the pull request. Today **no preview writes anything** — the test suite and
 `pnpm smoke` hash every byte around a full run to prove it — `init platform` writes
 only into the directory it is handed, and `plan … --submit` and `init --submit` write one
 local branch and nothing else, which the suite checks for both and `pnpm smoke` checks for
-`plan --from … --submit`; toward GitHub, `plan … --submit` and `init --submit` push that one
-branch and open one pull request, which the suite checks against a fake gh and a bare
-repository on disk, and `pnpm demo:github` for `plan --from … --submit`.
+`plan --from … --submit`; toward GitHub, every road that submits pushes that one branch and
+opens one pull request, which the suite checks against a fake gh and a bare repository on
+disk, and `pnpm demo:github` runs offline.
 
-Next, in order: three batches from the review, `backstage-http` slice 2, stage 6, stage 8,
-and stage 7 last, the Claude-Code-like chat in the terminal that is the project's end goal.
+Next, in order: the tapes re-recorded by the owner, stage 8 with `backstage-http` slices 4 and 5,
+removing and changing an access, and stage 7 last, the Claude-Code-like chat in the
+terminal that is the project's end goal.
 After stage 7, a discussion rather than a stage: what a company needs around the tool,
 starting with ticket handling through MCP servers such as Jira's.
 
@@ -812,9 +816,9 @@ What comes next and the owner's decisions: [`docs/roadmap.md`](docs/roadmap.md).
 
 **Is this a Backstage plugin?**
 No. It's a standalone CLI that reads Backstage-compatible `catalog-info` YAML in a Git
-repository, previews what it would add and, with `--submit`, commits that on a new local
-branch for review, which `plan --from` pushes and opens as a pull request on github.com with
-your own git and gh. It doesn't need a
+repository, previews what it would add and, with `--submit`, commits that on a new branch
+for review, which it pushes and opens as a pull request on github.com with your own git and
+gh. It doesn't need a
 running Backstage instance, and reads one's catalogue when you configure it
 ([above](#read-a-backstage-catalogue)); it never writes to it.
 
@@ -824,10 +828,11 @@ default.
 
 **Can the AI change my infrastructure on its own?**
 No. It drafts a structure, and the engine signs, gates and serialises it; at most the
-result is a diff. Asked with `--submit`, and confirmed at a terminal, the engine commits
-that diff on a new branch, never on the main branch; `plan --from` pushes it with your git
-and opens the pull request with your gh, which you cannot merge until someone else approves
-it. A human merges it, and the merge authorises the change; provisioning it
+result is a diff. Asked with `--submit`, or answered `y` at a terminal, the engine commits
+that diff on a new branch, never on the main branch, pushes it with your git and opens the
+pull request with your gh; idpa never merges, and the base's rules decide who may — where
+they let you merge it alone, a note says so. A human merges it, and the merge authorises
+the change; provisioning it
 stays a downstream system's job ([ADR-0012](docs/adr/0012-declared-is-not-provisioned.md)).
 
 **Do I need an API key to try it?**
@@ -844,10 +849,11 @@ a key. A question, a change in words and `init`, which inspects a service, need 
 | [`docs/design.md`](docs/design.md) | the full specification: doctrine, architecture, journeys |
 | [`docs/roadmap.md`](docs/roadmap.md) | where the project stands, the queue, the owner's dated decisions, known debts |
 | [`CHANGELOG.md`](CHANGELOG.md) | what each pull request changed |
-| [`docs/adr/`](docs/adr) | the twelve architecture decisions, each dated with its status; start with [0002](docs/adr/0002-plan-as-trust-boundary.md), [0010](docs/adr/0010-a-submission-is-a-create-only-ref.md) and [0012](docs/adr/0012-declared-is-not-provisioned.md) |
+| [`docs/adr/`](docs/adr) | the fifteen architecture decisions, each dated with its status; start with [0002](docs/adr/0002-plan-as-trust-boundary.md), [0010](docs/adr/0010-a-submission-is-a-create-only-ref.md), [0012](docs/adr/0012-declared-is-not-provisioned.md) and [0015](docs/adr/0015-a-submission-is-a-pull-request-the-rules-hold.md) |
+| [`docs/submitting.md`](docs/submitting.md) | submitting to GitHub: gh, the ruleset on the base, `idpa protection`, what each road prints |
 | [`docs/plans/`](docs/plans) | the implementation plans, per stage, per `backstage-http` slice and for tracing, task by task |
 | [`docs/stage-5-check.md`](docs/stage-5-check.md) | how writing was checked and decided before it was built |
-| [`docs/backstage-http-brief.md`](docs/backstage-http-brief.md) · [`docs/stage-8-brief.md`](docs/stage-8-brief.md) | the design notes for reading a Backstage and for discovery |
+| [`docs/stage-6-brief.md`](docs/stage-6-brief.md) · [`docs/backstage-http-brief.md`](docs/backstage-http-brief.md) · [`docs/stage-8-brief.md`](docs/stage-8-brief.md) | the design notes for the pull request, for reading a Backstage and for discovery |
 | [`docs/adopting-backstage.md`](docs/adopting-backstage.md) | registering a declarations repository in a Backstage, and the read token |
 | [`tools/backstage/README.md`](tools/backstage/README.md) | the demo Backstage in Docker |
 | [`docs/reviews/`](docs/reviews) | dated code reviews: what was found, at which commit |

@@ -9,7 +9,7 @@ What has already shipped is in [`CHANGELOG.md`](../CHANGELOG.md). What the 2026-
 found, and which of its findings are closed, is in its
 [Status section](reviews/2026-09-23-deep-review.md#status).
 
-*Updated 2026-09-30, `main` at `63d53e6`.*
+*Updated 2026-10-03, `main` at `d7a6396`.*
 
 ## Where the project stands
 
@@ -24,7 +24,7 @@ each:
 | 3 | `init platform` and `validate` | done |
 | 4 | Preview only: nothing is written | done |
 | 5 | Write + local branch | done ([the check](stage-5-check.md), [the revised plan](plans/stage-5-write.md)): task 1, `Cleared` for the declarations repository ([#105](https://github.com/pcaboor/idp-agent/pull/105)); task 2, `Cleared` for the service repository ([#106](https://github.com/pcaboor/idp-agent/pull/106)); task 3, the shared git launcher and the `forge/` types ([#107](https://github.com/pcaboor/idp-agent/pull/107)); task 4, the local forge — create-only, idempotent, atomic ([#108](https://github.com/pcaboor/idp-agent/pull/108)); task 5, `plan --from … --submit` ([#109](https://github.com/pcaboor/idp-agent/pull/109)); task 6, `plan "<intent>" --submit`, refused before a model is paid ([#110](https://github.com/pcaboor/idp-agent/pull/110)); task 7, `init --submit` and `.idp-agent.yml`, and a branch already there answered before the confirmation ([#111](https://github.com/pcaboor/idp-agent/pull/111)) |
-| 6 | GitHub pull request | in progress ([the plan](plans/stage-6-github.md)): slice 6.1 done: 6.1.1, the allow-list ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2, the remote and who gh is ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3, the preflight and `idpa protection` ([#125](https://github.com/pcaboor/idp-agent/pull/125)); slice 6.2 done: 6.2.1, the GitHub forge ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2, `plan --from … --submit` to GitHub ([#127](https://github.com/pcaboor/idp-agent/pull/127)); slice 6.3: 6.3.1, `plan "<intent>" --submit` to GitHub, and `iacRepo` as a cross-check ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2, `init --submit` to GitHub ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3, `idpa "<phrase>" --submit` ([#131](https://github.com/pcaboor/idp-agent/pull/131)), which closes slice 6.3 as the plan drew it; 6.3.4, the pull request always opened, with a `note:` where its author may merge it alone ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5, at a terminal, a change's diff ending on the engine's proposal to open the pull request ([#134](https://github.com/pcaboor/idp-agent/pull/134)); 6.3.6, what is in flight read first — the open `idp-agent` pull requests into the base, before any model and again before writing ([#135](https://github.com/pcaboor/idp-agent/pull/135)); slice 6.4: 6.4.1, the live test ([#136](https://github.com/pcaboor/idp-agent/pull/136)), made on GitHub on 2026-10-02 |
+| 6 | GitHub pull request | built ([the note](stage-6-brief.md), [the plan](plans/stage-6-github.md), [ADR-0015](adr/0015-a-submission-is-a-pull-request-the-rules-hold.md)); 6.4.3, the owner's re-recorded tapes, lands next. Slice 6.1 done: 6.1.1, the allow-list ([#123](https://github.com/pcaboor/idp-agent/pull/123)); 6.1.2, the remote and who gh is ([#124](https://github.com/pcaboor/idp-agent/pull/124)); 6.1.3, the preflight and `idpa protection` ([#125](https://github.com/pcaboor/idp-agent/pull/125)); slice 6.2 done: 6.2.1, the GitHub forge ([#126](https://github.com/pcaboor/idp-agent/pull/126)); 6.2.2, `plan --from … --submit` to GitHub ([#127](https://github.com/pcaboor/idp-agent/pull/127)); slice 6.3: 6.3.1, `plan "<intent>" --submit` to GitHub, and `iacRepo` as a cross-check ([#128](https://github.com/pcaboor/idp-agent/pull/128)); 6.3.2, `init --submit` to GitHub ([#130](https://github.com/pcaboor/idp-agent/pull/130)); 6.3.3, `idpa "<phrase>" --submit` ([#131](https://github.com/pcaboor/idp-agent/pull/131)), which closes slice 6.3 as the plan drew it; 6.3.4, the pull request always opened, with a `note:` where its author may merge it alone ([#133](https://github.com/pcaboor/idp-agent/pull/133)); 6.3.5, at a terminal, a change's diff ending on the engine's proposal to open the pull request ([#134](https://github.com/pcaboor/idp-agent/pull/134)); 6.3.6, what is in flight read first — the open `idp-agent` pull requests into the base, before any model and again before writing ([#135](https://github.com/pcaboor/idp-agent/pull/135)); slice 6.4: 6.4.1, the live test ([#136](https://github.com/pcaboor/idp-agent/pull/136)), made on GitHub on 2026-10-02; 6.4.2, ADR-0015 and the documents that describe stage 6 as built ([#137](https://github.com/pcaboor/idp-agent/pull/137)) |
 | 7 | Polish: Ink TUI, asciinema, npm publish | not started |
 | 8 | Discovery | designed ([the design note](stage-8-brief.md), [#76](https://github.com/pcaboor/idp-agent/pull/76)); not started |
 
@@ -104,8 +104,10 @@ here, one pull request each, each naming the check run together at the end.
    owner's live test, ran on GitHub on 2026-10-02 — a submission opened its pull request and a
    second named it, every door was refused to the identity that opened it with the base
    unchanged — and its recorded answers hold the fake gh to GitHub in `pnpm test` and pin the
-   oldest gh this build reads ([#136](https://github.com/pcaboor/idp-agent/pull/136)). 6.4.2, ADR-0015 and the documents, and 6.4.3, the
-   owner's re-recording, are next.
+   oldest gh this build reads ([#136](https://github.com/pcaboor/idp-agent/pull/136)). 6.4.2,
+   ADR-0015, accepted, and the documents that describe stage 6 as built, closes it
+   ([#137](https://github.com/pcaboor/idp-agent/pull/137)); 6.4.3, the owner's re-recording
+   of the tapes recorded before 2026-09-30, lands next.
 2. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence; two people discovering the same service see what
@@ -341,7 +343,8 @@ The owner's decisions, dated, each with where it is recorded.
   one approval, approval of the most recent push or dismissal of stale approvals, no force
   push, no deletion, and `current_user_can_bypass` `never` for the person submitting, checked
   before any write and again at the moment of acting; a base protected only by classic branch
-  protection is refused, naming the ruleset to add. The push and the pull request go "like
+  protection is refused, naming the ruleset to add (replaced on 2026-10-01, below; ADR-0015
+  records the later wording). The push and the pull request go "like
   Claude Code": idpa handles no GitHub token; the person's own git pushes the `idp-agent/`
   branch, create-only (`--force-with-lease=<ref>:` with an empty expected value, the exact
   commit, hooks off, one refspec), and the person's own gh reads the rules and opens the pull
@@ -489,9 +492,42 @@ The owner's decisions, dated, each with where it is recorded.
     administrator, `protected` true under a ruleset, the base's ref moved answered 422 where the
     fake said 409, and `merge-async` 202.
 
+**2026-10-03**
+
+- [ADR-0015](adr/0015-a-submission-is-a-pull-request-the-rules-hold.md) accepted: a submission
+  is a pull request, and the base's rules decide who may merge it — "idpa never merges and
+  never writes to the base: it opens a pull request, and the base's rules decide who may merge
+  it", the owner's words of 2026-10-01, held word for word in the design, `AGENTS.md`,
+  `SECURITY.md`, `docs/submitting.md` and the record by `tests/unit/invariant-wording.test.ts`.
+  It records the owner's choices of 2026-09-30 and 2026-10-01 as built, and what the live run of
+  2026-10-02 measured; step 5 of that run, an approval then a push, was not made, the second
+  account being optional, and rests on the fake and the rule's read. Stage 6 is built; 6.4.3,
+  the owner's re-recording of the tapes, lands next
+  ([#137](https://github.com/pcaboor/idp-agent/pull/137)).
+
 ## Known debts and open items
 
-Each was checked against `main` at `3b642fa`.
+Each was checked against `main` at `3b642fa`, except stage 6's follow-ups, checked at `d7a6396`
+(6.4.1 merged).
+
+**Stage 6's follow-ups** ([ADR-0015](adr/0015-a-submission-is-a-pull-request-the-rules-hold.md))
+
+- **GitHub Enterprise** (decision 16). github.com only; a host gh is logged in to, through
+  gh's own host configuration, comes later, with a real instance to test against.
+- **The push credential is not proven to be gh's account** ([the stage 6
+  note](stage-6-brief.md), § 19, Q4). A deploy key or another account's key in the bypass list
+  could move the base without a pull request; `docs/submitting.md` recommends pushing as gh's
+  account. Revisit when a company says its submitters push with other keys.
+- **A server-side runner** (the note's Q1). Stage 6 is a laptop tool: gh must be logged in as
+  a person, and a runner, whose token would make a bot the author, needs an ADR of its own.
+- **A ruleset restricting the creation of `idp-agent/` branches** is printed as advised and
+  was not measured live: what GitHub's push rejection says for it is unknown.
+- **A ruleset supplying none of the three required rules is called classic protection** by
+  `idpa protection`, the exit and the note right and the reason wrong: a known limit, not fixed
+  in stage 6 (*Open questions* below, "`protected: true` is not classic protection alone").
+- **Step 5 of the live test, an approval followed by the author's push, was not made on
+  GitHub**: the second account is optional and was not used on 2026-10-02, so that claim rests
+  on the fake and on the rule's read until a run with a second account is committed.
 
 **Stage 5's follow-ups**
 

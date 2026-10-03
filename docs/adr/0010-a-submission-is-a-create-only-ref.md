@@ -97,3 +97,13 @@ link, which the submission refuses; one primitive for both (batch B3) comes afte
 the writer does not need it, since it never writes the working tree. The Reviewer is not
 re-proved at submission: it is a model and cannot be re-run for free, and the merge still
 authorises.
+
+From stage 6 the same commit is pushed to the same name on GitHub, create-only as well:
+`--force-with-lease=<ref>:` with an empty expected value refuses a ref that exists, and the push
+names one refspec and a URL, never a remote. Each system stays atomic on its own; the two
+together are not, and each intermediate state is completed by running the same command again
+(ADR-0015). On the GitHub road only, our one commit on an older base, with its open pull
+request, is recognised as already submitted; the local road keeps D7. The *Decision*'s "the one
+launcher every process `src/` starts goes through", left as the record it is, now means the git
+launcher, `process/git.ts`: since stage 6 gh has a launcher of its own, `process/gh.ts`, and
+each runs only the command shapes of its grammar.

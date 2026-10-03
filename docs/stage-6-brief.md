@@ -1,9 +1,35 @@
 # The stage 6 brief: a real forge, and the pull request as the act of authorisation
 
 **Date** 2026-09-30 · **Status** revised after the owner's answers of 2026-09-30 (§ 18) and a
-review of the revision · **Builds
+review of the revision, amended by the owner on 2026-10-01; **built** by 2026-10-03, by
+[`plans/stage-6-github.md`](plans/stage-6-github.md), and recorded in
+[ADR-0015](adr/0015-a-submission-is-a-pull-request-the-rules-hold.md) · **Builds
 on** ADR-0006, ADR-0010, ADR-0011 and ADR-0012 (proposed), design §4.2, §7.2 and §7.4, and the
 stage-5 check's D4, D6, D7, D8, D11, D12 and D16 ([`stage-5-check.md`](stage-5-check.md))
+
+*Built, 2026-10-03.* The note's text below is the record of what was designed, and stays as
+written. Where the plan departed from it, to the same end:
+
+- the pure parts — the remote's URL, the clone's configuration, GitHub's answers, the rules'
+  judgement, the pull request's body, gh's version — live in `src/core/github/`, since `forge/`
+  imports no package and so no Zod, and `process/` keeps its own copy of the grammars it checks,
+  held to the same verdicts by a test;
+- the environment `main` is handed reaches every launcher of a submission through
+  `openSubmissionForge`, so a submission's git no longer reads `process.env` behind `main`;
+- the forge's trace attributes reach a trace from the intent road on, since `plan --from`
+  writes no trace;
+- `init --submit` toward GitHub was refused, `--local` named, until its own road landed (6.3.2),
+  as the intent road was until 6.3.1;
+- `pnpm demo:github` runs every road offline against the fake gh and a bare remote, and
+  `pnpm smoke` runs it;
+- § 17's unknowns were measured by the owner's live run of 2026-10-02 (gh 2.96.0, the minimum
+  this build accepts): an administrator outside an empty bypass list is answered
+  `current_user_can_bypass: never` and refused every door, and the second account, optional,
+  was not used;
+- § 8 item 4's branch route is not a read of classic protection: GitHub answers `protected:
+  true` for a branch a ruleset alone covers, so a ruleset supplying none of the three required
+  rules is reported as classic protection only, the exit and the note right and the reason
+  wrong — an open question in `docs/roadmap.md`, a follow-up after stage 6.
 
 This is a design note, not a plan. It says what stage 6 builds, in what order, and why each
 guard exists. The plan in `docs/plans/` comes after it. The line numbers below are those of

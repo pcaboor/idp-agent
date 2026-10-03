@@ -1,7 +1,7 @@
 # ADR-0012 — declared is not provisioned
 
-**Date** 2026-09-29 · **Status** proposed — the problem is stated; no mechanism is built before
-stage 6 · **Builds on** ADR-0006, ADR-0010, ADR-0011
+**Date** 2026-09-29 · **Status** proposed — stage 6 reads the required status check and prints
+it; the check is the downstream system's · **Builds on** ADR-0006, ADR-0010, ADR-0011
 
 ## Context
 
@@ -59,7 +59,11 @@ write it was never scoped for.
 
 ## Consequences
 
-Until stage 6, a declaration on `main` means *authorised*, not *provisioned*, and every document
-that describes the catalogue says so. `init platform` names the required check it will expect
-(stage 5, task 7 of the plan). The reconciler needs the real integrations § 13 keeps out of
-v0.1. This record stays *proposed* until stage 6 builds its first mechanism.
+Stage 6 reads the base's `required_status_checks` and prints the contexts merging waits for, in
+`idpa protection` and in a submission's closing lines, or says none is required and so a
+downstream refusal would not stop the merge. It requires none, since nothing downstream reports
+yet and the generated `validate.yml` runs no validation until the package is published: the
+rule is *advised* in the one list of settings `idpa protection` checks and `init platform`
+prints (ADR-0015). A declaration on `main` still means *authorised*, not *provisioned*, and
+every document that describes the catalogue says so. The reconciler needs the real integrations
+§ 13 keeps out of v0.1. This record stays *proposed*: its mechanism is the downstream system's.

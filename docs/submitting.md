@@ -1,14 +1,18 @@
 # Submitting to GitHub
 
 What a person needs before idpa can open a pull request on their behalf, and how to check it.
-Stage 6 builds the submission itself task by task ([`plans/stage-6-github.md`](plans/stage-6-github.md));
-what works today is `idpa protection`, the check every submission makes before it writes anything,
-and every road that submits, each of which pushes and opens the pull request:
+idpa never merges and never writes to the base: it opens a pull request, and the base's rules
+decide who may merge it. It holds no GitHub credential: your own git pushes the branch and your
+own gh opens the pull request, from a clone whose checked-out branch tracks one on github.com.
+`idpa protection` checks the base's rules on its own, and every road that submits pushes and
+opens the pull request:
 [`plan --from … --submit`](#submitting-a-plan-file),
 [`plan "<intent>" --submit`](#from-a-service-plan-intent---submit),
-[`idpa "<phrase>" --submit`](#one-phrase-idpa-phrase---submit) and
-[`init --submit`](#a-services-own-repository-init---submit).
-The design is [`stage-6-brief.md`](stage-6-brief.md), § 3 to § 15.
+[`idpa "<phrase>" --submit`](#one-phrase-idpa-phrase---submit),
+[`init --submit`](#a-services-own-repository-init---submit) and, at a terminal,
+[the proposal a change's diff ends on](#without---submit-the-proposal).
+The decision is [ADR-0015](adr/0015-a-submission-is-a-pull-request-the-rules-hold.md); the
+design, [`stage-6-brief.md`](stage-6-brief.md), § 3 to § 15.
 
 ## What you need
 
@@ -113,10 +117,30 @@ status checks, signed commits, a merge queue — and says what **no read can see
   who may edit the ruleset;
 - whether GitHub Actions or an app may approve pull requests in the repository.
 
-## Submitting a plan file
+Two more things no read can see, which `idpa protection` does not print: a classic rule's settings,
+which only an administrator can read — that is why a ruleset is what counts, and a base protected
+by classic protection alone gets the note — and whether the account your git pushes with is the one
+gh opens the pull request as, since nothing idpa reads ties them ([push as gh's
+account](#push-as-ghs-account)).
 
-The invariant every submission keeps: idpa never merges and never writes to the base: it opens a
-pull request, and the base's rules decide who may merge it.
+**A known limit**, a follow-up after stage 6: a base covered by a ruleset that supplies none of
+the three required rules (a pull request, force pushes, deletions) is reported as
+
+```text
+  missing: a ruleset: main is protected by classic branch protection only, which idpa does not read
+```
+
+because GitHub answers `protected: true` for a branch a ruleset covers, and that route is read
+only when no ruleset supplies a required rule. The exit, 1, and a submission's note are right; the
+reason is not: the base has a ruleset, missing the rules [above](#the-ruleset-on-the-base-branch),
+which is what to add to it ([`roadmap.md`](roadmap.md), *Open questions*).
+
+Where the rules require another person's approval, the invariant therefore binds the identity
+that opens the pull request and every credential that person pushes with, as long as the ruleset
+stands, the push credential is not in its bypass list, and no workflow or app approves in
+someone else's place. That the merge itself fails is never tried by idpa, which runs no merge.
+
+## Submitting a plan file
 
 ```bash
 idpa plan --from examples/open-network.json --repo ~/my-iac --submit
@@ -589,9 +613,12 @@ base is rejected with `GH013: Repository rule violations found` and the rule it 
 GraphQL mutations answer an error; your own approval is refused, 422 through the API.
 `merge-async` answers **202 Accepted**, and GitHub never carried the merge out: the test watched
 the pull request for 30 seconds, never merged and the base unmoved, and found it unmerged again at
-its end. A
-branch the ruleset covers answers `protected: true` on the branch route although no classic
-protection is set. GitHub held the pushed branch on the first read. What it cannot answer is how
-your company protects its own declarations repository, whether its people push as their gh account,
-and whether its Actions may approve: the three fields answer those for the throwaway repository
-only.
+its end. A branch the ruleset covers answers `protected: true` on the branch route although no
+classic protection is set. GitHub held the pushed branch on the first read, and the request's
+`@mention`, inside the body's fence, rendered as code, with no mention link. Steps 3b and 5 were
+skipped: what they prove — the same change proposed by another person named, and your merge still
+refused after another person's approval and a push of yours on top — rests on the fake and on the
+rule's read (*approval of the most recent reviewable push*), not on GitHub's answer. What it
+cannot answer is how your company protects its own declarations repository, whether its people
+push as their gh account, and whether its Actions may approve: the three fields answer those for
+the throwaway repository only.

@@ -552,6 +552,16 @@ Each pull request adds its line here.
 
 ### Documentation
 
+- ADR-0015, accepted: a submission is a pull request, and the base's rules decide who may merge
+  it — "idpa never merges and never writes to the base: it opens a pull request, and the base's
+  rules decide who may merge it", word for word in the design, `AGENTS.md`, `SECURITY.md`,
+  `docs/submitting.md` and the record, and held there by a test; it states what the live run of
+  2026-10-02 measured, that its step 5 rests on the fake and the rule's read, and, as a known
+  limit, that `idpa protection` calls a ruleset supplying none of the three required rules
+  classic protection; ADR-0006, -0010, -0012 and -0003, the design's authorisation,
+  configuration, journeys, failure and test sections, the README and `AGENTS.md` describe stage
+  6 as built, the stage 6 note is marked built, and `docs/submitting.md` is the page a person
+  follows to submit ([#137](https://github.com/pcaboor/idp-agent/pull/137)).
 - Stage 6's three added tasks are planned: the pull request always opened, with a neutral note
   when its author may merge it alone (6.3.4); the engine proposing to open it after the diff, the
   person's `y` authorising it (6.3.5); and the open `idp-agent` pull requests read first, so two

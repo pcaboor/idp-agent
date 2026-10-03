@@ -41,7 +41,7 @@ harness more verifiable over the one that adds an integration.
 | Reliability proof | Record/replay recordings + property-based invariants + negative tests |
 | Terminal | Ink; the harness emits events, the TUI draws them |
 | Forge | `ForgeProvider` interface — `local` and `github` in v0.1, GitLab in v0.2 |
-| v0.1 scope | `init` and `link`, both ending in a merge request |
+| v0.1 scope | `init` and `link`, both ending in a pull request |
 | Structure | Single package, folders aligned with future packages |
 | v0.2 | Extract `core/` and `context/` as publishable packages + GitLab |
 | Name | `idp-agent` on npm, short command alias `idpa` |
@@ -172,8 +172,7 @@ follows from the documentation of the tools involved.
   on GitHub the right to push a branch is the right that merges, so no credential can be
   scoped out of merging, and what refuses the merge is the base's ruleset, which the tool
   reads before it writes anything and again at the moment of acting; a test asserts that the
-  merge **fails** there: offline against a fake, live on a throwaway repository (the stage 6
-  note, `docs/stage-6-brief.md` §§ 8 and 10, amended 2026-10-01).
+  merge **fails** there: offline against a fake, live on a throwaway repository (ADR-0015).
 - Any check that guards against destruction is repeated engine-side, at the moment of
   acting. A control that only lives in the client controls nothing.
 
@@ -209,8 +208,10 @@ follows from the documentation of the tools involved.
 - The catalogue **ignores duplicates silently**: CI must be the one to refuse.
 - **Declared is not provisioned.** A merged declaration is authorised, and a system
   downstream may still refuse it or fail. Refusal is caught before the merge by a required
-  check (stage 6); failure is detected after it and reported as the entity's status, never
-  written back into the declaration and never deleted (ADR-0012, proposed).
+  status check the downstream system reports; `idpa protection` and every submission print the
+  contexts merging waits for, and nothing requires one yet. Failure is detected after the merge
+  and reported as the entity's status, never written back into the declaration and never
+  deleted (ADR-0012, proposed).
 
 ---
 
@@ -274,12 +275,13 @@ operation naming itself, or a Component `planEdits` drops, is in no diff, and si
 │    │                                                        │     │
 │    └── failure ──► report ──► back to Architect (3 max)     │     │
 │                                                             ▼     │
-│                              [ CONFIRMATION ] ──► branch + MR     │
+│                              [ CONFIRMATION ] ──► branch + PR     │
 └───────────────────────────────────────────────────────────────────┘
 ```
 
 The branch is built at stage 5: a ref under `idp-agent/`, cut from `HEAD` and never moving
-one (ADR-0010). The merge request is stage 6 — see § 7.4.
+one (ADR-0010). The pull request is stage 6: the same commit pushed with the person's git and
+opened with their gh — see § 7.4.
 
 ### 5.2 What `propose()` actually is
 
@@ -885,8 +887,9 @@ environments: [dev, staging, prod]
 ```
 
 It holds **no secret**. Model credentials come from the environment or
-`~/.config/idp-agent/credentials.json`; the forge token from `GITHUB_TOKEN` or
-`gh auth`. What is shared is versioned; what is personal never enters the repository.
+`~/.config/idp-agent/credentials.json`; there is no forge credential: the person's git and gh
+hold theirs, and idpa reads none of it (ADR-0015). What is shared is versioned; what is
+personal never enters the repository.
 
 The absence of `.idp-agent.yml` is what makes the CLI offer a guided tour rather
 than fail.
@@ -1044,11 +1047,13 @@ migration. A root `catalog-info.yaml` already there is kept, and `init platform`
 stderr the Location it needs.
 
 **What the tool cannot do, and says so.** Branch protection is set in the forge
-interface. The tool prints the exact settings required. **From stage 6** it also
-**verifies** them — including a live check that the supplied token can open a request but
-cannot merge one — and refuses to report success until that check passes. Before stage 6
-it prints the settings and states plainly that it cannot verify them, which is the same
-admission made one stage earlier.
+interface. The tool prints the exact settings required. It cannot verify them either, since a
+new repository has no remote yet; `idpa protection` verifies them once the repository is on
+GitHub, and every submission reads them again, before anything is written and at the moment
+of acting, saying in a note where they let the pull request's author merge it without another
+person's review — the pull request is opened all the same, since who may merge is the
+company's rule. What no read can prove — that the merge itself fails — is proved by the
+owner's live test, never by the tool, which runs no merge (ADR-0015).
 
 An automaton that verifies its own powerlessness, out loud, is the clearest
 statement the product makes.
@@ -1113,12 +1118,12 @@ catalogue declares, levels still asked. The design note is
                         before any model; the same bytes already proposed named, nothing
                         written; a file this change writes changed differently: shown, not
                         submitted; other files of the same entities: named in this body
-8. branch + MR          what is in flight read again at the moment of writing; an architect
+8. branch + PR          what is in flight read again at the moment of writing; an architect
                         reviews -> merge = AUTHORISATION
 ```
 
-**Steps 2 to 7 are built — step 1 from a git repository, Backstage not yet — and step 8's
-branch at stage 5; its merge request is stage 6.** `idpa "<phrase>"` is
+**Steps 2 to 8 are built**, step 1 from a git repository or a Backstage catalogue for a
+question. `idpa "<phrase>"` is
 the gesture, typed from any directory: step 1 finds the declarations repository as § 7.0
 says, step 2 classifies the phrase once, and a `QUESTION` goes to the Analyst exactly as
 `ask` would take it (§ 7.6) while a `MUTATION` runs steps 3 to 7 exactly as
@@ -1142,15 +1147,21 @@ the change is decided against, is still refused before any model is chosen.
 Architect over the declarations repository, the five gates of § 6.1, and renders the
 diff. Steps 3 to 7 ship at stage 4, and step 8's branch at stage 5. `plan … --submit` shows
 the diff and, at a terminal, asks one question — *Submit this for review as
-idp-agent/… in <repository>?* — whose default is no. Without a terminal, `--submit` is
+idp-agent/… in <repository>?* — whose default is no; on GitHub's road it names the push and
+the pull request: *Push idp-agent/… to github.com/acme/iac with your git, and open a pull
+request into main with your gh? Nothing is provisioned until someone else approves it and it
+is merged.* — or, where the rules let its author merge it alone, *…until it is merged.*; a
+branch an earlier run pushed is asked only about the pull request. Without a terminal, `--submit` is
 the answer, which is safe because the confirmation was never the guard: the merge is.
 A branch that is already there is answered before that question, by a look that writes
 nothing: this very submission is named and nothing is asked, and somebody else's branch of
-that name is refused. The local forge cuts the branch and says it opened no merge request,
-because there is no forge to open one on until stage 6. `plan --from … --submit` crosses
-four gates and no Reviewer. `idpa "<phrase>" --submit` submits a change as `plan "<intent>"
---submit` does, the forge, gh and the base's rules read before the Supervisor; a question
-with `--submit` is refused (stage 6).
+that name is refused. The local forge cuts the branch. Where the checked-out branch tracks a
+branch on github.com, the person's git pushes that commit create-only and their gh opens a
+pull request into the tracked branch, after the base's rules were read before any model and
+again at the moment of acting (ADR-0015); elsewhere, and with `--local`, the local branch is
+cut and the run says nothing was pushed. `plan --from … --submit` crosses four gates and no
+Reviewer; `idpa "<phrase>" --submit` takes the change's road, the forge, gh and the base's
+rules read before the Supervisor, and a question with `--submit` is refused.
 
 At a terminal, a change previewed without `--submit` ends on the same question (2026-10-01):
 the engine reads what `--submit` would read before it asks — the road, gh, the base's rules,
@@ -1215,7 +1226,9 @@ Direct graph query, tabular output. No plan, no writes, no confirmation.
 | Ambiguity (dev or prod?) | interactive picker, never a silent default |
 | Access already declared | plan restating it, no bytes changed, message, exit 0 (idempotent) |
 | Loop does not converge | stop at 3, partial plan + reason, nothing written |
-| Write interrupted | nothing to roll back: nothing a person can observe exists before the branch's ref is created; an unreachable object may remain, for `git gc` |
+| Write interrupted | per system: locally, nothing to roll back — nothing a person can observe exists before the branch's ref is created, and an unreachable object may remain, for `git gc`; on GitHub, one ref per push, created or not; the two together are not atomic, and each intermediate state is completed by running the same command again (ADR-0015) |
+| Rules missing or bypassable | the pull request is opened all the same, and a note says so, on stderr before any model and in its body — that its author may merge it without another person's review, or, where an approval still binds, that no rule blocks force pushes or restricts deletions; exit 0. A repository archived, renamed or that gh's account cannot push to is refused before anything is written, before any model; exit 1 |
+| A clone's own configuration redirects the push | a key at the `local` or `worktree` scope that would choose where a push goes, who authenticates it or what program runs during it is refused, naming the key and its scope, never its value: exit 2 before any model; found at the moment of acting, exit 1, nothing written (ADR-0015) |
 | Orphaned access detected | reported only, never deleted |
 | Repository moved meanwhile | caught at step 6, plan recomputed |
 
@@ -1253,7 +1266,11 @@ bytes (`planEdits` on applied bytes changes nothing) and at the forge (the same 
 the same base name the same branch, which is recognised, not duplicated). Two model drafts
 that differ are two plans. The atomicity invariant is checked over real repositories
 (`tests/invariants/forge.test.ts`): every git call of a submission is made to fail, before
-it runs and after, and so is a stranger creating the branch at each of them. The seventh is
+it runs and after, and so is a stranger creating the branch at each of them. On the GitHub
+road the invariant is held per system (`tests/invariants/github-forge.test.ts`): every gh call
+and every git call is made to fail in turn, and a stranger creates the branch in the remote at
+each point; after every failure the state is a row of ADR-0015's table, and the next run
+converges on one ref and one pull request. The seventh is
 held in `tests/invariants/github-forge.test.ts`: another account's pull request, seeded into
 each verdict of what is in flight and opened before the first read or between it and the
 moment of writing, is left exactly as it was, and the one pull request this run may open names
@@ -1289,7 +1306,7 @@ since recording produces a warning, not an error.
 ### 9.4 Tests that must fail
 
 ```ts
-test('the token that opens a merge request cannot merge it')
+test('the identity that opens a pull request cannot merge it until someone else has approved the exact commit that would merge')
 test('no module under agents/ imports fs, git or child_process')
 test('a Plan carrying a path outside the repository is rejected')
 test('a Plan carrying an unknown field cannot be applied')
@@ -1297,8 +1314,10 @@ test('a submission cannot move an existing ref, main included')
 ```
 
 The last is the local half of the first, and runs from stage 5 (`local-forge.test.ts`): a
-submission is `update-ref <ref> <commit> ""`, which creates or refuses. The first becomes
-real at stage 6, against a forge.
+submission is `update-ref <ref> <commit> ""`, which creates or refuses. The first is proved
+twice from stage 6: offline in `tests/unit/merge-refused.test.ts`, against the fake gh and a
+bare remote, and live by the owner in `tests/live/github/submit.live.test.ts`, whose recorded
+answers hold the fake to GitHub (ADR-0015).
 
 ---
 
@@ -1316,7 +1335,9 @@ idp-agent/
 │  │  ├─ plan/           construction · validation · atomic application
 │  │  ├─ yaml/           deterministic serialiser + textual surgery
 │  │  ├─ diff/           unified rendering
-│  │  └─ paths/          entity path computation — never the AI
+│  │  ├─ paths/          entity path computation — never the AI
+│  │  └─ github/         a remote's URL, the clone's configuration checked, GitHub's answers read,
+│  │                     the rules and what is in flight judged, the pull request's body, gh's version — pure
 │  ├─ context/
 │  │  ├─ provider.ts     ContextProvider interface
 │  │  ├─ fixtures/       embedded fictional SI (default)
@@ -1325,8 +1346,8 @@ idp-agent/
 │  │  └─ graph/          in-memory index + dependency queries
 │  ├─ forge/
 │  │  ├─ provider.ts     ForgeProvider interface
-│  │  ├─ local/          git: local branch, commit, MR preview (no token)
-│  │  └─ github/         GitHub API
+│  │  ├─ local/          git: the local branch (create-only)
+│  │  └─ github/         the push and the pull request, through the person's git and gh (no token)
 │  ├─ llm/
 │  │  ├─ client.ts       the single crossing point — types only
 │  │  ├─ recording.ts    record / replay
@@ -1337,6 +1358,7 @@ idp-agent/
 │  │  ├─ tools/          registry: read-only + propose
 │  │  ├─ repair.ts       loop, 3 attempts max
 │  │  └─ events.ts
+│  ├─ process/         git.ts · gh.ts — the only two launchers, each checking its argument vector
 │  ├─ governance/      cyber · archi · infra rules (MCP server in v0.2)
 │  ├─ tui/             Ink — consumes events
 │  └─ cli/             index · init · link
@@ -1350,7 +1372,7 @@ idp-agent/
 ## 11. Build order
 
 Order imposed by the doctrine: read-only first, validation before the first write,
-preview before the merge request.
+preview before the pull request.
 
 | # | Stage | Demonstrable output | Time |
 |---|---|---|---|
@@ -1360,7 +1382,7 @@ preview before the merge request.
 | 3 | `init` | scaffold + CI + CODEOWNERS + witnesses | 1 wk |
 | 4 | Preview only | Inspector + Architect + Plan + diff — writes nothing | 1.5 wk |
 | 5 | Write + local branch | local `ForgeProvider`, atomicity, idempotence | 1 wk |
-| 6 | GitHub MR | real forge + negative token test | 1 wk |
+| 6 | GitHub pull request | the person's git and gh, the base's rules read, the merge refused offline and live | 1 wk |
 | 7 | Polish | Ink TUI, README, asciinema, npm publish | 1.5 wk |
 
 **≈ 9 weeks** part-time. Writing arrives only at stage 5, by which point validation has
@@ -1403,7 +1425,10 @@ ADR-0008  commentary crosses the boundary, labelled and witness-checked
 ADR-0009  a trace is one more reader of the event stream
 ADR-0010  a submission is a create-only ref (accepted 2026-09-29; the stage-5 check)
 ADR-0011  Backstage to explore: one snapshot per run; the model's words never become a request
-ADR-0012  declared is not provisioned (proposed; stage 6 builds its first mechanism)
+ADR-0012  declared is not provisioned (proposed; stage 6 reads and prints the required check)
+ADR-0013  a catalogue past a bound is read in part, and says so
+ADR-0014  a catalogue kept on disk is read again through the reader
+ADR-0015  a submission is a pull request, and the base's rules decide who may merge it (accepted 2026-10-03)
 ```
 
 ### 12.2 The whole suite runs without an API key
