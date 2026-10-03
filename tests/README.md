@@ -144,10 +144,22 @@ loops, the tools, the gates, the renderers all run for real.
 - **A turn whose request changed warns** — `the prompt changed since recording; replaying
   anyway` — and replays the old answer. That answer was given to a request the code no
   longer sends. `scenarios/plan-mode.test.ts` turns the warning into a failure, naming the
-  scenario: `the recording is stale — re-record it`, and so does
-  `scenarios/backstage-mode.test.ts`. `scenarios/question-mode.test.ts` does not yet, and
-  its tapes are stale today ([`docs/roadmap.md`](../docs/roadmap.md), "Recordings that need
-  the owner's key").
+  scenario: `the recording is stale — re-record it`, and so do
+  `scenarios/backstage-mode.test.ts` and `scenarios/question-mode.test.ts` (since stage 6,
+  Task 6.4.3). A tape the owner decides to leave as it was recorded is named in
+  `scenarios/left.ts`, with the date of that decision in [`docs/roadmap.md`](../docs/roadmap.md),
+  and is exempt from that failure and from nothing else; the list is empty. `the recordings
+  themselves` also holds each tape's Inspector to the files it read: a `report_facts` that
+  follows no `read_file` returning a file, or names a service none of them holds, fails
+  (`holds an Inspector that reports what a file it read says`).
+- **Which provider recorded each tape** is in the tape, on every turn (`provider`, `model`,
+  `recordedAt`). Since 2026-10-02 every tape was recorded with openai `gpt-6-luna` but
+  `question-prod-databases`, recorded with mistral `mistral-small-2603`
+  ([`docs/roadmap.md`](../docs/roadmap.md) says why). `scenarios/prompt-digests.test.ts` pins
+  every request the question tapes are replayed with (`SENT`, which moves when a tape is
+  recorded again, since a later request carries the model's earlier answers) and each agent's
+  first request apart (`FIRST_SENT`, which a re-record does not move: it is what the code
+  sends before any model answered).
 
 ### What makes a tape stale
 
@@ -167,14 +179,16 @@ changes it:
 
 What does not: the timeout, and the settings of a call that are not part of the request.
 
-That is a turn recorded since 2026-09-30, whose digest starts `sent:sha256:`. A turn
-recorded before holds a `sha256:` digest, taken over the request as the agents build it,
-with each tool's Zod schema as `JSON.stringify` writes it: its fields are there, a `.max()`,
-a `.regex()` and a `.describe()` are not, so such a change still stales that turn with no
-warning. It cannot be moved to the new digest without a key: the tape stores neither the
-tools nor the tool choice it was sent, and its transcript was stored as it grew after the
-call (review tests-6, wip-diff-12). The replay compares each turn with the digest in its own
-scheme, so an old turn keeps the verdict it had until it is recorded again.
+That is a turn recorded since 2026-09-30, whose digest starts `sent:sha256:`, and every turn
+of every tape here is one: the owner recorded the twelve tapes again on 2026-10-02, and `the
+recordings themselves` in `plan-mode.test.ts` fails on a turn under any other digest (`records
+every turn under the digest of what the provider is sent`). A turn recorded before held a
+`sha256:` digest, taken over the request as the agents build it, with each tool's Zod schema
+as `JSON.stringify` writes it: its fields were there, a `.max()`, a `.regex()` and a
+`.describe()` were not, so such a change staled that turn with no warning, and it could not be
+moved to the new digest without a key (review tests-6, wip-diff-12). The replay still compares
+each turn with the digest in its own scheme, so a `sha256:` turn — a tape from an older branch —
+keeps the verdict it had.
 
 ### When your change stales one
 

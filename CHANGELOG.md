@@ -382,6 +382,17 @@ Each pull request adds its line here.
   until their roads open pull requests. A branch that tracks nothing takes stage 5's road
   whatever its name; one named with a `%`, `{`, `}` or invisible character that tracks a
   branch is refused (exit 2), naming `git branch -m` and `--local` ([#127](https://github.com/pcaboor/idp-agent/pull/127)).
+- Every tape recorded before 2026-09-30 is recorded again by the owner, with their key, so every
+  turn of the twelve carries the digest over what the provider is sent, tools included, and a
+  change to a tool's description or bounds now warns on every tape; the question tapes, stale
+  since #54, replay clean, and `question-mode.test.ts` fails on a stale tape as the other two
+  scenario files do. The requests the code builds are those it built before; what the models
+  answered is new. `gpt-6-luna` recorded eleven tapes, `question-consumers-of-billing-db`,
+  `question-unanswerable-ranking` and `mutation-classified-link` among them where Mistral had,
+  and `mistral-small-2603` recorded `question-prod-databases`. `plan-mode.test.ts` also holds
+  each tape's Inspector to the files it read: a `report_facts` with no file read, or naming a
+  service no file it read holds, fails the suite
+  ([#138](https://github.com/pcaboor/idp-agent/pull/138)).
 
 ### Fixed
 
