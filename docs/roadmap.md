@@ -80,7 +80,8 @@ here, one pull request each, each naming the check run together at the end.
    the other has in flight rather than a competing pull request (2026-10-01). It goes on top of
    stage 6, which is done ([#123](https://github.com/pcaboor/idp-agent/pull/123) to
    [#138](https://github.com/pcaboor/idp-agent/pull/138); its follow-ups are under *Known
-   debts*), and whose submission road its own takes.
+   debts*), and whose submission road its own takes. Slice 1, the report, is planned
+   ([the plan](plans/stage-8-slice-1.md)).
 3. **Removing and changing an access, and company rules** (2026-10-01). Revoking a right,
    changing its level or decommissioning a service, always as a pull request a person merges —
    today the tool only appends, and least privilege needs the other half; and gates a company
@@ -512,6 +513,14 @@ The owner's decisions, dated, each with where it is recorded.
   identifier withdraws its addition and keeps its rights; an unstated account agrees with a
   found one at recognition, strict at the re-check; `.idp-agent.yml` under the central default
   a separate pull request on the service's repository, only when a flag asked for it.
+- Stage 8's slice 1 planned ([the plan](plans/stage-8-slice-1.md),
+  [#143](https://github.com/pcaboor/idp-agent/pull/143)), four pull requests, 1.1 to 1.4.
+  The owner's four answers: the exit is read literally — a preview with no **verified**
+  finding (committed, of standing `evidence`, re-read; a sample's finding does not count) in a
+  repository read in part exits 1, and the closing sentence carries the count of verified
+  findings; the git remote is read in 2.5, with its first reader; what git does not track is
+  counted and never named, on stdout, in the trace and in the pull request; nothing is
+  extracted from a file not committed, and the launcher gains no shape.
 
 ## Known debts and open items
 
