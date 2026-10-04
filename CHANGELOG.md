@@ -587,6 +587,15 @@ Each pull request adds its line here.
 
 ### Documentation
 
+- Stage 8's first slice, the report, is planned ([the plan](docs/plans/stage-8-slice-1.md)):
+  four pull requests, each validated by the owner before it merges — a finding and the
+  connection-string parser, which keeps the parts a string names and never its password; the
+  read, which opens only `package.json` and the sample environment files, committed and
+  unchanged since `HEAD`, never a real `.env`, and counts without naming what git does not
+  track; the engine's re-read of every finding; and the first extractors, with the report after
+  `idpa init`'s diff and in its pull request. A preview where nothing is verified, in a
+  repository read in part, exits 1; the owner's four answers of 2026-10-04 are applied
+  ([#143](https://github.com/pcaboor/idp-agent/pull/143)).
 - The stage 8 note is refreshed against `2572ebd`: what stages 5 and 6 and the Inspector's
   witness made true, false or moot, the submission on stage 6's road, the in-flight read reused,
   the two items deferred to stage 8, four slices and seventeen pull requests; the owner's eleven
