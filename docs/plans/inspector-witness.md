@@ -1,9 +1,11 @@
 # The Inspector's facts, held to the files it read
 
-**Status: planned, not built.** One pull request, `fix/inspector-witness`, after this plan merges
-on its own (`docs/plan-inspector-witness`). It is the first half of the queue's item 1,
-"Two fixes before stage 8" (owner's decision, 2026-10-03); the second half, `idpa protection`'s
-reason for a ruleset that supplies none of the three rules, is built
+**Status: Task 1 built ([#141](https://github.com/pcaboor/idp-agent/pull/141)), waiting for the
+owner's re-record of `link-already-declared` (Step 8); see [As built](#as-built).** One pull
+request, `fix/inspector-witness`, after this plan merged on its own
+(`docs/plan-inspector-witness`). It is the first half of the queue's item 1, "Two fixes before
+stage 8" (owner's decision, 2026-10-03); the second half, `idpa protection`'s reason for a
+ruleset that supplies none of the three rules, is built
 ([#139](https://github.com/pcaboor/idp-agent/pull/139)). The owner answered the five questions
 [at the end](#questions-for-the-owner) on 2026-10-03, each as recommended.
 
@@ -304,12 +306,12 @@ export function witnessFacts(
 
 **Files:** as in the File Structure.
 
-- [ ] **Step 1: Pin the before (passes now).** `df -h /`, then `pnpm vitest run
+- [x] **Step 1: Pin the before (passes now).** `df -h /`, then `pnpm vitest run
   tests/unit/inspector.test.ts tests/unit/architect.test.ts tests/scenarios/plan-mode.test.ts
   tests/scenarios/prompt-digests.test.ts`: green. Note the test count of `pnpm test` for the
   `AGENTS.md` figure.
 
-- [ ] **Step 2: Write the Inspector's tests, and see each fail for its stated reason.** In
+- [x] **Step 2: Write the Inspector's tests, and see each fail for its stated reason.** In
   `tests/unit/inspector.test.ts`, a new `describe('what a file it read states')`:
   1. *withdraws the 2026-10-02 invention: a package.json passed as content is read by nobody.*
      The snapshot is `billing-api`'s `package.json` with `pg`. Turn 0 is `read_file` with
@@ -374,7 +376,7 @@ export function witnessFacts(
      whose rule is `keyed` are exactly those of `WITNESS_KEYS`. *Fails today:* the module
      `src/agents/tools/project-witness.ts` does not exist, and the file fails at its import.
 
-- [ ] **Step 3: Write the two roads' tests, end to end, with a scripted client and no tape, and
+- [x] **Step 3: Write the two roads' tests, end to end, with a scripted client and no tape, and
   see each fail.**
   - `tests/unit/plan-intent.test.ts`, *tells the Architect nothing the 2026-10-02 Inspector
     invented*. Run Step 2's scripted Inspector through `runIntent`. The Architect's opening holds
@@ -396,7 +398,7 @@ export function witnessFacts(
     and the builder's `default` (`src/trace/builder.ts:369-372`) returns without drawing
     anything; `pnpm typecheck` is red too until Step 4, which is expected.
 
-- [ ] **Step 4: Build it.** `read()` in `buildProjectTools`. `project-witness.ts`. In
+- [x] **Step 4: Build it.** `read()` in `buildProjectTools`. `project-witness.ts`. In
   `inspectRepository`: `const before = tools.read().length` at the top of each turn, and on an
   accepted report `witnessFacts(parsed.data, tools.read().slice(0, before))`, emitting each
   `unwitnessed` event before `facts` is returned. The `undetermined` path emits none, and is
@@ -404,21 +406,21 @@ export function witnessFacts(
   event, its `renderEvent` line and its trace note: both switches are exhaustive, so a missing
   case does not compile. Steps 2 and 3's tests pass.
 
-- [ ] **Step 5: The fixtures that scripted an unwitnessed Inspector.** These are the 62 tests in
+- [x] **Step 5: The fixtures that scripted an unwitnessed Inspector.** These are the 62 tests in
   the table above. Each is made to read a file that states what it reports. No assertion is
   loosened, and none is deleted. `init-command.test.ts`'s *still writes the name the inspection
   did read* and *vouches for a fact at the field it was read for, and nowhere else* stay
   meaningful because the files now state those facts. Run each file, then `pnpm typecheck`.
 
-- [ ] **Step 6: The docs it makes true** (below), the CHANGELOG line, the roadmap, the review's
+- [x] **Step 6: The docs it makes true** (below), the CHANGELOG line, the roadmap, the review's
   Status and the test count. `docs/plans/inspector-witness.md`'s status line becomes "built".
 
-- [ ] **Step 7: The whole check.** `df -h /`, then `pnpm typecheck`, `pnpm test`, `pnpm build`
+- [x] **Step 7: The whole check.** `df -h /`, then `pnpm typecheck`, `pnpm test`, `pnpm build`
   and `pnpm smoke`. Everything is green except `link-already-declared`, which fails with
   "prompt changed since recording" and nothing else. It is written in the pull request as
   waiting for the owner's key.
 
-- [ ] **Step 8: The owner's re-record** of `link-already-declared` (question 1), on the branch,
+- [x] **Step 8: The owner's re-record** of `link-already-declared` (question 1), on the branch,
   with the command in [`tests/README.md`](../../tests/README.md#when-your-change-stales-one).
   Read the new tape before it is committed. `pnpm test` with no key is then green.
 
@@ -442,20 +444,89 @@ Attendu :
   re-record it`, and every other test passed; after it: all passed;
 - the fifth, after the re-record: every test passed, with the count the pull request states.
 
-And to record the one stale tape, in a shell where the owner's own `OPENAI_API_KEY` is already
-exported (the model is the one the other tapes were recorded with):
+And to record the one stale tape, the key loaded from the owner's `.env` in a subshell, so it
+is gone when the subshell ends (the model is the one the other tapes were recorded with):
 
 ```bash
-IDP_PROVIDER=openai IDP_MODEL=gpt-6-luna IDP_RECORDING=record pnpm vitest run tests/scenarios/plan-mode.test.ts -t "link-already-declared"
-unset OPENAI_API_KEY
-pnpm vitest run tests/scenarios/plan-mode.test.ts
+(set -a; source /Users/pierrecaboor/Documents/idp-agent/.env; set +a; cd /Users/pierrecaboor/Documents/idp-agent-worktrees/inspfix && IDP_PROVIDER=openai IDP_MODEL=gpt-6-luna IDP_RECORDING=record pnpm vitest run tests/scenarios/plan-mode.test.ts -t "link-already-declared: the access is in the repository already")
+cd /Users/pierrecaboor/Documents/idp-agent-worktrees/inspfix && pnpm vitest run tests/scenarios/plan-mode.test.ts
 ```
 
 Attendu :
 
-- the first writes `tests/recordings/link-already-declared.json` and prints `1 passed`;
-- the second prints nothing;
-- the third, with no key, prints every test passed, with no "prompt changed since recording".
+- the first writes `tests/recordings/link-already-declared.json` and prints `Tests  1 passed | 9 skipped (10)`;
+- the second, with no key, prints `Tests  10 passed (10)`, with no "prompt changed since recording".
+
+### As built
+
+Built on `main` at `4a4eb20`, test first; every new test was seen failing for its stated
+reason, or passing where the plan says it passes today, before the code. Where the code or the
+run differed from the plan:
+
+- **No section "Where the code moved since the note" exists in this plan**; every file and line
+  it names was where it said on `4a4eb20`, bar line numbers moved by #139 in files this task does
+  not touch.
+- **Test 5 failed first one step earlier than the plan says**: with no `unwitnessed` event emitted
+  at all, the line under test was `undefined`, not the object `renderEvent`'s `default` hands back.
+  It now passes. Its second half follows `said`, the cleaner every reason on the stream goes
+  through: an ESC sequence is **removed** (`plain`), not spelled out, and a U+202E is spelled
+  `\u202e`; both on one line. The plan's "prints it spelled out" holds for the bidi control only.
+- **`trace-wiring.test.ts`**: the one failing test (*is the text without a terminal's escape
+  sequences…*) and the `init` road of *a memory sink changes nothing a person sees* (green either
+  way, but it would have compared two runs that ask instead of two that reach a diff) both read
+  `package.json`, a `README.md` keying type, lifecycle, runtime and owner, and a `CODEOWNERS`.
+- **`key-reach.test.ts`**: the wire answers the Inspector's first request with `read_file` of a
+  `README.md` that keys every value `FACTS` reports, the name included, and reports on the next;
+  per run, so every road and provider gets the same two turns.
+- **`init-real-repo.test.ts`**: `SIGNALS`' `README.md` gains the three keyed lines, and `drafting`
+  reads `package.json`, `README.md`, `CODEOWNERS` and `Dockerfile` (the runtime `node` is
+  `FROM node:22-alpine`'s) before it reports; the file count and the budget are unchanged.
+- **The 62** were 4 in `inspector.test.ts`, 29 in `init-command.test.ts`, 18 in
+  `init-real-repo.test.ts`, 9 in `key-reach.test.ts`, 1 in `trace-wiring.test.ts` and the stale
+  tape, as measured. No assertion was loosened or deleted.
+- **The roadmap's queue item 1 is marked done**, not half done: #139 shipped its other half before
+  this pull request. *Recordings that need the owner's key* does not gain `link-already-declared`,
+  because the owner records it on this branch before the merge.
+- **No architecture rule moved**: `pnpm vitest run tests/architecture` reports the same 47 tests.
+- **After the review of the built change**, four additions, each test seen failing first (or,
+  for a pin of code already right, failing under a mutation of that code):
+  - *A value folding would change is stated by no file* (`plain` in `project-witness.ts`).
+    `echoes` compares folded and the kept value is the model's, so `serv\u00ADice` (a soft
+    hyphen), a full-width `service`, `\u202Enode` or `node\u2010js` were kept from `type:
+    service`, `runtime node` or `node-js`, and `init` wrote bytes no file held at exit 0. A value
+    holding a control or format character, one NFKC rewrites, or one `fold` changes in anything
+    but its case is now withdrawn, even beside a file holding the same bytes. Six rows of
+    *states a value by the field’s rule*; a seventh pins the limit left, case: `Service` is kept
+    from `type: service`, and the diff shows it as reported.
+  - *An empty dependency list is withdrawn when no file was read*, with the engine's reason
+    `the Inspector read no file, so nothing establishes that this repository declares no
+    dependencies` and one `unwitnessed` event whose value is `(none declared)`, as the Architect
+    would have read it. Once any file was read, an empty list is kept, a limit pinned by *keeps an
+    empty list once a file was read* and named in `SECURITY.md`. No tape reports an empty list.
+  - *Decision 3 is tested*: *makes the whole list unknown when one name in it is unstated* reads
+    `pg`'s manifest, reports `[pg, redis]` and expects the list unknown with `1 of the 2`, and
+    exactly the two events `dependencies.1.name` (`redis`) and `dependencies` (`pg, redis`). It
+    fails if only a list whose every name is unstated is withdrawn.
+  - *A path is no witness, pinned where it could be one*: the row *no runtime, from a path
+    list_files gave* lists and reads `node/README.md` (`hello`) and reports the runtime `node`,
+    a token of that path. It fails if `list_files`' output counts as a read file; the earlier
+    name row could not, since a path holds no `name` key.
+  - Design §6.2's union and `docs/tracing-design.md`'s table of the facts the trace reads gain
+    the `unwitnessed` event.
+
+**The one failure left, until the owner's re-record (Step 8)**, and nothing else fails: in
+`tests/scenarios/plan-mode.test.ts`, `plan "<intent>" > link-already-declared: the access is in
+the repository already`, with `link-already-declared: the recording is stale — re-record it`,
+its stderr carrying `recording link-already-declared architect turn 0` to `turn 3`: *the prompt
+changed since recording; replaying anyway*. The Inspector's turns and the Reviewer's turn replay
+unchanged; `prompt-digests.test.ts` is green, and the other eleven tapes replay with the bytes they
+had, with no such line. `tests/recordings/` is unchanged.
+
+*Step 8, done by the owner on 2026-10-04* with OpenAI `gpt-6-luna`: the Inspector lists the
+files, reads `package.json`, reports `billing-api`, and gives every other field as an unknown
+with its reason — `pg`'s category included, which no file states — so the Architect is sent no
+classification the model made. `plan-mode.test.ts` is 10 out of 10 with no stale line, and the
+whole suite is green.
 
 ---
 

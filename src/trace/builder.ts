@@ -360,6 +360,11 @@ export function createTraceBuilder(options: {
           ...(event.replaced !== undefined ? { replaced: event.replaced } : {}),
         })
         return
+      case 'unwitnessed':
+        // On the Inspector's span, and failing nothing: the unknown is the
+        // inspection's outcome, and the value is kept here for a person.
+        note('unwitnessed', { field: event.field, value: event.value, reason: event.reason })
+        return
       case 'ask':
         note('ask', { path: event.question.path, question: event.question.question })
         return

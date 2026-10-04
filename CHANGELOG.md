@@ -396,6 +396,23 @@ Each pull request adds its line here.
 
 ### Fixed
 
+- The Inspector's report is held to the files it read, on both roads: a value it reports
+  reaches the Architect, and `init`'s signature, only where a file `read_file` returned before
+  the report states it — a whole token for a runtime, a forge handle or a dependency's name, a
+  line holding the field's key for a name, a type or a lifecycle, the reference in full for an
+  owner, and never for a dependency's type — and a value folding would change in anything but
+  its case (a soft hyphen, a full-width letter, a bidi control) is stated by no file, so the
+  diff never writes bytes no file holds. Anything else becomes an unknown with the engine's
+  reason, never quoting the value, and is said on stderr (`= name is unknown, not …`) and in
+  the trace; on `init` it is asked rather than written. A `package.json` the model wrote into
+  a tool's arguments, as on 2026-10-02, is read by nobody; one unstated dependency name makes
+  the whole list unknown, and an empty one is unknown when no file was read; an inspection
+  that ends with no report hands on the engine's reason,
+  the model's words staying on `refused`. Post hoc, never a retry: no model turn is added. Not
+  held: the reason a model writes for a field it marks unknown, which reaches the Architect as
+  written, bounded at 8,192 characters, until stage 8. `link-already-declared` is recorded again,
+  its Inspector having classified `pg` as a database no file states (security-5,
+  gap-init-real-repos-5) ([#141](https://github.com/pcaboor/idp-agent/pull/141)).
 - `idpa protection`, and a submission's preflight, no longer call a base covered by a ruleset
   that supplies none of the three required rules — one that requires signed commits only —
   protected by classic branch protection only: GitHub answers `protected: true` for a branch

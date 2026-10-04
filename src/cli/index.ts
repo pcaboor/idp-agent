@@ -1193,6 +1193,11 @@ export function renderEvent(event: AgentEvent): string | undefined {
         `  = ${event.path} is ${oneLine(event.value)}, as answered for ${event.entity}` +
         (event.replaced === undefined ? '' : `; the draft said ${oneLine(event.replaced)}`)
       )
+    case 'unwitnessed':
+      // The value is the model's, so it is one bounded, inert line; the reason
+      // is the engine's. Said because the Architect is sent the unknown and
+      // never the value: this line is where a person sees what was withdrawn.
+      return `  = ${event.field} is unknown, not ${said(event.value)}: ${event.reason}`
     case 'refused':
       return `! ${event.agent} refused: ${said(event.reason)}`
     case 'stopped':

@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 5065 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 5113 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -502,6 +502,15 @@ billing API"), a figure or an error of reasoning passes, and only the mark says 
 they are. `--quiet` prints the block alone.
 That witness check is a **read-side** guarantee and does not transfer to `propose()`,
 which is why the write side has a signature of its own.
+A value the Inspector reports reaches the Architect and `init`'s signature only where a file
+it read before its report states it, by the field's rule (`agents/tools/project-witness.ts`:
+a whole token, a keyed line, a reference in full; a dependency's type never; a value folding
+would change in anything but its case, by none; an empty dependency list, by none when no file
+was read); otherwise it is
+an unknown with the engine's reason, said on stderr and in the trace, and asked where a
+proposal carries it — a `package.json` the model wrote into a tool's arguments is read by
+nobody. The reason a model writes for a field it marks unknown is not checked, and reaches
+the Architect as written, bounded at 8,192 characters, until stage 8 makes it the engine's.
 
 ```
 Supervisor → Inspector → Architect → Reviewer  │  Zod → signature → policies

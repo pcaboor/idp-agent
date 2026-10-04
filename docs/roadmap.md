@@ -65,11 +65,15 @@ here, one pull request each, each naming the check run together at the end.
    reason was not) — done ([#139](https://github.com/pcaboor/idp-agent/pull/139)): the
    branch route is read only when the rules route answers no rule at all, so that base is told
    the four rules it lacks.
-   The first is planned ([the plan](plans/inspector-witness.md),
-   [#140](https://github.com/pcaboor/idp-agent/pull/140)): one pull request, and the
-   owner's re-record of `link-already-declared`, whose Inspector classified `pg` as a database
-   no file states. It holds the values a report states; the reasons a model writes for its own
-   unknowns wait for stage 8 (owner's decision, 2026-10-03).
+   The first is done too ([the plan](plans/inspector-witness.md),
+   [#140](https://github.com/pcaboor/idp-agent/pull/140);
+   [#141](https://github.com/pcaboor/idp-agent/pull/141)), with the owner's re-record of
+   `link-already-declared`, whose Inspector classified `pg` as a database no file states: a
+   value the Inspector reports reaches the Architect and `init`'s signature only where a file
+   it read before its report states it, by the field's rule, and is otherwise an unknown with
+   the engine's reason, said on stderr and in the trace. It holds the values a report states;
+   the reasons a model writes for its own unknowns wait for stage 8, slice 2, item 2 (owner's
+   decision, 2026-10-03). **Done.**
 2. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence; two people discovering the same service see what
@@ -713,14 +717,6 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
   purpose ("being stricter than Backstage for the two kinds it manages is what `validate`
   is for"). [#53](https://github.com/pcaboor/idp-agent/pull/53) names case-insensitive
   names out of scope.
-- **What the Inspector reports is not held to the files it read, on the plan road too.**
-  security-5 and gap-init-real-repos-5 (under *Left from the sweep of the review*) name it
-  for `init`; `plan "<intent>"` hands the Architect the Inspector's facts the same way, as
-  established, with nothing checking that a file it read states them. The
-  `link-ambiguous-env` tape recorded on 2026-10-02 is the case: an Inspector that read no file
-  reported a service of its own invention, and the run went on (that tape was recorded again
-  on 2026-10-03). `plan-mode.test.ts` now checks the tapes for it; nothing checks a live run
-  yet. The fix is the queue's first item (owner's decision, 2026-10-03).
 - **`get_apis` does not witness the reference it was asked about.**
   [#75](https://github.com/pcaboor/idp-agent/pull/75) made `get_dependencies` witness its
   starting entity on the Analyst's registry; `get_apis` witnesses only the rows it returns
@@ -874,9 +870,10 @@ vocabulary), product-gap-6 (no offset and no system, lifecycle or tag criteria i
   Reviewer vetoes declaring a missing resource the request needs; high), security-6 (no rule
   ties a grant's consumer and target to the request), gap-ask-grounding-2, -3, -4 and -8
   (witnesses, `nothing`, `holds` and `count` outcomes, `ask` forcing the read road).
-- **`init`.** security-5 and gap-init-real-repos-5 (an Inspector fact placed only when a
-  file states it), gap-init-real-repos-7 (monorepo root context; `auth/` folders skipped),
-  gap-init-real-repos-10 (read the git remote, or drop it from design §7.3).
+- **`init`.** gap-init-real-repos-7 (monorepo root context; `auth/` folders skipped),
+  gap-init-real-repos-10 (read the git remote, or drop it from design §7.3). security-5 and
+  gap-init-real-repos-5 are closed ([#141](https://github.com/pcaboor/idp-agent/pull/141)):
+  an Inspector value is placed only when a file it read states it.
 - **Scope and documents.** docs-6 (a keyless `idpa tour`), docs-7 and product-gap-7 (what
   the tool produces and what it does not), docs-8 and architecture-7 (an extension guide;
   plugins after the foundation), product-gap-8 (the registry, closed for v1), docs-10 (the
