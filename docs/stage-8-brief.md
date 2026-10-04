@@ -308,10 +308,15 @@ right or patch it (§ 13).
 The signature has four classes: `echoed | enumerated | derived | novel`
 (`src/core/plan/sign.ts:27`). `init` feeds the Inspector's facts in as `answers`
 (`init.ts:203-218`). An answer is `stated`, and a stated value signs `echoed`, which is the
-class that means "the person asked for this". So a value a model read, and that nothing reads
-again (`project-tools.ts:64-67`), signs exactly like a value a human typed. The review flagged
-this ("The Inspector's facts vouch for themselves"), and it is still open. Discovery must not
-widen that path. It replaces it, in two steps.
+class that means "the person asked for this". So a value a model read signs exactly like a
+value a human typed. The review flagged this ("The Inspector's facts vouch for themselves"),
+and it is still open, narrowed: since `fix/inspector-witness`
+([#141](https://github.com/pcaboor/idp-agent/pull/141)) the engine keeps a value the
+Inspector reports only where a file it read before its report states it
+(`src/agents/tools/project-witness.ts`), so what `init` places as `answered` is "a value a
+file the Inspector read states", never a value the model invented. A file can still state a
+wrong value, and that value still signs as the person's. Discovery must not widen that path.
+It replaces it, in two steps.
 
 First, `answers` goes back to carrying human answers only. What the Inspector model reads
 (name, type, lifecycle, a suggested owner) becomes a **hint** beside a question. This closes
@@ -581,8 +586,11 @@ adds the remote.
   cannot make a finding disappear by leaving it out, and in the rights path there is no model.
 - **Free text in a prompt.** Today the Inspector's `dependencies[].name`, 200 characters of
   repository-influenced text (`project-tools.ts:31-34`), reaches the Architect's opening
-  message verbatim (`src/agents/architect.ts:98-113`). Stage 8 removes the field. The
-  Architect is told about findings by grammar-checked identifier, or not at all.
+  message verbatim (`src/agents/architect.ts:98-113`), when a file the Inspector read states
+  it. So does the second channel: the reason a model writes for a field it marks unknown, up
+  to 8,192 characters, which the witness does not hold. Stage 8 removes the field and makes
+  the reasons the engine's (slice 2, item 2). The Architect is told about findings by
+  grammar-checked identifier, or not at all.
 - **Look-alikes.** `bi11ing-db` or a Cyrillic `bіlling-db` matches nothing, because matching
   is exact and mixed script is refused.
 - **Terminal tricks.** Every repository byte printed goes through `visible()` and `inertLine`
@@ -729,12 +737,18 @@ Closed by 2.7: the § 4 first run, as a preview, with the picker, the Component,
 `add-identifier` in a second labelled section.
 
 1. **Facts off `answers`** (after priority 9). The Inspector's facts become hints, under the
-   hint rule of § 5. Closes gap-init-real-repos-5 with no new class. `init` asks for the name
-   until 2.6. No recording: `init` has none today.
+   hint rule of § 5. The witness is already in place
+   ([#141](https://github.com/pcaboor/idp-agent/pull/141)), which closed
+   gap-init-real-repos-5 for an invented value; this item closes the class, a witnessed value
+   signing as the person's, with no new class. `init` asks for the name until 2.6. No
+   recording: `init` has none today.
 2. **Remove `dependencies` from `ProjectFacts`** and from the Architect's opening
    (`architect.ts:98-113`). This changes `plan "<intent>" --project` too, not only `init`, and
    invalidates `link-already-declared`, `link-ambiguous-env`, `link-db-exists`,
-   `link-db-missing` and `repair-malformed-owner`: **keyed re-record**.
+   `link-db-missing` and `repair-malformed-owner`: **keyed re-record**. And the Inspector's
+   unknown reasons become the engine's: `formatFacts` prints a fixed reason per field, never
+   the model's, riding the same re-record of the same five tapes (owner's decision,
+   2026-10-03).
 3. **`init` reads both repositories and runs all five gates.** Read the declarations
    repository through `sourceOf`, stop refusing Resources in `componentsOf`, run policies,
    re-check and Reviewer. The flag rename lands here or in stage 5's `init --submit` (§ 13).

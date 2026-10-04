@@ -245,21 +245,35 @@ interface Road {
 }
 
 /**
+ * The file of the application repository below that states what `FACTS`
+ * reports, by each field's rule: a value the Inspector reports is kept only
+ * where a file it read before the report states it.
+ */
+const STATING = 'README.md'
+const STATED = 'name: orders-api\ntype: service\nlifecycle: production\nruntime: node\nowner: group:default/tiger\n'
+
+/**
  * Answers each request by the tool it offers, so neither road depends on how
  * many turns an agent spent: the Analyst's `answer`, the Inspector's report,
  * the Architect's proposal, the Reviewer's verdict — and, with none of those
- * offered, the Supervisor's word.
+ * offered, the Supervisor's word. The Inspector reads `STATING` on its first
+ * turn and reports on its next, so its report is one a file states.
  */
-const answering =
-  (wire: Wire, word: Road['word'], operations: unknown[]) =>
-  (body: Body): unknown => {
+const answering = (wire: Wire, word: Road['word'], operations: unknown[]) => {
+  let inspected = false
+  return (body: Body): unknown => {
     const offered = wire.offered(body)
     if (offered.includes('answer')) return wire.calling('answer', { outcome: 'overview' })
-    if (offered.includes(REPORT_TOOL)) return wire.calling(REPORT_TOOL, FACTS)
+    if (offered.includes(REPORT_TOOL)) {
+      if (inspected) return wire.calling(REPORT_TOOL, FACTS)
+      inspected = true
+      return wire.calling('read_file', { path: STATING })
+    }
     if (offered.includes(PROPOSE_TOOL)) return wire.calling(PROPOSE_TOOL, { operations })
     if (offered.includes(VERDICT_TOOL)) return wire.calling(VERDICT_TOOL, { verdict: 'ok' })
     return wire.saying(word)
   }
+}
 
 interface Sent {
   url: string
@@ -310,6 +324,7 @@ const repositories = async (): Promise<{ repo: string; project: string }> => {
     `${JSON.stringify({ name: 'orders-api', dependencies: { redis: '^4' } }, null, 2)}\n`,
     'utf8',
   )
+  await writeFile(path.join(project, STATING), STATED, 'utf8')
   return { repo, project }
 }
 

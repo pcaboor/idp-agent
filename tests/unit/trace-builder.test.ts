@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { AgentEvent } from '../../src/agents/events.js'
 import type { AgentName, GenerateRequest, GenerateResult, Transcript } from '../../src/llm/client.js'
 import { createTraceBuilder, type TraceBuilder } from '../../src/trace/builder.js'
-import { fakeClock, fakeIds, skeletonOf, spanNamed } from '../support/trace.js'
+import { disagreements, fakeClock, fakeIds, skeletonOf, spanNamed } from '../support/trace.js'
 
 const building = (): TraceBuilder =>
   createTraceBuilder({
@@ -336,6 +336,39 @@ describe('an agent’s outcome', () => {
       ],
       ['ask', { path: 'operations.0.entity.metadata.env', question: 'which environment?' }],
     ])
+  })
+
+  it('keeps a value the Inspector reported and no file states as one note on its span', () => {
+    // Said, never dropped in silence: the value goes to the trace, for a person,
+    // and the inspection is not failed by it — the unknown is its outcome.
+    const builder = building()
+    const events: AgentEvent[] = [
+      { type: 'agent:start', agent: 'inspector' },
+      {
+        type: 'unwitnessed',
+        agent: 'inspector',
+        field: 'name',
+        value: 'gorilla-service',
+        reason: 'no file the Inspector read states the name it reported',
+      },
+      { type: 'agent:end', agent: 'inspector', threw: false },
+    ]
+    emitAll(builder, events)
+    const trace = builder.finish(DONE)
+    const inspector = spanNamed(trace, 'inspector')
+
+    expect(inspector.status).toEqual({ code: 'OK' })
+    expect(inspector.events.map((event) => [event.name, event.attributes])).toEqual([
+      [
+        'unwitnessed',
+        {
+          field: 'name',
+          value: 'gorilla-service',
+          reason: 'no file the Inspector read states the name it reported',
+        },
+      ],
+    ])
+    expect(disagreements(trace, events)).toEqual([])
   })
 
   it('keeps a classification and an answer on the agent that gave them', () => {

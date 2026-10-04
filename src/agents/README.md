@@ -29,14 +29,14 @@ Two consequences that look odd until you know why:
 |---|---|
 | `supervisor.ts` | `MUTATION` or `QUESTION`, no tools, no third answer, one retry |
 | `analyst.ts` | a question against the graph, terminating in `answer`: `entities`, `nothing`, `overview` (chosen, never written — the engine describes the catalogue), `relation` (an entity and a relation chosen, the paths computed and written by the engine) or `unanswerable`; all but the last may carry the model's `intro` and `conclusion` |
-| `inspector.ts` | an application repository read into `ProjectFacts`, terminating in `report_facts` |
+| `inspector.ts` | an application repository read into `ProjectFacts`, terminating in `report_facts`, its values held to the files it read |
 | `architect.ts` | a draft into a typed buffer, terminating in `propose` |
 | `reviewer.ts` | substance, not shape: `ok` or a reason, terminating in `verdict` |
 | `repair.ts` | the five gates of design § 6.1 over a draft, three attempts, then a clean stop |
 | `forced-turn.ts` | one bounded turn, the last forced onto the terminal tool |
 | `summary.ts` | the bucketed SI summary an agent is shown |
 | `events.ts` | `AgentEvent`, `EventSink` — the harness renders nothing |
-| `tools/` | `graph-tools.ts` (SI reads), `project-tools.ts` (the snapshot), `propose-tool.ts` |
+| `tools/` | `graph-tools.ts` (SI reads), `project-tools.ts` (the snapshot), `project-witness.ts` (what a file the Inspector read states), `propose-tool.ts` |
 
 ## What an agent receives
 
@@ -191,6 +191,20 @@ Plain data, handed in. Never a graph, never a provider, never a path.
   It runs only when there is an application repository to read; otherwise the Architect
   is handed `NOT_INSPECTED` instead of `ProjectFacts`, and its opening message says that
   nothing was inspected rather than listing facts nobody established.
+
+  Its report is witnessed as the Analyst's answer is (`tools/project-witness.ts`). A value
+  it reports is kept only where a file `read_file` returned **before** the turn of the
+  report states it, by the field's rule: a whole token (`runtime`, `forgeHandle`, a
+  dependency's name), a line holding one of the field's keys and the value (`name`, `type`,
+  `lifecycle`), the reference in full (`owner`), and never for a dependency's type. A path
+  `list_files` gave, a refused read, the model's own arguments and the opening's list of
+  exclusions are no witness. A value no file states becomes an unknown with the engine's
+  reason, never quoting it, and an `unwitnessed` event says the value, for stderr and the
+  trace; one unstated dependency name makes the whole list unknown. Post hoc and never a
+  retry: no model turn is added. What it does not give: a witnessed value is "some file
+  says so", never "true", and the reason a model writes for a field it marks unknown is not
+  a value and passes as written, until stage 8. An inspection that ends with no report hands
+  on the engine's reason in every field, and the model's words only on `refused`.
 - The **Reviewer** gets the `Plan`, the **original request**, and what the **engine**
   established about the plan (`ReviewInput`): each owner `deriveOwners` computed and the
   entity it follows from, what the repository declares of each grant an update would extend

@@ -10,6 +10,7 @@ import {
   projectFactsSchema,
   type ProjectFacts,
 } from './tools/project-tools.js'
+import { NO_REPORT, witnessFacts } from './tools/project-witness.js'
 
 export { projectFactsSchema, type ProjectFacts } from './tools/project-tools.js'
 
@@ -87,12 +88,15 @@ function opening(snapshot: ProjectSnapshot): string {
 }
 
 /**
- * Every field unknown, carrying the reason the inspection ended.
+ * Every field unknown, carrying the engine's reason the inspection ended.
  *
  * Not a default and not a fallback: an inspection that produced no report
  * established nothing, and the only honest shape for nothing is the one design
  * 5.4 defines. The repository root is deliberately not consulted — a checkout at
  * `~/work/billing-api` makes a very convincing name that no file in it states.
+ * Nor is what the model said instead of reporting: "billing-api is a fastify
+ * service" as the reason of seven unknowns reaches the Architect as facts no
+ * file was read for. Its words go on the `refused` event, for a person.
  */
 const undetermined = (reason: string): ProjectFacts => ({
   name: { unknown: reason },
@@ -141,6 +145,11 @@ async function inspectRepository(
     const last = turn === INSPECTOR_LIMITS.maxTurns - 1 || barrenOut
     // The last allowed turn forces termination rather than letting the loop fall
     // off its bound with nothing to show.
+    //
+    // The files read so far, and only those, witness a report made in this
+    // turn: a file read beside the report is one the model had not seen when
+    // it wrote it.
+    const before = tools.read().length
     let result
     try {
       result = await takeTurn({
@@ -214,7 +223,17 @@ async function inspectRepository(
       if (call.name === REPORT_TOOL) {
         const parsed = projectFactsSchema.safeParse(call.args)
         if (parsed.success) {
-          facts = parsed.data
+          // Held to what was read, after the fact and never handed back: a
+          // retry would cost a turn whenever a value is withdrawn, and teach a
+          // model to find a word it can quote (owner's decision, 2026-10-03).
+          // A value no file states is an unknown with the engine's reason, and
+          // said — the value on the stream for a person, never in the reason
+          // the Architect is sent.
+          const held = witnessFacts(parsed.data, tools.read().slice(0, before))
+          for (const withdrawn of held.unwitnessed) {
+            emit({ type: 'unwitnessed', agent: 'inspector', ...withdrawn })
+          }
+          facts = held.facts
           break
         }
         // Put back in the transcript, not thrown: the model gets to correct
@@ -259,11 +278,9 @@ async function inspectRepository(
     // audible here or the Architect proposes from an object full of unknowns
     // without anyone having been told why.
     const reason =
-      said === ''
-        ? 'the inspection ended with no report, so nothing about this repository was established'
-        : `the inspection ended with no report: ${said.slice(0, 400)}`
+      said === '' ? NO_REPORT : `the inspection ended with no report: ${said.slice(0, 400)}`
     emit({ type: 'refused', agent: 'inspector', reason })
-    return undetermined(reason)
+    return undetermined(NO_REPORT)
   }
 
   return facts

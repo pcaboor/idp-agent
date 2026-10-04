@@ -213,13 +213,15 @@ const listing = (report: WriteReport): string[] => [
  * signs with says so (`wordsOf: 'engine'`).
  *
  * It names **exactly the four values `proposedComponentSchema` lets a model
- * write**, and only where the inspection actually established them — and
- * those four, placed at the fields they were read for (`inspected`), are what
- * the signature is measured against. That is the guarantee this buys: a name,
- * a type, a lifecycle or an owner the Architect invents is vouched for by
- * nothing, enumerated by nothing, and becomes a question the CLI puts to the
- * user (design §4.1). The Architect cannot introduce a fact the repository
- * does not state.
+ * write**, and only where the inspection actually established them — a value
+ * a file the Inspector read before its report states, by the field's rule
+ * (`agents/tools/project-witness.ts`); one no file states arrives here as an
+ * unknown and is named nowhere — and those four, placed at the fields they
+ * were read for (`inspected`), are what the signature is measured against.
+ * That is the guarantee this buys: a name, a type, a lifecycle or an owner the
+ * Architect invents is vouched for by nothing, enumerated by nothing, and
+ * becomes a question the CLI puts to the user (design §4.1). The Architect
+ * cannot introduce a fact the repository does not state.
  *
  * The type was the one of the four that did not hold, and the sentence above is
  * only true because `sign.ts` stopped classifying a Component's `spec.type`
@@ -240,9 +242,12 @@ const listing = (report: WriteReport): string[] => [
  *
  * What this does NOT cover, and it is the reason nothing here writes: the
  * Inspector is a model reading files, so this request is not a human's words.
- * The signature says a value matches what the inspection established. It says
- * nothing about whether the inspection was right — §7.3's "confirms the owner
- * it inferred rather than assuming it" is a human reading the diff below.
+ * The signature says a value matches what a file the Inspector read states.
+ * It says nothing about whether the file is right, or about this field — the
+ * keyed rule reads a line, not a format — and §7.3's "confirms the owner it
+ * inferred rather than assuming it" is a human reading the diff below. A
+ * witnessed fact still signs as `answered` here, until stage 8 makes the facts
+ * hints (slice 2, item 1).
  */
 const known = (value: ProjectFacts[keyof ProjectFacts]): string | undefined =>
   typeof value === 'string' ? value : undefined
@@ -308,7 +313,10 @@ function componentsOf(
  * a `spec.type` spelled the same way, and a set of values used to say it did.
  * A fact that is `{unknown}` places nothing, and neither does a field the
  * inspection has no fact for; both leave the value vouched for by nothing,
- * which is a question — the safe direction.
+ * which is a question — the safe direction. That includes a value the
+ * Inspector reported and no file it read states: the engine withdrew it into
+ * an unknown before it got here, so a name the model invented is asked at
+ * `metadata.name` rather than signed as the user's.
  */
 function inspected(facts: ProjectFacts, proposals: readonly Operation[]): Map<string, string> {
   const fields = [

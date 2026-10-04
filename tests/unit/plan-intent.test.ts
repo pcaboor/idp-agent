@@ -537,6 +537,96 @@ describe('plan "<intent>"', () => {
     expect(started).toEqual(['inspector', 'architect', 'reviewer'])
     expect(events.some((event) => event.type === 'plan:ready')).toBe(true)
   })
+
+  it('tells the Architect nothing the 2026-10-02 Inspector invented', async () => {
+    // The tape's Inspector passed a package.json of its own as read_file's
+    // content, with no path, and reported the manifest nobody read. The
+    // Architect was sent those values as facts. A value is held to the files
+    // the Inspector was handed, and what no file states reaches the Architect
+    // as an unknown with the engine's reason, never quoting the value.
+    const repo = await scaffoldedRepository()
+    const proposed = turnCalling(PROPOSE_TOOL, { operations: [CREATE_DATABASE, CREATE_ACCESS] })
+    const run = async (inspector: GenerateResult[]) => {
+      const client = scripted({
+        inspector,
+        architect: [proposed],
+        reviewer: [turnCalling(VERDICT_TOOL, { verdict: 'ok' })],
+      })
+      const { events, emit } = collect()
+      const result = await runIntent({
+        ask: answering('read'),
+        intent: INTENT,
+        repo,
+        project: await application(),
+        client,
+        emit,
+      })
+      return { result, events, client }
+    }
+
+    const invented = await run([
+      turnCalling('read_file', {
+        content:
+          '{"name":"@thronecode/gorilla-service","dependencies":{"fastify":"^4","redis":"^4","jsonwebtoken":"^9","bcrypt":"^5"}}',
+      }),
+      turnCalling(REPORT_TOOL, {
+        name: 'gorilla-service',
+        type: 'service',
+        lifecycle: 'production',
+        runtime: 'Node.js',
+        owner: { unknown: 'no entity reference is stated in this repository' },
+        forgeHandle: { unknown: 'no CODEOWNERS was read' },
+        dependencies: [
+          { name: 'postgresql', type: 'database' },
+          { name: 'redis', type: 'cache' },
+        ],
+      }),
+    ])
+    const honest = await run([
+      turnCalling('read_file', { path: 'package.json' }),
+      turnCalling(REPORT_TOOL, {
+        name: 'billing-api',
+        type: { unknown: 'no file states one' },
+        lifecycle: { unknown: 'no file states one' },
+        runtime: { unknown: 'no file states one' },
+        owner: { unknown: 'no file states one' },
+        forgeHandle: { unknown: 'CODEOWNERS was not read' },
+        dependencies: [{ name: 'pg', type: { unknown: 'a package says what is installed' } }],
+      }),
+    ])
+
+    const opening = openingOf(
+      invented.client.seen.find((request) => request.agent === 'architect'),
+    )
+    expect(opening).toContain(
+      '  name: unknown (no file the Inspector read states the name it reported)',
+    )
+    for (const value of ['gorilla', 'thronecode', 'Node.js', 'redis', 'postgresql', 'fastify']) {
+      expect(opening).not.toContain(value)
+    }
+    const said = 'no file the Inspector read'
+    const names = 'no file the Inspector read names 2 of the 2 dependencies it reported'
+    expect(
+      invented.events
+        .map((event) => renderEvent(event))
+        .filter((line) => line?.includes(' is unknown, not ') === true),
+    ).toEqual([
+      `  = name is unknown, not gorilla-service: ${said} states the name it reported`,
+      `  = type is unknown, not service: ${said} states the type it reported`,
+      `  = lifecycle is unknown, not production: ${said} states the lifecycle it reported`,
+      `  = runtime is unknown, not Node.js: ${said} states the runtime it reported`,
+      `  = dependencies.0.name is unknown, not postgresql: ${names}`,
+      `  = dependencies.1.name is unknown, not redis: ${names}`,
+      `  = dependencies is unknown, not postgresql, redis: ${names}`,
+    ])
+    // The facts reach the Architect's context only: what it drafts is signed
+    // against the request, so the run ends as the honest one does.
+    expect(honest.events.some((event) => event.type === 'unwitnessed')).toBe(false)
+    expect({ found: invented.result.found, unsupported: invented.result.unsupported }).toEqual({
+      found: honest.result.found,
+      unsupported: honest.result.unsupported,
+    })
+  })
 })
 
 describe('plan "<intent>" and .idp-agent.yml', () => {

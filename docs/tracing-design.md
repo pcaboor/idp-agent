@@ -183,13 +183,14 @@ question, which is not a failure.
 A refusal stays the existing `repair` event. A `gate` event carrying `passed: false` would have
 stated one fact twice. That is the same reasoning that split `repair` from `retry` (design §6.2).
 
-The trace also reads three facts the stream carries for its own reasons:
+The trace also reads four facts the stream carries for its own reasons:
 
 | event | emitted by | what the trace draws |
 |---|---|---|
 | `{ type: 'stopped'; agent; reason }` | the Architect, the Inspector and the Reviewer, when the model call beneath them threw; the Supervisor, when its model's call succeeded and gave neither word twice | the agent span fails with `reason`; `agent:end` still closes it |
 | `error?` on `tool:result` | a tool loop, when the tool refused or failed the call — the Architect's refused `answer` included | the `TOOL` span's outputs carry `error`, and it fails with it |
 | `{ type: 'reapplied'; path; value; entity; answeredAt; replaced? }` | the ask loop, when an answer the user gave is put back into a redraft | a span event on whatever is open |
+| `{ type: 'unwitnessed'; agent; field; value; reason }` | the Inspector, when the engine withdraws a value of its report that no file it read states (`agents/tools/project-witness.ts`) | a span event on the Inspector's span, failing nothing: the unknown is the inspection's outcome |
 
 One event is on the stream and not drawn: `{ type: 'usage'; agent; usage? }`, which `counted`
 (`cli/usage.ts`) emits for each model call that returned, so the terminal can print the run's

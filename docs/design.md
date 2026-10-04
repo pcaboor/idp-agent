@@ -250,6 +250,17 @@ the catalogue to begin with — that is the **signature**, gate [2] of § 6.1, w
 classifies every leaf of a proposal by where it came from and turns what nobody can vouch
 for into a question rather than a value.
 
+The Inspector's report is held to what was read in the same spirit, on both roads: a value
+the Inspector reports reaches the Architect and `init`'s signature only where a file it read
+before its report states it, by the field's rule — a whole token, a keyed line, a reference
+in full, and a dependency's type never. A value that folding would change in anything but its
+case — a soft hyphen, a full-width letter — is stated by no file, since the diff would write
+bytes none holds, and an empty dependency list is withdrawn when no file was read. Otherwise it is an unknown with the engine's reason,
+said on stderr and in the trace, never quoted to the model, and asked where a proposal
+carries it. A witnessed value is "some file says so", not "true". The reason a model writes
+for a field it marks unknown is not checked: it reaches the Architect as written, bounded at
+8,192 characters, until stage 8 makes it the engine's.
+
 One source of vouching is the proposal itself. A grant over a resource the catalogue does
 not hold is two operations — declare the resource, then the right over it — and the second
 names the first by a reference that is in no witness set, because a witness set is what the
@@ -832,6 +843,7 @@ type AgentEvent =
   | { type: 'derived';       path: string; owner: string; from: readonly string[] }
   | { type: 'overridden';    path: string; owner: string; determined: string; from: readonly string[] }
   | { type: 'reapplied';     path: string; value: string; entity: string; answeredAt: string; replaced?: string }
+  | { type: 'unwitnessed';   agent: 'inspector'; field: string; value: string; reason: string }
   | { type: 'ask';           question: Question }
 ```
 
@@ -1082,8 +1094,8 @@ written, `.idp-agent.yml` included; with it, both go on one branch of the servic
 repository, which must be a clone's root (a service in a subfolder of its repository is not
 submitted at stage 5). "Confirms the owner it inferred rather than assuming it" is a human
 reading that diff. The signature says a proposed value
-matches what the inspection established; the Inspector is a model reading files, so it
-says nothing about whether the inspection was right.
+matches what a file the Inspector read states; the Inspector is a model reading files, and
+a file can state a wrong value, so it says nothing about whether the inspection was right.
 
 On a real service repository (review priority 9), the Inspector's budget is spent on the
 signal files first — manifests, CODEOWNERS, catalog-info, charts, Dockerfiles, deployments —

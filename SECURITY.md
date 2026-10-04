@@ -247,6 +247,7 @@ Inspector.
 | An answer names only what a tool returned (ADR-0007) | `tests/unit/analyst.test.ts` — *refuses an answer naming a reference no tool returned, and names it* |
 | The model's sentences around an answer are dropped whole when they name what nobody read, and marked `›` (ADR-0008) | `tests/unit/commentary.test.ts` — *drops a sentence naming an entity the graph holds and no tool returned*; `tests/unit/ask-commentary.test.ts` — *marks every line of the model with a sign no engine line starts with* |
 | No computed path leaves the repository; a traversing name or annotation is refused, not sanitised | `tests/invariants/core.test.ts` — *every computed path stays inside the repository* (property-based); `tests/unit/entity-path.test.ts` — *refuses a traversal escape*, *refuses an annotation that traverses out of the repository* |
+| A value the Inspector reports reaches a model or the signature only where a file it read before its report states it; a package.json the model wrote itself is read by nobody | `tests/unit/inspector.test.ts` — *withdraws the 2026-10-02 invention: a package.json passed as content is read by nobody*, *states a value by the field’s rule* (a soft hyphen, a full-width letter or a bidi control in a value included: stated by no file, so the diff writes no bytes a file does not hold), *makes the whole list unknown when one name in it is unstated*, *does not tell the Architect there are no dependencies when it read no file*, *does not hand the Architect what the model said when no report came*; `tests/unit/plan-intent.test.ts` — *tells the Architect nothing the 2026-10-02 Inspector invented*; `tests/unit/init-command.test.ts` — *asks for a name the Inspector invented, rather than writing it* |
 | The Inspector reads nothing outside the application repository, links included | `tests/unit/project-fs.test.ts` — *refuses a symlink pointing outside the project*, *an alias is not a disguise* |
 | Nothing is read through a symbolic link in the declarations repository, inside it or out: every link the walk meets is named — a linked `.yml` as a file not read, any other as a link not followed, an error to `validate` — and `plan` refuses a repository holding a linked file, naming it, before a preview; a file or a folder swapped for a link after the walk, leading outside the repository or to another folder inside it, is refused at the open | `tests/unit/iac-fs.test.ts` — *names a file linked outside, and never reads what it leads to*, *names a file linked inside the repository too, and reads it once, where it is*, *names a folder linked outside, rather than dropping it in silence, and walks nothing in it*, *names a folder linked inside the repository, and walks it once, where it is*, *names a link at the root, whatever it is called*; `tests/unit/plan-command.test.ts` — *refuses a file that is a symbolic link, naming it, and reads nothing through it*; `tests/unit/confine.test.ts` — *refuses a file swapped for a link after it was decided on*, *refuses a file whose folder was swapped for a link outside after it was decided on*, *refuses a file whose folder was swapped for a link inside the root after it was decided on*; `tests/unit/iac-fs.test.ts` — *says a link is a link, never a folder it could not list, whatever the link names* |
 | Environment files and key material are withheld from the model | `tests/unit/project-fs.test.ts` — *excludes every environment file, whatever its case or suffix*, *excludes key material by name, whatever the case*, *skips a private key hiding behind an innocent name* |
@@ -362,6 +363,19 @@ open.
   unwritten, and is written by hand.
 - **What the agents read from the declarations repository is sent as written.** Nothing
   there is filtered: it is the catalogue the question is about.
+- **The Inspector's witness holds values, not the reasons a model gives** (security-5,
+  gap-init-real-repos-5, closed for values). The reason a model gives for a field it marks
+  unknown is passed to the Architect as written, bounded at 8,192 characters, until stage 8
+  makes it the engine's (`tests/unit/inspector.test.ts` — *passes a model’s own unknown
+  reason through as written*). The keyed rule reads a line, not a format: any `name` line
+  states its value (a workflow's `name: ci`), an environment variable's key counts
+  (`LIFECYCLE=production`), and a file of one line is a whole-file test — each pinned by a
+  row of *states a value by the field’s rule*. A value is compared without regard to case,
+  so `Service` is stated by `type: service` and written as reported, which the diff shows (a
+  row pins it). An empty dependency list is kept once any file was read: which file states
+  an absence is a format's question, and the witness reads no format (*keeps an empty list
+  once a file was read: a pinned limit*). A witnessed value is "some file says so",
+  never "true", and on `init` it still signs as answered until stage 8 makes the facts hints.
 
 ## Not guaranteed, by design
 

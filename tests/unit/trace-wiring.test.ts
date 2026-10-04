@@ -259,7 +259,26 @@ const declarations = async (): Promise<{ parent: string; repo: string }> => {
 const application = async (): Promise<string> => {
   const root = await scratch()
   await writeFile(path.join(root, 'package.json'), `${JSON.stringify({ name: 'billing-api' })}\n`, 'utf8')
+  // What `FACTS` reports beyond the name, keyed: a value the Inspector reports
+  // is kept only where a file it read before the report states it.
+  await writeFile(
+    path.join(root, 'README.md'),
+    'type: service\nlifecycle: production\nruntime: node\nowner: group:default/tiger\n',
+    'utf8',
+  )
+  await writeFile(path.join(root, 'CODEOWNERS'), '* @acme/platform\n', 'utf8')
   return root
+}
+
+/** An `init` Inspector's first turn: the files `application()` writes. */
+const READING: GenerateResult = {
+  text: '',
+  toolCalls: ['package.json', 'README.md', 'CODEOWNERS'].map((file) => ({
+    id: `read-${file}`,
+    name: 'read_file',
+    args: { path: file },
+  })),
+  finishReason: 'tool-calls',
 }
 
 const FACTS = {
@@ -684,7 +703,7 @@ describe('what the root says a run printed', () => {
     try {
       const code = await main(['init', '--repo', await application()], {
         client: byAgent({
-          inspector: [calling(REPORT_TOOL, FACTS)],
+          inspector: [READING, calling(REPORT_TOOL, FACTS)],
           architect: [
             calling(PROPOSE_TOOL, {
               operations: [
@@ -755,7 +774,7 @@ describe('a memory sink changes nothing a person sees, on any road', () => {
    */
   const initClient = (): LlmClient =>
     byAgent({
-      inspector: [calling(REPORT_TOOL, FACTS)],
+      inspector: [READING, calling(REPORT_TOOL, FACTS)],
       architect: [calling('answer', { outcome: 'nothing' }), calling(PROPOSE_TOOL, { operations: [COMPONENT] })],
     })
 

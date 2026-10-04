@@ -78,7 +78,10 @@ const apiDoc = (name: string): string =>
 const SIGNALS: Record<string, string> = {
   'package.json': `${JSON.stringify({ name: 'billing-api', dependencies: { express: '^4.19.0' } }, null, 2)}\n`,
   Dockerfile: 'FROM node:22-alpine\nCOPY . .\nCMD ["node", "src/index.js"]\n',
-  'README.md': '# billing-api\n\nBills customers.\n',
+  // Keys the facts `FACTS` reports that no manifest states: a value the
+  // Inspector reports is kept only where a file it read states it.
+  'README.md':
+    '# billing-api\n\nBills customers.\n\ntype: service\nlifecycle: production\nowner: group:default/payments\n',
   CODEOWNERS: '* @acme/payments\n',
   'docker-compose.yml': 'services:\n  api:\n    build: .\n',
   'charts/billing-api/Chart.yaml': 'apiVersion: v2\nname: billing-api\nversion: 0.1.0\n',
@@ -241,9 +244,20 @@ const UNSTATED = {
   owner: { unknown: 'no file states an entity reference' },
 }
 
+/** The Inspector's first turn: the signal files that state what `FACTS` reports. */
+const READING: GenerateResult = {
+  text: '',
+  toolCalls: ['package.json', 'README.md', 'CODEOWNERS', 'Dockerfile'].map((file) => ({
+    id: `read-${file}`,
+    name: 'read_file',
+    args: { path: file },
+  })),
+  finishReason: 'tool-calls',
+}
+
 const drafting = (operations: unknown[], facts: unknown = FACTS) =>
   scripted({
-    inspector: [turnCalling(REPORT_TOOL, facts)],
+    inspector: [READING, turnCalling(REPORT_TOOL, facts)],
     architect: [turnCalling(PROPOSE_TOOL, { operations })],
   })
 

@@ -336,6 +336,10 @@ const openingOf = (request: GenerateRequest | undefined): string => {
 /**
  * One application repository, with the two files an Inspector looks for — and
  * its `.idp-agent.yml`, when a test hands one, as `plan-intent.test.ts`'s does.
+ *
+ * Its README keys every other fact `FACTS` reports, one per line: a value the
+ * Inspector reports is kept only where a file it read states it, so a test that
+ * is about something else needs files that state what its Inspector reports.
  */
 const application = async (config?: string): Promise<string> => {
   const root = await temp()
@@ -345,8 +349,22 @@ const application = async (config?: string): Promise<string> => {
     'utf8',
   )
   await writeFile(path.join(root, 'CODEOWNERS'), '* @acme/platform\n', 'utf8')
+  await writeFile(path.join(root, 'README.md'), STATING, 'utf8')
   if (config !== undefined) await writeFile(path.join(root, CONFIG_FILE), config, 'utf8')
   return root
+}
+
+const STATING = 'type: service\nlifecycle: production\nruntime: node\nowner: group:default/tiger\n'
+
+/** The Inspector's first turn: every file `application()` writes that states a fact. */
+const READING: GenerateResult = {
+  text: '',
+  toolCalls: ['package.json', 'CODEOWNERS', 'README.md'].map((file) => ({
+    id: `read-${file}`,
+    name: 'read_file',
+    args: { path: file },
+  })),
+  finishReason: 'tool-calls',
 }
 
 const FACTS = {
@@ -370,7 +388,7 @@ const COMPONENT = {
 
 const drafting = (operations: unknown[], facts: unknown = FACTS) =>
   scripted({
-    inspector: [turnCalling(REPORT_TOOL, facts)],
+    inspector: [READING, turnCalling(REPORT_TOOL, facts)],
     architect: [turnCalling(PROPOSE_TOOL, { operations })],
   })
 
@@ -621,6 +639,63 @@ describe('init, per application', () => {
       result.text.split('\n').filter((line) => line.includes('anything-the-model-likes')),
     ).toEqual(['      the draft says anything-the-model-likes'])
     expect(result.text).not.toContain('catalog-info.yaml')
+    expect(await hashTree(project)).toBe(before)
+  })
+
+  it('asks for a name the Inspector invented, rather than writing it', async () => {
+    // The 2026-10-02 Inspector: a package.json of its own passed as read_file's
+    // content, with no path, then a report of the manifest nobody read. On
+    // this road the facts are answers the signature trusts (`inspected`), so
+    // an invented name used to sign as the user's and reach the catalog-info
+    // at exit 0. Held to the files read, it vouches for nothing.
+    const project = await application()
+    const before = await hashTree(project)
+    const client = scripted({
+      inspector: [
+        turnCalling('read_file', {
+          content:
+            '{"name":"@thronecode/gorilla-service","dependencies":{"fastify":"^4","redis":"^4"}}',
+        }),
+        turnCalling(REPORT_TOOL, {
+          name: 'gorilla-service',
+          type: 'service',
+          lifecycle: 'production',
+          runtime: 'Node.js',
+          owner: { unknown: 'no entity reference is stated in this repository' },
+          forgeHandle: { unknown: 'no CODEOWNERS was read' },
+          dependencies: [{ name: 'redis', type: 'cache' }],
+        }),
+      ],
+      architect: [
+        turnCalling(PROPOSE_TOOL, {
+          operations: [
+            {
+              ...COMPONENT,
+              entity: { ...COMPONENT.entity, metadata: { name: 'gorilla-service' } },
+            },
+          ],
+        }),
+      ],
+    })
+
+    const result = await runInitRepo({
+      project,
+      client,
+      emit: () => {},
+      answers: { owner: 'group:default/tiger' },
+    })
+
+    expect(result.unsupported).toBe(true)
+    expect(result.found).toBe(false)
+    for (const field of ['metadata.name', 'spec.type', 'spec.lifecycle']) {
+      expect(result.text).toContain(`operations.0.entity.${field}`)
+    }
+    expect(result.text).toContain('Answer --name, --lifecycle on the command line')
+    expect(result.text).toContain(
+      'operations.0.entity.spec.type has no flag: run this at a terminal to be asked.',
+    )
+    expect(result.text).not.toContain('+  name: gorilla-service')
+    expect(result.text).not.toContain('+++ b/catalog-info.yaml')
     expect(await hashTree(project)).toBe(before)
   })
 

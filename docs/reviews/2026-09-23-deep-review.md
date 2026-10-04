@@ -193,6 +193,7 @@ Review ids that a later pull request names as fixed, outside the ids the priorit
 - gap-ask-grounding-6 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5
 - gap-ask-grounding-7 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5, by normalising and one retry; no forced `classify` tool, which would change what every tape sent the Supervisor
 - gap-ask-grounding-11 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5
+- gap-init-real-repos-5 → [#141](https://github.com/pcaboor/idp-agent/pull/141), the Inspector's witness: a value it reports is placed only where a file it read before its report states it, by the field's rule, and is otherwise an unknown with the engine's reason, said on stderr, and asked (`init-command.test.ts`, *asks for a name the Inspector invented, rather than writing it*); a witnessed value still signs as answered until stage 8's slice 2, item 1
 - gap-init-real-repos-6 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - gap-init-real-repos-8 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - gap-init-real-repos-9 → [#91](https://github.com/pcaboor/idp-agent/pull/91), batch A5
@@ -220,6 +221,7 @@ Review ids that a later pull request names as fixed, outside the ids the priorit
 - runtime-probe-11 → [#115](https://github.com/pcaboor/idp-agent/pull/115), batch B3, with core-yaml-5 for `writeScaffold` and gap-stage5-readiness-4 for the iac-fs walk: one lstat, realpath and `O_NOFOLLOW` primitive, `src/confine/`, which only `scaffold/write.ts`, `iac-fs` and `project-fs` load (two architecture rules); a folder swapped for a link between a check and an open, to outside the root or to another folder inside it, is refused at the open, and the one empty folder or empty file `mkdir` or an exclusive create can leave in that instant is stated in `SECURITY.md`
 - runtime-probe-13 → [#87](https://github.com/pcaboor/idp-agent/pull/87), batch A1
 - security-4 → [#58](https://github.com/pcaboor/idp-agent/pull/58) for `show`, `graph`, `ask` and `validate`; [#62](https://github.com/pcaboor/idp-agent/pull/62) cleans what `plan` and `init` print, without naming the id
+- security-5 → [#141](https://github.com/pcaboor/idp-agent/pull/141), with gap-init-real-repos-5, on both roads: each value the Inspector reports is witnessed textually — a whole token, a keyed line, a reference in full, and a dependency's type never — or it is withdrawn and asked (`inspector.test.ts`, *withdraws the 2026-10-02 invention*, *states a value by the field’s rule*); the CODEOWNERS owner stays a forge handle, never an owner; the reason a model writes for its own unknown is not held, until stage 8
 - security-8 → [#115](https://github.com/pcaboor/idp-agent/pull/115), batch B3, with core-yaml-5 and runtime-probe-11
 - security-9 → [#89](https://github.com/pcaboor/idp-agent/pull/89), batch A3
 - security-10 → [#88](https://github.com/pcaboor/idp-agent/pull/88), batch A2, for a real key's shape in a tape; `providerMetadata` is still recorded, and dropping it rewrites every tape, so it waits for a re-record
@@ -349,7 +351,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | gap-ask-grounding-4 | partly fixed | medium | medium |  | re-record, owner | Engine-verified `holds` and `count` outcomes, rendered by the engine as `relation` is. |
 | gap-ask-grounding-7 | still true | medium | small | A5, fixed in [#91](https://github.com/pcaboor/idp-agent/pull/91) |  | Strip punctuation and markdown before comparing the Supervisor's word, retry once, then exit 1 with one line. |
 | gap-ask-grounding-9 | still true | medium | large |  | owner | Same as architecture-5 for namespaces; until then set aside a non-default namespace with a warning. |
-| gap-init-real-repos-5 | still true | medium | small |  | owner | Place an Inspector fact only when its value occurs in a file it read; otherwise ask. Same fix as security-5. |
+| gap-init-real-repos-5 | still true | medium | small | fixed in [#141](https://github.com/pcaboor/idp-agent/pull/141) | owner | Place an Inspector fact only when its value occurs in a file it read; otherwise ask. Same fix as security-5. |
 | gap-init-real-repos-6 | still true | medium | trivial | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) |  | Same fix as cli-ux-8. |
 | gap-init-real-repos-7 | still true | medium | medium |  | re-record, owner | CODEOWNERS and `.idp-agent.yml` from the git root for a sub-folder; `auth` out of the directory stems; one Component per run documented. |
 | gap-stage5-readiness-2 | still true | medium | small | A4, fixed in [#90](https://github.com/pcaboor/idp-agent/pull/90) |  | Refine `repoPath`: relative, no `..`, no hidden segment, basename `catalog-info.y(a)ml`; test both probe paths. |
@@ -420,7 +422,7 @@ domain-backstage-8 (`backstage-http` slice 1) and gap-stage5-readiness-6 (stage 
 | product-gap-11 | still true | low | small |  | owner | Same channel as cli-ux-5. |
 | product-gap-14 | still true | low | trivial | A3, fixed in [#89](https://github.com/pcaboor/idp-agent/pull/89) |  | `path.posix.normalize` in `assertRelativeSafe` and `resolveEntityPath`. |
 | runtime-probe-13 | partly fixed | low | small | A1, fixed in [#87](https://github.com/pcaboor/idp-agent/pull/87) (a retry is a line on stderr, not a trace event) |  | Refuse an empty or dash-leading directory for `init platform` and `validate`; a retry progress event. |
-| security-5 | still true | low | small |  | owner | Witness each Inspector fact textually, or it is asked; the CODEOWNERS owner as its own class. |
+| security-5 | still true | low | small | fixed in [#141](https://github.com/pcaboor/idp-agent/pull/141) | owner | Witness each Inspector fact textually, or it is asked; the CODEOWNERS owner as its own class. |
 | security-6 | partly fixed | low | medium |  | re-record, owner | A policy: every grant's consumer and target is named by the request or answered; otherwise ask. |
 | security-10 | still true | low | trivial | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) for the key's shape; `providerMetadata` is left for a re-record |  | Run `secretIn` over each tape's raw text beside the header regex. |
 | tests-7 | still true | low | small | A2, fixed in [#88](https://github.com/pcaboor/idp-agent/pull/88) |  | Stub `http`, `https`, `net`, `tls` and `WebSocket` in the offline setup; delete `*_API_KEY`. |

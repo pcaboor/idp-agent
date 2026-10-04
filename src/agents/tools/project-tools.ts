@@ -61,10 +61,14 @@ const declaredDependencySchema = z.strictObject({
  *                     and the field would be a second free-text channel out of a
  *                     repository and into a plan, for no field that needs it.
  *
- * What this does NOT give the Architect: any assurance the values are true. The
- * witness check is a read-side guarantee and does not travel (design 5.1) —
- * these are values a model composed from files, not identifiers an engine
- * returned, and nothing here re-reads them.
+ * What this does NOT give the Architect: any assurance the values are true.
+ * These are values a model composed from files, not identifiers an engine
+ * returned. What the engine does hold them to is the files the model was
+ * handed (`project-witness.ts`): a value no file `read_file` returned before
+ * the report states, by its field's rule, is withdrawn into an unknown with the
+ * engine's reason, and said. A kept value is "some file says so", never
+ * "true" — a file can state a wrong one — and the reason a model writes for a
+ * field it marks unknown is not a value, and is not held to anything.
  */
 export const projectFactsSchema = z.strictObject({
   name: or(proposedName),
@@ -95,6 +99,12 @@ export const projectFactsSchema = z.strictObject({
 })
 
 export type ProjectFacts = z.infer<typeof projectFactsSchema>
+
+/** A file `read_file` returned to the model: its path in the snapshot and the text it was handed. */
+export interface ReadFile {
+  readonly path: string
+  readonly text: string
+}
 
 /** The terminal tool. Named once so the loop and the specs cannot disagree. */
 export const REPORT_TOOL = 'report_facts'
@@ -155,7 +165,17 @@ const failed = (tool: string, error: z.ZodError): ToolOutcome =>
 export function buildProjectTools(snapshot: ProjectSnapshot): {
   specs: ModelToolSpec[]
   run(call: ModelToolCall): ToolOutcome
+  /** The files read_file returned, in the order first returned, each once. Never a path list_files gave. */
+  read(): readonly ReadFile[]
 } {
+  /**
+   * What the model was handed, and nothing else: a refused call — an excluded
+   * file, a near miss, a call with no path, a manifest written into the
+   * arguments — is no read, and a path `list_files` returned is a name nobody
+   * chose. The witness reads this (`project-witness.ts`).
+   */
+  const returned: ReadFile[] = []
+
   const specs: ModelToolSpec[] = [
     {
       name: 'list_files',
@@ -186,6 +206,8 @@ export function buildProjectTools(snapshot: ProjectSnapshot): {
   return {
     specs,
 
+    read: () => [...returned],
+
     run(call: ModelToolCall): ToolOutcome {
       if (call.name === 'list_files') {
         const parsed = listInputSchema.safeParse(call.args)
@@ -213,6 +235,9 @@ export function buildProjectTools(snapshot: ProjectSnapshot): {
         // as the file that was asked for is a fact attributed to the wrong file.
         // `./package.json` is not a near miss: it spells the same path.
         if (file !== undefined) {
+          if (!returned.some((seen) => seen.path === file.path)) {
+            returned.push({ path: file.path, text: file.text })
+          }
           return {
             result: {
               path: file.path,
