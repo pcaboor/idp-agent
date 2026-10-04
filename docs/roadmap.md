@@ -499,6 +499,20 @@ The owner's decisions, dated, each with where it is recorded.
   owner in the same pull request; and the engine-written reason for an unknown, with `init`'s
   `answered` signature, wait for stage 8, which re-records the same tapes anyway.
 
+**2026-10-04**
+
+- Stage 8 is done step by step with the owner: the note refreshed, then the plan, then each
+  pull request, each validated by the owner before it merges and before the next starts.
+- The stage 8 note refreshed against `2572ebd` ([the note](stage-8-brief.md),
+  [#142](https://github.com/pcaboor/idp-agent/pull/142)). The owner's eleven answers of
+  2026-09-26 stand; the six questions the refresh raised are settled, each as recommended:
+  exit 1 for a preview with no evidence, exit 0 once something is submitted; answer 4's setting
+  an `idp-agent.dev/` annotation on the declarations repository's registration, central
+  without it; CODEOWNERS handles typed by the person; a second scan teaching the same
+  identifier withdraws its addition and keeps its rights; an unstated account agrees with a
+  found one at recognition, strict at the re-check; `.idp-agent.yml` under the central default
+  a separate pull request on the service's repository, only when a flag asked for it.
+
 ## Known debts and open items
 
 Each was checked against `main` at `3b642fa`, except stage 6's follow-ups, checked at `d7a6396`
