@@ -587,6 +587,11 @@ Each pull request adds its line here.
 
 ### Documentation
 
+- The stage 8 note is refreshed against `2572ebd`: what stages 5 and 6 and the Inspector's
+  witness made true, false or moot, the submission on stage 6's road, the in-flight read reused,
+  the two items deferred to stage 8, four slices and seventeen pull requests; the owner's eleven
+  answers kept and six new ones of 2026-10-04
+  ([#142](https://github.com/pcaboor/idp-agent/pull/142)).
 - The Inspector's facts held to the files it read are planned
   ([the plan](docs/plans/inspector-witness.md)): one rule per field — a keyed line for the name,
   the type and the lifecycle, a whole token for the runtime, the forge handle and a dependency's
