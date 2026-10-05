@@ -323,6 +323,14 @@ Each pull request adds its line here.
   oldest this build reads, where 2.40.0 was provisional. The fake now answers as GitHub did:
   a base's ref moved by its author is 422, `merge-async` is 202 and never carried out, a branch a
   ruleset covers is `protected` ([#136](https://github.com/pcaboor/idp-agent/pull/136)).
+- The first piece of stage 8's discovery, used by no command yet: a typed finding, minted
+  only by the engine, whose every field is held to a closed grammar and to the credential
+  shapes, and which has no field a secret could sit in; and a connection-string parser for
+  the URL, JDBC, libpq and ADO.NET forms that keeps only the parts it names, drops the
+  password before it returns, refuses as ambiguous a target a driver could read two ways (a
+  key written twice, a query's `host`, `port` or `dbname` beside the authority), and composes
+  what it shows from what it kept. A property test holds generated passwords out of both
+  ([#144](https://github.com/pcaboor/idp-agent/pull/144)).
 
 ### Changed
 

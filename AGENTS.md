@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 5113 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 5228 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -362,7 +362,7 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 
 | Folder | Responsibility |
 |---|---|
-| `core/` | schemas (Zod), the nine validation rules and the Backstage registration, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — the engine's check on an answer's commentary (`core/answer/`), and `core/github/`: a remote's URL and the grammars a clone's own configuration is held to, the configuration's scope check, gh's version, and the fields read of GitHub's answers |
+| `core/` | schemas (Zod), the nine validation rules and the Backstage registration, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — the engine's check on an answer's commentary (`core/answer/`), `core/github/`: a remote's URL and the grammars a clone's own configuration is held to, the configuration's scope check, gh's version, and the fields read of GitHub's answers, and `core/discovery/`: stage 8's finding, minted only by `mintFinding`, every field held to a closed grammar and to the credential shapes, and the connection-string parser that keeps only the parts it names — no command calls it yet; `core/secrets/` and `core/text/` hold the credential, placeholder and script shapes it shares with `project-fs` and the commentary check |
 | `context/` | `ContextProvider` (`fixtures`, and `iac-fs` behind `--repo`; `backstage/provider.ts`, a whole catalogue through the file reader or nothing, which `cli/` constructs for a configured catalogue), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries, `backstage/transport.ts` — the only code that sends a catalogue token, over a `fetch` it is handed — and `backstage/cache.ts`, a catalogue read kept under the person's cache folder, which only the provider loads and no command uses yet |
 | `cli/` | argument parsing, commands, rendering, `.idp-agent.yml` and the personal `config.yml`, which source a command reads — the only layer that writes to stdout |
 | `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |
@@ -675,7 +675,7 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   checklist; tick its boxes as you go — Stage 1 shipped with all 36 unticked, which is
   how a plan stops being a status signal.
 - No `switch` on a closed union without `const _exhaustive: never = value` in `default`.
-- **Thirty** architecture rules are enforced by `tests/architecture/`. `core/` imports
+- **Thirty-one** architecture rules are enforced by `tests/architecture/`. `core/` imports
   neither `agents/`, `llm/`, `context/`, `cli/`, `scaffold/`, `forge/`, `process/`,
   `confine/`, the network nor the model SDK, and nothing reachable from it reads or writes — its disk rule
   walks the transitive closure too. `agents/` imports neither `fs`, `child_process` nor a git client — **and
@@ -717,7 +717,10 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   reaches it. Nothing in `context/` names `fetch`, `globalThis`, `global`, `XMLHttpRequest`
   or `WebSocket`, read in the source with comments stripped because `fetch` needs no import,
   nor imports a network module, and only `context/backstage/transport.ts` calls the `catalogueFetch` it is handed; nothing
-  reachable from `agents/` is in `context/backstage/` or names any of those words. The rules read `.ts`,
+  reachable from `agents/` is in `context/backstage/` or names any of those words. Nothing
+  reachable from `agents/` is in `core/discovery/`, however many hops away and a type included
+  (*nothing reachable from agents/ is in core/discovery/, not even a type*): a finding is the
+  engine's, and no model sees one. The rules read `.ts`,
   `.mts` and `.cts`, and fail on a folder that is not there and on an import that resolves
   to no file, rather than passing over nothing. Add a rule when you add a layer — and
   re-count this number when you do, because it is the one that drifts first:

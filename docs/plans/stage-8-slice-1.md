@@ -1,6 +1,6 @@
 # Stage 8, slice 1 — the report
 
-**Status: plan accepted by the owner on 2026-10-04 ([#143](https://github.com/pcaboor/idp-agent/pull/143)); 1.1 to 1.4 not started.** Four pull requests, 1.1 to 1.4, after this
+**Status: plan accepted by the owner on 2026-10-04 ([#143](https://github.com/pcaboor/idp-agent/pull/143)); 1.1 built ([#144](https://github.com/pcaboor/idp-agent/pull/144)), validated by the owner before it merged; 1.2 to 1.4 not started.** Four pull requests, 1.1 to 1.4, after this
 plan merged on its own (`docs/stage-8-slice-1-plan`). They are not stacked ahead of time:
 **the owner validates each pull request before it merges and before the next one starts**
 (owner's decision of 2026-10-04, `docs/roadmap.md`), so each branch is cut from `main` once
@@ -248,7 +248,22 @@ Nothing on the list reopens a decision of § 13.
   backtrack over the value. A test runs adversarial strings of 4,095 characters in each form
   (`a@` repeated, unclosed quotes, `;;;`, `==`) under a time bound.
 - **A duplicate key is `ambiguous`**, in the query, libpq and ADO.NET forms alike, synonyms
-  included (`Initial Catalog` and `Database`). Neither the first nor the last wins.
+  included (`Initial Catalog` and `Database`). Neither the first nor the last wins. A query key
+  is compared percent-decoded and in any case, as a driver reads it (`?%75ser=` is a second
+  `user`), and one that does not decode is `unparsed`, `grammar`. **A query key naming the
+  target is `ambiguous` wherever it is written** (`host`, `hostaddr`, `port`, `dbname`,
+  `database`, `db`, `service`, and pgjdbc's `PGHOST`, `PGPORT`, `PGDBNAME`): libpq's URI and
+  mysql2 let it override the authority, so reading the authority alone would parse a target the
+  driver does not connect to (review of 1.1).
+- **A libpq string names a target or is none.** A port with no `host` or `hostaddr` to put it
+  on is `unparsed`, `grammar`, `host`, never dropped in silence; a string naming no host,
+  database or user (a `password=` alone) is `unparsed`, `form`, as an ADO.NET string with no
+  server is. `user=` and `password=` open both forms, so a `;` before the first blank reads the
+  string as ADO.NET, whose keys take any case (review of 1.1).
+- **A reference is a reference shape, never the secret filter's wider placeholder test.** A
+  host, a database or a user is `placeholder` only when it is written as a reference
+  (`referenceShape`: `${…}`, `{{…}}`, `<…>`, `%NAME%`, `$NAME`, …); six repeated letters, a
+  version or a `file:` there is a value outside its grammar, `unparsed` (review of 1.1).
 - **Grammars.** A host is ASCII: RFC 1123 labels of 1 to 63 characters, at most 253 in all,
   or a dotted IPv4, or a bracketed IPv6. A Cyrillic `bіlling-db` is therefore refused whatever
   its script mix. A port is 1 to 65,535. A database or an account is 1 to 63 of
@@ -583,7 +598,8 @@ export const isMinted = (value: unknown): value is Finding
 export function findingId(finding: Pick<Finding, 'rule' | 'ruleVersion' | 'path' | 'lines' | 'fields' | 'fileSha256'>): string
 
 // src/core/discovery/connection.ts
-export type ConnectionForm = 'url' | 'jdbc' | 'libpq' | 'adonet'
+export const CONNECTION_FORMS = ['url', 'jdbc', 'libpq', 'adonet'] as const
+export type ConnectionForm = (typeof CONNECTION_FORMS)[number]
 export type Dropped = 'password' | 'userinfo' | 'options' | 'path'
 export type Connection =
   | {
@@ -623,18 +639,19 @@ export const CREDENTIAL_SHAPES: readonly CredentialShape[]
 export const placeholderToken: (token: string) => boolean
 export const placeholderShape: (value: string) => boolean
 export const placeholderPassword: (value: string) => boolean
+export const referenceShape: (value: string) => boolean   // new: the reference shapes alone, which the parser holds a connection's fields to
 
 // src/core/text/scripts.ts — moved, unchanged in behaviour
 export function mixesScripts(token: string): boolean
 export function scriptOf(char: string): string | undefined
 ```
 
-- [ ] **Step 1: Pin the before (passes now).** `df -h "$TMPDIR"`, then
+- [x] **Step 1: Pin the before (passes now).** `df -h "$TMPDIR"`, then
   `pnpm vitest run tests/unit/project-secrets.test.ts tests/unit/commentary.test.ts tests/unit/answer-commentary.test.ts tests/unit/ask-commentary.test.ts tests/architecture --reporter=verbose`:
   green, with 47 tests in `tests/architecture`, 30 of them in `describe('architecture')`.
   Note the count `pnpm test` reports for `AGENTS.md`.
 
-- [ ] **Step 2: Write the parser's golden table, and see it fail.** In
+- [x] **Step 2: Write the parser's golden table, and see it fail.** In
   `tests/unit/discovery-connection.test.ts`, one `it.each` of 35 rows. Each row names the
   input and the whole expected `Connection`, and for a `parsed` row also the
   `composeConnection` rendering:
@@ -716,7 +733,7 @@ export function scriptOf(char: string): string | undefined
   *Fails today:* `src/core/discovery/connection.ts` does not exist, and the file fails at its
   import.
 
-- [ ] **Step 3: Write the finding's tests, and see them fail.** In
+- [x] **Step 3: Write the finding's tests, and see them fail.** In
   `tests/unit/discovery-finding.test.ts`:
   1. *holds every kept field to its grammar*, an `it.each` over each grammar's accepted and
      refused values. Hosts accepted: `billing-db.prod.internal`, `10.0.4.12`,
@@ -746,7 +763,7 @@ export function scriptOf(char: string): string | undefined
 
   *Fails today:* the module does not exist.
 
-- [ ] **Step 4: Write the property, and see it fail.** In
+- [x] **Step 4: Write the property, and see it fail.** In
   `tests/invariants/discovery-secrets.test.ts`, which imports `tests/invariants/budget.ts`
   for its effect and passes `PROPERTY_TIMEOUT` to each test, as its neighbours do,
   `describe('a password reaches no finding')`, five tests, `{ numRuns: 500 }` each: the URL
@@ -774,7 +791,7 @@ export function scriptOf(char: string): string | undefined
 
   *Fails today:* the import.
 
-- [ ] **Step 5: Write the architecture rule, and see its self-test fail.** In
+- [x] **Step 5: Write the architecture rule, and see its self-test fail.** In
   `describe('architecture')`, add
   *nothing reachable from agents/ is in core/discovery/, not even a type*. It walks
   `closureOf` (`dependencies.test.ts:88`) from every `agents/` source, as the disk rule for
@@ -793,26 +810,27 @@ export function scriptOf(char: string): string | undefined
   and two hops (`agents/a.ts` → `core/x.ts` → `core/discovery/f.ts`). *The self-test fails
   today:* `discoveryOffences` is not defined.
 
-- [ ] **Step 6: Move the two helpers, byte-neutral.** `src/core/secrets/shapes.ts` and
+- [x] **Step 6: Move the two helpers, byte-neutral.** `src/core/secrets/shapes.ts` and
   `src/core/text/scripts.ts`, each with the comments that explain them, moved and not
   rewritten. `secrets.ts` and `commentary.ts` import them. Run
   `pnpm vitest run tests/unit/project-secrets.test.ts tests/unit/commentary.test.ts tests/unit/answer-commentary.test.ts tests/unit/ask-commentary.test.ts`:
   green, unchanged. Neither file's tests are edited.
 
-- [ ] **Step 7: Build `core/discovery/`.** `grammar.ts`, `rules.ts`, `limits.ts`,
+- [x] **Step 7: Build `core/discovery/`.** `grammar.ts`, `rules.ts`, `limits.ts`,
   `connection.ts` and `finding.ts`. Two switches on closed unions get
   `const _exhaustive: never` defaults: `composeConnection` over `ConnectionForm`, and
   `mintFinding` over `Draft['value']`. `ENGINE_TYPE` and `RULES` are records, so an engine or
   a rule added without its entry does not compile. Steps 2 to 5 pass.
 
-- [ ] **Step 8: The docs it makes true.** `src/core/README.md`: `core/discovery/`, pure, what a
+- [x] **Step 8: The docs it makes true.** `src/core/README.md`: `core/discovery/`, pure, what a
   finding is and is not, and `core/secrets/` and `core/text/`. `src/context/README.md`:
   project-fs's secret filter takes its shapes from `core/secrets/`. `AGENTS.md`: the `core/`
   row of the folder table, and **thirty-one** architecture rules, with the new rule's
   sentence, re-measured. The test count is re-measured in `AGENTS.md` and in `README.md`'s
-  badge.
+  badge (by the shipping script, which sets both test counts when the pull request is made;
+  they are not edited by hand).
 
-- [ ] **Step 9: Checks**
+- [x] **Step 9: Checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -837,11 +855,15 @@ even a type*, and its self-test. That makes thirty-one rules, measured.
 git add src/core/discovery/finding.ts src/core/discovery/grammar.ts src/core/discovery/connection.ts \
   src/core/discovery/rules.ts src/core/discovery/limits.ts src/core/secrets/shapes.ts \
   src/core/text/scripts.ts src/context/project-fs/secrets.ts src/core/answer/commentary.ts \
-  src/core/README.md src/context/README.md tests/unit/discovery-connection.test.ts \
+  src/core/README.md src/context/README.md src/agents/README.md tests/unit/discovery-connection.test.ts \
   tests/unit/discovery-finding.test.ts tests/invariants/discovery-secrets.test.ts \
   tests/architecture/dependencies.test.ts docs/plans/stage-8-slice-1.md AGENTS.md README.md CHANGELOG.md
 git commit -m "feat(core): a finding with no field for a secret, and a connection parser that drops one"
 ```
+
+`README.md` is in the list for its badge, which the shipping script sets with `AGENTS.md`'s test
+count before the commit; `src/agents/README.md` names the rule this task adds among those that
+cover the folder (review of 1.1).
 
 Base `main`. CHANGELOG, `### Added`:
 
@@ -870,8 +892,10 @@ node --input-type=module -e "const { parseConnection } = await import('./dist/co
 
 Attendu :
 
-- the first prints `Tests  36 passed (36)`: the golden table's 35 rows, the webhook and
-  ambiguous ones among them, and the bounded-time test;
+- the first prints `Tests  57 passed (57)`: the golden table's 35 rows, the webhook and
+  ambiguous ones among them, the bounded-time test, and 21 rows the review of 1.1 added beside
+  the table (a query naming the target, a key percent-encoded, libpq naming no host, the
+  reference shapes);
 - the second prints `Tests  5 passed (5)`: no fragment of a generated password survives in
   any of the four forms or in an http path, and no `parsed` result differs from what was
   generated;
