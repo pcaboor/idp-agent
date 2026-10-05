@@ -127,6 +127,36 @@ and nothing here can be steered by what it validates. Hence the property tests r
   a fence no line of it can close (`fenceFor`), then the engine's block, ending on
   `ENGINE_BLOCK_END`, after which stage 8's report will go; and `pullRequestUrl`, built from
   the parsed owner and name and a positive number, never from GitHub's `html_url`.
+- **Discovery** — `discovery/`, the pure half of stage 8's discovery: what a service
+  repository's committed configuration states, as findings. No command calls it yet (slice 1,
+  Task 1.1). `finding.ts`: `Finding`, its content-addressed `findingId` (the sha256 of its rule,
+  the rule's version, its path, its span, its fields and its file's hash), and `mintFinding`,
+  the only way to make one — `isMinted` is false for a spread copy, a `structuredClone` or a
+  parsed JSON, as `isCleared` is. A finding has **no field a secret could sit in**: every field
+  it keeps is held to a closed grammar (`grammar.ts`: an ASCII host, a port, a database or an
+  account of one script, an http origin, a variable, an npm name) and to the credential shapes,
+  and a value that fails either is kept as `unparsed` or `withheld`, with its file and line and
+  nothing it said. `mintFinding` holds them a second time, whoever made the draft: an engine or a
+  form nobody named is an engine bug, and of a host only its name and port are kept. Its
+  `shown` is composed from the fields it kept, never cut from the line.
+  `connection.ts`: `parseConnection`, the URL, JDBC, libpq and ADO.NET forms, one left-to-right
+  scan each, keeping only the parts it names (so the password, and anything under a key it does
+  not name, is dropped before it returns), refusing an `@` past a URL's authority, a key
+  written twice (a query's compared decoded) and a query key naming the target (`?host=`,
+  `?port=`, `?dbname=`, which a driver lets override the authority) as ambiguous;
+  `composeConnection`, what a parsed one shows, `•••` where a
+  password was. `rules.ts`: `RULES`, each rule's version, extractor, fields and what it
+  supports, and `ENGINE_TYPE`, the resource type an engine is declared as, or none. No model
+  sees any of it: an architecture rule keeps `core/discovery/` out of everything `agents/`
+  reaches, a type included.
+- **Shared shapes** — `secrets/shapes.ts`: the credential shapes (`CREDENTIAL_SHAPES`) and
+  the placeholder shapes (`placeholderShape`, `placeholderToken`, `placeholderPassword`),
+  moved from `context/project-fs/secrets.ts` unchanged, and `referenceShape`, the reference
+  shapes alone (`${…}`, `{{…}}`, `<…>`), which a connection's host, database and user are held
+  to — a run of six letters there is a value outside its grammar, not a placeholder — so the snapshot's secret filter and
+  discovery's grammars judge with one copy. `text/scripts.ts`: `scriptOf` and `mixesScripts`,
+  moved from `answer/commentary.ts` unchanged, so a look-alike is refused by one rule in a
+  model's sentence and in a database's name.
 
 **The rule: nothing in `core/` may read, write, fetch or ask.** Work that needs a disk belongs
 in `context/` or `cli/`, work that needs a model in `agents/` or `llm/` — carve out the pure

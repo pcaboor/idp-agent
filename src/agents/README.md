@@ -8,10 +8,12 @@ No module **reachable from** `agents/` may import `fs`, `child_process`, a git c
 the network — not directly, and not through a dependency. That last part is the whole
 point: `tests/architecture/dependencies.test.ts` walks the transitive import closure, so
 `agents/ → llm/client → recording → node:fs` fails the build rather than passing a grep.
-Four of its fourteen rules cover this folder: *`agents/` does not import fs, git or
+Six of its thirty-one rules cover this folder: *`agents/` does not import fs, git or
 child_process*, *no module reachable from `agents/` touches the disk or the network*,
-*`agents/` imports `llm/client.js` and nothing else from `llm/`*, and *trace/ reaches nothing
-but types, and only cli/ reaches it* — so no agent imports `trace/`. A trace is one more
+*`agents/` imports `llm/client.js` and nothing else from `llm/`*, *trace/ reaches nothing
+but types, and only cli/ reaches it* — so no agent imports `trace/` —, *nothing reachable from
+`agents/` is in `context/backstage/`, names fetch or names a global*, and *nothing reachable
+from `agents/` is in `core/discovery/`, not even a type* — so no agent is handed a finding. A trace is one more
 reader of the events an agent emits (ADR-0009); an agent does not know it is traced.
 
 `SECURITY.md` states there is no code path from an agent to a file. This is that statement,

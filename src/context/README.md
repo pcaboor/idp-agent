@@ -186,7 +186,9 @@ with no shell and none of the repository's own commands; an untracked path is co
 named), the exclusion list (`.env*`, key
 material, credential files, `.git/`, `node_modules/` and hidden directories bar `.github`), the
 content test of `project-fs/secrets.ts` — key material, a known issuer's token, a secret assigned
-a literal, every match examined, escaped and base64 text decoded — the `lstat`-then-`realpath` symlink refusal and the `O_NOFOLLOW` read, both `confine/`'s, and three caps —
+a literal, every match examined, escaped and base64 text decoded; its credential and placeholder
+shapes live in `core/secrets/shapes.ts`, shared with stage 8's discovery so one copy judges
+both — the `lstat`-then-`realpath` symlink refusal and the `O_NOFOLLOW` read, both `confine/`'s, and three caps —
 200 files, 64 KB each, 1 MB in total. The caps are spent on the service's signal files first —
 its manifests, `package.json` before any other, CODEOWNERS, catalog-info, charts, Dockerfiles,
 compose files and deployment YAML, a README — the shallower first, then the rest by depth; the

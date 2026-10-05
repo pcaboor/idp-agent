@@ -570,6 +570,45 @@ async function forgeReachOffences(root: string): Promise<string[]> {
   return offending
 }
 
+/**
+ * What the discovery rule refuses under `root`: a module of core/discovery/
+ * reached from agents/, however many hops away, and by any load — a value, a
+ * type, an `export … from`, a module loaded at run time — and a run-time load
+ * in that closure no source can spell, since no rule can tell what it names.
+ * The closure is walked through `loadsOf`, which reads each module with its
+ * comments taken out and counts `import type`: a direct-only rule would pass
+ * the day `Verified` arrives in core/plan/'s provenance (stage 8, 2.6), which
+ * agents/ already imports.
+ */
+async function discoveryOffences(root: string): Promise<string[]> {
+  const offending: string[] = []
+  const seen = new Set<string>()
+  const walk = async (from: string, trail: string): Promise<void> => {
+    for (const load of await loadsOf(from)) {
+      if (load.specifier === undefined) {
+        offending.push(unfollowable(nameUnder(root, from), load))
+        continue
+      }
+      if (!load.specifier.startsWith('.')) continue
+      const step = `${trail} → ${load.written}`
+      if (targetOf(root, from, load.specifier).startsWith('core/discovery/')) {
+        offending.push(step)
+        continue
+      }
+      const next = await resolved(from, load.specifier)
+      if (seen.has(next)) continue
+      seen.add(next)
+      await walk(next, step)
+    }
+  }
+  for (const entry of await sourceFiles(path.join(root, 'agents'))) {
+    if (seen.has(entry)) continue
+    seen.add(entry)
+    await walk(entry, nameUnder(root, entry))
+  }
+  return offending
+}
+
 /** Built-ins forge/ may import: neither reads, writes, nor opens a socket. */
 const FORGE_BUILT_INS = new Set(['node:crypto', 'node:path'])
 
@@ -1029,6 +1068,15 @@ describe('architecture', () => {
     expect(await agentsReachOffences(SOURCE_ROOT)).toEqual([])
   })
 
+  it('nothing reachable from agents/ is in core/discovery/, not even a type', async () => {
+    // A finding is the engine's (stage 8 brief § 8): no model sees one in
+    // slice 1, and from 2.6 only the witness re-read vouches with one. A
+    // finding's type in an agent's signature is the first step of handing it
+    // one, so a type counts; and the walk follows every hop, because agents/
+    // already imports core/plan/, where `Verified` is meant to arrive.
+    expect(await discoveryOffences(SOURCE_ROOT)).toEqual([])
+  })
+
   it('every process src/ starts is given spawnedEnvironment', async () => {
     // A child is handed the environment it starts with, and `git` runs in
     // every inspected repository: without the Backstage token and without any
@@ -1281,6 +1329,39 @@ describe('the architecture rules themselves', () => {
     )
     const clean = await tree({ 'agents/a.ts': "import { b } from './b.js'\n", 'agents/b.ts': 'export const b = 1\n' })
     expect(await agentsReachOffences(clean)).toEqual([])
+  })
+
+  it('refuses every way agents/ can reach core/discovery/', async () => {
+    const root = await tree({
+      'agents/value.ts': "import { mintFinding } from '../core/discovery/finding.js'\n",
+      'agents/typed.ts': "import type { Finding } from '../core/discovery/finding.js'\n",
+      'agents/passed.ts': "export { parseConnection } from '../core/discovery/connection.js'\n",
+      'agents/late.ts': "const parser = await import('../core/discovery/connection.js')\n",
+      'agents/named.ts': 'const loaded = await import(name)\n',
+      // Two hops: agents/ → core/ → core/discovery/, the road `Verified` takes in 2.6.
+      'agents/hop.ts': "import { x } from '../core/x.js'\n",
+      'core/x.ts': "import type { Finding } from './discovery/finding.js'\nexport const x = 1\n",
+      'agents/said.ts': "// import { mintFinding } from '../core/discovery/finding.js'\nexport const y = 1\n",
+      'core/discovery/finding.ts': 'export interface Finding {}\nexport const mintFinding = 1\n',
+      'core/discovery/connection.ts': 'export const parseConnection = 1\n',
+    })
+    expect((await discoveryOffences(root)).sort()).toEqual(
+      [
+        'agents/value.ts → ../core/discovery/finding.js',
+        'agents/typed.ts → ../core/discovery/finding.js',
+        'agents/passed.ts → ../core/discovery/connection.js',
+        "agents/late.ts → '../core/discovery/connection.js' at run time",
+        'agents/named.ts loads name at run time: no rule can tell what it names',
+        'agents/hop.ts → ../core/x.js → ./discovery/finding.js',
+      ].sort(),
+    )
+    const clean = await tree({
+      'agents/a.ts': "import { b } from '../core/b.js'\n",
+      'core/b.ts': 'export const b = 1\n',
+      'core/discovery/finding.ts': 'export const mintFinding = 1\n',
+      'cli/init.ts': "import { mintFinding } from '../core/discovery/finding.js'\n",
+    })
+    expect(await discoveryOffences(clean)).toEqual([])
   })
 
   it('refuses a process started without spawnedEnvironment', async () => {
