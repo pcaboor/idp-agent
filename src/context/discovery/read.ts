@@ -18,6 +18,7 @@ import {
 } from '../../core/discovery/allow.js'
 import { DISCOVERY_LIMITS, type DiscoveryLimits } from '../../core/discovery/limits.js'
 import type { ExtractorName } from '../../core/discovery/rules.js'
+import type { Dropped, Reread } from '../../core/discovery/verify.js'
 import { blobId } from '../../core/git/blob.js'
 import { GIT_LIMITS, GitError, gitIn, type Git, type GitLimits } from '../../process/git.js'
 
@@ -81,6 +82,20 @@ export interface DiscoveryRead extends Walked {
   readonly objectFormat: 'sha1' | 'sha256'
   /** The bytes of `opened`, in its order. */
   readonly files: readonly OpenedFile[]
+  /**
+   * One of `opened`, opened again through the same confined, bounded read,
+   * with `HEAD` resolved again (plan, Task 1.3): what `verifyFinding` holds a
+   * finding to. Undefined for any other path, for one `HEAD` no longer holds
+   * as a file or that cannot be shown to hold (resolved to no commit, or not
+   * listed whole), for a link, and for a file that is gone. A path `HEAD` does
+   * not hold is never opened, as the read opens none.
+   *
+   * Its bytes are held to the read's rules: handed back only when they are
+   * `HEAD`'s blob for the path and not discarded whole. Otherwise they are
+   * zeroed and the file is `Dropped`, `changed` or why it is discarded, which
+   * `verifyFinding` reads as stale: no caller holds bytes it may not extract.
+   */
+  reread(path: string): Promise<Reread | Dropped | undefined>
 }
 
 export interface DiscoveryOptions {
@@ -237,35 +252,30 @@ async function tracking(realRoot: string, git: Git): Promise<Tracking> {
 
 const COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
-/**
- * What `HEAD` holds under the root: one `ls-tree -r -z --full-tree`, which
- * lists the whole repository even when the service is a folder of it, its
- * paths taken through the prefix. Whole or nothing: a listing that fails or
- * passes the launcher's bound opens no file and names none (`unlisted`), and
- * an unborn `HEAD` commits nothing.
- */
-async function committedAt(
-  git: Git,
-  listing: Git,
-  prefix: string,
-): Promise<{ readonly head: string | undefined; readonly format: 'sha1' | 'sha256' | undefined; readonly committed: Committed }> {
-  const formatOf = await run(git, ['rev-parse', '--show-object-format'])
-  const format = formatOf.ok ? line(formatOf.stdout) : undefined
-  const known = format === 'sha1' || format === 'sha256' ? format : undefined
-
+/** `HEAD`'s commit, hex; `unborn` when it names none yet, undefined when git could not say. */
+async function resolveHead(git: Git): Promise<string | 'unborn' | undefined> {
   const resolved = await run(git, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}'])
   if (!resolved.ok) {
     // `--verify --quiet` exits 1, saying nothing, when `HEAD` names no commit yet.
-    const unborn = resolved.error.code === 1 && resolved.error.stderr.trim() === ''
-    return { head: undefined, format: known, committed: { state: unborn ? 'unborn' : 'unlisted' } }
+    return resolved.error.code === 1 && resolved.error.stderr.trim() === '' ? 'unborn' : undefined
   }
   const head = line(resolved.stdout)
-  if (!COMMIT.test(head) || known === undefined) {
-    return { head: COMMIT.test(head) ? head : undefined, format: known, committed: { state: 'unlisted' } }
-  }
+  return COMMIT.test(head) ? head : undefined
+}
 
+/**
+ * What one commit holds under the root, by key: one `ls-tree -r -z
+ * --full-tree`, which lists the whole repository even when the service is a
+ * folder of it, its paths taken through the prefix. Undefined when the
+ * listing fails or passes the launcher's bound: whole or nothing.
+ */
+async function listCommit(
+  listing: Git,
+  head: string,
+  prefix: string,
+): Promise<ReadonlyMap<string, HeadEntry> | undefined> {
   const tree = await run(listing, ['ls-tree', '-r', '-z', '--full-tree', head])
-  if (!tree.ok) return { head, format: known, committed: { state: 'unlisted' } }
+  if (!tree.ok) return undefined
   const entries = new Map<string, HeadEntry>()
   // Keys, as `ls-files`' paths: the mode, the type and the object are ASCII.
   for (const record of tree.stdout.toString('latin1').split('\0')) {
@@ -277,6 +287,32 @@ async function committedAt(
     if (tab === -1 || !named.startsWith(prefix)) continue
     entries.set(named.slice(prefix.length), { mode, oid })
   }
+  return entries
+}
+
+/**
+ * What `HEAD` holds under the root (`listCommit`). Whole or nothing: a
+ * listing that fails or passes the launcher's bound opens no file and names
+ * none (`unlisted`), and an unborn `HEAD` commits nothing.
+ */
+async function committedAt(
+  git: Git,
+  listing: Git,
+  prefix: string,
+): Promise<{ readonly head: string | undefined; readonly format: 'sha1' | 'sha256' | undefined; readonly committed: Committed }> {
+  const formatOf = await run(git, ['rev-parse', '--show-object-format'])
+  const format = formatOf.ok ? line(formatOf.stdout) : undefined
+  const known = format === 'sha1' || format === 'sha256' ? format : undefined
+
+  const resolved = await resolveHead(git)
+  if (resolved === 'unborn' || resolved === undefined) {
+    return { head: undefined, format: known, committed: { state: resolved === 'unborn' ? 'unborn' : 'unlisted' } }
+  }
+  const head = resolved
+  if (known === undefined) return { head, format: known, committed: { state: 'unlisted' } }
+
+  const entries = await listCommit(listing, head, prefix)
+  if (entries === undefined) return { head, format: known, committed: { state: 'unlisted' } }
   return { head, format: known, committed: { state: 'listed', format: known, entries } }
 }
 
@@ -467,6 +503,8 @@ const nothing = (selection: Walked['selection'], untracked: number, truncated: b
   unnameable: 0,
   truncated,
   files: [],
+  // Nothing was opened, so nothing is opened again.
+  reread: () => Promise.resolve(undefined),
 })
 
 export async function readDiscovery(root: string, options: DiscoveryOptions = {}): Promise<DiscoveryRead> {
@@ -607,6 +645,50 @@ export async function readDiscovery(root: string, options: DiscoveryOptions = {}
   }
 
   opened.sort(byPath)
+
+  // Where the walk reached each opened file, under its folder's spelling,
+  // which on APFS can differ from git's (`gitSpelling`): opened again there.
+  // And the format the read held its bytes to, which their bytes now are held to again.
+  const formats = new Map(opened.map((file) => [file.path, file.format]))
+  const openedAt = new Map(state.found.filter((found) => formats.has(found.path)).map((found) => [found.path, found]))
+  // A commit's tree never changes, so the listing of the commit `HEAD` names
+  // now is reused while it names the same one; a commit made during the run
+  // is listed afresh. The first is the read's own.
+  let listed: { readonly head: string; readonly entries: ReadonlyMap<string, HeadEntry> } | undefined =
+    head === undefined ? undefined : { head, entries }
+  const reread = async (file: string): Promise<Reread | Dropped | undefined> => {
+    const found = openedAt.get(file)
+    const format = formats.get(file)
+    if (found === undefined || format === undefined) return undefined
+    const now = await resolveHead(git)
+    if (now === undefined || now === 'unborn') return undefined
+    if (listed?.head !== now) {
+      const fresh = await listCommit(listing, now, chosen.prefix)
+      if (fresh === undefined) return undefined
+      listed = { head: now, entries: fresh }
+    }
+    const entry = listed.entries.get(found.key)
+    // Not at `HEAD` now, or not as a file: its name is not committed as one,
+    // so it is not opened, as the read would not open it.
+    if (entry === undefined || !REGULAR.has(entry.mode)) return undefined
+    const read = await readBounded(realRoot, found.absolute, limits.maxFileBytes)
+    if ('refused' in read) return undefined
+    const bytes = read.bytes
+    // As the read: bytes that are not `HEAD`'s were read only to be hashed,
+    // and bytes a commit made during the run turned into a SOPS file or a
+    // Secret are discarded whole. Neither is handed to anyone.
+    if (blobId(bytes, objectFormat) !== entry.oid) {
+      bytes.fill(0)
+      return { path: file, dropped: 'changed' }
+    }
+    const discarded = discardedWhole(bytes.toString('utf8'), format)
+    if (discarded !== undefined) {
+      bytes.fill(0)
+      return { path: file, dropped: discarded }
+    }
+    return { path: file, bytes, committed: entry.oid, objectFormat }
+  }
+
   return {
     selection: 'git',
     head,
@@ -620,5 +702,6 @@ export async function readDiscovery(root: string, options: DiscoveryOptions = {}
     unnameable,
     truncated: state.truncated,
     files: opened,
+    reread,
   }
 }

@@ -1,6 +1,6 @@
 # Stage 8, slice 1 — the report
 
-**Status: plan accepted by the owner on 2026-10-04 ([#143](https://github.com/pcaboor/idp-agent/pull/143)); 1.1 built ([#144](https://github.com/pcaboor/idp-agent/pull/144)), validated by the owner before it merged; 1.2 built ([#145](https://github.com/pcaboor/idp-agent/pull/145)), validated by the owner before it merged; 1.3 and 1.4 not started.** Four pull requests, 1.1 to 1.4, after this
+**Status: plan accepted by the owner on 2026-10-04 ([#143](https://github.com/pcaboor/idp-agent/pull/143)); 1.1 built ([#144](https://github.com/pcaboor/idp-agent/pull/144)), validated by the owner before it merged; 1.2 built ([#145](https://github.com/pcaboor/idp-agent/pull/145)), validated by the owner before it merged; 1.3 built ([#146](https://github.com/pcaboor/idp-agent/pull/146)), validated by the owner before it merged; 1.4 not started.** Four pull requests, 1.1 to 1.4, after this
 plan merged on its own (`docs/stage-8-slice-1-plan`). They are not stacked ahead of time:
 **the owner validates each pull request before it merges and before the next one starts**
 (owner's decision of 2026-10-04, `docs/roadmap.md`), so each branch is cut from `main` once
@@ -393,7 +393,9 @@ Nothing on the list reopens a decision of § 13.
 - **Content covers both the sha256 and the blob at `HEAD`.** If either differs, the finding is
   `stale`. `discover` (1.4) extracts the file again from the bytes just read and checks the new
   findings once more. A second `stale` sends the file to *not analysed: changed during the
-  run*, and no finding of it is kept.
+  run*, and no finding of it is kept. (As built: the re-read hands back bytes only when they
+  are `HEAD`'s and not discarded whole; otherwise the file is `Dropped`, extracted from
+  nothing — 1.3, *As built*.)
 - **Standing is the last check.** A finding that passes path, content, span and support but
   is not `evidence` is `cannot-vouch`, and is reported as what it is: a sample, a mention, a
   placeholder. Only `evidence` gets the `Verified` brand. In slice 1 nothing reads that brand
@@ -1451,11 +1453,11 @@ export interface DiscoveryRead extends Walked {
 }
 ```
 
-- [ ] **Step 1: Pin the before (passes now).**
+- [x] **Step 1: Pin the before (passes now).**
   `pnpm vitest run tests/unit/discovery-read.test.ts tests/unit/discovery-finding.test.ts`:
   green.
 
-- [ ] **Step 2: Write the re-read's tests, and see them fail.** In
+- [x] **Step 2: Write the re-read's tests, and see them fail.** In
   `tests/unit/discovery-verify.test.ts`, with table extractors (a `package.json` reader that
   mints one `npm.name` per `"name"` line, and an env-file reader of one line):
   1. *vouches for a committed finding of standing evidence that still says what it said* →
@@ -1490,17 +1492,17 @@ export interface DiscoveryRead extends Walked {
 
   *Fails today:* `verify.ts` does not exist, and `reread` is not a function.
 
-- [ ] **Step 3: Build it.** `verifyFinding`, with a switch over `Standing` in its last check
+- [x] **Step 3: Build it.** `verifyFinding`, with a switch over `Standing` in its last check
   (`const _exhaustive: never`). `isVerified` holds the minted values in a `WeakSet`, as
   `isMinted` does. `reread` reuses the read's open and bound, refuses any path outside
   `opened`, and resolves `HEAD` again (`rev-parse --verify --quiet HEAD^{commit}`, then one
   `ls-tree -r -z --full-tree` of it): two shapes the launcher holds. Step 2's tests pass.
 
-- [ ] **Step 4: Docs.** `src/core/README.md`: the re-read, its order, and the `Verified`
+- [x] **Step 4: Docs.** `src/core/README.md`: the re-read, its order, and the `Verified`
   brand that nothing but its tests reads until 2.6. `AGENTS.md` and `README.md`: the test
   count, re-measured.
 
-- [ ] **Step 5: Checks**
+- [x] **Step 5: Checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -1518,10 +1520,70 @@ The last prints nothing.
 **Architecture rules:** none change. There are thirty-two, re-measured: `verify.ts` is pure
 and in `core/`, and `reread` lives in the module the rules already name.
 
+**As built**, where the code asked for it (2026-10-06):
+
+- **`reread` opens no path `HEAD` no longer holds** (owner's instruction for this task: the
+  re-read never names or opens a path `HEAD` does not hold, exactly as the read). It resolves
+  `HEAD` and lists it **before** the open, and returns undefined, opening nothing, for a path
+  `HEAD` no longer holds as a regular file, for a `HEAD` that names no commit any more, and for
+  one whose listing fails or passes the launcher's bound. Step 2's test 10 asked for "its
+  bytes, and no blob" of a file `HEAD` stopped holding; it asserts undefined and no open
+  instead, and an eleventh read test pins the unlisted and the unborn `HEAD`. So `reread` never
+  hands in `committed: undefined`; `Reread` keeps the field optional, as the interface wrote
+  it, and `verifyFinding` reads it as stale.
+- A commit's tree never changes, so `reread` lists the commit `HEAD` names afresh only when it
+  is not the one last listed (the read's own, at first): a commit made during the run is seen,
+  as test 10 asks, and twenty re-reads of an unchanged `HEAD` cost twenty `rev-parse`s and no
+  `ls-tree`. `committedAt` is split into `resolveHead` and `listCommit` so both share them, in
+  the same shapes.
+- A file is opened again where the walk reached it, under its folder's spelling (APFS's
+  `PACKAGE.JSON` for git's `package.json`), as 1.2's same-inode rule took it; its bytes are
+  still held to `HEAD`'s blob for git's name. The two 1.2 tests of a service in a folder and of
+  a spelling in another case each gain a re-read.
+- **`reread` holds the bytes it reads again to the read's rules** (review, 2026-10-06). Bytes
+  that are not `HEAD`'s blob for the path are zeroed, as the read zeroes them, and the file
+  comes back `Dropped` `changed`, with no bytes; bytes that are `HEAD`'s go through
+  `discardedWhole` in the format the read opened the file in, and a file a commit made during
+  the run SOPS-encrypted, or turned into a `Secret` or a YAML that cannot be read whole, comes
+  back `Dropped` with that reason, its bytes zeroed too. `Dropped` is a type of
+  `core/discovery/verify.ts` beside `Reread`, which keeps the plan's shape; `verifyFinding`
+  takes either and reads `Dropped` as `stale`. So a `Reread` the real `reread` hands back is
+  always committed and never discarded whole, and 1.4's `discover` extracts a stale file again
+  **only from a `Reread`**: a `Dropped` file is *changed during the run* (or, `discarded-*`,
+  set aside by design as the read sets it aside), extracted from nothing. `isCommitted(file)`
+  is still exported beside `verifyFinding`, which reads it in the content check for a `Reread`
+  made by hand; it is no longer a duty of the caller (Global Constraints, *Evidence only from
+  committed bytes*). `verifyFinding` itself never hands uncommitted bytes to an extractor:
+  content comes before support.
+- **The brand is taken back.** A finding that vouched and, checked again — at the signature,
+  at the moment of writing — comes out anything but `vouches` loses its `Verified` brand, so
+  `isVerified` is false for a finding whose file changed since.
+- **Support compares standing too**: the rule, run again, must give the same kind, fields and
+  standing, so a finding minted `evidence` does not vouch when the rule now says `sample`.
+- A finding not minted is refused, never thrown, even when reading its `id` throws (a getter,
+  a proxy); the thrown message is kept nowhere. A finding with no file read again is refused
+  at `path` as *not one HEAD still holds as a file, or could not be opened again*, since
+  `reread` returns undefined in either case, opening nothing in the first.
+- `DISCOVERY_LIMITS` gains `maxSpanLines` (20) and `maxSpanBytes` (1,024). A span's bytes run
+  from its first line's start to its last line's end, that newline left out.
+- Path is refused, not normalised: an empty path, a NUL, a backslash, an absolute path in
+  either platform's form, an empty, `.` or `..` segment, then `assertInsideRepo`. A file read
+  again under another path than the finding's, and one that could not be opened again, are
+  refused at `path` too.
+- Test 5's start of 0 and end before the start cannot reach the span check: `mintFinding`
+  throws on either as an engine bug, so a forged one is refused at `minted`, and the test says
+  so. Support accepts a finding of the same rule, kind and fields at a span **inside** the
+  claimed one (a finding's ID recomputed at the claimed span), so a manifest's name found on
+  line 2 supports a claim of lines 1 to 3, and not one of lines 3 to 4.
+- `src/context/README.md` says what `reread` opens, beside the read it extends.
+- The test count in `AGENTS.md` and the badge is set by the shipping script and was not
+  edited by hand.
+
 - [ ] **Step 6: The pull request** (after the owner's go-ahead)
 
 ```bash
-git add src/core/discovery/verify.ts src/context/discovery/read.ts src/core/README.md \
+git add src/core/discovery/verify.ts src/core/discovery/limits.ts src/context/discovery/read.ts \
+  src/core/README.md src/context/README.md \
   tests/unit/discovery-verify.test.ts tests/unit/discovery-read.test.ts \
   docs/plans/stage-8-slice-1.md AGENTS.md README.md CHANGELOG.md
 git commit -m "feat(core): read a finding's file again, in the note's order, before it is reported"
@@ -1530,30 +1592,49 @@ git commit -m "feat(core): read a finding's file again, in the note's order, bef
 Base `main`. CHANGELOG, `### Added`:
 
 > - Stage 8's witness re-read, used by no command yet: before a finding is reported its file
->   is opened again through the same confined read and checked in order — the path one the
->   read opened, the bytes and `HEAD`'s blob unchanged, a span of at most 20 lines and 1 KiB,
->   the rule saying the same thing on those bytes, and a standing that may vouch; a finding
->   nothing minted is refused and named, a changed file is handed back to be read again
+>   is opened again through the same confined read, with `HEAD` resolved again, and checked in
+>   order — the path one the read opened and `HEAD` still holds, the bytes and `HEAD`'s blob
+>   unchanged, a span of at most 20 lines and 1 KiB, the rule saying the same thing on those
+>   bytes, and a standing that may vouch; a finding nothing minted is refused and named, a
+>   changed file is handed back to be read again
 >   ([#PRNUM](https://github.com/pcaboor/idp-agent/pull/PRNUM)).
 
 **What changes that a person sees:** nothing.
 
-**What the owner can run**, keyless, from the branch's checkout:
+**What the owner can run**, keyless, from the branch's checkout. As built, the `node -e`
+line is a helper script in the owner's kit, `~/Documents/idp-agent-tests/s8-1/verify.mjs`,
+because a long pasted one-liner is mangled; with a repository as its argument it also runs the
+re-read over it, with stand-in extractors (1.4 writes the real ones), and changes
+`package.json` during the run only when that repository is the kit's fixture, writing to no
+other:
 
 ```bash
+cd ~/Documents/idp-agent-worktrees/s813
 pnpm vitest run tests/unit/discovery-verify.test.ts
 pnpm vitest run tests/unit/discovery-read.test.ts -t "again"
 pnpm build
-node --input-type=module -e "const { verifyFinding } = await import('./dist/core/discovery/verify.js'); console.log(JSON.stringify(verifyFinding({ id: 'f'.repeat(64), rule: 'npm.name', path: 'package.json' }, undefined, { opened: new Set(['package.json']), extract: {} })))"
+node ~/Documents/idp-agent-tests/s8-1/verify.mjs
+node ~/Documents/idp-agent-tests/s8-1/verify.mjs ~/Documents/idp-agent-tests/s8-1/invoicing-worker
+git -C ~/Documents/idp-agent-tests/s8-1/invoicing-worker status --porcelain
 ```
 
-Attendu :
+Expected:
 
-- the first prints every test passed, nine of them with their rows;
-- the second prints `Tests  1 passed`, the rest skipped: the confined second open;
-- the third prints `{"outcome":"refused","id":"ffff…ffff","check":"minted","reason":"no extractor minted finding ffff…ffff"}`,
+- the first prints `Tests  59 passed (59)`: Step 2's nine, with their rows, `isCommitted`'s
+  four, and the review's: a dropped file is stale, a weaker standing is refused at support, an
+  `id` that throws is refused, and a finding checked again and failing loses its brand;
+- the second prints `Tests  4 passed | 24 skipped (28)`: the confined second open, no bytes
+  handed back for a file changed since `HEAD` or turned into a SOPS file, no open where `HEAD`
+  now holds a link or a submodule, and none where it cannot be resolved again or listed whole;
+- the fourth prints `{"outcome":"refused","id":"ffff…ffff","check":"minted","reason":"no extractor minted finding ffff…ffff"}`,
   the ID written in full. A finding written by hand is refused before anything else is
-  looked at.
+  looked at;
+- the fifth prints `opened: .env.example, package.json`, then the three lines of
+  `.env.example` as `cannot-vouch (sample)`, `cannot-vouch (sample)` and
+  `cannot-vouch (placeholder)`, the password shown `•••`, then `package.json:2  vouches`;
+  then, with a newline appended to `package.json` between the read and the re-read,
+  `package.json:2  stale`, and once its bytes are put back, `vouches` again;
+- the last prints nothing: the fixture is as it was.
 
 ---
 
