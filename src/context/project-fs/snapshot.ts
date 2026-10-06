@@ -3,6 +3,15 @@ import { lstat, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
 import { followInside, isInside, openToRead } from '../../confine/confine.js'
 import { assertInsideRepo, PathEscapeError } from '../../core/paths/entity-path.js'
+import {
+  CREDENTIAL_DIRECTORIES,
+  CREDENTIAL_NAMES,
+  CREDENTIAL_STEMS,
+  GENERATED_DIRECTORIES,
+  isEnvironmentName,
+  PRIVATE_KEY_NAMES,
+  SECRET_EXTENSIONS,
+} from '../../core/secrets/names.js'
 import { GitError, gitIn } from '../../process/git.js'
 import { secretIn, type SecretClass } from './secrets.js'
 import type { Declaration, ProjectFile, ProjectRead, Selection, SkippedFile } from './types.js'
@@ -71,43 +80,10 @@ const MAX_DIRECTORIES = 5_000
  * material, the shapes issuers stamp on their tokens, and a secret assigned a
  * literal. It is the backstop for "a name is its author's to choose", and it is
  * applied to every file this module is about to hand over, whatever its name.
- * Everything below is about names, places and git.
+ * Everything below is about names, places and git. The lists of where
+ * credentials live, by name, are `core/secrets/names.ts`'s: one copy, shared
+ * with stage 8's discovery read, which never opens what they name.
  */
-
-/**
- * Directories holding credentials rather than code. `.git/` earns its place
- * twice: `config` carries a remote URL, which carries a token often enough,
- * and the object store is bytes no Inspector can use anyway.
- */
-const CREDENTIAL_DIRECTORIES = new Set([
-  '.git',
-  '.ssh',
-  '.aws',
-  '.gnupg',
-  '.docker',
-  '.kube',
-  '.gcloud',
-  '.azure',
-  '.terraform',
-])
-
-/**
- * Generated or vendored: someone else's code, or this project's own output.
- * Excluded for the budget rather than for secrecy — the caps are small and a
- * `dist/` sorted before `package.json` would spend them all before reaching the
- * manifest, which is the one file an Inspector genuinely needs.
- */
-const GENERATED_DIRECTORIES = new Set([
-  'node_modules',
-  'vendor',
-  'dist',
-  'build',
-  'coverage',
-  'target',
-  '__pycache__',
-  '.venv',
-  'venv',
-])
 
 /**
  * The one hidden directory read on purpose: a workflow says how a service is
@@ -117,85 +93,6 @@ const GENERATED_DIRECTORIES = new Set([
  * and its kind live.
  */
 const READABLE_HIDDEN_DIRECTORIES = new Set(['.github'])
-
-/**
- * Words that name a file's PURPOSE, matched as the stem rather than the whole
- * name, because every one of these shipped one token away from a listed name:
- * `secret.yml`, `secrets.toml`, `secrets.properties`, `credentials.json`,
- * `auth.json`, `kubeconfig.yaml`, `accessKeys.csv`.
- */
-const CREDENTIAL_STEMS = new Set([
-  'secret',
-  'secrets',
-  'credential',
-  'credentials',
-  'auth',
-  'kubeconfig',
-  'accesskeys',
-  'access-keys',
-  'service-account',
-  'serviceaccount',
-  'vault',
-  'passwd',
-  'password',
-  'passwords',
-])
-
-/** Private keys, by the names ssh-keygen actually writes. */
-const PRIVATE_KEY_NAMES = new Set([
-  'id_rsa',
-  'id_dsa',
-  'id_ecdsa',
-  'id_ed25519',
-  'id_ecdsa_sk',
-  'id_ed25519_sk',
-])
-
-/**
- * Credential files by name. Each one is a file whose entire purpose is to hold
- * a token: a registry auth, an FTP login, a Postgres password, a basic-auth
- * table, a git credential store.
- */
-const CREDENTIAL_NAMES = new Set([
-  '.npmrc',
-  '.yarnrc',
-  '.netrc',
-  '_netrc',
-  '.pgpass',
-  '.htpasswd',
-  '.git-credentials',
-  '.pypirc',
-  '.dockercfg',
-  '.s3cfg',
-  '.boto',
-  'credentials',
-  'secrets.yml',
-  'secrets.yaml',
-  'secrets.json',
-])
-
-/**
- * Extensions that carry key material or state. `.crt` and `.cer` are absent on
- * purpose: a certificate is public by construction. `.pem` is present because
- * it is not — a PEM file is as often a private key as a certificate.
- * `.tfvars` and `.tfstate` are Terraform's two plaintext secret stores, and
- * this is a tool for infrastructure repositories.
- */
-const SECRET_EXTENSIONS = new Set([
-  '.pem',
-  '.key',
-  '.p12',
-  '.pfx',
-  '.p8',
-  '.keystore',
-  '.jks',
-  '.ppk',
-  '.asc',
-  '.gpg',
-  '.kdbx',
-  '.tfvars',
-  '.tfstate',
-])
 
 /** Why this directory is not descended into, or undefined to descend. */
 function directoryReason(name: string): string | undefined {
@@ -251,11 +148,8 @@ function fileReason(name: string): string | undefined {
   // `id_rsa`, so a case-sensitive list is a list with a hole in it.
   const lower = name.toLowerCase()
 
-  // `.env` anywhere in the name, not anchored to the front. The rule was
-  // `=== '.env' || startsWith('.env.')`, which read `.env` and let
-  // `prod.env`, `secrets.env`, `docker.env`, `.flaskenv`, `env.local`, `.env~`
-  // and `.env-local` through — every shape a real project actually uses.
-  if (/(^|[.\-_])env([.\-_~]|$)/.test(lower) || lower.includes('.env')) {
+  // `.env` anywhere in the name, not anchored to the front (`isEnvironmentName`).
+  if (isEnvironmentName(lower)) {
     // `.env.example` included: it is a template until someone pastes a real
     // value into it, and that is a weekly occurrence.
     return 'excluded: an environment file is where credentials live'

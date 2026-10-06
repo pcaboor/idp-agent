@@ -331,6 +331,17 @@ Each pull request adds its line here.
   key written twice, a query's `host`, `port` or `dbname` beside the authority), and composes
   what it shows from what it kept. A property test holds generated passwords out of both
   ([#144](https://github.com/pcaboor/idp-agent/pull/144)).
+- Stage 8's discovery read, used by no command yet: from what git tracks in a service's
+  repository it opens only `package.json` and the sample environment files
+  (`.env.example` and its family), through a confined, bounded open that follows no link,
+  and keeps their bytes only when they are those of `HEAD` — a file changed since is read
+  once to be hashed, then dropped; it never opens a path where credentials live — a real
+  environment file, key material, `.ssh`, `.aws`, Terraform state, by the snapshot's own
+  lists, now shared — and puts every path `HEAD` holds in one group a report can name,
+  counting without naming what git does not track, what is staged and never committed, and
+  everything outside a repository. A new architecture rule keeps it and the snapshot a model
+  is sent from loading each other
+  ([#145](https://github.com/pcaboor/idp-agent/pull/145)).
 
 ### Changed
 

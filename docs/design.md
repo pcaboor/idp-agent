@@ -538,7 +538,7 @@ and nothing else of ours, and exactly one module in it writes; only `context/iac
 disk; across `src/`, only named modules write, and only `process/git.ts` and
 `process/gh.ts` start a process, each from a grammar of the command shapes it may run,
 checked on the finished vector before the process starts — git for the Inspector, the forge
-and the one push form, gh for GitHub's answers — and only `context/project-fs` and `forge/`
+and the one push form, gh for GitHub's answers — and only `context/project-fs`, `context/discovery/read.ts` and `forge/`
 load the git launcher, and only `forge/github/` the gh launcher; no source names a door those grammars refuse, or reads a GitHub
 credential from the environment, and in `tests/` only `tests/live/` and
 `tests/support/fake-gh.ts` name a door; `process/` imports nothing of ours; `forge/` imports `core/`, `process/` and two

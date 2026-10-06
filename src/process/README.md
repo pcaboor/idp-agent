@@ -1,11 +1,14 @@
 # `process/` — the one place a process is started
 
 A leaf of two launchers. `context/project-fs` reads a repository through the git launcher
-(`git ls-files`), and the local forge (`forge/local/`) writes one through it (ADR-0010) —
-though no command reaches the forge until `--submit`. From stage 6 the git launcher also holds
-the one push form, and the gh launcher the calls that read GitHub's answers and open a pull
-request; no command starts gh yet. Neither importer may start a process of its own: the
-launchers are shared so that every hardening line below applies to every call or to none.
+(`git ls-files`), stage 8's discovery read (`context/discovery/read.ts`) asks it what a
+repository tracks and what `HEAD` holds (`rev-parse`, `ls-files`, `ls-tree`, shapes it already
+held), and the local forge (`forge/local/`) writes one through it (ADR-0010) — though no
+command reaches the forge until `--submit`, and none reaches the discovery read yet. From
+stage 6 the git launcher also holds the one push form, and the gh launcher the calls that read
+GitHub's answers and open a pull request; no command starts gh yet. No importer may start a
+process of its own: the launchers are shared so that every hardening line below applies to
+every call or to none.
 
 ## What lives here
 
@@ -91,7 +94,7 @@ their identity and their way of pushing live there.
 ## What may not
 
 Nothing here imports anything of ours, nor any package: `node:` built-ins and each other
-only, because anything this leaf imported would be reachable from both of its importers.
+only, because anything this leaf imported would be reachable from every one of its importers.
 `tests/architecture/dependencies.test.ts` holds that (*process/ imports nothing of ours, and
 only node: built-ins*), holds `git.ts` and `gh.ts` to being the only modules importing
 `child_process` (*only the named modules write, and only process/git.ts and process/gh.ts
@@ -100,8 +103,9 @@ environment that starts from `spawnedEnvironment` and names what it is handed no
 (*every process src/ starts is given spawnedEnvironment*), keeps every door and every
 GitHub credential's name out of the source (*nothing in src/ names a door the allow-list
 refuses*, *nothing in src/ reads a GitHub credential from the environment*), and holds the
-git launcher's importers to the two above (*only context/project-fs and forge/ load the git
-launcher*): `gitIn` runs git in any repository, so a module outside those two would go
-around project-fs's secret exclusions. A type may be named anywhere; `environment.ts`,
+git launcher's importers to the three above (*only context/project-fs,
+context/discovery/read.ts and forge/ load the git launcher*): `gitIn` runs git in any
+repository, so a module outside those three would go around project-fs's secret exclusions
+and the discovery read's lists of what it never opens. A type may be named anywhere; `environment.ts`,
 `grammar.ts` and `refusal.ts` start nothing and may be imported by anyone. `core/` may not
 import this folder, directly or through anything else.

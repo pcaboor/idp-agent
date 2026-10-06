@@ -18,6 +18,10 @@ a name leads to is a fact about the disk, and this module is where the disk is a
 - `context/project-fs/snapshot.ts` follows a link that stays inside the application
   repository — a monorepo links a shared config into a package — and refuses one that
   leaves it: `followInside`, then `openToRead`.
+- `context/discovery/read.ts`, stage 8's discovery read, follows none: a tracked link is a
+  blob of its target's name, never a committed file. It asks `lstat` first, then
+  `openToRead(…, { nonBlocking: true })`, so a path swapped for a pipe is refused rather than
+  waited on, then asks the descriptor again: a regular file, one name, within the cap.
 - `context/iac-fs/snapshot.ts` follows none: a declarations repository holds no link, and a
   reviewer reads the file a link names, not the file it leads to. `openToRead` refuses a
   linked `.yml` by name; the walk names every other link as a link it did not follow.
@@ -54,12 +58,12 @@ around the open are the whole guard.
 
 Nothing here imports anything of ours, nor any package: `node:` built-ins only, because
 `scaffold/` may import `core/` and this leaf and nothing else of ours, and anything this
-leaf imported would be reachable from all four of its importers.
+leaf imported would be reachable from all five of its importers.
 `tests/architecture/dependencies.test.ts` holds that (*confine/ imports nothing of ours, and
-only node: built-ins*), holds its importers to the four above (*only scaffold/write.ts,
-context/iac-fs, context/project-fs and context/backstage/cache.ts load confine/*) —
-`createNew` writes and `openToRead` reads with no fs function in the caller's source, so a
-fifth importer would be a writer and a reader no other rule sees — and names the two
+only node: built-ins*), holds its importers to the five above (*only scaffold/write.ts,
+context/iac-fs, context/project-fs, context/discovery/read.ts and context/backstage/cache.ts
+load confine/*) — `createNew` writes and `openToRead` reads with no fs function in the
+caller's source, so a sixth importer would be a writer and a reader no other rule sees — and names the two
 writing calls it makes, `mkdir` and `open` (*only the named modules write, and only
 process/git.ts and process/gh.ts start a process*). `core/` may not import this folder,
 directly or through anything else. `tests/unit/confine.test.ts` stages what only the

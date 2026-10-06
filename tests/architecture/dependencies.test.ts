@@ -570,15 +570,19 @@ async function forgeReachOffences(root: string): Promise<string[]> {
   return offending
 }
 
+/** The two halves of stage 8's discovery: the pure finding and its parsers, and the read that opens files. */
+const DISCOVERY = /^(core|context)\/discovery\//
+
 /**
  * What the discovery rule refuses under `root`: a module of core/discovery/
- * reached from agents/, however many hops away, and by any load — a value, a
- * type, an `export … from`, a module loaded at run time — and a run-time load
- * in that closure no source can spell, since no rule can tell what it names.
- * The closure is walked through `loadsOf`, which reads each module with its
- * comments taken out and counts `import type`: a direct-only rule would pass
- * the day `Verified` arrives in core/plan/'s provenance (stage 8, 2.6), which
- * agents/ already imports.
+ * or context/discovery/ reached from agents/, however many hops away, and by
+ * any load — a value, a type, an `export … from`, a module loaded at run time
+ * — and a run-time load in that closure no source can spell, since no rule
+ * can tell what it names. The closure is walked through `loadsOf`, which reads
+ * each module with its comments taken out and counts `import type`: a
+ * direct-only rule would pass the day `Verified` arrives in core/plan/'s
+ * provenance (stage 8, 2.6), which agents/ already imports. The read is in it
+ * since it exists (1.2): it holds the bytes of files the snapshot withholds.
  */
 async function discoveryOffences(root: string): Promise<string[]> {
   const offending: string[] = []
@@ -591,7 +595,7 @@ async function discoveryOffences(root: string): Promise<string[]> {
       }
       if (!load.specifier.startsWith('.')) continue
       const step = `${trail} → ${load.written}`
-      if (targetOf(root, from, load.specifier).startsWith('core/discovery/')) {
+      if (DISCOVERY.test(targetOf(root, from, load.specifier))) {
         offending.push(step)
         continue
       }
@@ -605,6 +609,50 @@ async function discoveryOffences(root: string): Promise<string[]> {
     if (seen.has(entry)) continue
     seen.add(entry)
     await walk(entry, nameUnder(root, entry))
+  }
+  return offending
+}
+
+/** The two readers of a service's repository: the snapshot a model is sent, and the discovery read. */
+const READERS = ['context/project-fs/', 'context/discovery/'] as const
+
+/**
+ * What the readers' rule refuses under `root`: a module of one reader that
+ * reaches a module of the other, however many hops away and by any load — a
+ * value, a type, an `export … from`, a module loaded at run time — and a
+ * run-time load in either closure no source can spell. The snapshot is what a
+ * model is sent; the discovery read opens files the snapshot withholds. A
+ * module of one loading the other is the one way a withheld file's text could
+ * reach a prompt, and a type is the first step of it. What both load from
+ * core/ — the lists of where credentials live — is one copy, and no road.
+ */
+async function readerOffences(root: string): Promise<string[]> {
+  const offending: string[] = []
+  for (const [own, other] of [READERS, [...READERS].reverse()] as const) {
+    const seen = new Set<string>()
+    const walk = async (from: string, trail: string): Promise<void> => {
+      for (const load of await loadsOf(from)) {
+        if (load.specifier === undefined) {
+          offending.push(unfollowable(nameUnder(root, from), load))
+          continue
+        }
+        if (!load.specifier.startsWith('.')) continue
+        const step = `${trail} → ${load.written}`
+        if (targetOf(root, from, load.specifier).startsWith(other ?? '')) {
+          offending.push(step)
+          continue
+        }
+        const next = await resolved(from, load.specifier)
+        if (seen.has(next)) continue
+        seen.add(next)
+        await walk(next, step)
+      }
+    }
+    for (const entry of await sourceFiles(path.join(root, own ?? ''))) {
+      if (seen.has(entry)) continue
+      seen.add(entry)
+      await walk(entry, nameUnder(root, entry))
+    }
   }
   return offending
 }
@@ -638,9 +686,16 @@ async function forgeImportOffences(root: string): Promise<string[]> {
   return offending
 }
 
-/** The one launcher, and the modules that may load it. */
+/**
+ * The one launcher, and the modules that may load it: the Inspector's listing,
+ * the forge, and stage 8's discovery read, which runs six shapes the launcher
+ * already holds — `rev-parse --show-toplevel`, `--show-prefix` and
+ * `--show-object-format`, `rev-parse --verify --quiet HEAD^{commit}`,
+ * `ls-files -z --cached` and `ls-tree -r -z --full-tree` — and adds none.
+ */
 const LAUNCHER = 'process/git.ts'
-const RUNS_GIT = (name: string): boolean => name === 'context/project-fs/snapshot.ts' || name.startsWith('forge/')
+const RUNS_GIT = (name: string): boolean =>
+  name === 'context/project-fs/snapshot.ts' || name === 'context/discovery/read.ts' || name.startsWith('forge/')
 
 /**
  * What a rule about one module refuses under `root`: a module other than
@@ -673,11 +728,11 @@ async function loaderOffences(
 
 /**
  * What the launcher's rule refuses under `root`: a module that loads
- * `process/git.ts` other than project-fs's snapshot and forge/, a run-time
- * load no source can spell, and one of those two handing the launcher on with
- * an `export … from`. `gitIn(repo)(['show', 'HEAD:.env'])` reads any tracked
- * file, so a module of context/ or llm/ loading it would go around every
- * confinement project-fs holds — the secret exclusions first. A type is
+ * `process/git.ts` other than project-fs's snapshot, the discovery read and
+ * forge/, a run-time load no source can spell, and one of those handing the
+ * launcher on with an `export … from`. `gitIn(repo)(['show', 'HEAD:.env'])`
+ * reads any tracked file, so a module of context/ or llm/ loading it would go
+ * around every confinement project-fs holds — the secret exclusions first. A type is
  * erased and may be named anywhere; `process/environment.ts` starts nothing.
  */
 const launcherOffences = (root: string): Promise<string[]> => loaderOffences(root, LAUNCHER, RUNS_GIT)
@@ -702,14 +757,15 @@ const CONFINES = new Set([
   'scaffold/write.ts', // `init platform`'s writer
   'context/iac-fs/snapshot.ts', // the declarations repository
   'context/project-fs/snapshot.ts', // the application repository
+  'context/discovery/read.ts', // a service's configuration files, opened O_NOFOLLOW
   'context/backstage/cache.ts', // the catalogue kept under the person's cache folder, never a repository
 ])
 
 /**
  * What the confinement rule refuses under `root`: a module other than the
- * four that act on a user's disk through it loading `confine/confine.ts`, and
+ * five that act on a user's disk through it loading `confine/confine.ts`, and
  * one of them handing it on. `createNew` writes and `openToRead` reads with no
- * fs function in the importer's source, so a fifth module loading it would be
+ * fs function in the importer's source, so a sixth module loading it would be
  * a writer the rule naming writers never sees, and a reader the rule naming
  * readers never sees.
  */
@@ -893,15 +949,18 @@ describe('architecture', () => {
     expect(offending).toEqual([])
   })
 
-  it('in context/, only iac-fs, project-fs, the fixtures and the catalogue cache touch the disk', async () => {
-    // Four modules, and the layer's whole disk surface. `project-fs` holds
-    // every confinement rule for the application repository — the exclusion
-    // list, the symlink refusal, the three caps — and another module reading
-    // that repository would be a second, unreviewed copy of them. The cache
+  it('in context/, only iac-fs, project-fs, the discovery read, the fixtures and the catalogue cache touch the disk', async () => {
+    // Five modules, and the layer's whole disk surface. `project-fs` holds
+    // every confinement rule for what a model is sent of the application
+    // repository — the exclusion list, the symlink refusal, the three caps —
+    // and another module reading that repository would be a second,
+    // unreviewed copy of them; the discovery read is the one second reader,
+    // named, and holds the same lists from core/secrets/names.ts. The cache
     // reads and writes under the person's cache folder, never a repository.
     const allowed = new Set([
       'context/iac-fs/snapshot.ts',
       'context/project-fs/snapshot.ts',
+      'context/discovery/read.ts', // the discovery read: a closed allow-list of a service's configuration files, by name
       'context/fixtures/index.ts',
       'context/backstage/cache.ts', // the catalogue kept under the person's cache folder, never a repository
     ])
@@ -943,9 +1002,10 @@ describe('architecture', () => {
       'cli/recording-fs.ts': ['mkdir', 'writeFile'], // a tape, when recording
       'cli/trace-sink.ts': ['mkdir', 'writeFile'], // a trace, under IDP_TRACE_DIR
       // `open` is the one call that can do both: the confinement primitive
-      // opens a file O_RDONLY | O_NOFOLLOW for iac-fs and project-fs, and
-      // O_CREAT | O_EXCL | O_NOFOLLOW for `init platform`, whose folders it
-      // makes one at a time. Only the four named below may load it.
+      // opens a file O_RDONLY | O_NOFOLLOW for iac-fs, project-fs and the
+      // discovery read, and O_CREAT | O_EXCL | O_NOFOLLOW for `init platform`,
+      // whose folders it makes one at a time. Only the five `CONFINES` names
+      // may load it.
       'confine/confine.ts': ['mkdir', 'open'],
       // Folders and new files through confine/; a copy or a secret renamed
       // into place, a pruned copy unlinked and its empty folder removed.
@@ -1068,13 +1128,22 @@ describe('architecture', () => {
     expect(await agentsReachOffences(SOURCE_ROOT)).toEqual([])
   })
 
-  it('nothing reachable from agents/ is in core/discovery/, not even a type', async () => {
+  it('nothing reachable from agents/ is in core/discovery/ or context/discovery/, not even a type', async () => {
     // A finding is the engine's (stage 8 brief § 8): no model sees one in
     // slice 1, and from 2.6 only the witness re-read vouches with one. A
     // finding's type in an agent's signature is the first step of handing it
     // one, so a type counts; and the walk follows every hop, because agents/
-    // already imports core/plan/, where `Verified` is meant to arrive.
+    // already imports core/plan/, where `Verified` is meant to arrive. The
+    // discovery read holds the bytes of files the snapshot withholds.
     expect(await discoveryOffences(SOURCE_ROOT)).toEqual([])
+  })
+
+  it('context/project-fs/ and context/discovery/ load nothing of each other', async () => {
+    // The snapshot is what a model is sent; the discovery read opens files the
+    // snapshot withholds (stage 8 brief § 8, "two readers, one boundary"). A
+    // module of one loading the other is the one way a withheld file's text
+    // could reach a prompt, so a type is refused too.
+    expect(await readerOffences(SOURCE_ROOT)).toEqual([])
   })
 
   it('every process src/ starts is given spawnedEnvironment', async () => {
@@ -1085,9 +1154,9 @@ describe('architecture', () => {
   })
 
   it('process/ imports nothing of ours, and only node: built-ins', async () => {
-    // A leaf both context/project-fs and forge/ import: the one place a
-    // process is started, with the one environment a child is given. Anything
-    // it imported would be reachable from both.
+    // A leaf context/project-fs, context/discovery/read.ts and forge/ import:
+    // the one place a process is started, with the one environment a child is
+    // given. Anything it imported would be reachable from all three.
     const offending = (await importsUnder(path.join(SOURCE_ROOT, 'process'))).filter(
       ({ specifier }) => !specifier.startsWith('node:') && !/^\.\/[\w-]+\.js$/.test(specifier),
     )
@@ -1105,7 +1174,7 @@ describe('architecture', () => {
     expect(offending).toEqual([])
   })
 
-  it('only scaffold/write.ts, context/iac-fs, context/project-fs and context/backstage/cache.ts load confine/', async () => {
+  it('only scaffold/write.ts, context/iac-fs, context/project-fs, context/discovery/read.ts and context/backstage/cache.ts load confine/', async () => {
     expect(await confineOffences(SOURCE_ROOT)).toEqual([])
   })
 
@@ -1128,11 +1197,12 @@ describe('architecture', () => {
     expect(await forgeImportOffences(SOURCE_ROOT)).toEqual([])
   })
 
-  it('only context/project-fs and forge/ load the git launcher', async () => {
+  it('only context/project-fs, context/discovery/read.ts and forge/ load the git launcher', async () => {
     // `gitIn` runs any git command in any repository it is handed, and
-    // `show HEAD:.env` reads a secret project-fs would never return. The two
+    // `show HEAD:.env` reads a secret project-fs would never return. The
     // modules that may load it are the ones that hold its confinements: the
-    // Inspector's listing, and the forge's create-only plumbing (ADR-0010).
+    // Inspector's listing, the discovery read's listing of what git tracks and
+    // what `HEAD` holds, and the forge's create-only plumbing (ADR-0010).
     // Measured: context/backstage/ and llm/ loading it passed every rule.
     expect(await launcherOffences(SOURCE_ROOT)).toEqual([])
   })
@@ -1331,7 +1401,7 @@ describe('the architecture rules themselves', () => {
     expect(await agentsReachOffences(clean)).toEqual([])
   })
 
-  it('refuses every way agents/ can reach core/discovery/', async () => {
+  it('refuses every way agents/ can reach core/discovery/ or context/discovery/', async () => {
     const root = await tree({
       'agents/value.ts': "import { mintFinding } from '../core/discovery/finding.js'\n",
       'agents/typed.ts': "import type { Finding } from '../core/discovery/finding.js'\n",
@@ -1344,6 +1414,11 @@ describe('the architecture rules themselves', () => {
       'agents/said.ts': "// import { mintFinding } from '../core/discovery/finding.js'\nexport const y = 1\n",
       'core/discovery/finding.ts': 'export interface Finding {}\nexport const mintFinding = 1\n',
       'core/discovery/connection.ts': 'export const parseConnection = 1\n',
+      // The read, directly and in two hops: agents/ → context/ → context/discovery/.
+      'agents/read.ts': "import { readDiscovery } from '../context/discovery/read.js'\n",
+      'agents/relay.ts': "import { y } from '../context/y.js'\n",
+      'context/y.ts': "import type { DiscoveryRead } from './discovery/read.js'\nexport const y = 1\n",
+      'context/discovery/read.ts': 'export interface DiscoveryRead {}\nexport const readDiscovery = 1\n',
     })
     expect((await discoveryOffences(root)).sort()).toEqual(
       [
@@ -1353,6 +1428,8 @@ describe('the architecture rules themselves', () => {
         "agents/late.ts → '../core/discovery/connection.js' at run time",
         'agents/named.ts loads name at run time: no rule can tell what it names',
         'agents/hop.ts → ../core/x.js → ./discovery/finding.js',
+        'agents/read.ts → ../context/discovery/read.js',
+        'agents/relay.ts → ../context/y.js → ./discovery/read.js',
       ].sort(),
     )
     const clean = await tree({
@@ -1362,6 +1439,44 @@ describe('the architecture rules themselves', () => {
       'cli/init.ts': "import { mintFinding } from '../core/discovery/finding.js'\n",
     })
     expect(await discoveryOffences(clean)).toEqual([])
+  })
+
+  it('refuses every way one reader can load the other', async () => {
+    const root = await tree({
+      // From the snapshot to the read: a value, a type, a hand-on, a late load.
+      'context/project-fs/value.ts': "import { readDiscovery } from '../discovery/read.js'\n",
+      'context/project-fs/typed.ts': "import type { OpenedFile } from '../discovery/read.js'\n",
+      'context/project-fs/passed.ts': "export { readDiscovery } from '../discovery/read.js'\n",
+      'context/project-fs/late.ts': "const read = await import('../discovery/read.js')\n",
+      // From the read to the snapshot, directly and in two hops through context/.
+      'context/discovery/read.ts': "import { readProject } from '../project-fs/snapshot.js'\nexport const readDiscovery = 1\n",
+      'context/discovery/hop.ts': "import { relay } from '../relay.js'\n",
+      'context/relay.ts': "import type { SkippedFile } from './project-fs/types.js'\nexport const relay = 1\n",
+      'context/discovery/named.ts': 'const m = await import(name)\n',
+      'context/project-fs/snapshot.ts': "export const readProject = 1\n",
+      'context/project-fs/types.ts': 'export interface SkippedFile {}\n',
+      // One copy of the lists, in core/, is no road between them.
+      'context/project-fs/lists.ts': "import { CREDENTIAL_NAMES } from '../../core/secrets/names.js'\n",
+      'context/discovery/lists.ts': "import { CREDENTIAL_NAMES } from '../../core/secrets/names.js'\n",
+      'core/secrets/names.ts': 'export const CREDENTIAL_NAMES = 1\n',
+    })
+    expect((await readerOffences(root)).sort()).toEqual(
+      [
+        'context/project-fs/value.ts → ../discovery/read.js',
+        'context/project-fs/typed.ts → ../discovery/read.js',
+        'context/project-fs/passed.ts → ../discovery/read.js',
+        "context/project-fs/late.ts → '../discovery/read.js' at run time",
+        'context/discovery/read.ts → ../project-fs/snapshot.js',
+        'context/discovery/hop.ts → ../relay.js → ./project-fs/types.js',
+        'context/discovery/named.ts loads name at run time: no rule can tell what it names',
+      ].sort(),
+    )
+    const clean = await tree({
+      'context/project-fs/snapshot.ts': "import { CREDENTIAL_NAMES } from '../../core/secrets/names.js'\n",
+      'context/discovery/read.ts': "import { CREDENTIAL_NAMES } from '../../core/secrets/names.js'\n",
+      'core/secrets/names.ts': 'export const CREDENTIAL_NAMES = 1\n',
+    })
+    expect(await readerOffences(clean)).toEqual([])
   })
 
   it('refuses a process started without spawnedEnvironment', async () => {
@@ -1570,7 +1685,7 @@ describe('the architecture rules themselves', () => {
     expect(await credentialOffences(passing)).toEqual([])
   })
 
-  it('refuses every module but project-fs and forge/ that loads the git launcher', async () => {
+  it('refuses every module but project-fs, the discovery read and forge/ that loads the git launcher', async () => {
     const root = await tree({
       // What a reviewer planted, measured: each read any tracked file past
       // project-fs's secret filter, and passed every rule.
@@ -1585,6 +1700,7 @@ describe('the architecture rules themselves', () => {
       'cli/typed.ts': "import type { Git } from '../process/git.js'\n",
       'context/backstage/transport.ts': "import { BACKSTAGE_TOKEN_VARIABLE } from '../../process/environment.js'\n",
       'context/project-fs/snapshot.ts': "import { GitError, gitIn } from '../../process/git.js'\n",
+      'context/discovery/read.ts': "import { GitError, gitIn } from '../../process/git.js'\n",
       'forge/local/forge.ts': "import { gitIn, type Git } from '../../process/git.js'\nexport type { Git } from '../../process/git.js'\n",
       'process/git.ts': "import { spawnedEnvironment } from './environment.js'\n",
     })
@@ -1651,7 +1767,7 @@ describe('the architecture rules themselves', () => {
     )
   })
 
-  it('refuses every module but the four named that loads the confinement primitive', async () => {
+  it('refuses every module but the five named that loads the confinement primitive', async () => {
     const root = await tree({
       // A writer and a reader no other rule would see: neither names an fs function.
       'cli/commands/probe-write.ts': "import { createNew } from '../../confine/confine.js'\n",
@@ -1664,6 +1780,7 @@ describe('the architecture rules themselves', () => {
       'cli/typed.ts': "import type { LinkTarget } from '../confine/confine.js'\n",
       'scaffold/write.ts': "import { createNew } from '../confine/confine.js'\n",
       'context/project-fs/snapshot.ts': "import { openToRead } from '../../confine/confine.js'\n",
+      'context/discovery/read.ts': "import { openToRead } from '../../confine/confine.js'\n",
       'context/backstage/cache.ts': "import { openNew } from '../../confine/confine.js'\n",
       'confine/confine.ts': "import { open } from 'node:fs/promises'\n",
     })

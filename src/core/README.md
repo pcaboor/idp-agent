@@ -146,9 +146,16 @@ and nothing here can be steered by what it validates. Hence the property tests r
   `?port=`, `?dbname=`, which a driver lets override the authority) as ambiguous;
   `composeConnection`, what a parsed one shows, `•••` where a
   password was. `rules.ts`: `RULES`, each rule's version, extractor, fields and what it
-  supports, and `ENGINE_TYPE`, the resource type an engine is declared as, or none. No model
-  sees any of it: an architecture rule keeps `core/discovery/` out of everything `agents/`
-  reaches, a type included.
+  supports, and `ENGINE_TYPE`, the resource type an engine is declared as, or none.
+  `allow.ts` (Task 1.2): what the discovery read (`context/discovery/read.ts`) may open, by the
+  path alone — `allowed`, the closed allow-list (`package.json` and the sample family,
+  `.env.example` among them), `neverOpened`, the snapshot's lists of where credentials live,
+  every name lowercased first, `isGenerated` and `isCode` — and `discardedWhole`, what is
+  thrown away after parsing (a `sops_*` dotenv key, a top-level `sops` object, a `Secret` or a
+  `SealedSecret`), with the words of every reason a path is not read. `limits.ts`: every bound
+  of the discovery, the read's among them. No model sees any of it: an architecture rule keeps
+  `core/discovery/` and `context/discovery/` out of everything `agents/` reaches, a type
+  included.
 - **Shared shapes** — `secrets/shapes.ts`: the credential shapes (`CREDENTIAL_SHAPES`) and
   the placeholder shapes (`placeholderShape`, `placeholderToken`, `placeholderPassword`),
   moved from `context/project-fs/secrets.ts` unchanged, and `referenceShape`, the reference
@@ -156,7 +163,13 @@ and nothing here can be steered by what it validates. Hence the property tests r
   to — a run of six letters there is a value outside its grammar, not a placeholder — so the snapshot's secret filter and
   discovery's grammars judge with one copy. `text/scripts.ts`: `scriptOf` and `mixesScripts`,
   moved from `answer/commentary.ts` unchanged, so a look-alike is refused by one rule in a
-  model's sentence and in a database's name.
+  model's sentence and in a database's name. `secrets/names.ts`: where credentials live, by
+  name — `CREDENTIAL_DIRECTORIES`, `GENERATED_DIRECTORIES`, `CREDENTIAL_STEMS`,
+  `PRIVATE_KEY_NAMES`, `CREDENTIAL_NAMES`, `SECRET_EXTENSIONS` and `isEnvironmentName` — moved
+  from `context/project-fs/snapshot.ts` unchanged, so the snapshot withholds and the discovery
+  read never opens one list. `git/blob.ts`: `blobId`, git's id of a blob, moved from
+  `forge/local/objects.ts`, which re-exports it, so the discovery read compares the bytes it
+  read with `HEAD`'s.
 
 **The rule: nothing in `core/` may read, write, fetch or ask.** Work that needs a disk belongs
 in `context/` or `cli/`, work that needs a model in `agents/` or `llm/` — carve out the pure

@@ -1,7 +1,7 @@
 /**
  * The bounds of stage 8's discovery, in one place so a reader sees every one
- * and a test can name it. Slice 1's first task needs only the parser's; the
- * read adds its own here (plan, Task 1.2).
+ * and a test can name it: the parser's (plan, Task 1.1), then the read's
+ * (Task 1.2). The findings' caps arrive with the extractors that count them.
  */
 export const DISCOVERY_LIMITS = {
   /**
@@ -14,4 +14,19 @@ export const DISCOVERY_LIMITS = {
   maxHosts: 8,
   /** An http URL a finding keeps: the origin alone, and no longer than this. */
   maxUrlLength: 2_048,
+  /**
+   * A file the read opens, as the snapshot's cap. Over it the file is named
+   * and never cut: half a manifest is a lie an extractor would read whole.
+   */
+  maxFileBytes: 65_536,
+  /**
+   * The folders one walk descends into, as the snapshot's own floor: past it
+   * the walk stops and says so (`truncated`), rather than hold the process.
+   */
+  maxDirectories: 5_000,
+  /** The YAML documents of one file. More is a file that cannot be read whole, never one read in part. */
+  maxYamlDocuments: 100,
 } as const
+
+/** The bounds as numbers, so a test can shrink one (`readDiscovery`'s `limits`). */
+export type DiscoveryLimits = { readonly [Bound in keyof typeof DISCOVERY_LIMITS]: number }
