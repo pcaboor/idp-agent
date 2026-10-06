@@ -62,7 +62,8 @@ import { GIT_LIMITS, GitError, gitIn, type Git, type GitLimits } from '../../pro
  * decomposed, which APFS serves as the same file — is taken under git's
  * spelling only when the filesystem says the two are one file.
  *
- * What it does NOT do: extract, judge or render. No command calls it yet.
+ * What it does NOT do: extract, judge or render. `init` reaches it through
+ * `discover.ts` alone, which does those.
  */
 
 /** One file the read kept: committed at `HEAD`, unchanged, allow-listed, and not discarded whole. */

@@ -1087,6 +1087,27 @@ gives the steps. Each slice ends on something the owner can run.
 
 ### Slice 1 — the report (nothing vouches, no schema change, no model sees a finding)
 
+**Built** (`docs/plans/stage-8-slice-1.md`, 1.1 to 1.4, [#144](https://github.com/pcaboor/idp-agent/pull/144),
+[#145](https://github.com/pcaboor/idp-agent/pull/145), [#146](https://github.com/pcaboor/idp-agent/pull/146)
+and 1.4's pull request), with the plan's departures from this note, each in its
+[*Where the code moved*](plans/stage-8-slice-1.md#where-the-code-moved-since-the-note) table:
+the closing below is shown on a sample and a manifest, since a deployment's `env` is 2.4's
+Kubernetes extractor (row 1); a finding keeps a list of hosts and names its variable, package
+or package name (row 4); the parser keeps only the parts it names, and a rendering is composed,
+never cut (row 5); the read runs no new git shape and reads no remote (row 6); the report goes
+between `init`'s diff and its closing lines, so a saved preview still applies (row 10), and
+after `ENGINE_BLOCK_END` through `Cleared` (row 11); and what git does not track is counted,
+never named (row 12). The owner's answers of 2026-10-04: the exit is read literally — a
+preview, nothing to change, nothing to submit or a declined confirmation exits 1 when no
+finding is **verified** and coverage is incomplete, and the sentence carries the count
+(`no dependency evidenced in N files analysed (V findings verified); M paths not analysed; K
+references configured outside this repository`); the remote is read in 2.5; what git does
+not track is counted, never named, on stdout, in the trace and in the body; and nothing is
+extracted from a file not committed. And the answers of 2026-10-06: a name staged and never
+committed is counted, never named; a value the engine could not read (`unparsed`,
+`withheld`) is listed and never counted as verified; and a `package.json` on one line over
+1 KiB verifies nothing, as built, and is said.
+
 Closed by 1.4: `idpa init` prints, after today's diff, "the repository states mysql `billing`
 on billing-db.prod.internal as app_billing, `k8s/deployment.yaml:24`; helm/ not analysed", and
 `init --submit` carries the same report after `ENGINE_BLOCK_END` in the service's pull request,

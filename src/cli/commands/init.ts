@@ -7,6 +7,7 @@ import { buildTools } from '../../agents/tools/graph-tools.js'
 import type { ProjectFacts } from '../../agents/tools/project-tools.js'
 import { EntityGraph } from '../../context/graph/entity-graph.js'
 import { summariseGraph } from '../../context/graph/summary.js'
+import { discover } from '../../context/discovery/discover.js'
 import { readProject } from '../../context/project-fs/snapshot.js'
 import {
   asCatalogInfo,
@@ -20,6 +21,7 @@ import {
   targetOf,
   type Identity,
 } from '../../core/plan/catalog-info.js'
+import { coverageSentence, isComplete, verifiedFindings, type Coverage } from '../../core/discovery/report.js'
 import { protectionText } from '../../core/github/protection.js'
 import { clearService } from '../../core/plan/clear.js'
 import { questionsOf, type Question } from '../../core/plan/clarify.js'
@@ -62,6 +64,7 @@ import {
   renderRefusedAnswer,
   type Ask,
 } from './plan.js'
+import { coverageLines } from '../render/coverage.js'
 import type { PreviewStatus } from '../render/footer.js'
 import { inertLine } from '../render/plain.js'
 import type { CommandResult } from './result.js'
@@ -72,6 +75,7 @@ import {
   sayInFlight,
   submit,
   type Opened,
+  type SubmissionReport,
   type SubmitOptions,
 } from './submit.js'
 
@@ -698,9 +702,11 @@ const settledNames = (plan: Plan): { name: string; index: number }[] =>
   )
 
 /**
- * Exit 0: the run had nothing to change, and says which file already says it —
+ * The run had nothing to change, and says which file already says it —
  * `plan`'s `= <file> already declares <ref>`, for the same reason: an empty
- * diff is only an answer when it is visible (§4.3).
+ * diff is only an answer when it is visible (§4.3). Exit 0, unless `initExit`
+ * makes it 1: the discovery report goes before the count, as it goes before a
+ * preview's closing lines.
  */
 const renderDeclared = (
   found: readonly { declaredIn: string; ref: string; refused: readonly string[] }[],
@@ -710,6 +716,8 @@ const renderDeclared = (
    * in silence.
    */
   unwritten?: string,
+  /** The discovery report's lines (`coverageLines`). */
+  report?: readonly string[],
 ): CommandResult => ({
   text: [
     'nothing to change — the repository already declares it:',
@@ -733,6 +741,7 @@ const renderDeclared = (
           `${unwritten} is not written either: init writes it beside a Component it adds, and ` +
             'there is none to add — write it by hand, in a reviewed change.',
         ]),
+    ...(report === undefined ? [] : ['', ...report]),
     '',
     '0 files · nothing written',
   ].join('\n'),
@@ -945,6 +954,17 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
     if (flight !== undefined) return flight
   }
 
+  // Stage 8's discovery (plan, Task 1.4): after every refusal before the
+  // model, so a refused run reads nothing more, and before the Inspector. Its
+  // report is printed after the diff and carried to the pull request; no
+  // model is sent a byte of it. It never throws.
+  const { coverage } = await discover(options.project)
+  /** A run that ended where the report is printed: the report said on stderr too, and the exit `initExit`'s. */
+  const reported = (result: CommandResult, ending: InitEnding): CommandResult => {
+    options.notice?.(coverageSentence(coverage))
+    return { ...result, found: initExit(ending, result.found, coverage) }
+  }
+
   const facts = await inspect(options.client, snapshot, options.emit)
   const request = requestOf(facts)
 
@@ -1056,7 +1076,10 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
       found !== undefined && 'declaredIn' in found ? [found] : [],
     )
     if (names.length > 0 && declared.length === names.length) {
-      return renderDeclared(declared, written === undefined ? undefined : CONFIG_FILE)
+      return reported(
+        renderDeclared(declared, written === undefined ? undefined : CONFIG_FILE, coverageLines(coverage)),
+        { kind: 'nothing-to-change' },
+      )
     }
 
     // The file init would add to already declares another Component: in a
@@ -1103,7 +1126,8 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
 
     const questions = questionsOf(signed.plan, { draft })
     if (questions.length === 0) {
-      return concluded(signed, request, kept, target, options, { opened, read, config: written })
+      const ended = await concluded(signed, request, kept, target, options, { opened, read, config: written, coverage })
+      return ended.ending === undefined ? ended.result : reported(ended.result, ended.ending)
     }
     if (options.ask === undefined || round >= ASK_LIMITS.maxRounds) {
       return renderInitQuestions(questions)
@@ -1135,6 +1159,8 @@ export function previewOf(
   kept: readonly Kept[],
   target: string,
   options: Pick<InitOptions, 'colour'>,
+  /** The discovery report's lines, after the diff (`coverageLines`). */
+  report?: readonly string[],
 ): CommandResult {
   // Only now. The plan boundary is re-crossed because this is a different
   // object from the one `draftPlan` parsed — the same reason `repair` runs gate
@@ -1169,6 +1195,7 @@ export function previewOf(
     dropped,
     ...(options.colour !== undefined ? { colour: options.colour } : {}),
     apply: APPLY,
+    ...(report === undefined ? {} : { report }),
   })
   // A drop is a negative answer, whatever else the diff shows: `renderPreview`
   // has no re-check to read one from here, and would end a plan whose only
@@ -1199,18 +1226,26 @@ async function concluded(
     readonly opened: Opened | undefined
     readonly read: Parameters<typeof clearService>[1]['existing']
     readonly config: WrittenConfig | undefined
+    readonly coverage: Coverage
   },
-): Promise<CommandResult> {
-  const { opened, read, config } = submission
-  if (opened === undefined && config === undefined) return previewOf(signed, request, kept, target, options)
-  const cleared = clearService(signed, { target, kept, existing: read, config })
+): Promise<{ readonly result: CommandResult; readonly ending: InitEnding | undefined }> {
+  const { opened, read, config, coverage } = submission
+  const report = coverageLines(coverage)
+  if (opened === undefined && config === undefined) {
+    return { result: previewOf(signed, request, kept, target, options, report), ending: { kind: 'preview' } }
+  }
+  const cleared = clearService(signed, { target, kept, existing: read, config, coverage })
   if ('outcome' in cleared) {
+    // Refused before any Component is concluded: no report, and the exit it had.
     return {
-      text: [
-        'refused — nothing was previewed, and nothing was written:',
-        ...cleared.reasons.map((reason) => `  ${inertLine(reason)}`),
-      ].join('\n'),
-      found: false,
+      result: {
+        text: [
+          'refused — nothing was previewed, and nothing was written:',
+          ...cleared.reasons.map((reason) => `  ${inertLine(reason)}`),
+        ].join('\n'),
+        found: false,
+      },
+      ending: undefined,
     }
   }
   const render = (status: PreviewStatus): CommandResult =>
@@ -1220,20 +1255,72 @@ async function concluded(
       dropped: [],
       status,
       apply: APPLY,
+      report,
       ...(options.colour !== undefined ? { colour: options.colour } : {}),
     })
   // Without --submit, the tail is APPLY, as a preview's always was.
   if (opened === undefined || cleared.edits.length === 0) {
-    return render({ kind: 'applied-by-hand', apply: APPLY })
+    return { result: render({ kind: 'applied-by-hand', apply: APPLY }), ending: { kind: 'preview' } }
   }
-  const { result } = await submit({
+  // Kept whole: what `submit` did decides the exit as much as its text does.
+  const { result, report: submitted } = await submit({
     opened,
     cleared,
     render,
     ...(options.submit?.confirm !== undefined ? { confirm: options.submit.confirm } : {}),
     ...(options.submit?.notice !== undefined ? { notice: options.submit.notice } : {}),
   })
-  return result
+  return { result, ending: { kind: 'submitted', report: submitted } }
+}
+
+/** How an init run ended where the report is printed: the preview, nothing to change, or what `submit` reported. */
+export type InitEnding =
+  | { readonly kind: 'preview' }
+  | { readonly kind: 'nothing-to-change' }
+  | { readonly kind: 'submitted'; readonly report: SubmissionReport }
+
+/**
+ * The one place `init`'s exit is decided (owner's answer 2, settled
+ * 2026-10-04, read literally): today's `found`, turned false where the run
+ * wrote nothing for review — a preview, nothing to change, nothing to submit,
+ * a confirmation declined — while its discovery verified no finding and read
+ * the repository in part. A finding verified is one `verifiedFindings` counts,
+ * the count the sentence says: a value the engine could not read is not one
+ * (owner's answer 7, 2026-10-06). A branch cut or a pull request opened keeps its 0,
+ * and every other outcome its code. It never turns a `false` into `true`.
+ * Exported for its table's test: `unchanged` is not reachable through
+ * `runInitRepo`, which previews a change with no edit before `submit`.
+ */
+export function initExit(ending: InitEnding, found: boolean, coverage: Coverage): boolean {
+  const unverified = verifiedFindings(coverage) === 0 && !isComplete(coverage)
+  switch (ending.kind) {
+    case 'preview':
+    case 'nothing-to-change':
+      return found && !unverified
+    case 'submitted': {
+      const outcome = ending.report.outcome
+      switch (outcome) {
+        case 'unchanged':
+        case 'declined':
+          return found && !unverified
+        case 'created':
+        case 'already-submitted':
+        case 'already-proposed':
+        case 'pushed-without-pull-request':
+        case 'closed':
+        case 'refused':
+          return found
+        default: {
+          const _exhaustive: never = outcome
+          return _exhaustive
+        }
+      }
+    }
+    default: {
+      const _exhaustive: never = ending
+      return _exhaustive
+    }
+  }
 }
 
 /**

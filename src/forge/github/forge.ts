@@ -332,6 +332,9 @@ export function openGitHubForge(input: {
       branch: change.branch,
       ...(note === undefined ? {} : { note }),
       ...(beside.length === 0 ? {} : { beside: { numbers: beside.map((one) => one.pull.number), base: road.base } }),
+      // Stage 8's report, after the engine's block: inside the bound checked
+      // below, on `textOf(change)`, before anything is written.
+      ...(change.coverage === undefined ? {} : { coverage: change.coverage }),
     })
 
   const overBound = (body: string): boolean => Buffer.byteLength(body, 'utf8') > GITHUB_LIMITS.bodyBytes

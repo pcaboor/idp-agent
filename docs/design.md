@@ -1113,6 +1113,18 @@ states: extracted by the engine, re-read before they vouch, matched only on iden
 catalogue declares, levels still asked. The design note is
 [`docs/stage-8-brief.md`](stage-8-brief.md).
 
+Its first slice is built (`docs/plans/stage-8-slice-1.md`): `init` reports what the
+configuration states. A second reader, separate from the snapshot a model is sent, opens the
+`package.json` files and sample environment files `HEAD` holds, by name, and keeps their bytes
+only when they are `HEAD`'s; two extractors turn them into typed findings with no field a
+secret could sit in; each finding's file is read again before it is reported; and a six-part
+report — analysed, findings, not proposed, declared and not evidenced, not analysed, not read
+by design — prints between the diff and the closing lines, its sentence on stderr too, and
+goes after the engine's block in `init --submit`'s pull request. Nothing vouches, matches or
+is proposed from it yet, and no model sees a finding. A preview with no verified finding in a
+repository read in part exits 1 (the owner's answer of 2026-10-04); a branch cut or a pull
+request opened exits 0.
+
 ### 7.4 `idp-agent "<intent>"` — the daily gesture
 
 ```

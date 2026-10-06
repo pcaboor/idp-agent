@@ -80,8 +80,12 @@ here, one pull request each, each naming the check run together at the end.
    the other has in flight rather than a competing pull request (2026-10-01). It goes on top of
    stage 6, which is done ([#123](https://github.com/pcaboor/idp-agent/pull/123) to
    [#138](https://github.com/pcaboor/idp-agent/pull/138); its follow-ups are under *Known
-   debts*), and whose submission road its own takes. Slice 1, the report, is planned
-   ([the plan](plans/stage-8-slice-1.md)).
+   debts*), and whose submission road its own takes. Slice 1, the report, is done
+   ([the plan](plans/stage-8-slice-1.md), [#144](https://github.com/pcaboor/idp-agent/pull/144)
+   to [#146](https://github.com/pcaboor/idp-agent/pull/146) and
+   [#147](https://github.com/pcaboor/idp-agent/pull/147)): `idpa init` reports what the
+   service's committed configuration states, and what it did not read. Slice 2, matching and
+   asking, is next, planned first.
 3. **Removing and changing an access, and company rules** (2026-10-01). Revoking a right,
    changing its level or decommissioning a service, always as a pull request a person merges —
    today the tool only appends, and least privilege needs the other half; and gates a company
@@ -533,6 +537,15 @@ The owner's decisions, dated, each with where it is recorded.
   `src/process` that still named two loaders of the git launcher is corrected in the same pull
   request: the diff there holds comment and README lines only, and `SHAPES` and `checkGitArgv`
   are byte-identical to `main`.
+- The owner's two answers about stage 8's Task 1.4, the report
+  ([the plan](plans/stage-8-slice-1.md)), each as recommended. A `package.json` written on one
+  line over 1 KiB **verifies nothing, and that is kept and said** (question 6): every finding
+  is at line 1, the re-read refuses a span over 1,024 bytes as a quote of the file, and the
+  report names each drop at its file and line, as `README.md` says. A name the engine could
+  not read is **not counted as verified** (question 7): `verifiedFindings` counts only a
+  finding the re-read lets vouch whose kind is neither `unparsed` nor `withheld`, and that one
+  count is the sentence's `(V findings verified)` and what `init`'s exit reads; the finding is
+  still listed as what it is.
 
 ## Known debts and open items
 

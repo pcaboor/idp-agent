@@ -1,8 +1,8 @@
 /**
  * The bounds of stage 8's discovery, in one place so a reader sees every one
  * and a test can name it: the parser's (plan, Task 1.1), the read's (Task
- * 1.2), then the re-read's (Task 1.3). The findings' caps arrive with the
- * extractors that count them.
+ * 1.2), the re-read's (Task 1.3), then the extractors' and the report's (Task
+ * 1.4).
  */
 export const DISCOVERY_LIMITS = {
   /**
@@ -34,6 +34,23 @@ export const DISCOVERY_LIMITS = {
    */
   maxSpanLines: 20,
   maxSpanBytes: 1_024,
+  /**
+   * The findings of one file (Task 1.4). Past it the file is refused whole,
+   * `over-finding-cap`, and no finding of it is kept: a file read in part is
+   * a file whose rest nobody reported.
+   */
+  maxFindingsPerFile: 200,
+  /** The findings of one run. Every file past it is named, `past-run-cap`, and none of its findings kept. */
+  maxFindingsPerRun: 1_000,
+  /**
+   * How deep a `package.json` may nest, measured on its bytes before any
+   * parser runs: a 64 KiB `[[[[…` is a parse failure, never a stack overflow.
+   */
+  maxJsonDepth: 64,
+  /** The paths the report names in one group, then how many more. */
+  maxListed: 20,
+  /** The findings a pull request's body lists, then their count; the terminal lists every one up to the run's cap. */
+  maxBodyFindings: 100,
 } as const
 
 /** The bounds as numbers, so a test can shrink one (`readDiscovery`'s `limits`). */

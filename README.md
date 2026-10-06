@@ -15,7 +15,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 5356, no API key" src="https://img.shields.io/badge/tests-5356%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 5446, no API key" src="https://img.shields.io/badge/tests-5446%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -501,6 +501,28 @@ tracks a branch on github.com, the branch is pushed with your git and a pull req
 on the service's own repository with your gh — its rules read before the Inspector, a note
 said where they let you merge alone, and a repository you cannot push to refused naming
 `--local` ([`docs/submitting.md`](docs/submitting.md)).
+
+`init` also reports what the service's committed configuration states, between the diff and
+its closing lines, so a saved run still applies: the connection strings of its sample
+environment files (`.env.example` and its family), a password never shown, and the database,
+cache and queue clients its `package.json` installs, each with its file and line — and what
+it did not read, and why: code, formats no rule reads yet, files changed since `HEAD`, files
+it never opens by design, and how many paths git does not track or are staged and never
+committed, counted and never named. The report ends on one sentence, also said on stderr —
+`no dependency evidenced in 2 files analysed (4 findings verified); 4 paths not analysed; 1
+reference configured outside this repository` — and goes after the engine's block in
+`init --submit`'s pull request. Nothing is proposed from it yet, and no model is sent any of
+it. A preview, a run with nothing to change or a confirmation declined exits 1 when no
+finding was verified in a repository read in part (a service with no committed
+`package.json`, say); a run that cuts a branch or opens a pull request exits 0. A finding is
+verified when it is committed, read again unchanged, comes from the service's own
+configuration rather than a sample, a test or a development dependency, and holds a value
+the engine could read: a
+`package.json` whose name is `5`, outside npm's grammar or shaped like a credential has that
+name listed as what it is, and not counted. A `package.json` written on one line longer than
+1 KiB verifies nothing, by design: each finding's span is that whole line, which the re-read
+refuses as a quote of the file — npm writes a manifest indented — and the report names each
+finding it dropped by its file and line.
 
 | Command | What it does |
 |---|---|

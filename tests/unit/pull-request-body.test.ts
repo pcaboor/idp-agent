@@ -5,11 +5,13 @@ import {
   ENGINE_BLOCK_END,
   LONGEST_BESIDE,
   besideParagraph,
+  coverageMarkdown,
   fenceFor,
   pullRequestBody,
   pullRequestUrl,
   type PullRequestInput,
 } from '../../src/core/github/pull-request.js'
+import { coverageOf, coverageSentence } from '../../src/core/discovery/report.js'
 import { MERGE_NOTE, unguardedNote } from '../../src/core/github/protection.js'
 import type { Cleared } from '../../src/core/plan/clear.js'
 import { clearedFor, clone, removeClones } from '../support/forge-fixture.js'
@@ -266,6 +268,46 @@ describe('pullRequestBody', () => {
   it('refuses a message messageFor did not write', async () => {
     const change = await real()
     expect(() => pullRequestBody({ ...input(change), message: 'idp-agent: something\n\nno request here\n' })).toThrow()
+  })
+
+  it('writes the same body as before when there is no report', async () => {
+    // Stage 8's report goes after the engine's block, and only when there is
+    // one: a body without it ends on the marker, byte for byte as it did.
+    const change = await real()
+    const before = pullRequestBody(input(change))
+    expect(pullRequestBody({ ...input(change), coverage: undefined } as unknown as PullRequestInput)).toEqual(before)
+    expect(before.body.split('\n').at(-1)).toBe(ENGINE_BLOCK_END)
+  })
+
+  it('puts the report after the engine’s block, and nothing of it before', async () => {
+    const change = await real()
+    const coverage = coverageOf(
+      {
+        selection: 'git',
+        head: 'c0ffee1'.padEnd(40, '0'),
+        opened: [],
+        notAnalysed: [{ path: 'README.md', why: 'no-rule' }],
+        byDesign: [{ path: 'deploy/prod.env', why: 'environment-file' }],
+        untracked: 2,
+        staged: 0,
+        unlisted: 0,
+        unnameable: 0,
+        truncated: false,
+      },
+      new Map(),
+      [],
+    )
+    const { body } = pullRequestBody({ ...input(change, change.request, 'init'), coverage })
+    const lines = body.split('\n')
+    const end = lines.indexOf(ENGINE_BLOCK_END)
+    expect(end).toBeGreaterThan(-1)
+    expect(lines.slice(0, end + 1).join('\n')).toBe(pullRequestBody(input(change, change.request, 'init')).body)
+    const after = lines.slice(end + 1)
+    expect(after).toEqual(['', ...coverageMarkdown(coverage)])
+    expect(after.join('\n')).toContain('`c0ffee1`')
+    expect(after.join('\n')).toContain('`README.md`')
+    expect(after.at(-1)).toBe(coverageSentence(coverage))
+    expect(after.join('\n')).not.toContain('/blob/')
   })
 })
 
