@@ -350,6 +350,19 @@ Each pull request adds its line here.
   changed file is handed back to be read again, and a file changed since `HEAD` or turned into
   one discarded whole hands no byte back
   ([#146](https://github.com/pcaboor/idp-agent/pull/146)).
+- `idpa init` reports what the service's committed configuration states — the connection
+  strings of its sample environment files and the database, cache and queue clients its
+  `package.json` installs — each with its file and line, a password never shown, and what
+  it did not read and why: code, formats no rule reads yet, files changed since `HEAD`,
+  files it never opens by design, and how many paths git does not track or are staged and
+  never committed. The report follows
+  the diff, ends on one sentence also said on stderr — "no dependency evidenced in N files
+  analysed (V findings verified); M paths not analysed; K references configured outside
+  this repository" — and
+  goes after the engine's block in `init --submit`'s pull request. Nothing is proposed from
+  it yet, and no model is sent any of it. A preview with no verified finding in a
+  repository read in part exits 1; a run that cuts a branch or opens a pull request exits 0
+  ([#147](https://github.com/pcaboor/idp-agent/pull/147)).
 
 ### Changed
 

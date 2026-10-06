@@ -520,6 +520,23 @@ questions, the project's files and init's own verdicts, then `refuseDivergence` 
 names the declarations repository, never the clone the branch goes to. D12 is the local
 forge's refusal, before gh starts; D6 is the clearance's.
 
+**`init`'s discovery report** (stage 8, slice 1). `runInitRepo` calls
+`context/discovery/discover.ts` after every refusal before the model and just before the
+Inspector, and `render/coverage.ts`'s `coverageLines` prints the report — a heading, § 9's six
+parts with their labels aligned, the sentence — through `renderPreview`'s `report`, after the
+diff and before the closing lines, so stdout still applies with `git apply` and still ends on
+how to apply it; `renderDeclared` puts the same lines before `0 files · nothing written`, and
+the confirmation's preview holds them too. Every path is spelled out (`spelled`: each control,
+format, bidi and line-separator character as a `\u` escape, then `inertLine`). The sentence
+goes to stderr through `notice` wherever the report is printed, never on a question or a
+clearance refused before a Component is concluded. `clearService` carries the coverage on
+`Cleared`, and the GitHub forge's `textOf` renders it after `ENGINE_BLOCK_END`. The exit is
+decided once, by `initExit`, a switch over how the run ended — a preview, nothing to change,
+or `submit`'s `SubmissionReport`, kept whole by `concluded` — that turns today's `found` false
+for a preview, nothing to change, `unchanged` and `declined` when `verifiedFindings` is 0 and
+`isComplete` is false, and never turns a false into true. `plan` passes no report and prints
+what it printed.
+
 **`idpa protection`.** `commands/protection.ts`'s `runProtection` checks, through the
 person's own gh and with `GET` only, whether the branch a clone tracks on github.com keeps a
 pull request from merging until someone other than its opener approves its latest commit

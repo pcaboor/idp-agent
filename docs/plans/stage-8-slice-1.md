@@ -1,6 +1,6 @@
 # Stage 8, slice 1 — the report
 
-**Status: plan accepted by the owner on 2026-10-04 ([#143](https://github.com/pcaboor/idp-agent/pull/143)); 1.1 built ([#144](https://github.com/pcaboor/idp-agent/pull/144)), validated by the owner before it merged; 1.2 built ([#145](https://github.com/pcaboor/idp-agent/pull/145)), validated by the owner before it merged; 1.3 built ([#146](https://github.com/pcaboor/idp-agent/pull/146)), validated by the owner before it merged; 1.4 not started.** Four pull requests, 1.1 to 1.4, after this
+**Status: plan accepted by the owner on 2026-10-04 ([#143](https://github.com/pcaboor/idp-agent/pull/143)); 1.1 built ([#144](https://github.com/pcaboor/idp-agent/pull/144)), validated by the owner before it merged; 1.2 built ([#145](https://github.com/pcaboor/idp-agent/pull/145)), validated by the owner before it merged; 1.3 built ([#146](https://github.com/pcaboor/idp-agent/pull/146)), validated by the owner before it merged; 1.4 built ([#147](https://github.com/pcaboor/idp-agent/pull/147)), validated by the owner before it merged. Slice 1 is complete.** Four pull requests, 1.1 to 1.4, after this
 plan merged on its own (`docs/stage-8-slice-1-plan`). They are not stacked ahead of time:
 **the owner validates each pull request before it merges and before the next one starts**
 (owner's decision of 2026-10-04, `docs/roadmap.md`), so each branch is cut from `main` once
@@ -84,7 +84,8 @@ permalink (4.3). It does not read the git remote (question 2).
   its closing lines, its sentence on stderr, and it goes after `ENGINE_BLOCK_END` in the pull
   request body, carried typed through `clearService` and `Cleared`. Answer 2's exit code
   applies as settled on 2026-10-04, read literally (question 1, answered 2026-10-04): a
-  preview with no verified finding and incomplete coverage exits 1.
+  preview with no verified finding and incomplete coverage exits 1; a value the engine could
+  not read is not a verified finding (question 7, answered 2026-10-06).
 
 **Tech stack.** TypeScript 7, Node 22+, Vitest 5. `yaml` 2 gives the line of a `package.json`
 key, with `LineCounter` and unique keys. `fast-check` 4 runs the property, and `node:crypto`
@@ -412,12 +413,28 @@ Nothing on the list reopens a decision of § 13.
   "exit 1 for a preview with no evidenced finding and incomplete coverage", and on
   2026-10-04 chose the literal reading: any **verified** finding counts, that is a finding the
   re-read lets vouch (`Checked` `vouches`: committed, of standing `evidence`, still saying what
-  it said). An `npm.name` counts, so a Node service with a committed, parseable `package.json`
-  that names it previews at exit 0. A finding that passes the re-read but cannot vouch does
-  not count: a sample (`.env.example`), a mention, a placeholder. So a repository whose only
-  findings come from the sample family, or that has none (no `package.json`, one changed since
-  `HEAD`, or no git repository), previews at exit 1 when its coverage is incomplete.
-  `verifiedFindings` is the one function the exit reads.
+  it said) **and that holds a value the engine could read**: its kind is neither `unparsed`
+  nor `withheld` (question 7, answered 2026-10-06). An `npm.name` counts, so a Node service
+  with a committed, parseable `package.json` that names it previews at exit 0. A finding that
+  passes the re-read but cannot vouch does not count: a sample (`.env.example`), a mention, a
+  placeholder. Nor does one that vouches and states nothing the engine could read: a name of
+  `5`, one outside npm's grammar or holding U+202E (`unparsed`), one shaped like a credential
+  (`withheld`). It is still listed under *findings* as what it is ("a value this version could
+  not read", "a value shaped like a credential, not shown"); only the count leaves it out. So
+  a repository whose only findings come from the sample family or are unreadable, or that has
+  none (no `package.json`, one changed since `HEAD`, or no git repository), previews at exit 1
+  when its coverage is incomplete. `verifiedFindings` is the one function the exit reads, and
+  the count the sentence says, so the two never disagree; `Coverage.verified` still holds the
+  IDs of every finding that vouched.
+- **A `package.json` written on one line longer than 1 KiB verifies nothing**, as decided
+  (question 6, answered 2026-10-06: kept as built). Its findings are all at line 1, and 1.3's
+  span check refuses a span over `maxSpanBytes` (1,024) as a quote of the file, so the re-read
+  drops every one. The report says so where the file is: *analysed* reads `package.json (npm:
+  0 findings, 2 dropped by the re-read)`, and each drop is listed at its file and line
+  (`package.json:1   dropped by the re-read, at its span check: …`) — a path `HEAD` holds, so a
+  path the report may name. npm writes a manifest indented, so this is a manifest a tool
+  minified, and a span that is the whole file is a quote of it, which is what the check exists
+  to refuse.
 - **The sentence names what the exit reads.** The note's sentence for an empty result, "no
   dependency evidenced in N files analysed; …", stays word for word, and the count of verified
   findings follows the files analysed in parentheses:
@@ -1658,7 +1675,8 @@ byte of it.
   `src/core/github/pull-request.ts` (`PullRequestInput`, `:32`; `pullRequestBody`, `:143`;
   `codeSpan` exported, `:95`), `src/forge/github/forge.ts` (`textOf`, `:323`)
 - Create: `tests/unit/discovery-env-file.test.ts`, `tests/unit/discovery-npm.test.ts`,
-  `tests/unit/discovery-report.test.ts`, `tests/unit/init-discovery.test.ts`
+  `tests/unit/discovery-report.test.ts`, `tests/unit/init-discovery.test.ts`,
+  `tests/unit/discovery-discover.test.ts` (from the review, 2026-10-06)
 - Modify: `tests/invariants/discovery-secrets.test.ts`,
   `tests/unit/pull-request-body.test.ts`, and the `init` tests whose exit changes (Step 7's
   list)
@@ -1698,7 +1716,7 @@ export interface Coverage {
   readonly truncated: boolean
 }
 export function coverageOf(walked: Walked, extracted: ReadonlyMap<string, Extracted>, checked: readonly Checked[]): Coverage   // deep-frozen
-/** The findings the re-read let vouch (`Checked` `vouches`): what answer 2's exit reads. */
+/** The findings the re-read let vouch (`Checked` `vouches`) whose kind is neither `unparsed` nor `withheld`: what answer 2's exit reads, and the sentence's count (question 7). */
 export const verifiedFindings: (coverage: Coverage) => number
 /** A verified finding whose rule supports a target and whose kind is an engine: 0 in slice 1, by construction. */
 export const evidencedDependencies: (coverage: Coverage) => number
@@ -1733,7 +1751,7 @@ export interface PullRequestInput { …; readonly coverage?: Coverage }   // ren
 export const codeSpan: (text: string) => string
 ```
 
-- [ ] **Step 1: Estimate what the exit changes (before any code).** Every `init` test whose
+- [x] **Step 1: Estimate what the exit changes (before any code).** Every `init` test whose
   run previews, finds nothing to change, finds nothing to submit or declines, and expects
   exit 0 or `found: true`, will expect exit 1 under answer 2 when its repository gives no
   verified finding: it has a `README.md` or a `CODEOWNERS` (so coverage is incomplete), and
@@ -1751,7 +1769,7 @@ export const codeSpan: (text: string) => string
   pull request's description as such; the list is Step 7's. None of those tests is loosened
   or deleted.
 
-- [ ] **Step 2: Write the extractors' tests, and see them fail.**
+- [x] **Step 2: Write the extractors' tests, and see them fail.**
   `tests/unit/discovery-env-file.test.ts`:
   1. *reads a connection on each line a sample states*, an `it.each`. Its rows: `KEY=url`,
      `export KEY=url`, `KEY='url'`, `KEY="url"`, an unquoted value ending at ` #`, a comment
@@ -1793,7 +1811,7 @@ export const codeSpan: (text: string) => string
 
   *Fails today:* the modules do not exist.
 
-- [ ] **Step 3: Write the report's tests, and see them fail.** Question 5 is answered
+- [x] **Step 3: Write the report's tests, and see them fail.** Question 5 is answered
   (2026-10-06, *count only*) and applied in 1.2: the read names only what `HEAD` holds, so an
   index-only entry reaches the report as a count (`staged`), never as a name, and test 1's
   groups are `HEAD`'s paths. `tests/unit/discovery-report.test.ts`:
@@ -1835,7 +1853,7 @@ export const codeSpan: (text: string) => string
       report each is one of the two renderings the terminal and the body give it, never raw.
       (From the review of 1.2, 2026-10-05.)
 
-- [ ] **Step 4: Write `init`'s tests, and see them fail.** `tests/unit/init-discovery.test.ts`
+- [x] **Step 4: Write `init`'s tests, and see them fail.** `tests/unit/init-discovery.test.ts`
   runs `init` over a repository made by `committed()` from the owner's fixture (1.2) and
   `init-command.test.ts`'s `application()` files, with its scripted Inspector and Architect.
   The two `package.json` are merged into one: `application()`'s name, `billing-api`, which
@@ -1906,7 +1924,7 @@ export const codeSpan: (text: string) => string
       filter and tests), the trace check covers the root's `outputs` and every span but the
       model calls'.
 
-- [ ] **Step 5: Build the extractors and the report.** `env-file.ts`, `npm.ts`,
+- [x] **Step 5: Build the extractors and the report.** `env-file.ts`, `npm.ts`,
   `extractors.ts`, `report.ts` and `discover.ts`. Each extractor wraps its whole body in one
   `try` and returns `parse-failure` with a `ParseFailure`, never a message; `discover` catches
   whatever a file's step throws, makes it that file's `not analysed` reason, and never
@@ -1917,7 +1935,7 @@ export const codeSpan: (text: string) => string
   wrote), over `ParseFailure` (its words), and over `Checked['outcome']` in `coverageOf`.
   Steps 2 and 3 pass.
 
-- [ ] **Step 6: Wire `init` and the body.**
+- [x] **Step 6: Wire `init` and the body.**
   - `runInitRepo` calls `discover(options.project)` just before `inspect` (`init.ts:948`),
     after every refusal before the model, so a refused run reads nothing more.
   - `previewOf` and `concluded`'s `render` pass `report: coverageLines(coverage)` to
@@ -1937,7 +1955,7 @@ export const codeSpan: (text: string) => string
     needs no change: `textOf(change)` now holds the report.
   - Step 4's tests pass.
 
-- [ ] **Step 7: The tests whose exit changes, from the suite itself.** `df -h "$TMPDIR"`, then
+- [x] **Step 7: The tests whose exit changes, from the suite itself.** `df -h "$TMPDIR"`, then
   `pnpm test` once Step 6 is built. Every failure is listed with its file, its title and the
   ending its run reaches (preview, *nothing to change*, `unchanged`, `declined`). A failure
   that is not one of those four endings is a bug of Step 6 and is fixed there, never in the
@@ -1946,7 +1964,7 @@ export const codeSpan: (text: string) => string
   into the pull request's description, beside the estimate, and the test files on it are
   staged by name. Run each file, then `pnpm typecheck`.
 
-- [ ] **Step 8: The docs it makes true.**
+- [x] **Step 8: The docs it makes true.**
   - `AGENTS.md`, the exit codes: `1` gains "an `init` that previewed, found nothing to
     change or to submit, or was declined at the confirmation, while its discovery verified no
     finding and read the repository in part (the coverage sentence on stdout and stderr;
@@ -1977,7 +1995,7 @@ export const codeSpan: (text: string) => string
   - `docs/roadmap.md`: stage 8's item notes slice 1 done, and slice 2 next.
   - `src/cli/README.md` and `src/core/README.md`: the report and where it is rendered.
 
-- [ ] **Step 9: Checks**
+- [x] **Step 9: Checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -1998,6 +2016,141 @@ no disk of its own; it calls `read.ts`. `cli/render/coverage.ts` touches no disk
 and `pull-request.ts` import `core/discovery/report.ts`, inside `core/`, and nothing in
 `agents/` reaches either.
 
+Measured: `tests/architecture` reports 51 tests, 32 of them rules, as on 1.3.
+
+**As built**, where the code asked for it (2026-10-06):
+
+- **Step 1's estimate**, on `e9cf33d`: `found).toBe(true)` 10 times in `init-command.test.ts`
+  and 12 in `init-real-repo.test.ts`, none in the other three; `toBe(0)` 23, 2, 11, 0 and 12
+  times in the five files, before the tests over a committed `package.json` are subtracted.
+  **Step 7's list**, from the suite: 14 tests in three files, each ending on a preview or on
+  *nothing to change* over a folder git does not hold (selection `walk`: nothing opened, so no
+  finding verified and coverage incomplete), each now expecting `found: false` or exit 1 and
+  the coverage sentence, nothing else changed — `init-command.test.ts`, *previews the
+  catalog-info.yaml it would write, and writes nothing* (preview); `init-real-repo.test.ts`,
+  *finds the Component a nested catalog-info.yml declares with no ---, and adds nothing*,
+  *recognises a Component whose lifecycle this tool would not write, and says so*,
+  *recognises a Component whose name is written in upper case*, *reads the namespace a
+  Component states, and names the ref the file declares* (its answered run) and *asks before
+  adding a second Component to a file that declares one under another name* (its `same` run:
+  nothing to change; its `other` run: a preview), *does not call a same-named API "already
+  declared"*, *never files the service in a test fixture's catalog-info*, *… in a hidden
+  folder's catalog-info*, *… in a workspace's catalog-info*, *is not stopped by a catalog-info
+  that is neither the service's nor where it would write*, *reaches a diff when the person
+  passes --owner, --lifecycle and --name* (exit 1) and *reaches a diff when the person answers
+  at the prompt* (previews); `trace-wiring.test.ts`, *is the text without a terminal's escape
+  sequences, so MLflow's preview reads* (a preview, exit 1). No failure was another ending.
+- **`coverageSections`' lines are `{ at?, text, shown? }`** (`CoverageLine`), not strings: a
+  finding's place, its sentence and its rendering are three things the terminal aligns and the
+  body writes as one item. It takes a third argument, `{ findings }`, the body's bound of 100,
+  and `coverageHeading` is the heading both renderings share. The body's rendering is
+  `coverageMarkdown`, exported from `core/github/pull-request.ts`: the heading in bold, each
+  label in bold, each line an item, a finding `` - `path`:N sentence · `rendering` ``.
+- **A path not analysed may carry its parse failure** (`NotAnalysedPath`, `failure?:
+  ParseFailure`), so a file is named *it could not be parsed (a key written twice)*. And a
+  refused finding's `id` in `Coverage.dropped` is `string | undefined`, as `Checked` gives it.
+- **The words of both parts are 1.2's** (`notAnalysedReason`, `byDesignReason`), grouped by
+  reason in the order a reason is first met in path order, each group `reason: paths`, at most
+  20 then *and N more*: `a real environment file, never opened: deploy/prod.env` where the plan
+  showed `deploy/prod.env (a real environment file)`, and `.gitignore` (no rule) before
+  `src/index.ts` (code). *analysed* names one file a line, not ` · `-joined. A `mention`'s
+  sentence is *a test, an example or a development dependency mentions …*, and a client in a
+  `mention` *is mentioned* rather than *installed*.
+- **The terminal spells out every invisible character of a path**, not only the bidi
+  controls: `spelled` writes each `\p{Cc}`, `\p{Cf}`, `\p{Zl}` and `\p{Zp}` as a `\u` escape,
+  then `inertLine`. `inertLine` alone removes C0 and C1 and spells out only the bidi controls,
+  and test 10 asks that no line hold a format character either (a U+200B among its rows).
+- **The run's finding cap** is `pastRunCap` (`report.ts`): `discover` asks it before the
+  re-read, so no file past the cap is opened again, and `coverageOf` asks it again, so the
+  report cannot disagree. `Extracted` keeps its three outcomes.
+- **What `discover` does with each re-read.** A `Reread` whose findings come back `stale`
+  (committed bytes a commit made during the run) is extracted again from those bytes and its
+  new findings checked against a third read; a `stale` there is *changed during the run*. A
+  `Dropped` `changed` is extracted from nothing and is *changed during the run*; one
+  `discarded-sops` or `discarded-secret` is set aside by design, as the read sets it; one
+  `parse-failure` is not analysed for that reason. A file `reread` cannot open again (`HEAD`
+  no longer holds it) stays analysed, and its findings are listed as dropped at `path`. Every
+  byte `discover` was handed, and every re-read's, is zeroed once used.
+- **An extractor never maps a throw to a `ParseFailure` whose words would be false** (*not
+  plain JSON* of a dotenv file). What a parser throws is caught inside the extractor and named
+  there; anything else is an engine bug, rethrown with a fixed message that holds no byte of
+  the file, and `discover` makes it the file's `parse-failure`, with no detail. `unclosed-quote`
+  is said by npm's depth scan, of a string that never closes; a sample's line whose quote does
+  not close is an `unparsed` finding, as Step 2's row asks.
+- **`renderPreview`'s empty-diff branch takes the report too**, before `0 files · nothing
+  written`: `init` with a flag and nothing to add ends there. `previewOf` takes the report as an
+  optional last argument (its own test calls it without one), and `clear.ts`'s `mint` the
+  coverage as an optional last argument.
+- **With a confirmation, the report is in the preview the person confirms or declines**:
+  `submit` prints only the closing lines after a prompt, which showed the diff. Step 4's test 9
+  reads the report in the declined preview (`SubmissionSummary.preview`) and the sentence on
+  stderr, beside `found: false`. The sentence goes to stderr through `notice` on every ending
+  where the report is printed: a preview, *nothing to change*, and each `submit` outcome.
+- **Test 10 walks the trace's string leaves**, as test 13 does: a trace holds bigints, which
+  `JSON.stringify` refuses.
+- **Test 13 generates two passwords**, each marked in every fragment: one in the three slots of
+  environment files, looked for everywhere, model calls included; one, marked otherwise, in the
+  two `package.json` slots, looked for everywhere but the `CHAT_MODEL` spans. One password in
+  all five could not tell which slot a model call's span held.
+- `idpa init` over the fixture with `application()`'s files, as Step 4 builds it, says
+  `6 paths not analysed` (CODEOWNERS, README.md, .gitignore, src/index.ts, deploy/prod.env and
+  the untracked `.env`), and `unverified`, `pyproject.toml` added, 7.
+- The test count in `AGENTS.md` and the badge is set by the shipping script and was not edited
+  by hand.
+
+**As built, from the review of 1.4** (2026-10-06):
+
+- **A finding the re-read refused is named by its file and line** (`DroppedFinding`:
+  `path`, `line`, `id`, `check`, `reason`), both taken from the extraction of a file the walk
+  opened at `HEAD`, never from the refusal; a refused ID no extractor of the run made has
+  neither. Each analysed file counts its own (`Analysed.dropped`: `npm: 0 findings, 2 dropped
+  by the re-read`), the drops of a file not analysed are listed nowhere, as its findings are
+  not, and the list is bounded as a group's paths are: 20 on a terminal and in a body, then
+  `and N more dropped by the re-read`.
+- **The run's cap is decided once**, by `discover`, before the re-read, and handed to
+  `coverageOf` (its fourth argument, `past`; `pastRunCap` of what was extracted when it is
+  absent), with the files the last extraction puts past it: a file past the cap is never
+  read again and never listed as analysed with no finding, and the report never lists more
+  findings than the cap. `discover` reads the cap from `limits.maxFindingsPerRun`, so a test
+  shrinks it.
+- **`discover` extracts a stale file again only from a `Reread` that `isCommitted`**, as
+  well as `read.ts` holding it to that: bytes that are not `HEAD`'s are extracted from
+  nothing, and the file is *changed during the run*. Every re-read's bytes are zeroed in a
+  `finally`, on every way out of a file's step.
+- **`env-file` reads nothing inside a quoted value carried over several lines**: the line
+  that opens it is `unparsed`, and every line until the closing quote (a double-quoted
+  value's `\"` escaped) is the value's, never an assignment; a quote that never closes leaves
+  the rest of the file inside it.
+- **`initExit` is exported, for its table's test**: `unchanged` is not reachable through
+  `runInitRepo`, which previews a change with no edit before `submit`, so every row of the
+  table is pinned on `initExit` itself, and a pull request opened over `unverified` is run
+  end to end (exit 0, `(no finding verified)` in the body and on stderr).
+- **`tests/unit/discovery-discover.test.ts`** scripts the read (`readDiscovery` mocked) and
+  counts the real extractors: a commit made during the run read again, a second change, a
+  `Dropped` of each kind, bytes not `HEAD`'s, an extractor that throws on either extraction,
+  the run's cap and its decision kept.
+
+**As built, from the owner's answers to questions 6 and 7** (2026-10-06):
+
+- **Question 6, kept as built.** No code changed: Choices 1.4 and `README.md` say it as
+  decided, and `discovery-report.test.ts`'s *names the file and the line a finding the
+  re-read refused was read at* still pins it.
+- **Question 7, not counted.** `verifiedFindings` counts a finding of `Coverage.verified`
+  only when its kind is neither `unparsed` nor `withheld`. `coverageOf`, `Coverage.verified`
+  (the IDs of every finding that vouched), `evidencedDependencies` and the rendering are
+  unchanged, and `initExit` reads the new count through `verifiedFindings`, the one the
+  sentence says. In `discovery-report.test.ts`, *counts a verified name it could not read, as
+  the literal reading of the exit says* became *does not count a name it could not read,
+  though the re-read lets it vouch*: a name of `5`, one outside npm's grammar and one shaped
+  like a credential each vouch, are listed as what they are, and are not counted (`(no finding
+  verified)`); and *counts a name it could read beside one it could not* was added (two
+  vouched, one counted). In `init-discovery.test.ts`, *exits 1 when the only finding that
+  vouches is a name of 5* and *… a name shaped like a credential, which it lists and does not
+  count*: `unverified` with a committed `package.json` holding only that name, exit 1, the
+  finding listed at `package.json:1`, and `(no finding verified)` on stdout and stderr. Before
+  the change all four failed: `verifiedFindings` gave 1 where 0 was expected, 2 where 1 was,
+  and both `init` runs exited 0 on `(1 finding verified)`.
+
 - [ ] **Step 10: The pull request** (after the owner's go-ahead)
 
 ```bash
@@ -2007,6 +2160,8 @@ git add src/core/discovery/extract/env-file.ts src/core/discovery/extract/npm.ts
   src/core/plan/clear.ts src/core/github/pull-request.ts src/forge/github/forge.ts \
   tests/unit/discovery-env-file.test.ts tests/unit/discovery-npm.test.ts \
   tests/unit/discovery-report.test.ts tests/unit/init-discovery.test.ts \
+  tests/unit/discovery-discover.test.ts src/context/discovery/read.ts \
+  src/core/discovery/limits.ts src/context/README.md \
   tests/unit/pull-request-body.test.ts tests/invariants/discovery-secrets.test.ts \
   tests/unit/init-command.test.ts tests/unit/init-real-repo.test.ts tests/unit/trace-wiring.test.ts \
   src/cli/README.md src/core/README.md docs/plans/stage-8-slice-1.md docs/stage-8-brief.md \
@@ -2038,35 +2193,48 @@ committed `package.json` naming it keeps its 0, and a repository whose configura
 slice verifies nothing from turns red. `init --submit`'s pull request body gains the report after the engine's
 block. `plan`, `ask`, the phrase and `init platform` print what they printed.
 
-**What the owner can run**, keyless, from the branch's checkout, with the fixture of 1.2:
+**What the owner can run**, keyless, from the branch's checkout, with the fixture of 1.2. As
+built, the `node -e` line is a helper of the kit, `~/Documents/idp-agent-tests/s8-1/report.mjs`
+(a long pasted one-liner is mangled): it loads `dist/context/discovery/discover.js` and
+`dist/cli/render/coverage.js` from the current directory, runs `discover` over the directory
+it is handed, and prints `coverageLines` — exactly what `idpa init` prints between its diff and
+its closing lines. It reads and writes nothing else, and needs no key.
 
 ```bash
+cd ~/Documents/idp-agent-worktrees/s814
 pnpm vitest run tests/unit/init-discovery.test.ts
+pnpm vitest run tests/unit/discovery-discover.test.ts
 pnpm vitest run tests/invariants/discovery-secrets.test.ts
 pnpm vitest run tests/unit/pull-request-body.test.ts
 pnpm build
-node --input-type=module -e "const { discover } = await import('./dist/context/discovery/discover.js'); const { coverageLines } = await import('./dist/cli/render/coverage.js'); console.log(coverageLines((await discover(process.argv[1])).coverage).join('\n'))" ~/Documents/idp-agent-tests/s8-1/invoicing-worker
-node --input-type=module -e "const { discover } = await import('./dist/context/discovery/discover.js'); const { coverageLines } = await import('./dist/cli/render/coverage.js'); console.log(coverageLines((await discover(process.argv[1])).coverage).join('\n'))" ~/Documents/idp-agent-tests/s8-1/invoicing-worker | grep -c Passw0rd
-node --input-type=module -e "const { discover } = await import('./dist/context/discovery/discover.js'); const { coverageLines } = await import('./dist/cli/render/coverage.js'); console.log(coverageLines((await discover(process.argv[1])).coverage).join('\n'))" .
+node ~/Documents/idp-agent-tests/s8-1/report.mjs ~/Documents/idp-agent-tests/s8-1/invoicing-worker
+node ~/Documents/idp-agent-tests/s8-1/report.mjs ~/Documents/idp-agent-tests/s8-1/invoicing-worker | grep -c Passw0rd
+node ~/Documents/idp-agent-tests/s8-1/report.mjs .
 git -C ~/Documents/idp-agent-tests/s8-1/invoicing-worker status --porcelain
 ```
 
-Attendu :
+Expected, as run on 2026-10-06:
 
-- the first prints `Tests  10 passed (10)`: the report between the diff and `APPLY`, the
-  diff still applying, exit 1 for the preview, *nothing to change* and a declined
+- the first prints `Tests  25 passed (25)`: the report between the diff and how to apply it,
+  the diff still applying, exit 1 for the preview, *nothing to change* and a declined
   confirmation of a repository with no verified finding, exit 0 for one with four and for a
-  cut branch, the sentence on stderr, the body after
-  `ENGINE_BLOCK_END`, no model sent a byte of it, no report on a question, and nothing
-  extracted from a sample changed since `HEAD`;
-- the second prints `Tests  6 passed (6)`, the last running `init --submit` five times with a
-  generated password in five places;
-- the third prints every test passed, the existing ones unchanged;
-- the first `node` prints the fixture's report, with `<7 hex>` its commit:
+  cut branch, the sentence on stderr, the body after `ENGINE_BLOCK_END`, no model sent a byte
+  of it, no report on a question, and nothing extracted from a sample changed since `HEAD`;
+  and, from the review, every row of the exit's table (ten), the report before the count of
+  a preview that changes nothing, a pull request opened at exit 0 with no finding verified,
+  and no committed path raw in the trace; and, from the owner's answer 7, exit 1 for a
+  committed `package.json` whose only name is one the engine could not read (two runs);
+- the second prints `Tests  12 passed (12)`: what `discover` does with each re-read, an
+  extractor that throws, and the run's cap;
+- the third prints `Tests  6 passed (6)`, the last running `init --submit` to a fake GitHub
+  five times, with generated passwords in five places;
+- the fourth prints `Tests  16 passed (16)`, the fourteen there were unchanged;
+- the first `node` prints the fixture's report, `dc3a7c2` being the kit's commit, and exits 0:
 
   ```
-  discovery — what this repository's committed configuration states, read at commit <7 hex>; renderings, not quotes; nothing is proposed from it in this version
-  analysed        .env.example (env-file, a sample: 3 findings) · package.json (npm: 4 findings)
+  discovery — what this repository's committed configuration states, read at commit dc3a7c2; renderings, not quotes; nothing is proposed from it in this version
+  analysed        .env.example (env-file, a sample: 3 findings)
+                  package.json (npm: 4 findings)
   findings        .env.example:1   a sample states mysql database billing on localhost:3306 as app_billing
                                    DATABASE_URL=mysql://app_billing:•••@localhost:3306/billing
                   .env.example:2   a sample states redis on localhost:6379
@@ -2079,26 +2247,30 @@ Attendu :
   not proposed    every finding: this version reports what the configuration states and proposes nothing from it
   declared, not evidenced by this repository
                   not read: init reads no declarations repository in this version
-  not analysed    code, not read for dependencies: src/index.ts
-                  no rule for this format: .gitignore
+  not analysed    no rule for this format: .gitignore
+                  code, not read for dependencies: src/index.ts
                   git does not track 1 path, not named
   present, not read by design
-                  deploy/prod.env (a real environment file)
+                  a real environment file, never opened: deploy/prod.env
   no dependency evidenced in 2 files analysed (4 findings verified); 4 paths not analysed; 1 reference configured outside this repository
   ```
 
-- the second `node`, through `grep -c`, prints `0`. None of the three passwords
-  (`S4mple-…`, `Prod-…`, `Local-…`) is on any line;
-- the third `node` reads this repository itself (605 tracked files on `b4042fa`). Its
-  *analysed* part names `.env.example` (env-file, a sample: 0 findings: its URLs are in
-  comments) and four `package.json` (npm: one finding each, the package's name). Its findings
-  begin `package.json:2   the package is named idp-agent`. Its *not analysed* part counts the
-  code and lists the rest 20 at a time, and its last line begins
-  `no dependency evidenced in 5 files analysed (4 findings verified);`;
+- the second `node`, through `grep -c`, prints `0` (and `grep` exits 1, finding nothing). None
+  of the three passwords (`S4mple-…`, `Prod-…`, `Local-…`) is on any line;
+- the third `node` reads this checkout itself and exits 0. Its *analysed* part names
+  `.env.example (env-file, a sample: 0 findings)` — its URLs are in comments — and four
+  `package.json`, one finding each, the package's name; its findings begin
+  `package.json:2   the package is named idp-agent`; its *not analysed* part lists each
+  reason's paths 20 at a time, and its *present, not read by design* part names five files
+  whose names say they hold a credential or an environment, never opened. Its last line, on the
+  uncommitted branch, was
+  `no dependency evidenced in 5 files analysed (4 findings verified); 630 paths not analysed; 0 references configured outside this repository`:
+  the count of paths not analysed moves with the checkout (`node_modules`, `dist` and the
+  branch's new files are among the 11 git does not track before the commit);
 - `git status --porcelain` prints nothing.
 
-The owner can point the same `node` command at any Node service of theirs, its path in
-place of the fixture's. It reads and writes nothing else, and needs no key.
+The owner can point the same `node` command at any Node service of theirs, its path in place
+of the fixture's.
 
 ---
 
@@ -2155,3 +2327,32 @@ applied above:
    `HEAD`'s paths that `ls-files` lists, not `ls-files`), its unborn-`HEAD` test and test 13
    (`head-unlisted` would name nothing), so it waits for the owner rather than being made
    in review.
+
+Raised by the review of Task 1.4 (2026-10-06), answered by the owner on 2026-10-06, each as
+recommended, and applied above:
+
+6. **A `package.json` on one line over 1 KiB: verify nothing, or bound its span by the key?**
+   *Answered: keep it, and say it* (2026-10-06, kept as built). No code changed; Choices 1.4
+   and `README.md` say it as decided (1.4, *As built, from the owner's answers*). The question
+   as it was put: 1.3's span check refuses a span over 1,024 bytes as a quote of the file, and
+   every finding of a one-line manifest is at line 1, so a minified `package.json` verifies
+   nothing, and its preview exits 1 as soon as anything else makes coverage incomplete. It was
+   built accepted and said (Choices 1.4, `README.md`), each drop named at its file and line.
+   *Recommended:* keep it. npm writes a manifest indented; a span that is the whole file is a
+   quote of it, which is what the check exists to refuse; and bounding a span by the key's
+   own bytes needs a byte range in `Finding` (1.1) and a second span check in `verifyFinding`
+   (1.3), a change to two merged tasks for a manifest a tool minified.
+7. **Does a name the engine could not read count as verified?** *Answered: do not count it*
+   (2026-10-06). Done in 1.4: `verifiedFindings` counts only a finding the re-read lets vouch
+   whose kind is neither `unparsed` nor `withheld`, and that one count is what the sentence's
+   `(V findings verified)` says and what `initExit` reads, so the two never disagree. The
+   finding is still listed as what it is; only the count changes. A test in
+   `discovery-report.test.ts` changed and one was added, and `init-discovery.test.ts` gained
+   two runs (1.4, *As built, from the owner's answers*). The question as it was put: answer 1
+   read literally counts every finding the re-read lets vouch, and an `npm.name` of kind
+   `unparsed` (a name of `5`, one outside npm's grammar or holding U+202E) or `withheld`
+   (shaped like a credential) vouches: its standing is `evidence`. The sentence then says
+   `(1 finding verified)` and the preview keeps exit 0, for a finding that states nothing the
+   engine could read — and the plan's wording is "a committed, parseable `package.json` that
+   names it". *Recommended:* count only a vouching finding whose kind is not `unparsed` or
+   `withheld`, in `verifiedFindings` alone, so the sentence and the exit still read one count.

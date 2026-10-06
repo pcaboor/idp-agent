@@ -644,6 +644,11 @@ const droppedLines = (dropped: readonly DroppedOperation[]): string[] =>
  * `status` is what became of the diff — stage 4's `nothing written` when
  * absent, or what `--submit` did with it (`render/footer.ts`). Only the lines
  * after the diff depend on it: the diff a person confirms is this one.
+ *
+ * `report` is `init`'s discovery report (stage 8, `render/coverage.ts`):
+ * printed after the diff and before the closing lines, so stdout is still a
+ * patch `git apply` takes as it is and still ends on how to apply it. `plan`
+ * passes none, and prints what it printed.
  */
 export function renderPreview(preview: {
   readonly signed: SignedPlan
@@ -654,6 +659,7 @@ export function renderPreview(preview: {
   readonly colour?: boolean
   readonly apply?: string
   readonly status?: PreviewStatus
+  readonly report?: readonly string[]
 }): CommandResult {
   const { signed, edits, dropped, recheck } = preview
   const standing = standingLines(recheck, preview.repo)
@@ -671,6 +677,7 @@ export function renderPreview(preview: {
           : ['this plan changes nothing, and the repository does not already say it:']),
         ...droppedLines(acted ? dropped : [...dropped, ...unaccounted(signed, dropped, recheck)]),
         ...(standing.length > 0 ? ['', ...standing] : []),
+        ...(preview.report === undefined ? [] : ['', ...preview.report]),
         '',
         '0 files · nothing written',
         ...(preview.apply === undefined ? [CLOSING] : []),
@@ -718,6 +725,7 @@ export function renderPreview(preview: {
       // file can hold what a terminal obeys. See `visible`.
       paintDiff(visible(diff), preview.colour === true).trimEnd(),
       '',
+      ...(preview.report === undefined ? [] : [...preview.report, '']),
       ...closingLines(
         preview.status ??
           (preview.apply === undefined

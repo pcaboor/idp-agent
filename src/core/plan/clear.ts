@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { FileEdit } from '../diff/unified.js'
+import type { Coverage } from '../discovery/report.js'
 import {
   CONFIG_FILE,
   holdsInvisible,
@@ -110,6 +111,13 @@ export interface Cleared {
    * change, never competing with it. Sorted; no gate reads it.
    */
   readonly related: readonly string[]
+  /**
+   * Stage 8's discovery report of the service's repository, which the pull
+   * request's body carries after the engine's block (plan, Task 1.4). Set by
+   * `clearService` alone, from what `init` read; `clearPlan` never sets it. No
+   * gate reads it, and neither the branch's name nor the commit does.
+   */
+  readonly coverage?: Coverage
   readonly [cleared]: true
 }
 
@@ -358,6 +366,7 @@ function mint(
   plan: Plan,
   related: readonly string[],
   label?: string,
+  coverage?: Coverage,
 ): Cleared {
   const edits = [...changed].sort(byPath).map((edit) => Object.freeze({ ...edit }))
   const value = Object.freeze({
@@ -371,6 +380,8 @@ function mint(
     request: recordedRequest(plan.intent),
     repository,
     related: Object.freeze([...related]),
+    // Deep-frozen by `coverageOf`, which is its only maker.
+    ...(coverage === undefined ? {} : { coverage }),
   })
   minted.add(value)
   return value as unknown as Cleared
@@ -392,6 +403,8 @@ export interface ServiceInput {
   readonly existing: { readonly text: string; readonly config: RepositoryConfig } | undefined
   /** What the person typed for it; undefined when nothing is to be written. */
   readonly config: WrittenConfig | undefined
+  /** What `init`'s discovery read of the repository: carried to the pull request's body, judged by nothing. */
+  readonly coverage?: Coverage
 }
 
 /**
@@ -509,7 +522,7 @@ export function clearService(signed: SignedPlan, input: ServiceInput): Cleared |
   // does not write.
   const written = new Set(changed.map((edit) => edit.path))
   const related = ['catalog-info.yaml', 'catalog-info.yml'].filter((path) => !written.has(path))
-  return mint(changed, files, 'service', minted.data, related, label)
+  return mint(changed, files, 'service', minted.data, related, label, input.coverage)
 }
 
 const stemOf = (file: string | undefined): string =>

@@ -723,7 +723,9 @@ describe('what the root says a run printed', () => {
         err: () => {},
         traceSinks: [sink],
       })
-      expect(code).toBe(0)
+      // No finding verified, and the repository read in part — a folder git
+      // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
+      expect(code).toBe(1)
     } finally {
       stdout.mockRestore()
     }
@@ -732,6 +734,7 @@ describe('what the root says a run printed', () => {
     // The terminal got colour, and the trace got the same words without it.
     expect(written.join('')).toContain('\u001b[')
     expect(text).toContain('+++ b/catalog-info.yaml')
+    expect(text).toMatch(/^no dependency evidenced in 0 files analysed \(no finding verified\); /m)
     expect(text).not.toContain('\u001b')
   })
 })

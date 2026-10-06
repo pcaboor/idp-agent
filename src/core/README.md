@@ -125,11 +125,13 @@ and nothing here can be steered by what it validates. Hence the property tests r
   platform` print (`protectionText`). `pull-request.ts`: the text and
   the URL of a pull request — `pullRequestBody`, the commit's message with the request inside
   a fence no line of it can close (`fenceFor`), then the engine's block, ending on
-  `ENGINE_BLOCK_END`, after which stage 8's report will go; and `pullRequestUrl`, built from
+  `ENGINE_BLOCK_END`, then, on `init --submit`, stage 8's report (`coverageMarkdown`: every
+  path, field value and rendering a code span, a path a code span cannot show counted, at most
+  100 findings listed); and `pullRequestUrl`, built from
   the parsed owner and name and a positive number, never from GitHub's `html_url`.
 - **Discovery** — `discovery/`, the pure half of stage 8's discovery: what a service
-  repository's committed configuration states, as findings. No command calls it yet (slice 1,
-  Task 1.1). `finding.ts`: `Finding`, its content-addressed `findingId` (the sha256 of its rule,
+  repository's committed configuration states, as findings, and the report `init` prints of
+  them (slice 1). `finding.ts`: `Finding`, its content-addressed `findingId` (the sha256 of its rule,
   the rule's version, its path, its span, its fields and its file's hash), and `mintFinding`,
   the only way to make one — `isMinted` is false for a spread copy, a `structuredClone` or a
   parsed JSON, as `isCleared` is. A finding has **no field a secret could sit in**: every field
@@ -163,8 +165,22 @@ and nothing here can be steered by what it validates. Hence the property tests r
   and standing at a span inside its own; a thrown message is kept nowhere), then standing — and
   only `evidence` comes out branded `Verified`, held in a `WeakSet` as a minted finding is
   (`isVerified`), and taken back from a finding that fails when it is checked again. Nothing reads the brand but its tests until
-  2.6 carries it in `Provenance`. `limits.ts`: every bound
-  of the discovery, the read's and the re-read's among them. No model sees any of it: an architecture rule keeps
+  2.6 carries it in `Provenance`. `extractors.ts` (Task 1.4): `EXTRACTORS`, a record over the
+  allow-list's extractor names — `extract/env-file.ts`, a sample's `KEY=value` lines read by
+  dotenv's syntax, a comment skipped by its `#` and never read, a value a connection only when
+  the parser says it opens like one; and `extract/npm.ts`, a `package.json`'s name and the
+  clients of `NPM_CLIENTS`, a closed table, each at its line, `devDependencies` and
+  `peerDependencies` a `mention`, a version spec never read — each returning findings, a
+  `ParseFailure` (a closed reason of the engine's, never a parser's message, which quotes the
+  bytes) or `over-finding-cap`; and `findingsOf`, the same table as `verifyFinding` takes it.
+  `report.ts`: `coverageOf`, every path the read named in exactly one of analysed, not
+  analysed and not read by design, deep-frozen; `verifiedFindings`, the findings that vouched
+  and hold a value the engine could read (never `unparsed` or `withheld`), what `init`'s exit
+  reads and the sentence counts;
+  `evidencedDependencies`, 0 in slice 1 by construction; `isComplete`; `coverageSections`, § 9's
+  six parts, from which the terminal's rendering (`cli/render/coverage.ts`) and the body's
+  (`github/pull-request.ts`) are both built; and `coverageSentence`. `limits.ts`: every bound
+  of the discovery, the read's, the re-read's and the report's among them. No model sees any of it: an architecture rule keeps
   `core/discovery/` and `context/discovery/` out of everything `agents/` reaches, a type
   included.
 - **Shared shapes** — `secrets/shapes.ts`: the credential shapes (`CREDENTIAL_SHAPES`) and

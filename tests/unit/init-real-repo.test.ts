@@ -28,6 +28,9 @@ import { hashTree } from '../support/tree.js'
 
 const temp = (): Promise<string> => mkdtemp(path.join(tmpdir(), 'idp-init-real-'))
 
+/** The coverage sentence of a run whose discovery verified no finding (stage 8, Task 1.4). */
+const UNVERIFIED = /^no dependency evidenced in \d+ files? analysed \(no finding verified\); \d+ paths? not analysed; /m
+
 async function tree(files: Record<string, string>): Promise<string> {
   const root = await temp()
   for (const [relative, content] of Object.entries(files)) {
@@ -268,7 +271,10 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
 
     const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
 
-    expect(result.found).toBe(true)
+    // No finding verified, and the repository read in part — a folder git
+    // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
+    expect(result.found).toBe(false)
+    expect(result.text).toMatch(UNVERIFIED)
     expect(result.unsupported).toBeUndefined()
     expect(result.text).toContain('deploy/catalog-info.yml already declares component:default/billing-api')
     expect(result.text).not.toContain('+++')
@@ -316,7 +322,10 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
 
     const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
 
-    expect(result.found).toBe(true)
+    // No finding verified, and the repository read in part — a folder git
+    // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
+    expect(result.found).toBe(false)
+    expect(result.text).toMatch(UNVERIFIED)
     expect(result.text).not.toContain('already declares')
     expect(result.text).toContain('--- a/catalog-info.yaml')
     expect(result.text).toContain('+++ b/catalog-info.yaml')
@@ -378,7 +387,10 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
 
       const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
 
-      expect(result.found).toBe(true)
+      // No finding verified, and the repository read in part — a folder git
+      // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
+      expect(result.found).toBe(false)
+      expect(result.text).toMatch(UNVERIFIED)
       expect(result.unsupported).toBeUndefined()
       expect(result.text).toContain('catalog-info.yaml already declares component:default/billing-api')
       expect(result.text).toContain('lifecycle')
@@ -393,7 +405,10 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
 
     const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
 
-    expect(result.found).toBe(true)
+    // No finding verified, and the repository read in part — a folder git
+    // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
+    expect(result.found).toBe(false)
+    expect(result.text).toMatch(UNVERIFIED)
     expect(result.text).toContain('catalog-info.yaml already declares component:default/Billing-Api')
     expect(result.text).not.toContain('+++')
   })
@@ -437,7 +452,10 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
       emit: () => {},
       ask,
     })
-    expect(answered.found).toBe(true)
+    // No finding verified, and the repository read in part — a folder git
+    // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
+    expect(answered.found).toBe(false)
+    expect(answered.text).toMatch(UNVERIFIED)
     expect(answered.text).toContain('catalog-info.yaml already declares component:payments/billing-api')
     expect(answered.text).not.toContain('+++')
   })
@@ -488,7 +506,10 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
       emit: () => {},
       ask: async () => 'billing',
     })
-    expect(same.found).toBe(true)
+    // No finding verified, and the repository read in part — a folder git
+    // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
+    expect(same.found).toBe(false)
+    expect(same.text).toMatch(UNVERIFIED)
     expect(same.text).toContain('catalog-info.yaml already declares component:default/billing')
     expect(same.text).not.toContain('+++')
 
@@ -499,7 +520,8 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
       emit: () => {},
       ask: async () => 'billing-api',
     })
-    expect(other.found).toBe(true)
+    expect(other.found).toBe(false)
+    expect(other.text).toMatch(UNVERIFIED)
     expect(other.text).toContain('+++ b/catalog-info.yaml')
     expect(other.text).toContain('+  name: billing-api')
   })
@@ -512,7 +534,10 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
 
     const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
 
-    expect(result.found).toBe(true)
+    // No finding verified, and the repository read in part — a folder git
+    // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
+    expect(result.found).toBe(false)
+    expect(result.text).toMatch(UNVERIFIED)
     expect(result.text).toContain('--- /dev/null')
     expect(result.text).toContain('+++ b/catalog-info.yaml')
     expect(result.text).not.toContain('test/fixtures/catalog-info.yaml')
@@ -530,7 +555,10 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
 
     const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
 
-    expect(result.found).toBe(true)
+    // No finding verified, and the repository read in part — a folder git
+    // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
+    expect(result.found).toBe(false)
+    expect(result.text).toMatch(UNVERIFIED)
     expect(result.text).toContain('--- /dev/null')
     expect(result.text).toContain('+++ b/catalog-info.yaml')
     expect(result.text).not.toContain('b/.github/catalog-info.yaml')
@@ -545,7 +573,10 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
 
     const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
 
-    expect(result.found).toBe(true)
+    // No finding verified, and the repository read in part — a folder git
+    // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
+    expect(result.found).toBe(false)
+    expect(result.text).toMatch(UNVERIFIED)
     expect(result.text).toContain('--- /dev/null')
     expect(result.text).toContain('+++ b/catalog-info.yaml')
     expect(result.text).not.toContain('b/packages/web/catalog-info.yaml')
@@ -570,7 +601,10 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
         notice: (line) => void notices.push(line),
       })
 
-      expect(result.found).toBe(true)
+      // No finding verified, and the repository read in part — a folder git
+      // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
+      expect(result.found).toBe(false)
+      expect(result.text).toMatch(UNVERIFIED)
       expect(result.text).toContain('+++ b/catalog-info.yaml')
       const [file] = Object.keys(extra)
       if (file === 'docs/catalog-info-all.yaml') {
@@ -622,7 +656,10 @@ describe('questions init cannot answer are asked, or answered by flags (gap-init
     )
 
     const text = out.join('')
-    expect(code).toBe(0)
+    // No finding verified, and the repository read in part — a folder git
+    // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
+    expect(code).toBe(1)
+    expect(text).toMatch(UNVERIFIED)
     expect(text).toContain('--- /dev/null')
     expect(text).toContain('+++ b/catalog-info.yaml')
     expect(text).toContain('+  name: billing-api')
@@ -663,7 +700,10 @@ describe('questions init cannot answer are asked, or answered by flags (gap-init
 
     const result = await runInitRepo({ project: root, client: undeclaredDraft(), emit: () => {}, ask })
 
-    expect(result.found).toBe(true)
+    // No finding verified, and the repository read in part — a folder git
+    // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
+    expect(result.found).toBe(false)
+    expect(result.text).toMatch(UNVERIFIED)
     expect(result.text).toContain('+++ b/catalog-info.yaml')
     expect(result.text).toContain('+  owner: group:default/payments')
     // #72's prompt: the draft's value, as the draft's, and the values a

@@ -1,3 +1,6 @@
+import { coverageHeading, coverageSections, coverageSentence, type Coverage } from '../discovery/report.js'
+import { DISCOVERY_LIMITS } from '../discovery/limits.js'
+import { holdsInvisible } from '../schemas/config.js'
 import { noteLine, type MergeNote, type Missing } from './protection.js'
 import { isBranch, type GitHubRepository } from './remote.js'
 
@@ -17,7 +20,10 @@ import { isBranch, type GitHubRepository } from './remote.js'
  * decision of 2026-10-01), the idp-agent pull requests in flight beside it on
  * other files of the same entities, by number alone (Task 6.3.6), what the
  * branch name means, and that nothing is provisioned until the merge; it ends
- * on `ENGINE_BLOCK_END`, after which stage 8's report will go.
+ * on `ENGINE_BLOCK_END`. After it, on `init --submit`, goes stage 8's report
+ * of what the service's configuration states (`coverageMarkdown`): not the
+ * engine's block, because it reports the repository's own words, each of
+ * them a code span.
  */
 
 /** The last line of the engine's block: what comes after it is not the engine's. */
@@ -49,6 +55,11 @@ export interface PullRequestInput {
    * block naming each by number alone (`besideParagraph`).
    */
   readonly beside?: { readonly numbers: readonly number[]; readonly base: string }
+  /**
+   * Stage 8's discovery report (`init --submit` alone, carried on its
+   * `Cleared`): rendered after `ENGINE_BLOCK_END`, never inside the block.
+   */
+  readonly coverage?: Coverage
 }
 
 /**
@@ -92,7 +103,7 @@ export const fenceFor = (text: string): string => {
  * or ends with a backtick or a space. Inside it nothing mentions, links or
  * renders.
  */
-const codeSpan = (text: string): string => {
+export const codeSpan = (text: string): string => {
   const delimiter = '`'.repeat(Math.max(0, ...[...text.matchAll(/`+/g)].map((run) => run[0].length)) + 1)
   const pad = /^[` ]|[` ]$/.test(text) ? ' ' : ''
   return `${delimiter}${pad}${text}${pad}${delimiter}`
@@ -166,8 +177,44 @@ export function pullRequestBody(input: PullRequestInput): { readonly title: stri
     NOTHING_PROVISIONED,
     '',
     ENGINE_BLOCK_END,
+    ...(input.coverage === undefined ? [] : ['', ...coverageMarkdown(input.coverage)]),
   ]
   return { title: lines[0] ?? '', body: body.join('\n') }
+}
+
+/**
+ * A path, a value or a rendering as the body writes it: a code span, inside
+ * which nothing mentions, links or renders — so a sample's account
+ * `@acme-sre` mentions nobody — or undefined for one holding a control, a
+ * format or bidi character or a line break, which no code span shows as it is
+ * (`holdsInvisible`): counted, never named.
+ */
+const quoted = (text: string): string | undefined => (holdsInvisible(text) ? undefined : codeSpan(text))
+
+/**
+ * Stage 8's report in Markdown (plan, Task 1.4): the heading, § 9's six parts
+ * — each label a bold line, each line an item — and the sentence. Built from
+ * `coverageSections`, as the terminal's is, with every path, field value and
+ * rendering a code span and the words around them the engine's. At most
+ * `maxBodyFindings` findings, then their count. No permalink in this version.
+ */
+export function coverageMarkdown(coverage: Coverage): string[] {
+  const sections = coverageSections(coverage, quoted, { findings: DISCOVERY_LIMITS.maxBodyFindings })
+  return [
+    `**${coverageHeading(coverage, quoted)}.**`,
+    '',
+    ...sections.flatMap((section) => [
+      `**${section.label}**`,
+      '',
+      ...section.lines.map((line) =>
+        line.at === undefined
+          ? `- ${line.text}`
+          : `- ${line.at} ${line.text}${line.shown === undefined ? '' : ` · ${line.shown}`}`,
+      ),
+      '',
+    ]),
+    coverageSentence(coverage),
+  ]
 }
 
 /**

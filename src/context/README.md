@@ -233,11 +233,18 @@ files it opened again, through the same confined, bounded open, with `HEAD` reso
 listed whole — never a path it did not open, nor one `HEAD` no longer holds as a file — for
 `core/discovery/verify.ts`'s witness re-read, and holds its bytes to the read's rules: bytes
 that are not `HEAD`'s blob, or that a commit made during the run turned into a file discarded
-whole, are zeroed and handed back as none (`Dropped`). Nothing a model is sent comes from it, no command calls
-it yet, and the two readers load nothing of each other, a type included (*context/project-fs/
+whole, are zeroed and handed back as none (`Dropped`). Nothing a model is sent comes from it,
+and the two readers load nothing of each other, a type included (*context/project-fs/
 and context/discovery/ load nothing of each other*): the snapshot is what a model is sent, and a
 module of one loading the other is the one way a withheld file's text could reach a prompt.
 Nothing reachable from `agents/` is in `discovery/` either.
+
+`discovery/discover.ts` is what `init` calls (Task 1.4): read, extract, read again, verify,
+cover. It touches no disk of its own, and never throws — whatever a file's step throws is
+that file's reason, and its message is kept nowhere. A file the re-read finds changed is
+extracted again only from bytes the re-read kept, committed at `HEAD`, and checked once more;
+a second change makes it *changed during the run*, and a file the re-read dropped is
+extracted from nothing.
 
 `backstage/` is where `context/` reaches the network (`backstage-http`, slice 1 of
 `docs/backstage-http-brief.md`), and `backstage/transport.ts` is its one way out: the only code

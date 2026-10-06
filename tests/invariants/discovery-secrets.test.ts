@@ -1,5 +1,16 @@
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import fc from 'fast-check'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
+import { REPORT_TOOL } from '../../src/agents/tools/project-tools.js'
+import { PROPOSE_TOOL } from '../../src/agents/tools/propose-tool.js'
+import { main } from '../../src/cli/index.js'
+import { ENGINE_BLOCK_END } from '../../src/core/github/pull-request.js'
+import type { AgentName, GenerateRequest, GenerateResult, LlmClient } from '../../src/llm/client.js'
+import { removeClones } from '../support/forge-fixture.js'
+import { githubClone } from '../support/github-fixture.js'
+import { memorySink, onlyTrace } from '../support/trace.js'
 import { PROPERTY_TIMEOUT, freshSeed } from './budget.js'
 import { composeConnection, parseConnection, type Connection } from '../../src/core/discovery/connection.js'
 import { mintFinding } from '../../src/core/discovery/finding.js'
@@ -305,5 +316,148 @@ describe('a password reaches no finding', { timeout: PROPERTY_TIMEOUT }, () => {
     )
     // 396 to 427 of 500 over the same 20 runs: the rest held an `@` in the path.
     expect(parsed, `seed ${String(seed)}`).toBeGreaterThan(150)
+  })
+})
+
+/**
+ * Task 1.4, test 13: end to end, through `main`, a password in a service's
+ * configuration reaches no line `init` writes, no trace and no pull request
+ * body. One password, marked in every fragment, sits in the three slots of
+ * environment files — `.env.example`'s URL (committed, opened, extracted),
+ * `deploy/prod.env` (committed, never opened) and an untracked `.env` — and a
+ * second, marked otherwise, in the two of `package.json`: one that fails to
+ * parse with the password beside its fault, and one whose dependency spec
+ * carries it in a git URL's userinfo. The Inspector's snapshot reads those two
+ * and sends them to the model as it does today, governed by `project-fs`'s
+ * own filter and tests, so their marker is looked for everywhere but the
+ * model calls' spans; the first marker is looked for everywhere.
+ *
+ * First the report is asserted where it goes — stdout, and after the engine's
+ * block in the body — so the property fails for its own reason before the
+ * report exists, not for an import. Then no marker: every string leaf, walked,
+ * never `JSON.stringify`.
+ */
+describe('a password reaches no line init writes, no trace and no pull request body', { timeout: PROPERTY_TIMEOUT }, () => {
+  const PACKAGE_MARKER = 'Qz8'
+  const passwords = fc.record({
+    environment: passwordOf(DELIMITERS),
+    manifest: passwordOf(DELIMITERS).map((password) => password.replaceAll(MARKER, PACKAGE_MARKER)),
+  })
+
+  const call = (name: string, args: unknown): GenerateResult => ({
+    text: '',
+    toolCalls: [{ id: `call-${name}`, name, args }],
+    finishReason: 'tool-calls',
+  })
+  const client = (): LlmClient => {
+    const turns: Partial<Record<AgentName, GenerateResult[]>> = {
+      inspector: [
+        {
+          text: '',
+          toolCalls: ['package.json', 'CODEOWNERS', 'README.md'].map((file) => ({
+            id: `read-${file}`,
+            name: 'read_file',
+            args: { path: file },
+          })),
+          finishReason: 'tool-calls',
+        },
+        call(REPORT_TOOL, {
+          name: 'billing-api',
+          type: 'service',
+          lifecycle: 'production',
+          runtime: 'node',
+          owner: 'group:default/tiger',
+          forgeHandle: '@acme/platform',
+          dependencies: [],
+        }),
+      ],
+      architect: [
+        call(PROPOSE_TOOL, {
+          operations: [
+            {
+              op: 'create-entity',
+              entity: {
+                kind: 'Component',
+                metadata: { name: 'billing-api' },
+                spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
+              },
+            },
+          ],
+        }),
+      ],
+    }
+    const spent = new Map<AgentName, number>()
+    return {
+      generate: async (request: GenerateRequest): Promise<GenerateResult> => {
+        const index = spent.get(request.agent) ?? 0
+        spent.set(request.agent, index + 1)
+        return turns[request.agent]?.[index] ?? { text: '', toolCalls: [], finishReason: 'stop' }
+      },
+    }
+  }
+
+  afterAll(removeClones)
+
+  it('in five places, through init --submit to GitHub', async () => {
+    await fc.assert(
+      fc.asyncProperty(passwords, async ({ environment, manifest }) => {
+        const source = await mkdtemp(path.join(tmpdir(), 'idp-discovery-secret-'))
+        try {
+          const write = async (file: string, text: string): Promise<void> => {
+            await mkdir(path.dirname(path.join(source, file)), { recursive: true })
+            await writeFile(path.join(source, file), text, 'utf8')
+          }
+          await write('package.json', `${JSON.stringify({ name: 'billing-api', dependencies: { pg: '^8.0.0' } }, null, 2)}\n`)
+          await write('CODEOWNERS', '* @acme/platform\n')
+          await write('README.md', 'type: service\nlifecycle: production\nruntime: node\nowner: group:default/tiger\n')
+          await write('.gitignore', '.env\n')
+          await write('.env.example', `DATABASE_URL=mysql://app_billing:${environment}@localhost:3306/billing\n`)
+          await write('deploy/prod.env', `DATABASE_URL=mysql://app_billing:${environment}@billing-db.prod.internal:3306/billing\n`)
+          await write('packages/a/package.json', `{\n  "name": "a", ${manifest}\n}\n`)
+          await write(
+            'packages/b/package.json',
+            `${JSON.stringify({ name: 'b', dependencies: { x: `git+https://user:${manifest}@host/x.git` } }, null, 2)}\n`,
+          )
+          const clone = await githubClone({ source, repository: 'acme/billing-api' })
+          await writeFile(path.join(clone.repo, '.env'), `DATABASE_URL=mysql://app:${environment}@db.internal/x\n`, 'utf8')
+
+          const sink = memorySink()
+          const out: string[] = []
+          const err: string[] = []
+          const code = await main(
+            ['init', '--repo', clone.repo, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev'],
+            {
+              cwd: clone.repo,
+              env: clone.env,
+              gh: clone.gh.process,
+              client: client(),
+              traceSinks: [sink],
+              out: (chunk) => void out.push(chunk),
+              err: (chunk) => void err.push(chunk),
+            },
+          )
+          const stdout = out.join('')
+          const stderr = err.join('')
+          const posted = clone.gh.sent.filter(({ argv }) => argv.includes('POST'))
+          const { body = '' } = JSON.parse(posted[0]?.stdin?.toString('utf8') ?? '{}') as { body?: string }
+
+          // The report is where it goes: the property is about it.
+          expect(code, stderr).toBe(0)
+          expect(stdout).toMatch(/^discovery — /m)
+          const end = body.split('\n').indexOf(ENGINE_BLOCK_END)
+          expect(end).toBeGreaterThan(-1)
+          expect(body.split('\n').slice(end + 1).join('\n')).toContain('no dependency evidenced')
+
+          const trace = onlyTrace(sink)
+          const everywhere = [stdout, stderr, body, ...leaves(trace)]
+          for (const leaf of everywhere) expect(leaf.includes(MARKER), leaf).toBe(false)
+          const outsideModels = [stdout, stderr, body, ...leaves(trace.spans.filter((span) => span.type !== 'CHAT_MODEL'))]
+          for (const leaf of outsideModels) expect(leaf.includes(PACKAGE_MARKER), leaf).toBe(false)
+        } finally {
+          await rm(source, { recursive: true, force: true })
+        }
+      }),
+      { numRuns: 5 },
+    )
   })
 })

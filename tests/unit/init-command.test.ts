@@ -405,7 +405,10 @@ describe('init, per application', () => {
       emit: () => {},
     })
 
-    expect(result.found).toBe(true)
+    // No finding verified, and the repository read in part — a folder git
+    // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
+    expect(result.found).toBe(false)
+    expect(result.text).toMatch(/^no dependency evidenced in 0 files analysed \(no finding verified\); \d+ paths not analysed; /m)
     expect(result.text).toContain('--- /dev/null')
     expect(result.text).toContain('+++ b/catalog-info.yaml')
     expect(result.text).toContain('kind: Component')
