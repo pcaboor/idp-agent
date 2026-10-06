@@ -13,14 +13,8 @@ export interface TreeEntry {
   readonly oid: string
 }
 
-/**
- * A blob's id computed here rather than asked of git, one call instead of one
- * per file. Measured equal to `git hash-object` for sha1; sha256 repositories
- * hash the same header with the other function.
- */
-export function blobId(bytes: Buffer, format: 'sha1' | 'sha256'): string {
-  return createHash(format).update(`blob ${String(bytes.length)}\0`).update(bytes).digest('hex')
-}
+/** A blob's id, computed rather than asked of git: `core/git/blob.ts`, where the discovery read takes it too. */
+export { blobId } from '../../core/git/blob.js'
 
 /**
  * A tree's id computed here rather than asked of git, as `blobId` computes a

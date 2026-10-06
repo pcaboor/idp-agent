@@ -1,12 +1,13 @@
 # Stage 8, slice 1 — the report
 
-**Status: plan accepted by the owner on 2026-10-04 ([#143](https://github.com/pcaboor/idp-agent/pull/143)); 1.1 built ([#144](https://github.com/pcaboor/idp-agent/pull/144)), validated by the owner before it merged; 1.2 to 1.4 not started.** Four pull requests, 1.1 to 1.4, after this
+**Status: plan accepted by the owner on 2026-10-04 ([#143](https://github.com/pcaboor/idp-agent/pull/143)); 1.1 built ([#144](https://github.com/pcaboor/idp-agent/pull/144)), validated by the owner before it merged; 1.2 built ([#145](https://github.com/pcaboor/idp-agent/pull/145)), validated by the owner before it merged; 1.3 and 1.4 not started.** Four pull requests, 1.1 to 1.4, after this
 plan merged on its own (`docs/stage-8-slice-1-plan`). They are not stacked ahead of time:
 **the owner validates each pull request before it merges and before the next one starts**
 (owner's decision of 2026-10-04, `docs/roadmap.md`), so each branch is cut from `main` once
 the previous one has merged, and each task ends on something the owner can run, keyless, to
 check it. The owner answered the four questions [at the end](#questions-for-the-owner) on
-2026-10-04, and this plan applies the answers.
+2026-10-04, and the fifth, raised by the review of 1.2, on 2026-10-06; this plan applies the
+answers.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax for tracking. **Tick them as you go.**
 
@@ -153,7 +154,8 @@ These are inherited and binding: `AGENTS.md`, `docs/design.md` §4, and the note
 - **Never ignore in silence.** Every path the walk reaches lands in exactly one group of the
   report, and a property test asserts it. A file not opened by design is named with its reason
   and never opened for the report. What git does not track, and every path outside a
-  repository, is counted in one line and never named (row 12). A finding the re-read drops is named with the check that
+  repository, is counted in one line and never named (row 12), and so is a path staged and
+  never committed, which `HEAD` does not hold (question 5). A finding the re-read drops is named with the check that
   dropped it.
 - **Declare, never infer.** A dependency's engine comes from a URL's scheme, a JDBC
   subprotocol, the form of a connection string, or a closed table of npm client packages.
@@ -198,13 +200,13 @@ against the worktree, and what this plan does about it.
 | 3 | § 5: "`mixesScripts`, today private to `src/core/answer/commentary.ts:418`, moves to a shared module" | Private at `:418`, with `SCRIPTS` (`:437`), `SHARED` and `scriptOf` (`:465`) beside it; `scriptOf` is also read at `:389` | `src/core/text/scripts.ts` exports `mixesScripts` and `scriptOf`, and `commentary.ts` imports both. `tests/unit/commentary.test.ts` stays green, unchanged (1.1) |
 | 4 | § 5: a `Finding` carries `fields: { scheme, host, port, database, account, url }` | A MongoDB replica set or a multi-host PostgreSQL URL names several hosts for one database (§ 12 1.1's golden table asks for "multi-host URLs") | `fields.hosts` is a list of `{ host, port? }`, at most eight. `variable` (the env-file key), `name` (`npm.name`) and `package` (`npm.dependency`) join the fields, each with a grammar. Still no field for a secret |
 | 5 | § 8: "the userinfo password and any query parameter on a deny list (`password`, `pwd`, `secret`, `token`, …) are dropped" | — | Stricter: the parser keeps **only the parts it names**. In the URL form those are the scheme, the hosts, the database, the userinfo's user and a query's `user` or `username`. In libpq they are `host`, `hostaddr`, `port`, `dbname` and `user`. In ADO.NET they are the server, database and user synonyms. Everything else is dropped, so the deny list is the complement and needs no list. `shown` is **composed** from the kept parts, with `•••` where a password or a userinfo was and `…` where options were dropped. It is never the line cut at the parser's offsets. A secret under an unlisted key (`?auth_token_x=…`) cannot survive (1.1, Choices) |
-| 6 | § 12 1.2: the git read is "priority 7's `ls-files`, the cited files' status, and the remote through stage 6's `parseRemoteUrl`" | The launcher runs only the shapes of its grammar (`SHAPES`, `src/process/git.ts:187-228`). There is no `status` shape. `rev-parse --show-toplevel` and `--show-prefix` (row 1), `rev-parse --verify --quiet HEAD^{commit}` (row 2), `ls-tree -r -z --full-tree <hex>` and `ls-files -z --cached` (rows 13 and 14), and `rev-parse --show-object-format` (row 1) are there | "Committed and unchanged" is computed with no new shape: `HEAD`'s blob ids from one `ls-tree`, compared with git's blob id of the bytes read. The read runs those **six** shapes and adds none, and the diff against the base over `src/process` prints nothing. The cost: a tracked file changed since `HEAD` is read once to be hashed before it is known to be changed (Global Constraints, question 4). The remote is not read in slice 1, because nothing reads it before 2.5 (question 2) |
+| 6 | § 12 1.2: the git read is "priority 7's `ls-files`, the cited files' status, and the remote through stage 6's `parseRemoteUrl`" | The launcher runs only the shapes of its grammar (`SHAPES`, `src/process/git.ts:187-228`). There is no `status` shape. `rev-parse --show-toplevel` and `--show-prefix` (row 1), `rev-parse --verify --quiet HEAD^{commit}` (row 2), `ls-tree -r -z --full-tree <hex>` and `ls-files -z --cached` (rows 13 and 14), and `rev-parse --show-object-format` (row 1) are there | "Committed and unchanged" is computed with no new shape: `HEAD`'s blob ids from one `ls-tree`, compared with git's blob id of the bytes read. The read runs those **six** shapes and adds none: the diff against the base over `src/process/git.ts`, where `SHAPES` and `checkGitArgv` live, prints nothing, and the rest of that folder's diff is comment and README lines (1.2, Step 7). The cost: a tracked file changed since `HEAD` is read once to be hashed before it is known to be changed (Global Constraints, question 4). The remote is not read in slice 1, because nothing reads it before 2.5 (question 2) |
 | 7 | § 8: "only project-fs's snapshot and `forge/` may load" the launcher (`dependencies.test.ts:602-605`) | `LAUNCHER` and `RUNS_GIT` are at `:603-604`; the rule is at `:1083`, its self-test at `:1492` | `RUNS_GIT` names `context/discovery/read.ts`, with why (1.2). The rule widens, and the count does not move |
 | 8 | § 8: the reader joins the modules allowed to read a user's repository (`:857`) and those allowed to load the confinement primitive (`:660-667`) | The context disk rule is at `:857-873` and has no self-test; `CONFINES` is at `:661-667`, four modules since `backstage/cache.ts` joined it (#120), and its self-test at `:1573` says "the four named" | Both widen by `context/discovery/read.ts`. The disk rule's title names the read; the confinement self-test says "the five named" (1.2) |
 | 9 | § 5, check 2: "git reports the file committed at `HEAD` and unmodified" | git's blob id is computed by `blobId` in `src/forge/local/objects.ts:21`, which `core/` may not import | `blobId` moves to `src/core/git/blob.ts`. `forge/local/objects.ts` re-exports it, so `local/tree.ts`, `local/forge.ts`, `github/forge.ts` and `tests/unit/local-forge.test.ts:11` keep their imports (1.2) |
 | 10 | § 9: the report goes "to stdout after the diff" | `init`'s stdout is a patch `git apply` takes as it is, its last line being how to apply it (`APPLY`, `src/cli/commands/init.ts:1251`). `tests/unit/init-command.test.ts:420-437` applies it, and its tests assert that the last line is that line | The report goes **between** the diff and the closing lines. `renderPreview` (`src/cli/commands/plan.ts:648`) takes an optional `report`, placed after the diff, so stdout still applies and still ends on how to apply it. `plan` passes none and is byte-identical (1.4) |
 | 11 | § 10: the report goes "after `ENGINE_BLOCK_END`" in the body | `pullRequestBody` (`src/core/github/pull-request.ts:143`) ends on `ENGINE_BLOCK_END` (`:24`). It is built by the forge from a `Cleared` (`textOf`, `src/forge/github/forge.ts:323-335`), and `Cleared` (`src/core/plan/clear.ts:83`) has no slot for a report | `ServiceInput` gains `coverage?: Coverage`, `mint` carries it frozen on `Cleared`, and `PullRequestInput` gains `coverage?`. `pullRequestBody` renders it in Markdown after `ENGINE_BLOCK_END`, with its own code-span rule. The branch's name and the commit are untouched (`branchFor` reads the edits). The body's bound is already checked on `textOf(change)` before anything is written (`forge.ts:478`), so a report is inside that check (1.4) |
-| 12 | § 9's example names an untracked file: "untracked or modified: config/local.yml" | The snapshot counts what git does not track and never names it: "the name of a file nobody committed … is no more the service's to send than its content" (`src/context/project-fs/snapshot.ts:503-516`). The report reaches the trace (row 13) and a pull request | An untracked path is **counted, never named**, on stdout, in the body and in the trace. Outside a git repository (selection `walk`) nothing is committed, so every path there is counted and none is named, by the same rule. A tracked file changed since `HEAD` is named, because its name is committed (question 3) |
+| 12 | § 9's example names an untracked file: "untracked or modified: config/local.yml" | The snapshot counts what git does not track and never names it: "the name of a file nobody committed … is no more the service's to send than its content" (`src/context/project-fs/snapshot.ts:503-516`). The report reaches the trace (row 13) and a pull request | An untracked path is **counted, never named**, on stdout, in the body and in the trace. Outside a git repository (selection `walk`) nothing is committed, so every path there is counted and none is named, by the same rule. A tracked file changed since `HEAD` is named, because its name is committed (question 3). A path staged and never committed is in the index and not in `HEAD`, so its name is not committed: it is counted, in a count of its own, and never named (question 5) |
 | 13 | § 8: "the raw text of a withheld file never enters … a trace" | The trace's root output is the command's stdout (`src/cli/index.ts:2687`) | The report is in the trace, so the secret property covers the trace (1.4). The trace gains no attribute in this slice. `SECURITY.md`'s MLflow row (`:70`) and its *Traces* paragraph (`:225-227`, "with what `project-fs` withholds still withheld") become incomplete: the report renders `.env.example`, which the snapshot withholds, and names committed files. 1.4 rewrites both |
 | 14 | § 8: parsing a hostile manifest is bounded by `maxAliasCount` (`serialize.ts:175`) | `MAX_ALIAS_COUNT` is private, at `src/core/yaml/serialize.ts:175`; `readDocuments` (`:188`) applies it and turns an alias bomb into a reading error | The YAML discard check goes through `readDocuments`. The constant stays private, and a document count of its own bounds the file (1.2) |
 | 15 | § 9: "Not analysed is computed … a bounded walk of the working tree" | The snapshot's walk is bounded by `MAX_DIRECTORIES` (5,000, `snapshot.ts:67`), private | The read has its own `DISCOVERY_LIMITS.maxDirectories`, the same 5,000, stated in `core/discovery/limits.ts`. Past it the walk stops and says so (1.2) |
@@ -342,8 +344,14 @@ Nothing on the list reopens a decision of § 13.
   on the descriptor (`fstat`: a regular file, one link, the size within the cap), so a path
   swapped for a pipe or a second name between the two is refused rather than waited on.
 - **A tracked file deleted from the working tree** is in `ls-files` and reached by no walk.
-  It is *not analysed: tracked, deleted from the working tree* (`deleted`), named, because its
-  name is committed.
+  It is *not analysed: tracked, not in the working tree: deleted, or not checked out*
+  (`deleted`), named, because its name is committed. A sparse checkout's paths left out of
+  the working tree land there too, which is why the words claim no deletion.
+- **A path is named only when `HEAD` holds it** (question 5, answered 2026-10-06).
+  `ls-files --cached` lists the index, so a file someone ran `git add` on and never committed
+  is tracked before any commit holds it. Its name is not committed: it is counted in `staged`,
+  *staged, never committed: counted, never named*, whether the working tree still holds it or
+  not, and it is in no group. The named groups are `HEAD`'s paths that `ls-files` lists.
 - **The repository's own `.git` is neither walked nor counted.** The snapshot's walk counts
   it among what git does not track; the report would then say "git does not track 1 path" of
   every repository, so the read leaves the root's `.git` entry out before it counts.
@@ -356,10 +364,11 @@ Nothing on the list reopens a decision of § 13.
 - **`HEAD` listed whole, or nothing opened.** The blob ids come from one
   `ls-tree -r -z --full-tree <HEAD>`, which lists the whole repository even when the service
   is a folder of it, under the launcher's output bound (`GIT_LIMITS.maxOutputBytes`,
-  `src/process/git.ts:64`). If that listing fails or overflows, no file is opened: each
-  allow-listed file is *not analysed: `HEAD` could not be listed whole* (`head-unlisted`), and
-  the report says why. Under an unborn `HEAD` nothing is committed: each allow-listed file is
-  `not-committed`, and nothing is opened.
+  `src/process/git.ts:64`). If that listing fails or overflows, nothing can be shown
+  committed, so no file is opened and none is named: every path git tracks is counted in
+  `unlisted`, and the report says why once, *`HEAD` could not be listed whole*
+  (`head-unlisted`). Under an unborn `HEAD` nothing is committed: every path the index holds
+  is counted in `staged`, and nothing is opened or named (question 5).
 - **Bounds** (`core/discovery/limits.ts`, `DISCOVERY_LIMITS`): 65,536 bytes a file, as the
   snapshot's cap; over it, the file is named and never cut. 5,000 folders a walk; past it, the
   walk stops and says so. 200 findings a file; past it, the file is refused whole as *over the
@@ -422,8 +431,8 @@ Nothing on the list reopens a decision of § 13.
   cannot vouch, and the order of standings puts the file's standing first. 2.4, the first
   rule that reads hosts in an `evidence` file, assigns it.
 - **Coverage is complete** when nothing is *not analysed*, nothing is *present, not read by
-  design*, git tracks nothing more than it listed, the walk was not cut short, and the
-  selection is `git`. A README is enough to make a repository incomplete. That is true of
+  design*, git tracks nothing more than it listed, nothing is staged and never committed,
+  no path `HEAD` holds has a name that is not valid UTF-8, `HEAD` was listed whole, the walk was not cut short, and the selection is `git`. A README is enough to make a repository incomplete. That is true of
   every real repository in this slice, and the report says so rather than hide it.
 - **The exit follows what the run ends as, and only ever turns a 0 into a 1.** `concluded`
   hands the `SubmissionReport` back beside the result (row 19), and one function,
@@ -455,7 +464,12 @@ Nothing on the list reopens a decision of § 13.
   cannot fill yet. *not proposed* reads "every finding: this version reports what the
   configuration states and proposes nothing from it". *declared, not evidenced by this
   repository* reads "not read: init reads no declarations repository in this version". Their
-  places are kept so later slices fill them without moving the others.
+  places are kept so later slices fill them without moving the others. *not analysed* names
+  each path with its reason, then says each count on a line of its own and names nothing of
+  it: `git does not track N paths, not named`, `N paths staged and never committed, not named`
+  (question 5), `N paths whose names are not valid UTF-8, not named` (`unnameable`, 1.2's
+  second review), and, where `HEAD` could not be listed whole, `N paths git tracks, not named:
+  HEAD could not be listed whole`. Each count is among the sentence's *M paths not analysed*.
 - **devDependencies and peerDependencies are `mention`.** A test database client in
   `devDependencies` is not the service's dependency. `dependencies` and `optionalDependencies`
   are `evidence` of an installed client.
@@ -921,8 +935,9 @@ Attendu :
 **Goal.** `readDiscovery(root)` walks what git tracks and classifies every path into exactly
 one group. It opens only an allow-listed, tracked, regular file, through `openToRead`,
 bounded, and keeps its bytes only when they are `HEAD`'s; a changed file is read once to be
-hashed and dropped. It never opens a path the never-opened list names, names nothing git
-does not track, and changes nothing in the repository. Everything it does runs on git shapes
+hashed and dropped. It never opens a path the never-opened list names, names nothing
+`HEAD` does not hold — what git does not track, and what is staged and never committed, is
+counted — and changes nothing in the repository. Everything it does runs on git shapes
 the launcher already holds. No command uses it yet.
 
 **Files:**
@@ -948,11 +963,13 @@ export type FileFormat = 'json' | 'dotenv' | 'yaml'
 export type ByDesign =
   | 'environment-file' | 'key-material' | 'credential-store' | 'git' | 'cloud-credentials'
   | 'kubeconfig' | 'terraform-state' | 'discarded-sops' | 'discarded-secret'
-/** Why a walked path was not analysed. The last four are produced by 1.3 and 1.4. */
+/** Why a walked path was not analysed. The last four are produced by 1.3 and 1.4; `head-unlisted` is said of the `unlisted` count, never of a path. */
 export type NotAnalysed =
   | 'no-rule' | 'code' | 'generated' | 'over-size' | 'not-committed' | 'deleted' | 'head-unlisted'
   | 'link' | 'not-a-file' | 'unreadable'
   | 'changed-during-run' | 'parse-failure' | 'over-finding-cap' | 'past-run-cap'
+/** Why a path named in `notAnalysed` was not analysed: every reason but `head-unlisted`. */
+export type PathNotAnalysed = Exclude<NotAnalysed, 'head-unlisted'>
 export function allowed(path: string): { readonly extractor: ExtractorName; readonly format: FileFormat; readonly standing: 'evidence' | 'sample' | 'mention' } | undefined
 export function neverOpened(path: string): ByDesign | undefined
 export function isCode(path: string): boolean
@@ -963,9 +980,12 @@ export interface Walked {
   readonly selection: 'git' | 'walk' | 'none'
   readonly head: string | undefined                      // HEAD's commit, hex; undefined when unborn or not git
   readonly opened: readonly string[]                     // sorted
-  readonly notAnalysed: readonly { readonly path: string; readonly why: NotAnalysed }[]   // empty under `walk`
-  readonly byDesign: readonly { readonly path: string; readonly why: ByDesign }[]         // empty under `walk`
-  readonly untracked: number                             // counted, never named; under `walk`, every path
+  readonly notAnalysed: readonly { readonly path: string; readonly why: PathNotAnalysed }[]   // paths HEAD holds, under git's spelling; empty under `walk`, an unborn HEAD, or one not listed whole
+  readonly byDesign: readonly { readonly path: string; readonly why: ByDesign }[]         // paths HEAD holds; likewise
+  readonly untracked: number                             // what git does not track: counted, never named; under `walk`, every path
+  readonly staged: number                                // staged, never committed (in the index, not in HEAD): counted, never named; under an unborn HEAD, every path git tracks
+  readonly unlisted: number                              // HEAD not listed whole: every path git tracks, counted, none named or opened, for one reason (`head-unlisted`); else 0
+  readonly unnameable: number                            // a path git holds whose name is not valid UTF-8: counted, never named, never opened (of what HEAD holds; one it does not is in `staged`)
   readonly truncated: boolean
 }
 
@@ -1001,12 +1021,12 @@ export function readDiscovery(
 ): Promise<DiscoveryRead>
 ```
 
-- [ ] **Step 1: Pin the before (passes now).** `df -h "$TMPDIR"`, then
+- [x] **Step 1: Pin the before (passes now).** `df -h "$TMPDIR"`, then
   `pnpm vitest run tests/unit/project-fs.test.ts tests/unit/project-tracked.test.ts tests/unit/project-secrets.test.ts tests/unit/local-forge.test.ts tests/unit/tree-for.test.ts tests/architecture`:
   green, with 49 tests in `tests/architecture`. The snapshot's tests are the proof that the
   name lists move byte-neutral: none of them is edited.
 
-- [ ] **Step 2: Write the classification's tests, and see them fail.** In
+- [x] **Step 2: Write the classification's tests, and see them fail.** In
   `tests/unit/discovery-allow.test.ts`:
   1. *opens only the allow-list, by name*, an `it.each`. `package.json`, `packages/api/package.json`
      → npm, json, evidence. `examples/demo/package.json` → mention. `.env.example`,
@@ -1034,7 +1054,7 @@ export function readDiscovery(
 
   *Fails today:* `src/core/discovery/allow.ts` and `src/core/git/blob.ts` do not exist.
 
-- [ ] **Step 3: Write the read's tests, and see them fail.** In
+- [x] **Step 3: Write the read's tests, and see them fail.** In
   `tests/unit/discovery-read.test.ts`, each over a temporary repository made by `committed()`:
   1. *opens the allow-listed files a commit holds, and nothing else*. The fixture is
      `package.json`, `.env.example`, `README.md`, `src/index.ts`, `deploy/prod.env` holding a
@@ -1050,9 +1070,11 @@ export function readDiscovery(
      (`{ numRuns: 20 }`, `PROPERTY_TIMEOUT`). Repositories of 1 to 12 files are drawn from a
      pool of names: some allow-listed, some never opened, code, generated, other files,
      folders that are links, some left untracked, and some tracked then deleted from the
-     working tree. The union of `opened`, `notAnalysed` and `byDesign` equals
-     `git ls-files`, the three are disjoint, and `untracked` equals the entries git does not
-     track.
+     working tree, and some staged after the commit and never committed, in the working
+     tree or removed from it (question 5). The union of `opened`, `notAnalysed` and
+     `byDesign` equals `HEAD`'s paths that `git ls-files` lists, the three are disjoint,
+     `staged` equals the entries `ls-files` lists and `HEAD` does not hold, and `untracked`
+     equals the entries git does not track.
   3. *keeps nothing of a file changed since HEAD, staged or not*: `.env.example` edited in
      the working tree to hold a marker `Qz7-edited`, and `package.json` edited with another
      marker and staged, both land in `not-committed`. `opened` and `files` are empty, and no
@@ -1083,15 +1105,16 @@ export function readDiscovery(
   12. *reads a service in a folder of its repository*: the read rooted at `services/api/`
       of a committed monorepo maps `HEAD`'s paths through `rev-parse --show-prefix`, and
       opens `services/api/package.json` as `package.json`.
-  13. *opens nothing when HEAD cannot be listed whole*: with `git: { maxOutputBytes: 64 }`,
-      the `ls-tree` overflows; the spy is never called, and both allow-listed files are
-      `head-unlisted`.
+  13. *opens nothing and names nothing when HEAD cannot be listed whole*: with
+      `git: { maxOutputBytes: 64 }`, the `ls-tree` overflows; the spy is never called,
+      `opened`, `notAnalysed` and `byDesign` are empty, no name is in the read, and
+      `unlisted` counts the four tracked paths (question 5).
   14. *names a tracked file deleted from the working tree*: `package.json` committed then
       removed → `deleted`, and the walk does not stop.
 
   *Fails today:* `src/context/discovery/read.ts` does not exist.
 
-- [ ] **Step 4: Write the architecture rules, and see them fail.**
+- [x] **Step 4: Write the architecture rules, and see them fail.**
   - Widen *nothing reachable from agents/ is in core/discovery/, not even a type* to
     `context/discovery/`. Its title becomes
     *nothing reachable from agents/ is in core/discovery/ or context/discovery/, not even a type*,
@@ -1119,7 +1142,7 @@ export function readDiscovery(
     becomes *only context/project-fs, context/discovery/read.ts and forge/ load the git launcher*,
     and its self-test (`:1492`) is renamed to match.
 
-- [ ] **Step 5: Build it.** First `names.ts`, moved byte-neutral, and `snapshot.ts` importing
+- [x] **Step 5: Build it.** First `names.ts`, moved byte-neutral, and `snapshot.ts` importing
   it: Step 1's snapshot tests pass unchanged. Then `allow.ts`, `blob.ts` (with `objects.ts`
   re-exporting it), and `read.ts`. Every name is lowercased before `neverOpened`,
   `isGenerated` and `allowed` compare it. The walk reads tracked names with
@@ -1137,7 +1160,7 @@ export function readDiscovery(
   used in 1.4 and written here so the union and its words land together), and over
   `FileFormat` in `discardedWhole`. Steps 2 to 4 pass.
 
-- [ ] **Step 6: The docs it makes true.** `AGENTS.md`: the layering diagram gains
+- [x] **Step 6: The docs it makes true.** `AGENTS.md`: the layering diagram gains
   `context/discovery: git ls-files, ls-tree` under `process/` and `context/discovery/read.ts`
   under `confine/`; the `context/` row gains the read; the architecture paragraph gains the
   two rules and names the read in the three widened ones, and the count becomes
@@ -1145,11 +1168,14 @@ export function readDiscovery(
   "the discovery read opens only tracked `package.json` and sample environment files, by
   name, never through a link, and never a path the never-opened list names; it keeps a
   file's bytes only when they are `HEAD`'s, and a file changed since `HEAD` is read once to be
-  hashed, then dropped, handed to no extractor; it names nothing git does not track, and
-  nothing outside a repository", pointing at tests 1, 3, 4, 5 and 7. `src/context/README.md`: `discovery/`, and the rule that keeps the two
+  hashed, then dropped, handed to no extractor; it names a path only when `HEAD` holds it —
+  what git does not track, what is staged and never committed, and everything outside a
+  repository is counted and never named, and under a `HEAD` it cannot list whole it names
+  nothing and opens nothing", pointing at tests 1, 3, 4, 5, 7 and 13, the unborn-`HEAD` test
+  and the staged test (question 5). `src/context/README.md`: `discovery/`, and the rule that keeps the two
   readers apart. `src/forge/README.md`: `blobId` lives in `core/git/`.
 
-- [ ] **Step 7: Checks**
+- [x] **Step 7: Checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -1160,14 +1186,131 @@ pnpm test
 pnpm build
 pnpm smoke
 git fetch origin
-git diff "$(git merge-base origin/main HEAD)" --stat -- tests/recordings tests/golden fixtures templates src/core/schemas src/process
+git diff "$(git merge-base origin/main HEAD)" --stat -- tests/recordings tests/golden fixtures templates src/core/schemas
+git diff "$(git merge-base origin/main HEAD)" -- src/process/git.ts
+git diff "$(git merge-base origin/main HEAD)" -U0 -- src/process/grammar.ts src/process/gh.ts | grep -E '^[-+]' | grep -vE '^(\+\+\+|---) ' | grep -vE '^[-+] \*( |$)'
+git diff "$(git merge-base origin/main HEAD)" --stat -- src/process
 ```
 
-The last prints nothing. `tests/architecture` reports 51 tests, 32 of them rules.
+The first three diffs print nothing; the merge base is `7ea966c`. The second proves the read
+adds no git shape (row 6): `SHAPES` and `checkGitArgv` live in `src/process/git.ts`, which is
+byte-identical to the base. The third keeps of `grammar.ts` and `gh.ts` every changed line that
+is not a line of a `/** … */` comment, and prints none. The last lists the folder's whole diff:
+`README.md`, `gh.ts` and `grammar.ts`, and nothing else. `tests/architecture` reports 51 tests,
+32 of them rules.
 
 **Architecture rules:** one added (*context/project-fs/ and context/discovery/ load nothing
 of each other*) and four widened by name: the agents rule from 1.1, the context disk rule,
 the confinement loaders and the git launcher loaders. That makes thirty-two rules, measured.
+
+**As built**, where the code asked for it (2026-10-05):
+
+- `discardedWhole` also answers `parse-failure`, for a YAML stream it cannot read whole (a
+  document the parser faulted, an alias bomb past `readDocuments`'s bound, more than
+  `maxYamlDocuments`): such a stream cannot be shown to hold no Secret, so nothing of it is
+  read. A JSON file that does not parse is not discarded there; the npm extractor (1.4) says
+  why in its own closed reason.
+- `options.git` bounds the listing of `HEAD` alone. Applied to every call, a 64-byte bound
+  failed `rev-parse --show-toplevel` first, whose answer is a temporary folder's path, and
+  test 13 read `none` instead of `head-unlisted`.
+- `options.limits` is a `Partial<DiscoveryLimits>`, the bounds as numbers: `typeof
+  DISCOVERY_LIMITS` is a literal type under `as const`, which no test could shrink.
+- `limits.ts` gains only the read's bounds (`maxFileBytes`, `maxDirectories`,
+  `maxYamlDocuments`); the findings' caps arrive with what counts them.
+- The sentences are `byDesignReason` and `notAnalysedReason`, beside `BY_DESIGN` and
+  `NOT_ANALYSED`, and a seventh classification test reads them. A fifteenth read test pins
+  the unborn `HEAD`.
+- A tracked allow-listed path is checked on the disk (`lstat`) before `HEAD`'s entry, so a
+  committed symbolic link `package.json` reads `link`, as test 5 asks, and not
+  `not-committed`. A tracked file `HEAD` holds that no walk reaches is `deleted`, by-design names included,
+  and `unreadable` under a folder that could not be listed; under one the folder budget left
+  unwalked, `truncated` says it.
+
+From the review of the task (2026-10-05):
+
+- Test 1's fixture also holds `.ssh/package.json`, `secrets/.env.example` (`secrets/`, not
+  `.aws/`: APFS folds case) and `node_modules/pg/package.json`, and the spy proves none is
+  opened: they are `key-material`, `credential-store` and `generated`. Without them, a read
+  that consulted `allowed` before `neverOpened` or `isGenerated` passed every test.
+- Two read tests more, each failing with its guard removed: *takes no link HEAD holds for a
+  file of the same bytes* (`HEAD`'s entry is mode `120000`, the working tree a regular file
+  of the link's target name, which hashes to the same blob: only the mode check says
+  `not-committed`), and *reads nothing when the repository names another directory as its
+  work tree* (`core.worktree` elsewhere: git lists that folder's index from the repository's
+  own folder, so only the containment of `--show-toplevel` keeps the `package.json` beside
+  `.git` from being read as committed). The descriptor's `fstat` re-checks have no test of
+  their own: they matter only in a race the walk's `lstat` loses, which no test can stage
+  deterministically.
+- `deleted`'s words are *tracked, not in the working tree: deleted, or not checked out*: a
+  sparse checkout leaves tracked paths out of the working tree and deletes nothing, and the
+  read cannot tell the two apart without a launcher shape it does not have.
+- **The prose under `src/process` names the three loaders of the git launcher** (owner's
+  decision, 2026-10-06). `src/process/README.md` (its opening, `:3-11`, then `:97` and `:106-109`), the
+  comment of `src/process/grammar.ts` (`:6`) and that of `src/process/gh.ts` (`:11`) said
+  that only `context/project-fs` and `forge/` load it, and `tests/architecture`'s
+  *process/ imports nothing of ours* comment called `process/` "a leaf both context/project-fs
+  and forge/ import"; each now names `context/project-fs`, `context/discovery/read.ts` and
+  `forge/`, as the rule enforces. No code line under `src/process` changes. Step 7's check is
+  narrowed to match: `src/process/git.ts`, where `SHAPES` and `checkGitArgv` live, is
+  byte-identical to the base, and the rest of the folder's diff is comment and README lines.
+- **A name staged and never committed is counted, never named** (question 5, answered
+  2026-10-06). The review found that `ls-files --cached` is the index, so a file `git add`ed
+  and never committed was named in `notAnalysed`, and under an unborn `HEAD` every staged
+  file. The read now names a path only when `HEAD`'s listing holds it, from the `ls-tree` it
+  already ran: an index-only entry, in the working tree or not, is counted in `staged` and
+  named nowhere; under an unborn `HEAD` every path git tracks is counted there; under a `HEAD`
+  not listed whole every path git tracks is counted in `unlisted`, for the one reason
+  `head-unlisted`, and nothing is named or opened. `not-committed` is then said only of a path
+  `HEAD` holds, and its words become *not committed: changed since HEAD*. Tests 2 and 13 and
+  the unborn-`HEAD` test changed, and *never names a path staged and never committed, and
+  counts it* was added — `notes/customer-x.md` holding a marker, `git add`ed and never
+  committed: neither its name nor the marker is in any string of the read, `staged` is 1.
+  Each failed before the change for that reason: the name in `notAnalysed`, or (test 2) a
+  staged path removed from the working tree named `deleted`.
+
+From the second review of the task (2026-10-06):
+
+- **A file its folder spells otherwise than git is read under git's name** (macOS). APFS
+  folds case and Unicode normalization, and git on it (`core.ignorecase`,
+  `core.precomposeunicode`) tracks `package.json` while the folder lists `PACKAGE.JSON`, and
+  `café` composed (NFC) while Finder wrote it decomposed (NFD). The walk matched `readdir`'s
+  name to `ls-files` by exact string, so such a file was named `deleted` and its folder's
+  spelling counted untracked, while `git status --porcelain -uall` printed nothing. Now an
+  entry git's listing does not hold is looked up among the names git tracks in the same
+  folder, files and folders alike, composed and lowercased; one is git's spelling of it only
+  when its `lstat` is the same device and inode and the folder does not list that spelling
+  itself, since two entries of one folder that are one file are a hard link, never one name.
+  The entry is then named under git's spelling alone, opened under the folder's, and not
+  counted untracked, and a folder is walked under git's spelling. With no such match nothing
+  changes, the blob check against `HEAD` still guards the bytes, and no git shape is added.
+  Tests: *reads a committed file its folder spells in another case, under git’s name* and
+  *reads a committed folder its parent spells decomposed, under git’s name*, each of which
+  failed before the change with the path `deleted` and `untracked` 1. They are skipped where
+  the filesystem keeps the two spellings apart, which the test file probes once (Linux CI).
+  *counts a spelling git tracks in no folder of its own, and names it nowhere* runs
+  everywhere. Two run only where case is kept, and skip on APFS: *takes no second name of a
+  tracked file for git’s spelling of it* (a hard link `PACKAGE.JSON` beside `package.json`)
+  and *reads no lookalike for a committed file deleted where case is kept* (`package.json`
+  deleted, `PACKAGE.JSON` holding `HEAD`'s very bytes). Run on a case-sensitive APFS volume,
+  each failed with its guard removed: the folder's own listing, then the same inode.
+- **A path whose name is not valid UTF-8 is counted, never named, never opened.** `ls-files`
+  and `ls-tree` were decoded with replacement, so `n\xff.md` and `n\xfe.md` were one key,
+  `n\uFFFD.md`: `staged` undercounted, and a path `HEAD` holds was named in words nobody
+  wrote. Every path is now keyed by git's bytes, one character a byte (`latin1`), and decoded
+  to a name only by a fatal UTF-8 decoder; the walk reads a folder's names as bytes too. A
+  path `HEAD` holds whose bytes are not UTF-8 is counted in `Walked`'s new `unnameable`, one
+  it does not hold in `staged`, and neither is named or opened. Test: *names no path that is
+  not UTF-8, and merges no two of them*. `HEAD` holds `n\xff.md` and `package.json`, and the
+  index adds `n\xfe.md`, made with `update-index -z --index-info` and no file on disk. Before
+  the change it read `n\uFFFD.md` as `deleted` and `staged` 0; now `staged` is 1,
+  `unnameable` 1, and no string of the read holds U+FFFD or either name. An entry on disk
+  whose name is not UTF-8, which APFS refuses, is counted untracked unless git tracks it, and
+  has no test here.
+- **A named path's reason is never `head-unlisted`.** `notAnalysed` is typed by
+  `PathNotAnalysed`, `Exclude<NotAnalysed, 'head-unlisted'>` in `core/discovery/allow.ts`, and
+  so is every refusal in the read. Test: a `@ts-expect-error` in
+  `tests/unit/discovery-allow.test.ts` that gives a path `head-unlisted`, which
+  `pnpm typecheck` refused as an unused directive before the change.
 
 - [ ] **Step 8: The pull request** (after the owner's go-ahead)
 
@@ -1175,9 +1318,11 @@ the confinement loaders and the git launcher loaders. That makes thirty-two rule
 git add src/core/discovery/allow.ts src/core/discovery/limits.ts src/core/git/blob.ts \
   src/core/secrets/names.ts src/context/project-fs/snapshot.ts \
   src/context/discovery/read.ts src/forge/local/objects.ts src/forge/README.md \
-  src/context/README.md src/core/README.md tests/unit/discovery-allow.test.ts \
-  tests/unit/discovery-read.test.ts tests/architecture/dependencies.test.ts \
-  docs/plans/stage-8-slice-1.md AGENTS.md SECURITY.md README.md CHANGELOG.md
+  src/context/README.md src/core/README.md src/agents/README.md src/confine/README.md \
+  src/process/README.md src/process/grammar.ts src/process/gh.ts \
+  tests/unit/discovery-allow.test.ts tests/unit/discovery-read.test.ts \
+  tests/architecture/dependencies.test.ts docs/plans/stage-8-slice-1.md docs/design.md \
+  docs/roadmap.md AGENTS.md SECURITY.md README.md CHANGELOG.md
 git commit -m "feat(context): read a service's committed configuration files by name, and nothing else"
 ```
 
@@ -1189,9 +1334,10 @@ Base `main`. CHANGELOG, `### Added`:
 >   and keeps their bytes only when they are those of `HEAD` — a file changed since is read
 >   once to be hashed, then dropped; it never opens a path where credentials live — a real
 >   environment file, key material, `.ssh`, `.aws`, Terraform state, by the snapshot's own
->   lists, now shared — and puts every path it walks in one group a report can name, counting
->   without naming what git does not track and everything outside a repository. A new
->   architecture rule keeps it and the snapshot a model is sent from loading each other
+>   lists, now shared — and puts every path `HEAD` holds in one group a report can name,
+>   counting without naming what git does not track, what is staged and never committed, and
+>   everything outside a repository. A new architecture rule keeps it and the snapshot a model
+>   is sent from loading each other
 >   ([#PRNUM](https://github.com/pcaboor/idp-agent/pull/PRNUM)).
 
 **What changes that a person sees:** nothing. No command calls the read.
@@ -1213,35 +1359,41 @@ git -c user.name=owner -c user.email=owner@example.invalid commit -qm base
 printf 'DATABASE_URL=mysql://app_billing:Local-Passw0rd-3Mv@billing-db.prod.internal:3306/billing\n' > .env
 ```
 
-Then, from the branch's checkout:
+Then, from the branch's checkout, through one small helper of the kit,
+`~/Documents/idp-agent-tests/s8-1/read.mjs`, which loads `dist/context/discovery/read.js`
+from the current directory and prints the read's groups as one line of JSON (a long
+`node -e` line is mangled when pasted, 2026-10-05):
 
 ```bash
+cd ~/Documents/idp-agent-worktrees/s812
 pnpm vitest run tests/unit/discovery-allow.test.ts tests/unit/discovery-read.test.ts
 pnpm vitest run tests/architecture
 pnpm build
-node --input-type=module -e "const { readDiscovery } = await import('./dist/context/discovery/read.js'); const r = await readDiscovery(process.argv[1]); console.log(JSON.stringify({ selection: r.selection, opened: r.opened, notAnalysed: r.notAnalysed, byDesign: r.byDesign, untracked: r.untracked }))" ~/Documents/idp-agent-tests/s8-1/invoicing-worker
+node ~/Documents/idp-agent-tests/s8-1/read.mjs ~/Documents/idp-agent-tests/s8-1/invoicing-worker
 chmod 000 ~/Documents/idp-agent-tests/s8-1/invoicing-worker/deploy/prod.env ~/Documents/idp-agent-tests/s8-1/invoicing-worker/src/index.ts
-node --input-type=module -e "const { readDiscovery } = await import('./dist/context/discovery/read.js'); const r = await readDiscovery(process.argv[1]); console.log(JSON.stringify({ opened: r.opened, notAnalysed: r.notAnalysed, byDesign: r.byDesign }))" ~/Documents/idp-agent-tests/s8-1/invoicing-worker
+node ~/Documents/idp-agent-tests/s8-1/read.mjs ~/Documents/idp-agent-tests/s8-1/invoicing-worker
 chmod 644 ~/Documents/idp-agent-tests/s8-1/invoicing-worker/deploy/prod.env ~/Documents/idp-agent-tests/s8-1/invoicing-worker/src/index.ts
 printf 'EXTRA=1\n' >> ~/Documents/idp-agent-tests/s8-1/invoicing-worker/.env.example
-node --input-type=module -e "const { readDiscovery } = await import('./dist/context/discovery/read.js'); const r = await readDiscovery(process.argv[1]); console.log(JSON.stringify({ opened: r.opened, notAnalysed: r.notAnalysed }))" ~/Documents/idp-agent-tests/s8-1/invoicing-worker
+node ~/Documents/idp-agent-tests/s8-1/read.mjs ~/Documents/idp-agent-tests/s8-1/invoicing-worker
 git -C ~/Documents/idp-agent-tests/s8-1/invoicing-worker checkout -- .env.example
 git -C ~/Documents/idp-agent-tests/s8-1/invoicing-worker status --porcelain
 ```
 
-Attendu :
+Expected, as run on 2026-10-05:
 
 - the fixture's commands print nothing;
-- the first `vitest` prints every test of the two files passed: the six classification
-  tests, rows included, and the fourteen of the read;
+- the first `vitest` prints `Tests  63 passed | 2 skipped (65)`: the seven classification
+  tests, rows included (41), and the twenty-four of the read (re-measured 2026-10-06). The two
+  skipped run only where the filesystem keeps case, which APFS does not; Linux CI runs them,
+  and skips the two that need APFS;
 - the second prints `Tests  51 passed (51)`;
 - the first `node` prints
-  `{"selection":"git","opened":[".env.example","package.json"],"notAnalysed":[{"path":".gitignore","why":"no-rule"},{"path":"src/index.ts","why":"code"}],"byDesign":[{"path":"deploy/prod.env","why":"environment-file"}],"untracked":1}`.
+  `{"selection":"git","opened":[".env.example","package.json"],"notAnalysed":[{"path":".gitignore","why":"no-rule"},{"path":"src/index.ts","why":"code"}],"byDesign":[{"path":"deploy/prod.env","why":"environment-file"}],"untracked":1,"staged":0,"unlisted":0}`.
   `.env` is counted and not named;
-- the second `node`, with the two files unreadable to anyone, prints the same three groups.
-  Neither is `unreadable`, so neither was opened;
+- the second `node`, with the two files unreadable to anyone, prints the same line. Neither
+  is `unreadable`, so neither was opened;
 - the third `node`, `.env.example` changed since the commit, prints
-  `{"opened":["package.json"],"notAnalysed":[{"path":".env.example","why":"not-committed"},{"path":".gitignore","why":"no-rule"},{"path":"src/index.ts","why":"code"}]}`;
+  `{"selection":"git","opened":["package.json"],"notAnalysed":[{"path":".env.example","why":"not-committed"},{"path":".gitignore","why":"no-rule"},{"path":"src/index.ts","why":"code"}],"byDesign":[{"path":"deploy/prod.env","why":"environment-file"}],"untracked":1,"staged":0,"unlisted":0}`;
 - `git status --porcelain` prints nothing: the read changed nothing, and `.env` is
   ignored.
 
@@ -1459,6 +1611,9 @@ export interface Coverage {
   readonly notAnalysed: Walked['notAnalysed']
   readonly byDesign: Walked['byDesign']
   readonly untracked: number
+  readonly staged: number                                // staged, never committed: counted, never named
+  readonly unlisted: number                              // HEAD not listed whole: every tracked path, counted, none named
+  readonly unnameable: number                            // a path HEAD holds whose name is not valid UTF-8: counted, never named
   readonly truncated: boolean
 }
 export function coverageOf(walked: Walked, extracted: ReadonlyMap<string, Extracted>, checked: readonly Checked[]): Coverage   // deep-frozen
@@ -1557,8 +1712,10 @@ export const codeSpan: (text: string) => string
 
   *Fails today:* the modules do not exist.
 
-- [ ] **Step 3: Write the report's tests, and see them fail.**
-  `tests/unit/discovery-report.test.ts`:
+- [ ] **Step 3: Write the report's tests, and see them fail.** Question 5 is answered
+  (2026-10-06, *count only*) and applied in 1.2: the read names only what `HEAD` holds, so an
+  index-only entry reaches the report as a count (`staged`), never as a name, and test 1's
+  groups are `HEAD`'s paths. `tests/unit/discovery-report.test.ts`:
   1. *puts every path in exactly one part*: a `fast-check` property over generated `Walked`
      and `Extracted` values. Each path is in exactly one of *analysed*, *not analysed* and
      *present, not read by design*, and the sentence's counts add up to the walk.
@@ -1575,7 +1732,12 @@ export const codeSpan: (text: string) => string
      `evidencedDependencies` is 0; `isComplete` is false with a single `README.md` not
      analysed.
   5. *bounds every list*: 25 paths not analysed are listed 20, then `and 5 more`.
-  6. *counts what git does not track, and names none of it*.
+  6. *counts what git does not track, and names none of it*: and likewise what is staged and
+     never committed, `2 paths staged and never committed, not named` (`1 path` for one), what
+     `HEAD` holds under a name that is not valid UTF-8, `2 paths whose names are not valid
+     UTF-8, not named` (`1 path whose name is not valid UTF-8, not named` for one), and, where
+     `HEAD` could not be listed whole, `N paths git tracks, not named: HEAD could not be listed
+     whole`; each count is among the sentence's *M paths not analysed* (question 5).
   7. *names in Markdown only what a body can show*: a path holding a backtick is a longer
      code span. A path `@someone/x` is a code span and mentions nobody. A finding whose
      account is `@acme-sre` and whose database is `@someone` has each in a code span, and so
@@ -1585,6 +1747,12 @@ export const codeSpan: (text: string) => string
      variable only.
   9. *names a found engine this registry cannot express*: `kafkajs` reads
      `found, not expressible: no resource type for it in this registry`.
+  10. *names no path raw on a terminal*: git tracks a name holding ESC (`a\u001b[31mred.md`)
+      and one holding a line break as readily as any other, and 1.2's read hands both to
+      `notAnalysed` unchanged. In `coverageLines` each is spelled out by `inertLine`, and no
+      line holds a C0 or C1 control, a format or a bidi character; in the trace's copy of the
+      report each is one of the two renderings the terminal and the body give it, never raw.
+      (From the review of 1.2, 2026-10-05.)
 
 - [ ] **Step 4: Write `init`'s tests, and see them fail.** `tests/unit/init-discovery.test.ts`
   runs `init` over a repository made by `committed()` from the owner's fixture (1.2) and
@@ -1710,8 +1878,8 @@ export const codeSpan: (text: string) => string
     message is kept", pointing at the property and at `discovery-secrets.test.ts`'s test 13.
     *What leaves your machine*: the report, with the service's committed file names and the
     composed renderings (host, account, database, never a password), goes into the pull
-    request's body on GitHub **and into every `init` trace**; what git does not track is
-    counted, never named. The **MLflow row** (`:70`) adds "on `init`, the discovery report in
+    request's body on GitHub **and into every `init` trace**; what git does not track, and
+    what is staged and never committed, is counted, never named. The **MLflow row** (`:70`) adds "on `init`, the discovery report in
     the root's output: renderings of sample files `project-fs` withholds from the model
     (`.env.example`), holding hosts, accounts and databases and never a password, and the
     names of committed files". The **Traces** paragraph (`:225-227`) says the same, since
@@ -1723,7 +1891,8 @@ export const codeSpan: (text: string) => string
   - `docs/stage-8-brief.md` § 12: slice 1 marked **Built**, with this plan's departures
     (rows 1, 4, 5, 6, 10, 11 and 12, and the owner's four answers of 2026-10-04: the exit
     read literally, the remote in 2.5, what git does not track counted and never named, and
-    nothing extracted from a file not committed).
+    nothing extracted from a file not committed; and the answer of 2026-10-06: a name staged
+    and never committed counted, never named).
   - `docs/roadmap.md`: stage 8's item notes slice 1 done, and slice 2 next.
   - `src/cli/README.md` and `src/core/README.md`: the report and where it is rendered.
 
@@ -1771,7 +1940,8 @@ The test files Step 7 lists are staged by name too, whichever they turn out to b
 >   strings of its sample environment files and the database, cache and queue clients its
 >   `package.json` installs — each with its file and line, a password never shown, and what
 >   it did not read and why: code, formats no rule reads yet, files changed since `HEAD`,
->   files it never opens by design, and how many paths git does not track. The report follows
+>   files it never opens by design, and how many paths git does not track or are staged and
+>   never committed. The report follows
 >   the diff, ends on one sentence also said on stderr — "no dependency evidenced in N files
 >   analysed (V findings verified); M paths not analysed; K references configured outside
 >   this repository" — and
@@ -1879,3 +2049,28 @@ Answered by the owner on 2026-10-04, each as recommended but the first, and appl
    dropped, handed to no extractor and kept nowhere (1.2's test 3, 1.4's test 10), and it is
    named under *not analysed* (`not-committed`). `src/process/git.ts` gains no
    `diff-files` shape.
+
+Raised by the review of Task 1.2 (2026-10-05), answered by the owner on 2026-10-06 and
+applied above:
+
+5. **A name staged and never committed: named, or counted?** *Answered: counted only*
+   (2026-10-06), as recommended. Done in 1.2: the read names a path only when `HEAD`'s
+   listing holds it; an index-only entry is counted in `staged` (*staged, never committed:
+   counted, never named*), apart from `untracked`, whether the working tree holds it or not;
+   under an unborn `HEAD` every path git tracks is counted there; under a `HEAD` not listed
+   whole every path git tracks is counted in `unlisted`, for the one reason `head-unlisted`,
+   and nothing is named or opened. `src/process/git.ts` is unchanged. Tests 2 and 13 and the
+   unborn-`HEAD` test changed, and a test was added (1.2, *As built*); 1.4 prints the count
+   (Choices 1.4, Step 3's test 6). The question as it was put: the read lists what git
+   tracks with `ls-files --cached`, which is the index. A file someone ran `git add` on and
+   never committed — `notes/customer-x.md` — is tracked, so answer 3 names it (`no-rule`),
+   and under an unborn `HEAD` every staged file is named. Answer 3's reason, "its name is
+   committed", does not hold of it, and in 1.4 that name would reach stdout, the trace and
+   an `init --submit` pull request body whose branch does not hold the file. *Recommended:*
+   name a path only when `HEAD`'s listing holds it, and count an index-only entry beside
+   what git does not track (or as a count of its own, "staged, not committed"); under an
+   unborn or unlisted `HEAD`, name nothing that cannot be shown committed. It needs no new
+   launcher shape: `ls-tree` already lists `HEAD`. It changes 1.2's test 2 (the union is
+   `HEAD`'s paths that `ls-files` lists, not `ls-files`), its unborn-`HEAD` test and test 13
+   (`head-unlisted` would name nothing), so it waits for the owner rather than being made
+   in review.

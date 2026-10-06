@@ -15,7 +15,7 @@ branch tracks one on github.com, through `open.ts`.
 | `provider.ts` | `ForgeProvider` (`name: 'local' \| 'github'`, and no `merge`, `approve`, `close` or `delete`), `Base`, `Submitted` and `Recognised` — on GitHub also `pushed`, `pullRequest`, `olderBase`, `statusChecks`, a refusal's `kept`, and `pushed-without-pull-request` and `closed` — `PullRequest`, the road a submission takes (`Road`, `GitHubRoad`, `LocalRoad`) and who gh is (`GhIdentity`) — **types only**, like `llm/client.ts` |
 | `errors.ts` | `ForgeInputError` — the refusals that are the user's arguments, exit 2 |
 | `open.ts` | `openSubmissionForge({ repo, repository, env, gh?, local, route })` — what every submission opens, before anything is read: the local forge (stage 5's checks first), the road, and on GitHub's road gh's identity and the GitHub forge over a local forge with `acceptOlderBase`; `OpenedForge`. Every road — `from`, `intent`, `init`, `phrase` — opens a pull request on GitHub's road, and the road is named in its body (D4); `cli/` reaches the launchers only through this |
-| `local/objects.ts` | `blobId`, `treeId`, `objectFormat`, `treeOf`, `writeTree` — reading and writing git objects, never a ref; `buildTree`, the one walk `writeTree` and `treeFor` share |
+| `local/objects.ts` | `treeId`, `objectFormat`, `treeOf`, `writeTree` — reading and writing git objects, never a ref; `buildTree`, the one walk `writeTree` and `treeFor` share; and `blobId`, re-exported from `core/git/blob.ts`, where it lives so stage 8's discovery read computes the same id |
 | `local/tree.ts` | `treeFor(git, parent, edits, format)` — the tree a change would have on `parent`, computed and never written: what the GitHub forge compares a commit this clone never made with (stage 6 brief § 4, § 14) |
 | `local/forge.ts` | `openLocalForge(repo, repository, git?, { acceptOlderBase? })` — `base`, `diverges`, `recognise`, `submit`, over a clone on this machine; `acceptOlderBase`, the GitHub forge's alone, takes our one commit on an ancestor of the base as ours on an older base |
 | `github/` | stage 6's GitHub half: `readRoad`, `readIdentity`, `githubApi`, `readProtection`, `readRules`, `openGitHub`, which `idpa protection` reaches, and `github/forge.ts`, the GitHub forge — [its README](github/README.md) |
@@ -83,6 +83,6 @@ time, however many hops away — a module that imports a `cli/` module importing
 reaches it too; another layer may name its types with `import type`, which is erased. `core/` may not import
 it at all — `Cleared` is core's, so that would be a cycle. The rules are in
 `tests/architecture/dependencies.test.ts`: *forge/ imports core/, process/, node:crypto and
-node:path, and nothing else*, *only cli/ reaches forge/ at runtime*, *only context/project-fs
-and forge/ load the git launcher*, *only forge/github/ loads the gh launcher*, and *core/ imports nothing from
+node:path, and nothing else*, *only cli/ reaches forge/ at runtime*, *only context/project-fs,
+context/discovery/read.ts and forge/ load the git launcher*, *only forge/github/ loads the gh launcher*, and *core/ imports nothing from
 context/, cli/, scaffold/, forge/ or process/*.

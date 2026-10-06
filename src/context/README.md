@@ -184,7 +184,8 @@ agent may import a filesystem, and everything it returns is on its way to a mode
 party: hence only the files git tracks when the directory is in a git repository (`git ls-files`,
 with no shell and none of the repository's own commands; an untracked path is counted, never
 named), the exclusion list (`.env*`, key
-material, credential files, `.git/`, `node_modules/` and hidden directories bar `.github`), the
+material, credential files, `.git/`, `node_modules/` and hidden directories bar `.github`; the
+lists of names live in `core/secrets/names.ts`, shared with the discovery read), the
 content test of `project-fs/secrets.ts` — key material, a known issuer's token, a secret assigned
 a literal, every match examined, escaped and base64 text decoded; its credential and placeholder
 shapes live in `core/secrets/shapes.ts`, shared with stage 8's discovery so one copy judges
@@ -206,6 +207,32 @@ process's, without `IDP_BACKSTAGE_TOKEN` or any other `IDP_BACKSTAGE_*` variable
 hooks and its configuration are its author's — has no use for; with hooks and fsmonitor off,
 from outside the repository, and bounded. `spawnedEnvironment` is the one builder of a child
 process's environment, and the architecture rules hold every call that starts a process to it.
+
+`discovery/read.ts` is the second reader of the application repository, stage 8's, and
+deliberately not the first (`docs/stage-8-brief.md` § 8, "two readers, one boundary").
+`readDiscovery(root)` asks git what the root's repository tracks and what `HEAD` holds — six
+shapes the launcher already runs, `ls-files -z --cached` and one `ls-tree -r -z --full-tree`
+among them, and none added — walks the working tree without following a link, and puts every
+path git tracks and `HEAD` holds in exactly one group: never opened by its path, with its reason
+(`core/discovery/allow.ts`'s `neverOpened`, over the snapshot's own lists of where credentials
+live, whatever their case), not analysed, with its reason, or opened. It opens only an
+allow-listed name — `package.json` and the sample family, `.env.example` among them, which the
+snapshot withholds — that is a regular file with one name, through `openToRead`, `nonBlocking`,
+bounded at 64 KiB and never cut, and keeps its bytes only when git's blob for them is `HEAD`'s:
+a file changed since, staged or not, is read once to be hashed, then dropped. It names a path
+only when `HEAD` holds it, because then its name is committed: what git does not track, and every
+path outside a repository, is counted in `untracked`; what is staged and never committed — in the
+index, not in `HEAD`, every path git tracks under an unborn `HEAD` — in `staged`; where `HEAD`
+could not be listed whole, every path git tracks is counted in `unlisted`, and nothing is opened;
+and a path `HEAD` holds whose name is not valid UTF-8 is counted in `unnameable`, and never
+opened. None of them is named. A path is named as git spells it, its bytes never decoded with
+replacement, and a file its folder spells otherwise — in another case, or decomposed, which APFS
+serves as one file — is taken under git's name only when the filesystem says the two are one
+file. Where git cannot list the files nothing is walked. Nothing a model is sent comes from it, no command calls
+it yet, and the two readers load nothing of each other, a type included (*context/project-fs/
+and context/discovery/ load nothing of each other*): the snapshot is what a model is sent, and a
+module of one loading the other is the one way a withheld file's text could reach a prompt.
+Nothing reachable from `agents/` is in `discovery/` either.
 
 `backstage/` is where `context/` reaches the network (`backstage-http`, slice 1 of
 `docs/backstage-http-brief.md`), and `backstage/transport.ts` is its one way out: the only code

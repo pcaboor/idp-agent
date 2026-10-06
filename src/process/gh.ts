@@ -8,9 +8,9 @@ import { LauncherRefusal } from './refusal.js'
  * The second process src/ starts (stage 6 brief § 6), held to git.ts's shape:
  * `execFile`, no shell, Node's own directory, a timeout and a cap, an
  * environment from `spawnedEnvironment`. It cannot import git.ts — only
- * `context/project-fs` and `forge/` may load the git launcher — so
- * NEUTRAL_DIRECTORY is its own copy, and the names both check live in
- * `grammar.ts`.
+ * `context/project-fs`, `context/discovery/read.ts` and `forge/` may load the
+ * git launcher — so NEUTRAL_DIRECTORY is its own copy, and the names both
+ * check live in `grammar.ts`.
  *
  * For gh the neutral directory matters twice: gh fills `{owner}`, `{repo}` and
  * `{branch}` in an endpoint "from the repository of the current directory",

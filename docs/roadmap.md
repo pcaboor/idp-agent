@@ -522,6 +522,18 @@ The owner's decisions, dated, each with where it is recorded.
   counted and never named, on stdout, in the trace and in the pull request; nothing is
   extracted from a file not committed, and the launcher gains no shape.
 
+**2026-10-06**
+
+- The owner's two answers about stage 8's Task 1.2, the discovery read
+  ([the plan](plans/stage-8-slice-1.md)). A name staged and never committed is **counted, never
+  named** (question 5): the read names a path only when `HEAD`'s listing holds it, counts what
+  the index holds and `HEAD` does not in a count of its own (`staged`), names nothing under an
+  unborn `HEAD`, and under a `HEAD` it cannot list whole counts every tracked path for that one
+  reason and names and opens none — with no new launcher shape. And the prose under
+  `src/process` that still named two loaders of the git launcher is corrected in the same pull
+  request: the diff there holds comment and README lines only, and `SHAPES` and `checkGitArgv`
+  are byte-identical to `main`.
+
 ## Known debts and open items
 
 Each was checked against `main` at `3b642fa`, except stage 6's follow-ups, checked at `d7a6396`

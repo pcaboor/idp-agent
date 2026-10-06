@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 5228 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 5293 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -339,8 +339,10 @@ check — reads the developer's own. `IDP_REPO` must be absolute or start with `
 
 ```
 cli/  ──→  context/   ──→  core/
-  │           ├──→  process/   (context/project-fs: git ls-files)
-  │           └──→  confine/   (context/iac-fs and project-fs: lstat, realpath, O_NOFOLLOW)
+  │           ├──→  process/   (context/project-fs: git ls-files;
+  │           │                 context/discovery: git ls-files, ls-tree)
+  │           └──→  confine/   (context/iac-fs, project-fs and discovery/read.ts:
+  │                             lstat, realpath, O_NOFOLLOW)
   ├──→  agents/   ──→  llm/client.ts   (types only — this is the whole rule)
   ├──→  llm/      ──→  the model SDK   (cli/ builds the client; agents/ may not)
   ├──→  trace/    ──→  agents/events, llm/client   (types only; cli/ ships the trace)
@@ -353,7 +355,7 @@ cli/  ──→  context/   ──→  core/
 `src/` starts goes through — `git.ts` for the Inspector's `git ls-files`, the forge's git and
 the one push form, `gh.ts` for gh — each running only the command shapes of its grammar. `confine/`
 is a leaf too, and holds the one primitive a user's repository is read and written through
-below its root — `init platform`'s writer, `iac-fs` and `project-fs` — so that a symbolic
+below its root — `init platform`'s writer, `iac-fs`, `project-fs` and the discovery read — so that a symbolic
 link is judged by where it leads, never by its name alone.
 
 `cli/` is the only layer that may reach both `llm/` and the disk, which is why the client
@@ -362,8 +364,8 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 
 | Folder | Responsibility |
 |---|---|
-| `core/` | schemas (Zod), the nine validation rules and the Backstage registration, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — the engine's check on an answer's commentary (`core/answer/`), `core/github/`: a remote's URL and the grammars a clone's own configuration is held to, the configuration's scope check, gh's version, and the fields read of GitHub's answers, and `core/discovery/`: stage 8's finding, minted only by `mintFinding`, every field held to a closed grammar and to the credential shapes, and the connection-string parser that keeps only the parts it names — no command calls it yet; `core/secrets/` and `core/text/` hold the credential, placeholder and script shapes it shares with `project-fs` and the commentary check |
-| `context/` | `ContextProvider` (`fixtures`, and `iac-fs` behind `--repo`; `backstage/provider.ts`, a whole catalogue through the file reader or nothing, which `cli/` constructs for a configured catalogue), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `EntityGraph` and its queries, `backstage/transport.ts` — the only code that sends a catalogue token, over a `fetch` it is handed — and `backstage/cache.ts`, a catalogue read kept under the person's cache folder, which only the provider loads and no command uses yet |
+| `core/` | schemas (Zod), the nine validation rules and the Backstage registration, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — the engine's check on an answer's commentary (`core/answer/`), `core/github/`: a remote's URL and the grammars a clone's own configuration is held to, the configuration's scope check, gh's version, and the fields read of GitHub's answers, and `core/discovery/`: stage 8's finding, minted only by `mintFinding`, every field held to a closed grammar and to the credential shapes, and the connection-string parser that keeps only the parts it names, and `allow.ts`, what the discovery read may open by path — no command calls it yet; `core/secrets/` and `core/text/` hold the credential, placeholder and script shapes it shares with `project-fs` and the commentary check, and the lists of where credentials live by name (`secrets/names.ts`), which `project-fs` and the discovery read share; `core/git/blob.ts` computes git's blob id for the forge and the read |
+| `context/` | `ContextProvider` (`fixtures`, and `iac-fs` behind `--repo`; `backstage/provider.ts`, a whole catalogue through the file reader or nothing, which `cli/` constructs for a configured catalogue), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `discovery/read.ts` — stage 8's second reader of that repository, which opens only its committed `package.json` and sample environment files, by name, through `openToRead`, follows no link, keeps a file's bytes only when they are `HEAD`'s, and names a path only when `HEAD` holds it — what git does not track or is staged and never committed is counted, never named; it and `project-fs` load nothing of each other, and no command uses it yet — `EntityGraph` and its queries, `backstage/transport.ts` — the only code that sends a catalogue token, over a `fetch` it is handed — and `backstage/cache.ts`, a catalogue read kept under the person's cache folder, which only the provider loads and no command uses yet |
 | `cli/` | argument parsing, commands, rendering, `.idp-agent.yml` and the personal `config.yml`, which source a command reads — the only layer that writes to stdout |
 | `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |
 | `agents/` | the five agents, the bounded turn, the repair loop, the tool registries — reaches no disk, transitively |
@@ -675,7 +677,7 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   checklist; tick its boxes as you go — Stage 1 shipped with all 36 unticked, which is
   how a plan stops being a status signal.
 - No `switch` on a closed union without `const _exhaustive: never = value` in `default`.
-- **Thirty-one** architecture rules are enforced by `tests/architecture/`. `core/` imports
+- **Thirty-two** architecture rules are enforced by `tests/architecture/`. `core/` imports
   neither `agents/`, `llm/`, `context/`, `cli/`, `scaffold/`, `forge/`, `process/`,
   `confine/`, the network nor the model SDK, and nothing reachable from it reads or writes — its disk rule
   walks the transitive closure too. `agents/` imports neither `fs`, `child_process` nor a git client — **and
@@ -683,27 +685,30 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   `llm/` imports the model SDK, and `agents/` imports `llm/client.js` and nothing else from
   it. `scaffold/` imports `core/` and `confine/` and nothing else of ours; only `write.ts` and
   `templates.ts` touch the disk there, and only `write.ts` imports a writing function. In
-  `context/`, only `iac-fs`, `project-fs`, the fixtures and `backstage/cache.ts` touch the disk,
-  and only the first two read a user's repository; in `cli/`, seven named
+  `context/`, only `iac-fs`, `project-fs`, `discovery/read.ts`, the fixtures and
+  `backstage/cache.ts` touch the disk, and only the first three read a user's repository; in `cli/`, seven named
   modules touch the disk, among them `config.ts`, which reads `.idp-agent.yml` in either
   repository, and `commands/plan.ts`, which reads the plan file `--from` names — the
   declarations' bytes it reads through `iac-fs`. Across `src/`, only `scaffold/write.ts`
   (`mkdir`, for the directory it is named), `confine/confine.ts`, `cli/recording-fs.ts`,
   `cli/trace-sink.ts` and `context/backstage/cache.ts` (`rename`, `unlink` and `rmdir`: a copy
   renamed into place, a pruned one removed) import a writing function — `confine/` opens
-  files, read only for `iac-fs` and `project-fs`, create-only for `init platform` and the
+  files, read only for `iac-fs`, `project-fs` and the discovery read, create-only for `init platform` and the
   cache, whose folders it makes `0o700` and files `0o600` — each named with the functions
   it may use; the forge is the sixth writer, through git and nothing else. `confine/`
   imports nothing of ours, only `node:` built-ins, and only `scaffold/write.ts`,
-  `context/iac-fs`, `context/project-fs` and `context/backstage/cache.ts` load it; only
+  `context/iac-fs`, `context/project-fs`, `context/discovery/read.ts` and
+  `context/backstage/cache.ts` load it; only
   `context/backstage/provider.ts` loads the cache, so a catalogue kept on disk reaches
   nothing but the provider's loop, which runs the pre-pass and the reader on every item of
   it as on a page. Only `process/git.ts` and `process/gh.ts` start a process, each from a
   grammar of the command shapes it may run, checked on the finished vector before the process
-  starts (stage 6 brief § 6): git for the Inspector's `git ls-files`, the forge and the one
-  push form, from two calls, and gh from one, each given an environment `spawnedEnvironment`
+  starts (stage 6 brief § 6): git for the Inspector's `git ls-files`, the discovery read's listing of what git tracks
+  and what `HEAD` holds — six shapes the launcher already ran, and none added — the forge and
+  the one push form, from two calls, and gh from one, each given an environment `spawnedEnvironment`
   builds: without any `IDP_BACKSTAGE_*` variable and without any provider key; only
-  `context/project-fs/snapshot.ts` and `forge/` load the git launcher, and only
+  `context/project-fs/snapshot.ts`, `context/discovery/read.ts` and `forge/` load the git
+  launcher, and only
   `forge/github/` loads the gh launcher (*only forge/github/ loads the gh launcher*). No source in `src/`
   names a door the grammars refuse (*nothing in src/ names a door the allow-list refuses*) or
   reads a GitHub credential from the environment (*nothing in src/ reads a GitHub credential
@@ -718,9 +723,13 @@ in `repair.test.ts`). Three attempts, then a clean stop.
   or `WebSocket`, read in the source with comments stripped because `fetch` needs no import,
   nor imports a network module, and only `context/backstage/transport.ts` calls the `catalogueFetch` it is handed; nothing
   reachable from `agents/` is in `context/backstage/` or names any of those words. Nothing
-  reachable from `agents/` is in `core/discovery/`, however many hops away and a type included
-  (*nothing reachable from agents/ is in core/discovery/, not even a type*): a finding is the
-  engine's, and no model sees one. The rules read `.ts`,
+  reachable from `agents/` is in `core/discovery/` or `context/discovery/`, however many hops
+  away and a type included (*nothing reachable from agents/ is in core/discovery/ or
+  context/discovery/, not even a type*): a finding is the engine's, and no model sees one. And
+  `context/project-fs/` and `context/discovery/` load nothing of each other, however many hops
+  away and a type included (*context/project-fs/ and context/discovery/ load nothing of each
+  other*): the snapshot is what a model is sent, the discovery read opens files the snapshot
+  withholds, and the lists of where credentials live are one copy in `core/secrets/names.ts`. The rules read `.ts`,
   `.mts` and `.cts`, and fail on a folder that is not there and on an import that resolves
   to no file, rather than passing over nothing. Add a rule when you add a layer — and
   re-count this number when you do, because it is the one that drifts first:

@@ -3,8 +3,8 @@
  * object id, a submission's branch, a branch name. One module, because the git
  * launcher and the gh launcher check the same names — a base is read from the
  * clone's configuration and then addressed on GitHub — and neither may import
- * the other (only `context/project-fs` and `forge/` load `git.ts`). It starts
- * nothing and imports nothing.
+ * the other (only `context/project-fs`, `context/discovery/read.ts` and
+ * `forge/` load `git.ts`). It starts nothing and imports nothing.
  *
  * The engine's own judgement will hold the same grammars in
  * `core/github/remote.ts` (stage 6 plan, Task 6.1.2, "Two copies of the
