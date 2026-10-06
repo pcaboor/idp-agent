@@ -7,6 +7,7 @@ import fc from 'fast-check'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { openToRead } from '../../src/confine/confine.js'
 import { readDiscovery, type DiscoveryRead } from '../../src/context/discovery/read.js'
+import type { Dropped, Reread } from '../../src/core/discovery/verify.js'
 import { committed, git, observable, stored } from '../support/git.js'
 import { PROPERTY_TIMEOUT } from '../invariants/budget.js'
 
@@ -64,6 +65,12 @@ const leaves = (value: unknown): string[] => {
     return Object.entries(value).flatMap(([key, inner]) => [key, ...leaves(inner)])
   }
   return []
+}
+
+/** A file read again whose bytes were kept: anything else fails the test, saying what it was. */
+const kept = (again: Reread | Dropped | undefined): Reread => {
+  if (again === undefined || 'dropped' in again) throw new Error(`expected bytes kept, got ${JSON.stringify(again)}`)
+  return again
 }
 
 const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex')
@@ -474,6 +481,10 @@ describe('the discovery read', () => {
     expect(read.opened).toEqual(['.env.example', 'package.json'])
     expect(read.files.map((file) => file.bytes.toString('utf8'))).toEqual([SAMPLE, PACKAGE])
     expect(await openedPaths(path.join(repo, 'services/api'))).toEqual(['.env.example', 'package.json'])
+    // Read again under the root's own name, HEAD's blob found through the prefix.
+    const again = kept(await read.reread('package.json'))
+    expect(again.bytes.toString('utf8')).toBe(PACKAGE)
+    expect(again.committed).toBe(await git(repo, 'rev-parse', 'HEAD:services/api/package.json'))
   })
 
   it('opens nothing and names nothing when HEAD cannot be listed whole', async () => {
@@ -564,6 +575,10 @@ describe('the discovery read', () => {
     // Opened under the spelling the folder lists, named under git's alone.
     expect(await openedPaths(repo)).toEqual(['PACKAGE.JSON'])
     expect(named(read)).not.toContain('PACKAGE.JSON')
+    // Read again where the walk reached it, under git's name.
+    opens.mockClear()
+    expect(kept(await read.reread('package.json')).bytes.toString('utf8')).toBe(PACKAGE)
+    expect(await openedPaths(repo)).toEqual(['PACKAGE.JSON'])
   })
 
   it.skipIf(!FOLDS_NORMALIZATION)(
@@ -679,5 +694,138 @@ describe('the discovery read', () => {
     expect(read.untracked).toBe(0)
     expect(leaves(read).filter((leaf) => leaf.includes('\uFFFD') || leaf.includes('.md'))).toEqual([])
     expect(await openedPaths(repo)).toEqual(['package.json'])
+  })
+
+  it('opens a file again through the same confined read', async () => {
+    const repo = await temp()
+    await write(repo, { 'package.json': PACKAGE, '.env.example': SAMPLE, 'README.md': '# x\n' })
+    await committed(repo)
+    const read = await readDiscovery(repo)
+    opens.mockClear()
+
+    // One of `opened`: its bytes now, and HEAD's blob for it, through the
+    // confined open the read used, and nothing else.
+    const again = await read.reread('package.json')
+    expect(again).toEqual({
+      path: 'package.json',
+      bytes: Buffer.from(PACKAGE),
+      committed: await git(repo, 'rev-parse', 'HEAD:package.json'),
+      objectFormat: 'sha1',
+    })
+    expect(await openedPaths(repo)).toEqual(['package.json'])
+    expect(opens.mock.calls[0]?.[2]).toEqual({ nonBlocking: true })
+
+    // A path the read did not open is never opened: one HEAD holds, one it
+    // does not, and one outside the root.
+    opens.mockClear()
+    for (const other of ['README.md', 'notes.md', '../package.json', '/etc/passwd']) {
+      expect(await read.reread(other)).toBeUndefined()
+    }
+    expect(opens).not.toHaveBeenCalled()
+
+    // A file replaced by a link since the read: refused by `openToRead`.
+    await rm(path.join(repo, '.env.example'))
+    await symlink('package.json', path.join(repo, '.env.example'))
+    expect(await read.reread('.env.example')).toBeUndefined()
+    expect(await openedPaths(repo)).toEqual(['.env.example'])
+    await expect(opens.mock.results[0]?.value).rejects.toThrow()
+
+    // A commit made since the read is seen: HEAD is resolved again.
+    const changed = PACKAGE.replace('invoicing-worker', 'invoicing-worker-2')
+    await write(repo, { 'package.json': changed })
+    await git(repo, 'commit', '-q', '-am', 'rename')
+    const later = kept(await read.reread('package.json'))
+    const blob = await git(repo, 'rev-parse', 'HEAD:package.json')
+    expect(blob).not.toBe(kept(again).committed)
+    expect(later.committed).toBe(blob)
+    expect(later.bytes.toString('utf8')).toBe(changed)
+
+    // A file that is gone, while HEAD still holds it: refused by the open.
+    opens.mockClear()
+    await rm(path.join(repo, 'package.json'))
+    expect(await read.reread('package.json')).toBeUndefined()
+    expect(await openedPaths(repo)).toEqual(['package.json'])
+
+    // A file HEAD no longer holds, still in the working tree: never opened
+    // again, as the read opens no path HEAD does not hold.
+    await write(repo, { 'package.json': changed })
+    await git(repo, 'rm', '-q', '--cached', 'package.json')
+    await git(repo, 'commit', '-q', '-m', 'untrack')
+    opens.mockClear()
+    expect(await read.reread('package.json')).toBeUndefined()
+    expect(opens).not.toHaveBeenCalled()
+  })
+
+  it('drops what it reads again and the read would not keep: changed since HEAD, or discarded whole', async () => {
+    const repo = await temp()
+    await write(repo, { 'package.json': PACKAGE, '.env.example': SAMPLE })
+    await committed(repo)
+    const read = await readDiscovery(repo)
+    expect(read.opened).toEqual(['.env.example', 'package.json'])
+
+    // Changed in the working tree and not committed: read to be hashed, and
+    // no byte of it handed back, so no caller can extract from it.
+    await write(repo, { 'package.json': PACKAGE.replace('invoicing-worker', 'placeholder-uncommitted') })
+    const changed = await read.reread('package.json')
+    expect(changed).toEqual({ path: 'package.json', dropped: 'changed' })
+    expect(leaves(changed).join('\n')).not.toContain('placeholder-uncommitted')
+
+    // Committed since the read, encrypted by SOPS: HEAD's bytes, discarded
+    // whole as the read discards them, and never handed to an extractor.
+    await write(repo, {
+      '.env.example': 'sops_version=3\nDATABASE_URL=ENC[placeholder-not-a-secret]\n',
+      'package.json': '{"name": "placeholder-sops", "sops": {"version": "3"}}\n',
+    })
+    await git(repo, 'commit', '-q', '-am', 'encrypt')
+    opens.mockClear()
+    expect(await read.reread('.env.example')).toEqual({ path: '.env.example', dropped: 'discarded-sops' })
+    expect(await read.reread('package.json')).toEqual({ path: 'package.json', dropped: 'discarded-sops' })
+    expect(await openedPaths(repo)).toEqual(['.env.example', 'package.json'])
+  })
+
+  it('opens nothing again that HEAD now holds as a link or a submodule', async () => {
+    const repo = await temp()
+    await write(repo, { 'package.json': PACKAGE })
+    await committed(repo)
+    const read = await readDiscovery(repo)
+    expect(read.opened).toEqual(['package.json'])
+    const blob = await git(repo, 'rev-parse', 'HEAD:package.json')
+    const commit = await git(repo, 'rev-parse', 'HEAD')
+
+    // The working tree keeps a regular file; only HEAD's entry changes mode.
+    for (const [mode, object] of [
+      ['120000', blob],
+      ['160000', commit],
+    ] as const) {
+      await git(repo, 'update-index', '--cacheinfo', `${mode},${object},package.json`)
+      await git(repo, 'commit', '-q', '-m', `package.json as ${mode}`)
+      expect(await git(repo, 'ls-tree', 'HEAD', 'package.json')).toMatch(new RegExp(`^${mode} `))
+      expect((await lstat(path.join(repo, 'package.json'))).isFile()).toBe(true)
+
+      opens.mockClear()
+      expect(await read.reread('package.json')).toBeUndefined()
+      expect(opens).not.toHaveBeenCalled()
+    }
+  })
+
+  it('opens nothing again when HEAD cannot be resolved again, or listed whole', async () => {
+    const repo = await temp()
+    await write(repo, { 'package.json': PACKAGE })
+    await committed(repo)
+    // A bound the first listing fits under, and the second does not.
+    const read = await readDiscovery(repo, { git: { maxOutputBytes: 256 } })
+    expect(read.opened).toEqual(['package.json'])
+
+    await write(repo, Object.fromEntries(Array.from({ length: 8 }, (_, at) => [`notes-${String(at)}.md`, `${String(at)}\n`])))
+    await git(repo, 'add', '-A')
+    await git(repo, 'commit', '-q', '-m', 'notes')
+    opens.mockClear()
+    expect(await read.reread('package.json')).toBeUndefined()
+    expect(opens).not.toHaveBeenCalled()
+
+    // HEAD names no commit any more.
+    await git(repo, 'symbolic-ref', 'HEAD', 'refs/heads/unborn')
+    expect(await read.reread('package.json')).toBeUndefined()
+    expect(opens).not.toHaveBeenCalled()
   })
 })

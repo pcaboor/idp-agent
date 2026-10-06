@@ -152,8 +152,19 @@ and nothing here can be steered by what it validates. Hence the property tests r
   `.env.example` among them), `neverOpened`, the snapshot's lists of where credentials live,
   every name lowercased first, `isGenerated` and `isCode` — and `discardedWhole`, what is
   thrown away after parsing (a `sops_*` dotenv key, a top-level `sops` object, a `Secret` or a
-  `SealedSecret`), with the words of every reason a path is not read. `limits.ts`: every bound
-  of the discovery, the read's among them. No model sees any of it: an architecture rule keeps
+  `SealedSecret`), with the words of every reason a path is not read. `verify.ts` (Task 1.3):
+  the witness re-read, pure over the bytes it is handed. `verifyFinding` holds a finding to its
+  file, read again by the discovery read's `reread`, in the note's order — minted (a finding
+  nothing minted is refused, named only by an ID of an ID's form), path (one the read opened),
+  content (the sha256 it was read from, and git's blob for the bytes being `HEAD`'s,
+  `isCommitted`: a file that changed, or that the re-read dropped with no bytes, is handed back
+  `stale`, to be extracted again), span (at most 20 lines and 1 KiB of the file), support (its
+  rule, run again on those bytes through the extractors handed in, says the same kind, fields
+  and standing at a span inside its own; a thrown message is kept nowhere), then standing — and
+  only `evidence` comes out branded `Verified`, held in a `WeakSet` as a minted finding is
+  (`isVerified`), and taken back from a finding that fails when it is checked again. Nothing reads the brand but its tests until
+  2.6 carries it in `Provenance`. `limits.ts`: every bound
+  of the discovery, the read's and the re-read's among them. No model sees any of it: an architecture rule keeps
   `core/discovery/` and `context/discovery/` out of everything `agents/` reaches, a type
   included.
 - **Shared shapes** — `secrets/shapes.ts`: the credential shapes (`CREDENTIAL_SHAPES`) and

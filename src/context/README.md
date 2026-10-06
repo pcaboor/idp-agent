@@ -228,7 +228,12 @@ and a path `HEAD` holds whose name is not valid UTF-8 is counted in `unnameable`
 opened. None of them is named. A path is named as git spells it, its bytes never decoded with
 replacement, and a file its folder spells otherwise — in another case, or decomposed, which APFS
 serves as one file — is taken under git's name only when the filesystem says the two are one
-file. Where git cannot list the files nothing is walked. Nothing a model is sent comes from it, no command calls
+file. Where git cannot list the files nothing is walked. Its `reread(path)` opens one of the
+files it opened again, through the same confined, bounded open, with `HEAD` resolved again and
+listed whole — never a path it did not open, nor one `HEAD` no longer holds as a file — for
+`core/discovery/verify.ts`'s witness re-read, and holds its bytes to the read's rules: bytes
+that are not `HEAD`'s blob, or that a commit made during the run turned into a file discarded
+whole, are zeroed and handed back as none (`Dropped`). Nothing a model is sent comes from it, no command calls
 it yet, and the two readers load nothing of each other, a type included (*context/project-fs/
 and context/discovery/ load nothing of each other*): the snapshot is what a model is sent, and a
 module of one loading the other is the one way a withheld file's text could reach a prompt.

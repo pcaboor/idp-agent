@@ -342,6 +342,14 @@ Each pull request adds its line here.
   everything outside a repository. A new architecture rule keeps it and the snapshot a model
   is sent from loading each other
   ([#145](https://github.com/pcaboor/idp-agent/pull/145)).
+- Stage 8's witness re-read, used by no command yet: before a finding is reported its file
+  is opened again through the same confined read, with `HEAD` resolved again, and checked in
+  order — the path one the read opened and `HEAD` still holds, the bytes and `HEAD`'s blob
+  unchanged, a span of at most 20 lines and 1 KiB, the rule saying the same thing on those
+  bytes, and a standing that may vouch; a finding nothing minted is refused and named, a
+  changed file is handed back to be read again, and a file changed since `HEAD` or turned into
+  one discarded whole hands no byte back
+  ([#146](https://github.com/pcaboor/idp-agent/pull/146)).
 
 ### Changed
 

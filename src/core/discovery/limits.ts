@@ -1,7 +1,8 @@
 /**
  * The bounds of stage 8's discovery, in one place so a reader sees every one
- * and a test can name it: the parser's (plan, Task 1.1), then the read's
- * (Task 1.2). The findings' caps arrive with the extractors that count them.
+ * and a test can name it: the parser's (plan, Task 1.1), the read's (Task
+ * 1.2), then the re-read's (Task 1.3). The findings' caps arrive with the
+ * extractors that count them.
  */
 export const DISCOVERY_LIMITS = {
   /**
@@ -26,6 +27,13 @@ export const DISCOVERY_LIMITS = {
   maxDirectories: 5_000,
   /** The YAML documents of one file. More is a file that cannot be read whole, never one read in part. */
   maxYamlDocuments: 100,
+  /**
+   * A finding's span, in lines and in bytes, as the re-read holds it (Task
+   * 1.3): a span is where a finding was read, never a quote of the file, so
+   * one past either bound is refused rather than cut.
+   */
+  maxSpanLines: 20,
+  maxSpanBytes: 1_024,
 } as const
 
 /** The bounds as numbers, so a test can shrink one (`readDiscovery`'s `limits`). */
