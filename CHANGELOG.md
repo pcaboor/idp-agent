@@ -627,6 +627,15 @@ Each pull request adds its line here.
 
 ### Documentation
 
+- Stage 8's second slice, matching and asking, is planned
+  ([the plan](docs/plans/stage-8-slice-2.md)): seven pull requests, each validated by the owner
+  before it merges — the Inspector's readings become hints shown beside each question; the
+  Architect is told a fixed reason of the engine's for an unknown; `init` reads the declarations
+  repository and runs all five gates, `--repo` becoming `--project`; a Kubernetes extractor; exact
+  matching on declared identifiers only, never by resemblance; `evidenced`, recomputed by the
+  engine (ADR-0016); and `add-identifier`, the central Component and the preview by repository.
+  Three end on a keyed recording by the owner; the owner's eight answers of 2026-10-07 are applied
+  ([#148](https://github.com/pcaboor/idp-agent/pull/148)).
 - Stage 8's first slice, the report, is planned ([the plan](docs/plans/stage-8-slice-1.md)):
   four pull requests, each validated by the owner before it merges — a finding and the
   connection-string parser, which keeps the parts a string names and never its password; the
