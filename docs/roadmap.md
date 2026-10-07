@@ -85,7 +85,8 @@ here, one pull request each, each naming the check run together at the end.
    to [#146](https://github.com/pcaboor/idp-agent/pull/146) and
    [#147](https://github.com/pcaboor/idp-agent/pull/147)): `idpa init` reports what the
    service's committed configuration states, and what it did not read. Slice 2, matching and
-   asking, is next, planned first.
+   asking, is planned ([the plan](plans/stage-8-slice-2.md)): seven pull requests, three of them
+   ending on a keyed recording by the owner.
 3. **Removing and changing an access, and company rules** (2026-10-01). Revoking a right,
    changing its level or decommissioning a service, always as a pull request a person merges —
    today the tool only appends, and least privilege needs the other half; and gates a company
@@ -546,6 +547,20 @@ The owner's decisions, dated, each with where it is recorded.
   finding the re-read lets vouch whose kind is neither `unparsed` nor `withheld`, and that one
   count is the sentence's `(V findings verified)` and what `init`'s exit reads; the finding is
   still listed as what it is.
+
+**2026-10-07**
+
+- Stage 8's slice 2 planned ([the plan](plans/stage-8-slice-2.md),
+  [#148](https://github.com/pcaboor/idp-agent/pull/148)), seven pull requests, 2.1 to 2.7,
+  each validated by the owner before it merges; 2.2 re-records five tapes and 2.3 and 2.7 record
+  the first `init` tape, each by the owner before its task merges. The owner's eight answers, each
+  as recommended: `init --repo` is refused whatever it names, the declarations repository found
+  through `IDP_REPO` or `config.yml`; `init` gains `--type`; the picker offers a typed `skip`,
+  never chosen by Enter; `init --submit` is refused before anything (exit 3) while a central
+  Component waits for slice 4; the `init` tape is recorded in 2.3 and again in 2.7; the
+  declarations repository's preflight and in-flight read move to slice 4.2; the picker is built
+  in 2.5 and first asked in 2.7; a service's pull request names a matched entity by its reference
+  and shows nothing else of the declarations repository.
 
 ## Known debts and open items
 
