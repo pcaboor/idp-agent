@@ -1093,20 +1093,29 @@ the file `init` adds to, `targetOf`'s choice — is previewed as a diff and noth
 written, `.idp-agent.yml` included; with it, both go on one branch of the service's own
 repository, which must be a clone's root (a service in a subfolder of its repository is not
 submitted at stage 5). "Confirms the owner it inferred rather than assuming it" is a human
-reading that diff. The signature says a proposed value
-matches what a file the Inspector read states; the Inspector is a model reading files, and
-a file can state a wrong value, so it says nothing about whether the inspection was right.
+answering the owner's question, then reading that diff. The Inspector is a model reading
+files, and a file can state a wrong value, so since stage 8's slice 2 (Task 2.1) what it
+reads vouches for nothing: the name, type, lifecycle and owner it read, witnessed, are
+**hints** beside the questions at those fields — shown, labelled as a model's reading, each
+held to its field's grammar (a value outside it gives none), never selected; an empty line
+declines — and the forge handle CODEOWNERS states is shown beside the owner's question as a
+handle that names no group. Only what the person types signs as answered.
 
 On a real service repository (review priority 9), the Inspector's budget is spent on the
 signal files first — manifests, CODEOWNERS, catalog-info, charts, Dockerfiles, deployments —
-and what it left out is counted on stderr. A field no file states is asked at a terminal, as
-`plan` asks, or answered by `--name`, `--lifecycle` and `--owner`, which count as answers.
+and what it left out is counted on stderr. Each of the Component's four fields is asked at a
+terminal, as `plan` asks, or answered by `--name`, `--type`, `--lifecycle` and `--owner`,
+which count as answers.
 Every catalog-info the repository keeps is read whole, outside that budget, by the reader
 every entity document goes through: a Component of the same kind, namespace and name is
-"already declared" (exit 0), whatever lifecycle it states, and a new one is added to the file
+"already declared" (exit 0), whatever lifecycle it states — once the person has typed or
+answered the name, which since stage 8's slice 2 nothing the Inspector read settles: until
+then the name is asked as the conflict below, the other open questions beside it when nobody
+is there to answer, and a re-run with no `--name` and no terminal ends on exit 3 — and a new one is added to the file
 the repository keeps rather than to a twin beside it — never to a test's, an example's or a
 workspace's. When that file already declares a Component under another name or namespace,
-the name is asked: that one, and nothing is added; another, and it is added beside.
+the name is asked, naming what the file declares: that one, and nothing is added; another,
+and it is added beside.
 
 **Stage 8 extends this command** to the dependencies a service's configuration already
 states: extracted by the engine, re-read before they vouch, matched only on identifiers the

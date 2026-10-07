@@ -182,6 +182,21 @@ export function inertLine(text: string, max = REASON_LIMIT): string {
 }
 
 /**
+ * A value `holdsInvisible` refused, with every character it refuses spelled as
+ * its code point. `inertLine` spells only the controls a terminal obeys and the
+ * bidi ones, and removes the rest of C0 and C1: a refusal that printed a U+200B
+ * as it is would name a value the person cannot see anything wrong with. A
+ * flag's refusal (`cli/commands/init.ts`) and an answer's (`fillAnswers`).
+ */
+export const spelledOut = (value: string): string =>
+  inertLine(
+    value.replace(
+      /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu,
+      (char) => `\\u${(char.codePointAt(0) ?? 0).toString(16).padStart(4, '0')}`,
+    ),
+  )
+
+/**
  * One line with nothing a terminal obeys and the bidi controls spelled out,
  * as `inertLine` writes it, but its spaces kept: an indentation, and the runs
  * inside a line that a patch's YAML is laid out with. Every other white space

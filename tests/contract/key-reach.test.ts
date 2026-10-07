@@ -1175,8 +1175,9 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
   it('reaches its provider in its header, and nothing of GitHub reaches it, on init --submit', async () => {
     // The service's own repository on github.com, the Inspector and the
     // Architect answered as the first block answers them. The flags answer
-    // every field FACTS leaves open — its forge handle is unknown — so
-    // nothing is asked of a run with no terminal, and it ends on exit 0.
+    // every field of the Component — what the Inspector reads is a hint,
+    // never an answer (stage 8, slice 2, Task 2.1) — so nothing is asked of
+    // a run with no terminal, and it ends on exit 0.
     const { project } = await repositories()
     const ran = await submittingRun(
       [
@@ -1190,6 +1191,8 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
         'orders-api',
         '--lifecycle',
         'production',
+        '--type',
+        'service',
         '--owner',
         'group:default/tiger',
       ],
@@ -1298,6 +1301,8 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
         'orders-api',
         '--lifecycle',
         'production',
+        '--type',
+        'service',
         '--owner',
         'group:default/tiger',
       ],
@@ -1410,7 +1415,7 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
       ],
     ]
     for (const [missing, arrange] of misses) {
-      // Every field FACTS leaves open answered by a flag, so the run that goes on asks nothing.
+      // Every field of the Component answered by a flag, so the run that goes on asks nothing.
       const ran = await submittingRun(
         [
           'init',
@@ -1423,6 +1428,8 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
           'orders-api',
           '--lifecycle',
           'production',
+          '--type',
+          'service',
           '--owner',
           'group:default/tiger',
         ],

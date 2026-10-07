@@ -86,7 +86,11 @@ here, one pull request each, each naming the check run together at the end.
    [#147](https://github.com/pcaboor/idp-agent/pull/147)): `idpa init` reports what the
    service's committed configuration states, and what it did not read. Slice 2, matching and
    asking, is planned ([the plan](plans/stage-8-slice-2.md)): seven pull requests, three of them
-   ending on a keyed recording by the owner.
+   ending on a keyed recording by the owner. Its first, 2.1, is done
+   ([#149](https://github.com/pcaboor/idp-agent/pull/149)): on `init` the Inspector's facts
+   are hints beside the questions and sign as nothing, which closes the review's *The
+   Inspector's facts vouch for themselves, owner included* on its own, as the note says item 1
+   does (2.6 adds the fifth signature class, and says so there); `--type` answers the type.
 3. **Removing and changing an access, and company rules** (2026-10-01). Revoking a right,
    changing its level or decommissioning a service, always as a pull request a person merges —
    today the tool only appends, and least privilege needs the other half; and gates a company
@@ -561,6 +565,22 @@ The owner's decisions, dated, each with where it is recorded.
   declarations repository's preflight and in-flight read move to slice 4.2; the picker is built
   in 2.5 and first asked in 2.7; a service's pull request names a matched entity by its reference
   and shows nothing else of the declarations repository.
+- Slice 2's task 2.1 built ([#149](https://github.com/pcaboor/idp-agent/pull/149)): what the
+  Inspector reads is a hint, `--type` is held to 1–63 characters and no control, format or bidi
+  character, an empty line still declines. One departure from the plan: with no name settled by
+  the Inspector, the question about a name the file `init` adds to already answers for another
+  Component is now asked as that conflict (`unnamedConflict`), so the person reads what the file
+  declares before naming the service. With nobody to ask, it is printed beside every other open
+  question, so a script learns every flag in one run. Its consequence, recorded: a service its
+  own catalog-info already declares is recognised only once its name is typed or answered, so a
+  re-run with no `--name` and no terminal ends on exit 3 where it ended on "already declared",
+  exit 0 (design §7.3). Two tests outside Step 6's file list were given the four flags so their
+  runs still reach a submission, the property unchanged:
+  `tests/invariants/discovery-secrets.test.ts`, whose run the constraints keep "as it is", and
+  the key-reach and trace-wiring runs — for the owner to confirm. And one hold beyond the plan,
+  on both roads: a Component's type typed at the prompt holding a control, format or bidi
+  character is asked again, spelled out, as `--type` refuses one (`fillAnswers`), since the
+  prompt is now how that free-text field is mostly answered.
 
 ## Known debts and open items
 

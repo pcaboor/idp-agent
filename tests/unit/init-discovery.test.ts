@@ -129,6 +129,16 @@ const FACTS = {
   dependencies: [],
 }
 
+/**
+ * What a person types for the four fields `FACTS` reads: since stage 8's
+ * slice 2 (Task 2.1) what the Inspector reads is a hint beside a question and
+ * never an answer, so a run that is about the report gives the flags it needs.
+ */
+const TYPED = { name: 'billing-api', type: 'service', lifecycle: 'production', owner: 'group:default/tiger' } as const
+
+/** `TYPED`, as `init`'s flags. */
+const TYPED_FLAGS = ['--name', TYPED.name, '--type', TYPED.type, '--lifecycle', TYPED.lifecycle, '--owner', TYPED.owner]
+
 const COMPONENT = {
   op: 'create-entity',
   entity: {
@@ -242,7 +252,7 @@ describe('initExit, the table of Choices 1.4', () => {
 describe('init and the discovery report', () => {
   it('prints the report between the diff and how to apply it, and the diff still applies', async () => {
     const project = await service('npm')
-    const result = await runInitRepo({ project, client: drafting('npm'), emit: () => {} })
+    const result = await runInitRepo({ project, client: drafting('npm'), emit: () => {}, answers: TYPED })
     const lines = result.text.split('\n')
     const first = lines.findIndex((line) => HEADING.test(line))
     const diffEnd = lines.findLastIndex((line) => line.startsWith('+') && !line.startsWith('+++'))
@@ -261,7 +271,7 @@ describe('init and the discovery report', () => {
 
   it('exits 1 when no finding is verified and the repository was read in part, 0 when one is', async () => {
     const unverified = await service('python')
-    const refused = await run(['init', '--repo', unverified], { client: drafting('python') })
+    const refused = await run(['init', '--repo', unverified, ...TYPED_FLAGS], { client: drafting('python') })
     expect(refused.code, refused.err).toBe(1)
     expect(refused.out).toContain('+++ b/catalog-info.yaml')
     expect(refused.out).toContain('+  name: billing-api')
@@ -271,7 +281,7 @@ describe('init and the discovery report', () => {
     )
 
     const verified = await service('npm')
-    const passed = await run(['init', '--repo', verified], { client: drafting('npm') })
+    const passed = await run(['init', '--repo', verified, ...TYPED_FLAGS], { client: drafting('npm') })
     expect(passed.code, passed.err).toBe(0)
     expect(passed.out).toContain(
       'no dependency evidenced in 2 files analysed (4 findings verified); 6 paths not analysed; 1 reference configured outside this repository',
@@ -290,7 +300,7 @@ describe('init and the discovery report', () => {
     // Owner's answer 7 (2026-10-06): a name the engine could not read vouches
     // and states nothing, so it is listed as what it is and not counted.
     const project = await service('python', { 'package.json': manifest })
-    const { code, out, err } = await run(['init', '--repo', project], { client: drafting('python') })
+    const { code, out, err } = await run(['init', '--repo', project, ...TYPED_FLAGS], { client: drafting('python') })
     expect(code, err).toBe(1)
     expect(out).toContain('+  name: billing-api')
     expect(out).toContain(`package.json:1   ${says}`)
@@ -302,7 +312,7 @@ describe('init and the discovery report', () => {
 
   it('says the sentence on stderr too', async () => {
     const project = await service('python')
-    const { err } = await run(['init', '--repo', project], { client: drafting('python') })
+    const { err } = await run(['init', '--repo', project, ...TYPED_FLAGS], { client: drafting('python') })
     expect(err.split('\n')).toContain(
       'no dependency evidenced in 1 file analysed (no finding verified); 7 paths not analysed; 1 reference configured outside this repository',
     )
@@ -313,7 +323,7 @@ describe('init and the discovery report', () => {
     await git(project, 'remote', 'add', 'origin', 'git@github.com:acme/billing-api.git')
     await git(project, 'config', 'branch.main.remote', 'origin')
     await git(project, 'config', 'branch.main.merge', 'refs/heads/main')
-    const { code, out, err } = await run(['init', '--repo', project, '--submit', '--local'], {
+    const { code, out, err } = await run(['init', '--repo', project, '--submit', '--local', ...TYPED_FLAGS], {
       client: drafting('python'),
       gh: async () => {
         throw new Error('gh was started')
@@ -331,7 +341,7 @@ describe('init and the discovery report', () => {
     const head = await git(clone.repo, 'rev-parse', 'HEAD')
     const out: string[] = []
     const code = await main(
-      ['init', '--repo', clone.repo, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev'],
+      ['init', '--repo', clone.repo, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev', ...TYPED_FLAGS],
       {
         cwd: clone.repo,
         env: clone.env,
@@ -364,7 +374,7 @@ describe('init and the discovery report', () => {
     const clone = await githubClone({ source, repository: 'acme/billing-api' })
     const err: string[] = []
     const code = await main(
-      ['init', '--repo', clone.repo, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev'],
+      ['init', '--repo', clone.repo, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev', ...TYPED_FLAGS],
       {
         cwd: clone.repo,
         env: clone.env,
@@ -385,7 +395,7 @@ describe('init and the discovery report', () => {
   it('sends no model a byte of what it read', async () => {
     const project = await service('npm')
     const client = drafting('npm')
-    const { out } = await run(['init', '--repo', project], { client })
+    const { out } = await run(['init', '--repo', project, ...TYPED_FLAGS], { client })
     const discovered = [
       'app_billing',
       'localhost:3306/billing',
@@ -407,7 +417,7 @@ describe('init and the discovery report', () => {
 
   it('reports on nothing to change, by the same rule', async () => {
     const project = await service('python', { 'catalog-info.yaml': DECLARED })
-    const { code, out } = await run(['init', '--repo', project], { client: drafting('python') })
+    const { code, out } = await run(['init', '--repo', project, ...TYPED_FLAGS], { client: drafting('python') })
     expect(code).toBe(1)
     const lines = out.trimEnd().split('\n')
     expect(lines.at(-1)).toBe('0 files · nothing written')
@@ -457,6 +467,7 @@ describe('init and the discovery report', () => {
       project,
       client: drafting('python'),
       emit: () => {},
+      answers: TYPED,
       notice: (line) => void said.push(line),
       submit: {
         confirm: async (summary) => {
@@ -484,7 +495,7 @@ describe('init and the discovery report', () => {
       return // a filesystem that refuses such a name: nothing to read
     }
     const sink = memorySink()
-    const { out } = await run(['init', '--repo', project], { client: drafting('npm'), traceSinks: [sink] })
+    const { out } = await run(['init', '--repo', project, ...TYPED_FLAGS], { client: drafting('npm'), traceSinks: [sink] })
     const report = out.slice(out.search(/^discovery — /m))
     for (const spelled of ['a\\u001b[31mred.md', 'line\\u000abreak.md', 'zero\\u200bwidth.md']) {
       expect(report, spelled).toContain(spelled)
@@ -506,7 +517,7 @@ describe('init and the discovery report', () => {
     const project = await service('npm')
     await writeFile(path.join(project, '.env.example'), 'DATABASE_URL=postgres://app:Qz7x@edited.internal/x\n')
     const sink = memorySink()
-    const { out, err } = await run(['init', '--repo', project], { client: drafting('npm'), traceSinks: [sink] })
+    const { out, err } = await run(['init', '--repo', project, ...TYPED_FLAGS], { client: drafting('npm'), traceSinks: [sink] })
     expect(out).toContain('not committed: changed since HEAD: .env.example')
     expect(out).not.toMatch(/\.env\.example:\d/)
     const trace = leaves(onlyTrace(sink))

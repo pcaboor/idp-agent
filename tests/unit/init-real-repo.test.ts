@@ -220,6 +220,14 @@ const FACTS = {
   dependencies: [],
 }
 
+/**
+ * What a person types for the four fields `FACTS` reads: since stage 8's
+ * slice 2 (Task 2.1) what the Inspector reads is a hint beside a question and
+ * never an answer, so a test that is about something else than the questions
+ * gives the flags its run needs.
+ */
+const TYPED = { name: 'billing-api', type: 'service', lifecycle: 'production', owner: 'group:default/payments' } as const
+
 /** What an inspection of a repository with no declaration can honestly say. */
 const UNDECLARED = {
   ...FACTS,
@@ -269,7 +277,7 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
     const root = await realistic({ 'deploy/catalog-info.yml': componentDoc('billing-api') })
     const before = await hashTree(root)
 
-    const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
+    const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {}, answers: TYPED })
 
     // No finding verified, and the repository read in part — a folder git
     // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
@@ -295,6 +303,8 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
       project: root,
       client: drafting([component({ owner: UNSTATED.owner })]),
       emit: () => {},
+      // The name, typed: what the Inspector read no longer settles it (Task 2.1).
+      answers: { name: TYPED.name },
       ask,
     })
 
@@ -308,7 +318,7 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
       'platform/backstage/catalog-info.yaml': componentDoc('billing-api'),
     })
 
-    const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
+    const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {}, answers: TYPED })
 
     expect(result.text).toContain(
       'platform/backstage/catalog-info.yaml already declares component:default/billing-api',
@@ -320,7 +330,7 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
     // Kind + namespace + name, never the name alone.
     const root = await tree({ ...SIGNALS, 'catalog-info.yaml': apiDoc('billing-api') })
 
-    const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
+    const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {}, answers: TYPED })
 
     // No finding verified, and the repository read in part — a folder git
     // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
@@ -340,7 +350,7 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
       project: root,
       client: drafting([component()]),
       emit: () => {},
-      answers: { name: 'billing-api' },
+      answers: TYPED,
     })
 
     expect(result.text).toContain('--- a/catalog-info.yml')
@@ -370,7 +380,7 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
     expect(snapshot.selection).toBe('git')
     expect(snapshot.files.map((file) => file.path)).not.toContain('catalog-info.yaml')
 
-    const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
+    const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {}, answers: TYPED })
     expect(result.text).toContain('catalog-info.yaml already declares component:default/billing-api')
   })
 
@@ -385,7 +395,7 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
       )
       const root = await tree({ ...SIGNALS, 'catalog-info.yaml': imported })
 
-      const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
+      const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {}, answers: TYPED })
 
       // No finding verified, and the repository read in part — a folder git
       // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
@@ -403,7 +413,7 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
     // `billing-api`, and a lower-case one beside it is a conflicting twin.
     const root = await tree({ ...SIGNALS, 'catalog-info.yaml': componentDoc('Billing-Api') })
 
-    const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
+    const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {}, answers: TYPED })
 
     // No finding verified, and the repository read in part — a folder git
     // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
@@ -418,7 +428,7 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
       const other = componentDoc('billing-api').replace('kind: Component', `kind: ${kind}`)
       const root = await tree({ ...SIGNALS, 'catalog-info.yaml': other })
 
-      const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
+      const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {}, answers: TYPED })
 
       expect(result.text).not.toContain('already declares')
       expect(result.text).toContain('+++ b/catalog-info.yaml')
@@ -480,7 +490,7 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
       project: root,
       client: drafting([component()]),
       emit: () => {},
-      answers: { name: 'billing-api' },
+      answers: TYPED,
     })
 
     expect(result.text).toContain('--- a/deploy/catalog-info.yml')
@@ -492,8 +502,10 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
     // One service, two names: the draft read `billing-api` in package.json,
     // the file says `billing`. Appending would declare the service twice.
     const root = await tree({ ...SIGNALS, 'catalog-info.yaml': componentDoc('billing') })
+    // The other three fields typed: the name is the question here.
+    const { name: _name, ...UNNAMED } = TYPED
 
-    const unasked = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
+    const unasked = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {}, answers: UNNAMED })
     expect(unasked.unsupported).toBe(true)
     expect(unasked.text).toContain('catalog-info.yaml already declares component:default/billing')
     expect(unasked.text).toContain('--name')
@@ -504,6 +516,7 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
       project: root,
       client: drafting([component()]),
       emit: () => {},
+      answers: UNNAMED,
       ask: async () => 'billing',
     })
     // No finding verified, and the repository read in part — a folder git
@@ -518,6 +531,7 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
       project: root,
       client: drafting([component()]),
       emit: () => {},
+      answers: UNNAMED,
       ask: async () => 'billing-api',
     })
     expect(other.found).toBe(false)
@@ -532,7 +546,7 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
       'test/fixtures/catalog-info.yaml': componentDoc('fixture-svc'),
     })
 
-    const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
+    const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {}, answers: TYPED })
 
     // No finding verified, and the repository read in part — a folder git
     // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
@@ -553,7 +567,7 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
       '.github/catalog-info.yaml': componentDoc('gh-svc'),
     })
 
-    const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
+    const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {}, answers: TYPED })
 
     // No finding verified, and the repository read in part — a folder git
     // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
@@ -571,7 +585,7 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
       'packages/web/catalog-info.yaml': componentDoc('web'),
     })
 
-    const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {} })
+    const result = await runInitRepo({ project: root, client: drafting([component()]), emit: () => {}, answers: TYPED })
 
     // No finding verified, and the repository read in part — a folder git
     // does not hold: exit 1, the coverage sentence said (stage 8, Task 1.4).
@@ -598,6 +612,7 @@ describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-ya
         project: root,
         client: drafting([component()]),
         emit: () => {},
+        answers: TYPED,
         notice: (line) => void notices.push(line),
       })
 
@@ -647,6 +662,8 @@ describe('questions init cannot answer are asked, or answered by flags (gap-init
         'production',
         '--name',
         'billing-api',
+        '--type',
+        'service',
       ],
       {
         client: undeclaredDraft(),
@@ -689,6 +706,7 @@ describe('questions init cannot answer are asked, or answered by flags (gap-init
     const asked: Question[] = []
     const answers: Record<string, string> = {
       'metadata.name': 'billing-api',
+      'spec.type': 'service',
       'spec.lifecycle': 'production',
       'spec.owner': 'group:default/payments',
     }

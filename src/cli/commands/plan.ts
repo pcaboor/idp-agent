@@ -18,7 +18,7 @@ import { readRepository, readRepositoryText } from '../../context/iac-fs/snapsho
 import { readProject } from '../../context/project-fs/snapshot.js'
 import { renderUnifiedDiff, type FileEdit } from '../../core/diff/unified.js'
 import { clearPlan, type Cleared, type ClearInput, type ClearRefusal } from '../../core/plan/clear.js'
-import { answer, AnswerError, questionsOf, type Question } from '../../core/plan/clarify.js'
+import { answer, AnswerError, questionsOf, type Hint, type Question } from '../../core/plan/clarify.js'
 import { deriveOwners } from '../../core/plan/derive.js'
 import { namesakesIn } from '../../core/plan/environment.js'
 import { planEdits, type DroppedOperation } from '../../core/plan/edits.js'
@@ -28,6 +28,7 @@ import type { Provenance } from '../../core/plan/provenance.js'
 import { reapplyAnswers, recordAnswers, type RecordedAnswer } from '../../core/plan/reapply.js'
 import { recheckPlan, type Recheck, type RecheckOutcome } from '../../core/plan/recheck.js'
 import { signPlan, type SignatureContext, type SignedPlan } from '../../core/plan/sign.js'
+import { holdsInvisible } from '../../core/schemas/config.js'
 import type { Entity } from '../../core/schemas/entity.js'
 import { planSchema, type Plan } from '../../core/schemas/plan.js'
 import type { AccessLevel, Nature } from '../../core/schemas/resource-types.js'
@@ -54,7 +55,7 @@ import {
   type Unproposed,
 } from './submit.js'
 import type { CommandResult } from './result.js'
-import { inertLine, visible } from '../render/plain.js'
+import { inertLine, spelledOut, visible } from '../render/plain.js'
 import { budgetNotice, declarationsRoot, selectionNotice } from '../repository.js'
 
 /**
@@ -784,6 +785,25 @@ const closingOf = (questions: readonly Question[]): string[] => {
 }
 
 /**
+ * A hint as the person reads it, naming whose reading it is: the Inspector is
+ * a model, and a forge handle is said to be one, which names no group.
+ */
+const hintText = (hint: Hint): string => {
+  switch (hint.source) {
+    case 'inspector':
+      return hint.as === 'forge-handle'
+        ? `the Inspector, a model, read the forge handle ${hint.value}, which names no group`
+        : `the Inspector, a model, read: ${hint.value}`
+    case 'manifest':
+      return `${hint.at} names ${hint.value}`
+    default: {
+      const _exhaustive: never = hint
+      return _exhaustive
+    }
+  }
+}
+
+/**
  * One question as a person reads it, printed and prompted alike — the prompt
  * in `cli/index.ts` puts these lines and `renderQuestions` prints them, so the
  * two cannot drift into asking different things.
@@ -800,10 +820,17 @@ const closingOf = (questions: readonly Question[]): string[] => {
  * engine's own lists or a repository's, cleaned all the same. Absent when the
  * engine knows neither — the line a question has always been. A fourth, only
  * when the same question is put again, names the value just refused.
+ *
+ * A hint goes on the third line, after the draft's value and before the
+ * values the field takes, labelled by its source (`hintText`): what a reading
+ * of the service suggests, shown as that reading's and never selected — an
+ * empty line still declines. Cleaned with the rest of the line, though the
+ * caller has held it to its field's grammar already.
  */
 export const questionLines = (question: Question): string[] => {
   const facts = [
     ...(question.proposed === undefined ? [] : [`the draft says ${question.proposed}`]),
+    ...(question.hints ?? []).map(hintText),
     ...(question.accepted === undefined ? [] : [`accepted: ${question.accepted.join(', ')}`]),
     ...(question.inUse === undefined ? [] : [`in use: ${question.inUse.join(', ')}`]),
   ]
@@ -920,6 +947,17 @@ const outside = (question: Question, said: string | undefined): boolean =>
   !question.accepted.includes(said.trim())
 
 /**
+ * A type typed holding a control, format or bidi character. A Component's
+ * type is the one free-text field a question is at — 1 to 63 characters, no
+ * grammar — and a direction override in it is a value a reviewer reads the
+ * wrong way round in the diff: what `init --type` refuses (`initAnswersOf`).
+ * The other fields are held by their grammars, at gate [1] or by a policy that
+ * quotes the value, inert.
+ */
+const unseen = (question: Question, said: string | undefined): boolean =>
+  question.path.endsWith('.entity.spec.type') && said !== undefined && holdsInvisible(said.trim())
+
+/**
  * Puts one round of questions to the user and fills the plan with what comes
  * back, one question at a time.
  *
@@ -949,17 +987,23 @@ export async function fillAnswers(
     // front of them now, and a run that stopped would lose every answer this
     // round and the draft they are about. Bounded, and a decline is still a
     // decline.
-    for (let tries = 1; outside(question, said); tries += 1) {
+    //
+    // A type holding an invisible character is put back the same way, spelled
+    // out — `inertLine` would print a U+200B as it is.
+    for (let tries = 1; outside(question, said) || unseen(question, said); tries += 1) {
       const typed = said?.trim() ?? ''
+      const invisible = !outside(question, said)
+      const shown = invisible ? spelledOut(typed) : typed
       if (tries >= ASK_LIMITS.triesPerQuestion) {
         return {
           outcome: 'refused',
-          reason:
-            `${question.path}: ${typed} is not one of the values this field accepts: ` +
-            (question.accepted ?? []).join(', '),
+          reason: invisible
+            ? `${question.path}: ${shown} holds a control, format or bidi character, which a Component's type never holds`
+            : `${question.path}: ${typed} is not one of the values this field accepts: ` +
+              (question.accepted ?? []).join(', '),
         }
       }
-      said = await ask({ ...question, refused: typed })
+      said = await ask({ ...question, refused: shown })
     }
     // An empty line is a decline, not an empty value. A terminal cannot tell
     // "I do not know either" from a stray Return, and the safe reading of the
