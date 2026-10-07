@@ -424,8 +424,11 @@ describe('a password reaches no line init writes, no trace and no pull request b
           const sink = memorySink()
           const out: string[] = []
           const err: string[] = []
+          // The Component's four fields typed: what the Inspector reads is a
+          // hint, never an answer (stage 8, slice 2, Task 2.1).
+          const typed = ['--name', 'billing-api', '--type', 'service', '--lifecycle', 'production', '--owner', 'group:default/tiger']
           const code = await main(
-            ['init', '--repo', clone.repo, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev'],
+            ['init', '--repo', clone.repo, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev', ...typed],
             {
               cwd: clone.repo,
               env: clone.env,

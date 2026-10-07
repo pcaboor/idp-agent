@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 5446 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 5466 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -226,7 +226,7 @@ idpa "<phrase>" [--repo <dir> | --demo | --backstage] [--refresh | --cached] [--
 idp-agent relations <name-or-ref> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-ref>] [--depth <n>] [--repo <dir> | --demo | --backstage] [--refresh | --cached]  # no model
 idp-agent plan --from <plan.json> --repo <dir> [--submit [--local]]  # no model, and none is possible
 idp-agent plan "<intent>" --repo <dir> [--json] [--submit [--local]]  # Inspector, Architect, five gates
-idp-agent init [--repo <dir>] [--name <n>] [--lifecycle <l>] [--owner <ref>] [--submit [--local]] [--iac-repo <locator>] [--environment <name>]...  # the catalog-info.yaml, and .idp-agent.yml when a flag states it
+idp-agent init [--repo <dir>] [--name <n>] [--type <t>] [--lifecycle <l>] [--owner <ref>] [--submit [--local]] [--iac-repo <locator>] [--environment <name>]...  # the catalog-info.yaml, and .idp-agent.yml when a flag states it
 idp-agent protection [--repo <dir>]  # through the person's gh, reads only; no model, no write
 ```
 
@@ -238,7 +238,11 @@ strings with no password — reads each finding's file again, and `core/discover
 says what was read and what was not, and why. The report prints between `init`'s diff and its
 closing lines, so a saved preview still applies, its sentence goes to stderr too, and
 `init --submit`'s pull request carries it after the engine's block. No model is sent any of
-it, and nothing is proposed from it yet.
+it, and nothing is proposed from it yet. And `init` takes no model's reading of the service
+as the person's word (slice 2, Task 2.1): the name, type, lifecycle and owner the Inspector
+reads are hints shown beside the questions, labelled as a model's reading, each held to its
+field's grammar and never selected — an empty line declines — and only what a person types,
+by `--name`, `--type`, `--lifecycle`, `--owner` or at the prompt, signs as answered.
 
 **`init platform` writes into the directory it was handed, and through no symbolic link
 under it. `plan … --submit`, `idpa "<phrase>" --submit` and
@@ -518,15 +522,18 @@ billing API"), a figure or an error of reasoning passes, and only the mark says 
 they are. `--quiet` prints the block alone.
 That witness check is a **read-side** guarantee and does not transfer to `propose()`,
 which is why the write side has a signature of its own.
-A value the Inspector reports reaches the Architect and `init`'s signature only where a file
+A value the Inspector reports reaches the Architect only where a file
 it read before its report states it, by the field's rule (`agents/tools/project-witness.ts`:
 a whole token, a keyed line, a reference in full; a dependency's type never; a value folding
 would change in anything but its case, by none; an empty dependency list, by none when no file
 was read); otherwise it is
 an unknown with the engine's reason, said on stderr and in the trace, and asked where a
 proposal carries it — a `package.json` the model wrote into a tool's arguments is read by
-nobody. The reason a model writes for a field it marks unknown is not checked, and reaches
-the Architect as written, bounded at 8,192 characters, until stage 8 makes it the engine's.
+nobody. On `init` a witnessed value vouches for nothing: it is a hint beside the question at
+its field, shown as a model's reading and held to the field's grammar, and the signature
+reads what the person typed alone (stage 8, slice 2, Task 2.1). The reason a model writes for
+a field it marks unknown is not checked, and reaches the Architect as written, bounded at
+8,192 characters, until stage 8 makes it the engine's — it is never shown as a hint.
 
 ```
 Supervisor → Inspector → Architect → Reviewer  │  Zod → signature → policies

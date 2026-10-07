@@ -1,6 +1,6 @@
 # Stage 8, slice 2 — matching and asking
 
-**Status: plan accepted by the owner on 2026-10-07 ([#148](https://github.com/pcaboor/idp-agent/pull/148)), from `main` at `48a70ec`; 2.1 to 2.7 not started.** Seven
+**Status: plan accepted by the owner on 2026-10-07 ([#148](https://github.com/pcaboor/idp-agent/pull/148)), from `main` at `48a70ec`; 2.1 built ([#149](https://github.com/pcaboor/idp-agent/pull/149)), validated by the owner before it merged; 2.2 to 2.7 not started.** Seven
 pull requests, 2.1 to 2.7, after this plan merged on its own. They are not stacked ahead of
 time: **the owner validates each pull request before it merges and before the next one starts**
 (owner's decision of 2026-10-04, `docs/roadmap.md`), so each branch is cut from `main` once the
@@ -700,11 +700,15 @@ is sent anything new.
   `:1034-1038` holds `answered` alone; `INIT_FLAGS` `:357-361` gains `spec.type`; `initAnswersOf`
   `:370-407` holds `type`; `hintsOf(facts)` attached to the questions of `questionsOf`, `:1127`),
   `src/core/plan/clarify.ts` (`Hint`, `Question.hints`), `src/cli/commands/plan.ts`
-  (`questionLines`, `:803-818`), `src/cli/index.ts` (`--type` in `init`'s options, `:398-409`,
+  (`questionLines`, `:803-818`; as built, `fillAnswers` too), `src/cli/render/plain.ts` (as
+  built: `spelledOut`, moved from `init.ts`), `src/cli/index.ts` (`--type` in `init`'s options, `:398-409`,
   and `HELP`, `:279`)
 - Create: `tests/unit/init-hints.test.ts`
 - Modify: `tests/unit/cli-args.test.ts`, and the `init` tests whose run now asks (Step 6's
-  list); `tests/unit/plan-answered-level.test.ts`, where `questionLines` is tested today, stays
+  list — as built, `tests/unit/init-command.test.ts`, `tests/unit/init-real-repo.test.ts`,
+  `tests/unit/init-discovery.test.ts`, `tests/contract/key-reach.test.ts`,
+  `tests/unit/trace-wiring.test.ts` and `tests/invariants/discovery-secrets.test.ts`, the last
+  given the four flags and nothing else, for the owner to confirm); `tests/unit/plan-answered-level.test.ts`, where `questionLines` is tested today, stays
   green unchanged (a question with no hints prints as it does); `SECURITY.md` (`:385`),
   `AGENTS.md`, `README.md` (`init`'s section and usage), `docs/design.md` § 7.3,
   `src/cli/README.md`, `docs/reviews/2026-09-23-deep-review.md` (Status, gap-init-real-repos-5,
@@ -731,17 +735,17 @@ export interface InitAnswers { readonly name?: string; readonly type?: string; r
 export function withHints(questions: readonly Question[], facts: ProjectFacts): Question[]
 ```
 
-- [ ] **Step 1: Pin the before (passes now).** `df -h "$TMPDIR"`, then
+- [x] **Step 1: Pin the before (passes now).** `df -h "$TMPDIR"`, then
   `pnpm vitest run tests/unit/init-command.test.ts tests/unit/init-real-repo.test.ts tests/unit/init-discovery.test.ts tests/unit/cli-args.test.ts tests/scenarios`:
   green, and the plan-mode scenarios with no stale warning.
 
-- [ ] **Step 2: Estimate what asks now (before any code).** Every `init` test that runs with no
+- [x] **Step 2: Estimate what asks now (before any code).** Every `init` test that runs with no
   `ask`, passes no `--name`/`--lifecycle`/`--owner` for a field the scripted Inspector reported and
   a file states, and expects a preview, will end on questions, exit 3. `grep -n "runInitRepo\|'init'"`
   over the five `init` test files gives the estimate, written into the pull request's
   description as such; the list is Step 6's, from the suite. None is loosened or deleted.
 
-- [ ] **Step 3: Write the tests, and see them fail.** `tests/unit/init-hints.test.ts`, over a
+- [x] **Step 3: Write the tests, and see them fail.** `tests/unit/init-hints.test.ts`, over a
   repository made by `committed()` holding a `package.json` named `invoicing-worker`, a
   `CODEOWNERS` reading `*  @acme/tiger` and a `README.md` stating `type: service`,
   `lifecycle: production` and `owner: group:default/tiger` one per line (as
@@ -784,7 +788,7 @@ export function withHints(questions: readonly Question[], facts: ProjectFacts): 
      `answers.type`; a type of 64 characters, and one holding U+200B, → `error`, exit 2, before a
      model. *Fails today:* `--type` is an unknown option.
 
-- [ ] **Step 4: Build it.** `inspected()` goes; the provenance is
+- [x] **Step 4: Build it.** `inspected()` goes; the provenance is
   `{ intent: request, wordsOf: 'engine', answers: new Map(answered) }`. `withHints` attaches,
   for each question whose path ends with `.entity.metadata.name`, `.entity.spec.type`,
   `.entity.spec.lifecycle` or `.entity.spec.owner`, the witnessed fact of that field as an
@@ -797,7 +801,7 @@ export function withHints(questions: readonly Question[], facts: ProjectFacts): 
   `['spec.type', 'type', '--type']`, so a question about the type names its flag. Steps 3's
   tests pass.
 
-- [ ] **Step 5: The docs it makes true.** `SECURITY.md:385`'s clause becomes "on `init`, a value
+- [x] **Step 5: The docs it makes true.** `SECURITY.md:385`'s clause becomes "on `init`, a value
   the Inspector reads is a hint beside a question: shown, labelled, and never a value; an empty
   line declines". `AGENTS.md`'s trust boundary and *Current state*, `README.md`'s `init` section
   (the questions and `--type`), design § 7.3, `src/cli/README.md`. The review's Status
@@ -806,7 +810,7 @@ export function withHints(questions: readonly Question[], facts: ProjectFacts): 
   `docs/roadmap.md`: the review's *The Inspector's facts vouch for themselves* closed, as the
   note says item 1 closes it on its own (2.6 adds the fifth class, and says so there).
 
-- [ ] **Step 6: The tests that now ask, from the suite.** `df -h "$TMPDIR"`, `pnpm test`. Every
+- [x] **Step 6: The tests that now ask, from the suite.** `df -h "$TMPDIR"`, `pnpm test`. Every
   failure is listed with its file, its title and its new ending (a question, exit 3). A failure
   that is not that ending is a bug of Step 4 and is fixed there. Each listed test is given the
   flags its run needs (`--name`, `--type`, `--lifecycle`, `--owner`) or an `ask`, and nothing
@@ -814,7 +818,7 @@ export function withHints(questions: readonly Question[], facts: ProjectFacts): 
   *reaches a diff when the person passes --owner, --lifecycle and --name* among them) is kept and
   given `--type` too. The list goes into the pull request's description beside Step 2's estimate.
 
-- [ ] **Step 7: Checks**
+- [x] **Step 7: Checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -835,7 +839,10 @@ The last prints nothing: no agent, schema, tape or fixture moves.
 
 ```bash
 git add src/cli/commands/init.ts src/core/plan/clarify.ts src/cli/commands/plan.ts src/cli/index.ts \
+  src/cli/render/plain.ts \
   tests/unit/init-hints.test.ts tests/unit/cli-args.test.ts \
+  tests/unit/init-command.test.ts tests/unit/init-real-repo.test.ts tests/unit/init-discovery.test.ts \
+  tests/contract/key-reach.test.ts tests/unit/trace-wiring.test.ts tests/invariants/discovery-secrets.test.ts \
   SECURITY.md AGENTS.md README.md docs/design.md src/cli/README.md docs/reviews/2026-09-23-deep-review.md docs/roadmap.md \
   docs/plans/stage-8-slice-2.md CHANGELOG.md
 git commit -m "feat(cli): show what the Inspector read beside init's questions, and sign only what a person typed"
@@ -902,6 +909,65 @@ Attendu :
   `--type serv\u001bice holds a control, format or bidi character…` and `exit 2`, the model
   never called;
 - `git status --porcelain` prints nothing.
+
+**As built**, where the code asked for it (2026-10-07):
+
+- **Step 2's estimate**, from `grep -n "runInitRepo\|'init'"` before any code:
+  `init-command.test.ts` (67 lines), `init-real-repo.test.ts` (33), `init-discovery.test.ts` (15),
+  `command-line-edges.test.ts` (7), `key-reach.test.ts` (6), `pull-request-body.test.ts` (5),
+  `trace-wiring.test.ts` (3), `discovery-secrets.test.ts` (1). **Step 6's list**, from the suite:
+  72 tests in six files, every one ending on questions, exit 3, and no tape stale —
+  `init-command.test.ts` 30, `init-real-repo.test.ts` 18, `init-discovery.test.ts` 13,
+  `key-reach.test.ts` 9 (the three `init --submit` runs, each for three providers),
+  `trace-wiring.test.ts` 1 and `tests/invariants/discovery-secrets.test.ts` 1. Each was given
+  the flags its run needs (`TYPED` / `TYPED_FLAGS` in the three `init` files, `--type` where a run
+  already typed the other three) or, where the person's answer is the subject, the flags for
+  the other fields; the invariant's run is given the four flags and nothing else, the property
+  unchanged. Three assertions follow what this task changes on screen: the line under a type
+  question carries the Inspector's reading (`asks about a type the inspection never
+  established`), and the question about the type names `--type` instead of saying it has no
+  flag (`asks for a name the Inspector invented`).
+- **`Hint` is a union**, `{ source: 'inspector', value, as? } | { source: 'manifest', value, at }`:
+  the `manifest` line prints `<path>:<line> names <value>`, and a hint with no place could not.
+  `HINT_SOURCES` and `HintSource` are as planned; `hintText` (in `plan.ts`) switches over the
+  source with a `never` default.
+- **Test 7's name, lifecycle and owner rows** run on `withHints` itself: `projectFactsSchema`
+  refuses `Invoicing Worker`, `prod` and `tiger` before the witness reads them (each row
+  asserts it), so no run can bring one to a question. The type and forge-handle rows run
+  end to end, the witness keeping each value, and each also asserts the hint the grammar keeps
+  at the name, so the absence it checks is the grammar's.
+- **Test 6**: `inertLine` spells out a bidi control and removes a terminal's escape sequence
+  whole, so the row asserts `\u202e` spelled and nothing of the ESC sequence left.
+- **`unnamedConflict`**, a departure: with the Inspector's name no longer settling the name, the
+  question about it when the file `init` adds to already declares another Component was the
+  plain "nothing vouches for this name", and `init-real-repo.test.ts`'s *asks before adding a
+  second Component …* and *reads the namespace a Component states …* could not be kept by
+  flags (a typed name is the person's word and is never put as a conflict). The name, while it
+  is a question, is now asked as that conflict, naming what the file declares, with the
+  Inspector's reading beside it; both tests fail without it, unchanged.
+- **`--type`** is refused, exit 2 before a model, for no character or more than 63, and, spelled
+  out, for a control, format or bidi character (`holdsInvisible`, as the configuration flags);
+  and, after the review, for a space at either end, quoted — the prompt trims an answer and
+  takes a blank one as a decline, so `--type ' '` and `--type ' service '` were values the
+  prompt could not give (`cli-args.test.ts`).
+- **A type typed at the prompt is held as `--type` is**, after the review, on both roads:
+  `fillAnswers` puts back a type holding a control, format or bidi character, spelled out
+  (`spelledOut`, moved to `cli/render/plain.ts`), and refuses it, exit 1, at the third try, as it
+  does a value outside a closed set. Only the type: it is the one free-text field, and since
+  this task mostly answered at the prompt; the others are held by their grammars, or by a
+  policy that quotes the value inert, which `plan-project.test.ts` pins and a hold on every
+  answer would have pre-empted (`init-hints.test.ts`, *what the person types at the prompt …*).
+- **A service its own catalog-info already declares** is recognised only once its name is typed
+  or answered: the Inspector's name no longer settles it. A re-run with no `--name` and nobody
+  to ask ends on exit 3, where it ended on "already declared", exit 0 — the safe direction,
+  recorded in design §7.3, the review's priority-9 row, the CHANGELOG line and the roadmap. With
+  nobody to ask, the conflict question is printed beside every other open question, so a script
+  learns every flag in one run; at a terminal it is asked alone, first (`init-hints.test.ts`,
+  *a service its own catalog-info already declares*). The CHANGELOG line says both.
+- **The owner's kit**: `~/Documents/idp-agent-tests/s8-2/init.mjs` was written at the owner's
+  request by whoever ran the task, from the skeleton above (its report carries `dependencies:
+  []` until 2.2, and the prompt prints `questionLines`), and the fixture was built with the
+  commands above, exactly.
 
 ---
 

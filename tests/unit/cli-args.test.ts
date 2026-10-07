@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HELP, parseArguments, usageOf } from '../../src/cli/index.js'
+import { HELP, main, parseArguments, usageOf } from '../../src/cli/index.js'
 
 describe('parseArguments', () => {
   it('reads the graph command with its filters', () => {
@@ -381,9 +381,40 @@ describe('parseArguments: init --submit and its configuration', () => {
     }
   })
 
+  it('takes --type as an answer, and refuses one it would not write, before a model', async () => {
+    // The one answer a script can give the type (stage 8, slice 2, Task 2.1):
+    // held to what a Component's type takes, as --lifecycle is to its set.
+    expect(parseArguments(['init', '--type', 'service'])).toStrictEqual({
+      name: 'init',
+      answers: { type: 'service' },
+    })
+    for (const [value, spelled] of [
+      ['x'.repeat(64), 'x'.repeat(64)],
+      ['', ''],
+      ['serv\u200bice', 'serv\\u200bice'],
+      ['serv\u001bice', 'serv\\u001bice'],
+      // What the prompt cannot produce: it trims an answer, and a blank one declines.
+      [' ', '" "'],
+      [' service ', '" service "'],
+    ] as const) {
+      const refused = parseArguments(['init', '--type', value])
+      expect(refused).toMatchObject({ name: 'error', message: expect.stringContaining(`--type ${spelled}`) })
+      if (refused.name === 'error') expect(refused.message).not.toMatch(/[\u200b\u001b]/)
+
+      let called = 0
+      const code = await main(['init', '--type', value], {
+        client: { generate: async () => ((called += 1), { text: '', toolCalls: [], finishReason: 'stop' }) },
+        out: () => {},
+        err: () => {},
+      })
+      expect(code).toBe(2)
+      expect(called).toBe(0)
+    }
+  })
+
   it('is in the usage init prints', () => {
     expect(usageOf('init')).toContain(
-      'idp-agent init [--repo <directory>] [--name <name>] [--lifecycle experimental|production|deprecated] ' +
+      'idp-agent init [--repo <directory>] [--name <name>] [--type <type>] [--lifecycle experimental|production|deprecated] ' +
         '[--owner group:<namespace>/<name>] [--submit [--local]] [--iac-repo <locator>] [--environment <name>]...',
     )
   })

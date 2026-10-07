@@ -377,6 +377,17 @@ const FACTS = {
   dependencies: [],
 }
 
+/**
+ * What a person types for the four fields `FACTS` reads: since stage 8's
+ * slice 2 (Task 2.1) what the Inspector reads is a hint beside a question and
+ * never an answer, so a test that is about something else than the questions
+ * gives the flags its run needs.
+ */
+const TYPED = { name: 'billing-api', type: 'service', lifecycle: 'production', owner: 'group:default/tiger' } as const
+
+/** `TYPED`, as `init`'s flags. */
+const TYPED_FLAGS = ['--name', TYPED.name, '--type', TYPED.type, '--lifecycle', TYPED.lifecycle, '--owner', TYPED.owner]
+
 const COMPONENT = {
   op: 'create-entity',
   entity: {
@@ -403,6 +414,7 @@ describe('init, per application', () => {
       project,
       client: drafting([COMPONENT]),
       emit: () => {},
+    answers: TYPED,
     })
 
     // No finding verified, and the repository read in part — a folder git
@@ -428,7 +440,7 @@ describe('init, per application', () => {
     // diff included. A file, not a pipe: `idpa init | git apply` runs the
     // models again, and applies bytes nobody read.
     const project = await application()
-    const result = await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {} })
+    const result = await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {}, answers: TYPED })
     expect(result.text).toContain('idpa init > catalog-info.diff, then git apply catalog-info.diff')
     expect(result.text).not.toContain('| git apply')
 
@@ -498,7 +510,7 @@ describe('init, per application', () => {
     const before = await hashTree(project)
     const client = drafting([COMPONENT])
 
-    const result = await runInitRepo({ project, client, emit: () => {} })
+    const result = await runInitRepo({ project, client, emit: () => {}, answers: TYPED })
 
     const draft = client.seen.find((request) => request.agent === 'architect')
     const proposeTool = draft?.tools.find((spec) => spec.name === PROPOSE_TOOL)
@@ -535,23 +547,24 @@ describe('init, per application', () => {
   })
 
   it('still writes the name the inspection did read', async () => {
-    // The other half: what the project's own files state arrives as answers
-    // at the fields it was read for, so the four values an inspection
-    // establishes still stand behind themselves and the ordinary run is
-    // unchanged.
+    // The other half: the name the inspection read reaches the catalog-info
+    // when the person states it. Since stage 8's slice 2 (Task 2.1) the
+    // inspection vouches for nothing on its own, so the run is given the four
+    // flags, and the ordinary run is otherwise unchanged.
     const project = await application()
     const client = drafting([COMPONENT])
 
-    const result = await runInitRepo({ project, client, emit: () => {} })
+    const result = await runInitRepo({ project, client, emit: () => {}, answers: TYPED })
 
     expect(result.text).toContain('+++ b/catalog-info.yaml')
     expect(result.text).toContain('billing-api')
   })
 
   it('vouches for a fact at the field it was read for, and nowhere else', async () => {
-    // The inspection read `production` as the LIFECYCLE. A type of
+    // `production` is the LIFECYCLE, typed by the person (and read by the
+    // inspection, which since Task 2.1 vouches for nothing). A type of
     // `production` is a value the Architect put in a different field, and
-    // nothing read it there: it is a question, not a fact that happens to
+    // nobody stated it there: it is a question, not a fact that happens to
     // share its spelling with one.
     const project = await application()
     const before = await hashTree(project)
@@ -562,7 +575,8 @@ describe('init, per application', () => {
       },
     ])
 
-    const result = await runInitRepo({ project, client, emit: () => {} })
+    const { type: _type, ...rest } = TYPED
+    const result = await runInitRepo({ project, client, emit: () => {}, answers: rest })
 
     expect(result.unsupported).toBe(true)
     expect(result.text).toContain('operations.0.entity.spec.type')
@@ -631,16 +645,18 @@ describe('init, per application', () => {
       },
     }
 
-    const result = await runInitRepo({ project, client: drafting([invented]), emit: () => {} })
+    const { type: _type, ...rest } = TYPED
+    const result = await runInitRepo({ project, client: drafting([invented]), emit: () => {}, answers: rest })
 
     expect(result.unsupported).toBe(true)
     expect(result.found).toBe(false)
     expect(result.text).toContain('operations.0.entity.spec.type')
-    // Shown as the draft's, on the prompt's own line (#72), and nowhere else:
-    // never as a value, and never in a catalog-info.
+    // Shown as the draft's, on the prompt's own line (#72), beside what the
+    // Inspector read (Task 2.1), and nowhere else: never as a value, and
+    // never in a catalog-info.
     expect(
       result.text.split('\n').filter((line) => line.includes('anything-the-model-likes')),
-    ).toEqual(['      the draft says anything-the-model-likes'])
+    ).toEqual(['      the draft says anything-the-model-likes · the Inspector, a model, read: service'])
     expect(result.text).not.toContain('catalog-info.yaml')
     expect(await hashTree(project)).toBe(before)
   })
@@ -648,9 +664,10 @@ describe('init, per application', () => {
   it('asks for a name the Inspector invented, rather than writing it', async () => {
     // The 2026-10-02 Inspector: a package.json of its own passed as read_file's
     // content, with no path, then a report of the manifest nobody read. On
-    // this road the facts are answers the signature trusts (`inspected`), so
-    // an invented name used to sign as the user's and reach the catalog-info
-    // at exit 0. Held to the files read, it vouches for nothing.
+    // this road the facts were answers the signature trusted (`inspected`,
+    // gone since stage 8's slice 2), so an invented name used to sign as the
+    // user's and reach the catalog-info at exit 0. Held to the files read, it
+    // is withdrawn, and shown as nothing: no hint under its question.
     const project = await application()
     const before = await hashTree(project)
     const client = scripted({
@@ -693,10 +710,10 @@ describe('init, per application', () => {
     for (const field of ['metadata.name', 'spec.type', 'spec.lifecycle']) {
       expect(result.text).toContain(`operations.0.entity.${field}`)
     }
-    expect(result.text).toContain('Answer --name, --lifecycle on the command line')
-    expect(result.text).toContain(
-      'operations.0.entity.spec.type has no flag: run this at a terminal to be asked.',
-    )
+    // Every question names its flag: --type answers the type (Task 2.1).
+    expect(result.text).toContain('Answer --name, --type, --lifecycle on the command line')
+    expect(result.text).not.toContain('has no flag')
+    expect(result.text).not.toContain('the Inspector, a model, read')
     expect(result.text).not.toContain('+  name: gorilla-service')
     expect(result.text).not.toContain('+++ b/catalog-info.yaml')
     expect(await hashTree(project)).toBe(before)
@@ -776,6 +793,7 @@ describe('init --submit', () => {
       project,
       client: drafting([COMPONENT]),
       emit: () => {},
+      answers: TYPED,
       submit: {},
       flags: FLAGS,
     })
@@ -796,14 +814,14 @@ describe('init --submit', () => {
         'apiVersion: backstage.io/v1alpha1\nkind: API\nmetadata:\n  name: billing\nspec:\n  type: openapi\n' +
         '  lifecycle: production\n  owner: group:default/tiger\n  definition: "{}"\n',
     })
-    const result = await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {}, submit: {} })
+    const result = await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {}, answers: TYPED, submit: {} })
     expect(result.found).toBe(true)
     expect(await git(project, 'diff', '--name-only', 'main', await submitted(project))).toBe('catalog-info.yml')
   })
 
   it('files in the one catalog-info the service keeps in a folder', async () => {
     const project = await clonedApplication({ 'deploy/catalog-info.yaml': '# nothing declared yet\n' })
-    const result = await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {}, submit: {} })
+    const result = await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {}, answers: TYPED, submit: {} })
     expect(result.found).toBe(true)
     expect(await git(project, 'diff', '--name-only', 'main', await submitted(project))).toBe('deploy/catalog-info.yaml')
   })
@@ -822,7 +840,7 @@ describe('init --submit', () => {
 
   it('writes the configuration readConfig reads back', async () => {
     const project = await clonedApplication()
-    await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {}, submit: {}, flags: FLAGS })
+    await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {}, answers: TYPED, submit: {}, flags: FLAGS })
     const checkout = await temp()
     made.push(checkout)
     await writeFile(path.join(checkout, CONFIG_FILE), await show(project, await submitted(project), CONFIG_FILE))
@@ -855,6 +873,7 @@ describe('init --submit', () => {
       project,
       client,
       emit: () => {},
+      answers: TYPED,
       submit: {},
       flags: { iacRepo: 'github.com/acme/iac' },
       ask: async (question) => {
@@ -938,6 +957,7 @@ describe('init --submit', () => {
         project,
         client: drafting([COMPONENT]),
         emit: () => {},
+        answers: TYPED,
         flags: FLAGS,
         ...(submit !== undefined ? { submit } : {}),
       })
@@ -972,6 +992,7 @@ describe('init --submit', () => {
       project,
       client: drafting([COMPONENT]),
       emit: () => {},
+      answers: TYPED,
       submit: {},
       flags: FLAGS,
     })
@@ -1016,7 +1037,7 @@ describe('init --submit', () => {
     // The owner's addition of 2026-09-29, on init's road: the questions that
     // decide the bytes are still asked, the [y/N] is not.
     const project = await clonedApplication()
-    await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {}, submit: {}, flags: FLAGS })
+    await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {}, answers: TYPED, submit: {}, flags: FLAGS })
     const [seen, objects] = [await observable(project), await stored(project)]
     let prompted = false
 
@@ -1024,6 +1045,7 @@ describe('init --submit', () => {
       project,
       client: drafting([COMPONENT]),
       emit: () => {},
+      answers: TYPED,
       flags: FLAGS,
       submit: {
         confirm: async () => {
@@ -1047,6 +1069,7 @@ describe('init --submit', () => {
       project,
       client: drafting([COMPONENT]),
       emit: () => {},
+      answers: TYPED,
       flags: FLAGS,
       submit: {
         confirm: async (summary) => {
@@ -1065,7 +1088,7 @@ describe('init --submit', () => {
   it('prints what it prints today without --submit or a flag, APPLY included', async () => {
     const project = await clonedApplication()
     const before = await hashTree(project)
-    const result = await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {} })
+    const result = await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {}, answers: TYPED })
     expect(result.text.trimEnd().endsWith('then git apply catalog-info.diff')).toBe(true)
     expect(result.text).not.toContain(CONFIG_FILE)
     expect(await hashTree(project)).toBe(before)
@@ -1074,7 +1097,7 @@ describe('init --submit', () => {
   it('previews the configuration a flag states without --submit, and writes nothing', async () => {
     const project = await clonedApplication()
     const before = await hashTree(project)
-    const result = await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {}, flags: FLAGS })
+    const result = await runInitRepo({ project, client: drafting([COMPONENT]), emit: () => {}, answers: TYPED, flags: FLAGS })
     expect(result.found).toBe(true)
     expect(result.text).toContain(`+++ b/${CONFIG_FILE}`)
     expect(result.text).toContain('+++ b/catalog-info.yaml')
@@ -1121,7 +1144,7 @@ describe('init --submit through main', () => {
 
   it("cuts init's branch with --local, and says nothing was pushed", async () => {
     const { root, gh, calls } = await onGitHub()
-    const { code, out } = await run(['init', '--repo', root, '--submit', '--local'], drafting([COMPONENT]), gh)
+    const { code, out } = await run(['init', '--repo', root, '--submit', '--local', ...TYPED_FLAGS], drafting([COMPONENT]), gh)
     expect(code).toBe(0)
     expect(out).toMatch(/1 file · submitted as idp-agent\/init-billing-api-[0-9a-f]{8} on top of main@[0-9a-f]{7} · main untouched/)
     expect(out).toContain('--local: nothing pushed by this run')
@@ -1184,7 +1207,7 @@ describe('init --submit through main', () => {
     const root = await application()
     made.push(root)
     await committed(root)
-    const args = ['init', '--repo', root, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev', '--environment', 'prod']
+    const args = ['init', '--repo', root, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev', '--environment', 'prod', ...TYPED_FLAGS]
     const first = await run(args, drafting([COMPONENT]))
     expect(first.code).toBe(0)
     expect(first.out).toMatch(/2 files · submitted as idp-agent\/init-billing-api-[0-9a-f]{8} on top of main@[0-9a-f]{7} · main untouched/)
@@ -1205,7 +1228,8 @@ describe('init --submit through main', () => {
  * the clone.
  */
 describe('init --submit to GitHub', { timeout: 30_000 }, () => {
-  const FLAGS = ['--iac-repo', 'github.com/acme/iac', '--environment', 'dev', '--environment', 'prod']
+  // The Component's four fields typed too: what the Inspector reads is a hint, never an answer.
+  const FLAGS = ['--iac-repo', 'github.com/acme/iac', '--environment', 'dev', '--environment', 'prod', ...TYPED_FLAGS]
   const made: string[] = []
   afterAll(async () => {
     await removeClones()

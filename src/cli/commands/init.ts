@@ -24,7 +24,7 @@ import {
 import { coverageSentence, isComplete, verifiedFindings, type Coverage } from '../../core/discovery/report.js'
 import { protectionText } from '../../core/github/protection.js'
 import { clearService } from '../../core/plan/clear.js'
-import { questionsOf, type Question } from '../../core/plan/clarify.js'
+import { questionsOf, type Hint, type Question } from '../../core/plan/clarify.js'
 import type { Provenance } from '../../core/plan/provenance.js'
 import { signPlan } from '../../core/plan/sign.js'
 import {
@@ -42,6 +42,7 @@ import { parseDocuments } from '../../core/yaml/serialize.js'
 import type { LlmClient } from '../../llm/client.js'
 import { ConfigError, readConfigFile, seededVocabulary } from '../config.js'
 import { budgetNotice, selectionNotice } from '../repository.js'
+import { isForgeHandle } from '../../scaffold/codeowners.js'
 import { loadTemplates } from '../../scaffold/templates.js'
 import { scaffoldLayout } from '../../scaffold/layout.js'
 import {
@@ -66,7 +67,7 @@ import {
 } from './plan.js'
 import { coverageLines } from '../render/coverage.js'
 import type { PreviewStatus } from '../render/footer.js'
-import { inertLine } from '../render/plain.js'
+import { inertLine, spelledOut } from '../render/plain.js'
 import type { CommandResult } from './result.js'
 import {
   openForSubmission,
@@ -220,12 +221,12 @@ const listing = (report: WriteReport): string[] => [
  * write**, and only where the inspection actually established them — a value
  * a file the Inspector read before its report states, by the field's rule
  * (`agents/tools/project-witness.ts`); one no file states arrives here as an
- * unknown and is named nowhere — and those four, placed at the fields they
- * were read for (`inspected`), are what the signature is measured against.
- * That is the guarantee this buys: a name, a type, a lifecycle or an owner the
- * Architect invents is vouched for by nothing, enumerated by nothing, and
- * becomes a question the CLI puts to the user (design §4.1). The Architect
- * cannot introduce a fact the repository does not state.
+ * unknown and is named nowhere. None of them vouches for anything (stage 8,
+ * slice 2, Task 2.1): what the inspection read is a model's reading, shown
+ * beside the question at the field it was read for (`withHints`) and never
+ * an answer. A name, a type, a lifecycle or an owner nobody typed is vouched
+ * for by nothing, enumerated by nothing, and becomes a question the CLI puts
+ * to the person (design §4.1), the Inspector's reading under it.
  *
  * The type was the one of the four that did not hold, and the sentence above is
  * only true because `sign.ts` stopped classifying a Component's `spec.type`
@@ -240,18 +241,18 @@ const listing = (report: WriteReport): string[] => [
  * field: `@acme/platform` is a forge handle and `group:default/platform` is an
  * entity reference, two namespaces that do not survive translation. It is
  * stated to the model as a handle — `formatFacts` prints it — and kept out of
- * this sentence and out of `inspected`, so it can never vouch for itself as an
- * owner. `runtime` is absent too: it is evidence for `spec.type`, not a value
- * any proposal field carries.
+ * this sentence, so it can never vouch for itself as an owner; beside the
+ * owner's question it is shown as what it is, a handle that names no group.
+ * `runtime` is absent too: it is evidence for `spec.type`, not a value any
+ * proposal field carries.
  *
- * What this does NOT cover, and it is the reason nothing here writes: the
- * Inspector is a model reading files, so this request is not a human's words.
- * The signature says a value matches what a file the Inspector read states.
- * It says nothing about whether the file is right, or about this field — the
- * keyed rule reads a line, not a format — and §7.3's "confirms the owner it
- * inferred rather than assuming it" is a human reading the diff below. A
- * witnessed fact still signs as `answered` here, until stage 8 makes the facts
- * hints (slice 2, item 1).
+ * What this does NOT cover: the Inspector is a model reading files, so this
+ * request is not a human's words. The witness says a value matches what a
+ * file the Inspector read states; it says nothing about whether the file is
+ * right, or about this field — the keyed rule reads a line, not a format —
+ * which is why a witnessed fact is a hint and not an answer: §7.3's "confirms the owner it inferred rather than
+ * assuming it" is the person answering the question, the hint in front of
+ * them, and then reading the diff below.
  */
 const known = (value: ProjectFacts[keyof ProjectFacts]): string | undefined =>
   typeof value === 'string' ? value : undefined
@@ -307,48 +308,84 @@ function componentsOf(
   return refusals.length > 0 ? { refusals } : { proposals }
 }
 
+/** The four facts a hint is shown for, and the forge handle beside the owner. */
+type HintField = 'name' | 'type' | 'lifecycle' | 'owner' | 'forgeHandle'
+
 /**
- * What the inspection read, as answers at the fields it read them for.
- *
- * The four values `requestOf` names, placed where a Component carries each one
- * — its name, its type, its lifecycle, its owner — in every Component the
- * Architect proposed. A fact vouches for the field it was read for and for no
- * other: the lifecycle the inspection read as `production` says nothing about
- * a `spec.type` spelled the same way, and a set of values used to say it did.
- * A fact that is `{unknown}` places nothing, and neither does a field the
- * inspection has no fact for; both leave the value vouched for by nothing,
- * which is a question — the safe direction. That includes a value the
- * Inspector reported and no file it read states: the engine withdrew it into
- * an unknown before it got here, so a name the model invented is asked at
- * `metadata.name` rather than signed as the user's.
+ * Backstage's conventional shape for a Component's type — `service`,
+ * `website`, `grpc-service` — and the only one a hint of it is shown in. The
+ * schema takes any 1 to 63 characters, since a person may type another
+ * (`--type`); a model's reading is held tighter: no space, so no prose.
  */
-function inspected(facts: ProjectFacts, proposals: readonly Operation[]): Map<string, string> {
-  const fields = [
-    ['metadata.name', facts.name],
-    ['spec.type', facts.type],
-    ['spec.lifecycle', facts.lifecycle],
-    ['spec.owner', facts.owner],
-  ] as const
-  const answers = new Map<string, string>()
-  for (const [index] of proposals.entries()) {
-    for (const [field, fact] of fields) {
-      const value = known(fact)
-      if (value !== undefined) answers.set(`operations.${String(index)}.entity.${field}`, value)
-    }
-  }
-  return answers
+const TYPE_TOKEN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
+/**
+ * What each field's hint is held to before it is attached: the grammar the
+ * field itself takes, or tighter. A record over every field, so a field with
+ * no grammar does not compile. A value outside it gives no hint at all —
+ * never a hint cut down to what passes.
+ */
+const hintGrammar: { readonly [K in HintField]: (value: string) => boolean } = {
+  name: (value) => proposedName.safeParse(value).success,
+  type: (value) => value.length <= 63 && TYPE_TOKEN.test(value),
+  lifecycle: (value) => (COMPONENT_LIFECYCLES as readonly string[]).includes(value),
+  owner: (value) => ownerRefSchema.safeParse(value).success,
+  forgeHandle: isForgeHandle,
+}
+
+/** The fact read for each field a question can be at, by the end of its path. */
+const HINTED: readonly (readonly [string, HintField])[] = [
+  ['.entity.metadata.name', 'name'],
+  ['.entity.spec.type', 'type'],
+  ['.entity.spec.lifecycle', 'lifecycle'],
+  ['.entity.spec.owner', 'owner'],
+]
+
+/** One fact as a hint, when the witness kept it and its field's grammar holds it. */
+const hintOf = (facts: ProjectFacts, field: HintField): Hint[] => {
+  const value = known(facts[field])
+  if (value === undefined || !hintGrammar[field](value)) return []
+  return [
+    field === 'forgeHandle'
+      ? { source: 'inspector', value, as: 'forge-handle' }
+      : { source: 'inspector', value },
+  ]
 }
 
 /**
- * The person's own values for the three fields no file of a service states
- * reliably (review, gap-init-real-repos-2): its catalogue name, its lifecycle —
- * no common file states one — and its owner, which CODEOWNERS states only as
- * a forge handle the Inspector is forbidden to translate. Passed as flags,
- * they are what an answer at the prompt is: the user's word about one field,
- * vouched for as answered, and held to what that field accepts.
+ * The questions, each with the Inspector's witnessed value for its field,
+ * when it read one (stage 8, slice 2, Task 2.1).
+ *
+ * The four values `requestOf` names used to be placed as answers at the
+ * fields they were read for, so a model's reading of a file signed as the
+ * person's word. They are hints now: shown under the question, labelled as a
+ * model's reading, and never a value an empty line accepts. The facts reach
+ * here witnessed (`witnessFacts`): a value no file the Inspector read states
+ * is an unknown, and an unknown gives no hint — nor does the reason a model
+ * wrote for one, which is never shown. The forge handle goes beside the
+ * owner's question, as a handle: it names no group, and is never translated.
+ */
+export function withHints(questions: readonly Question[], facts: ProjectFacts): Question[] {
+  return questions.map((question) => {
+    const field = HINTED.find(([suffix]) => question.path.endsWith(suffix))?.[1]
+    if (field === undefined) return question
+    const hints = [...hintOf(facts, field), ...(field === 'owner' ? hintOf(facts, 'forgeHandle') : [])]
+    return hints.length === 0 ? question : { ...question, hints }
+  })
+}
+
+/**
+ * The person's own values for the four fields of the Component (review,
+ * gap-init-real-repos-2): its catalogue name, its type, its lifecycle — no
+ * common file states one — and its owner, which CODEOWNERS states only as a
+ * forge handle the Inspector is forbidden to translate. Passed as flags, they
+ * are what an answer at the prompt is: the user's word about one field,
+ * vouched for as answered, and held to what that field accepts. Nothing else
+ * is: what the Inspector read is a hint beside the question (`withHints`).
  */
 export interface InitAnswers {
   readonly name?: string
+  readonly type?: string
   readonly lifecycle?: string
   readonly owner?: string
 }
@@ -356,23 +393,57 @@ export interface InitAnswers {
 /** The field each flag answers, and the flag, for the line that names it. */
 const INIT_FLAGS = [
   ['metadata.name', 'name', '--name'],
+  ['spec.type', 'type', '--type'],
   ['spec.lifecycle', 'lifecycle', '--lifecycle'],
   ['spec.owner', 'owner', '--owner'],
 ] as const
 
+/** What a Component's type takes, the schema's bound (`proposedComponentSchema`). */
+const MAX_TYPE_LENGTH = 63
+
 /**
  * The flags, held to the rules an answer typed at the prompt is held to: a
  * lifecycle outside the closed set `questionsOf` offers, an owner that is not
- * an entity reference, a name Backstage would refuse. Refused before a model
- * is chosen — a bad flag is exit 2, and a paid inspection is not how a typo is
- * found. Each refusal quotes the value, cleaned: it is what was typed.
+ * an entity reference, a name Backstage would refuse, a type of more than 63
+ * characters or none, holding a control, format or bidi character — which
+ * `fillAnswers` refuses at the prompt too — or beginning or ending with a
+ * space, which the prompt trims, and is blank when it is nothing else. Refused
+ * before a model is chosen — a bad flag is exit 2, and a paid inspection is
+ * not how a typo is found. Each refusal quotes the value, cleaned: it is what
+ * was typed.
  */
 export function initAnswersOf(values: {
   readonly name?: string | undefined
+  readonly type?: string | undefined
   readonly lifecycle?: string | undefined
   readonly owner?: string | undefined
 }): { answers: InitAnswers } | { refused: string } {
-  const { name, lifecycle, owner } = values
+  const { name, type, lifecycle, owner } = values
+  if (type !== undefined && (type.length === 0 || type.length > MAX_TYPE_LENGTH)) {
+    return {
+      refused: `--type ${inertLine(type)} is not a Component type: 1 to ${String(MAX_TYPE_LENGTH)} characters`,
+    }
+  }
+  // Spelled out, as a configuration flag's is: a type is a value a reviewer
+  // reads in the catalog-info, and a direction override in it reads the
+  // wrong way round.
+  if (type !== undefined && holdsInvisible(type)) {
+    return {
+      refused:
+        `--type ${spelledOut(type)} holds a control, format or bidi character, which a ` +
+        "Component's type never holds; type it again without one",
+    }
+  }
+  // A flag gives no value the prompt could not. Quoted as typed, so the spaces
+  // show — `inertLine` would trim them — which is safe only here: 63
+  // characters at most, and none a control, format or bidi character.
+  if (type !== undefined && type.trim() !== type) {
+    return {
+      refused:
+        `--type "${type}" begins or ends with a space, which a Component's type ` +
+        'never does; type it again without one',
+    }
+  }
   if (lifecycle !== undefined && !(COMPONENT_LIFECYCLES as readonly string[]).includes(lifecycle)) {
     return {
       refused:
@@ -400,6 +471,7 @@ export function initAnswersOf(values: {
   return {
     answers: {
       ...(name !== undefined ? { name } : {}),
+      ...(type !== undefined ? { type } : {}),
       ...(lifecycle !== undefined ? { lifecycle } : {}),
       ...(owner !== undefined ? { owner } : {}),
     },
@@ -411,20 +483,6 @@ export interface ConfigFlags {
   readonly iacRepo?: string
   readonly environments?: readonly string[]
 }
-
-/**
- * A value `holdsInvisible` refused, with every character it refuses spelled as
- * its code point. `inertLine` spells only the controls a terminal obeys and the
- * bidi ones, and removes the rest of C0 and C1: a refusal that printed a U+200B
- * as it is would name a value the person cannot see anything wrong with.
- */
-const spelledOut = (value: string): string =>
-  inertLine(
-    value.replace(
-      /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu,
-      (char) => `\\u${(char.codePointAt(0) ?? 0).toString(16).padStart(4, '0')}`,
-    ),
-  )
 
 /**
  * The configuration flags as typed, refused before a model is chosen — exit 2,
@@ -626,6 +684,7 @@ function withFlags(
         metadata: { ...entity.metadata, ...(flags.name !== undefined ? { name: flags.name } : {}) },
         spec: {
           ...entity.spec,
+          ...(flags.type !== undefined ? { type: flags.type } : {}),
           ...(flags.lifecycle !== undefined ? { lifecycle: flags.lifecycle } : {}),
           ...(flags.owner !== undefined ? { owner: flags.owner } : {}),
         },
@@ -686,6 +745,39 @@ function recognise(
     return same === undefined ? undefined : declared(file, same)
   }
   return { conflictIn: file.path, refs: components.map(refOf) }
+}
+
+/**
+ * The file init would add to already declares a Component, and this one's
+ * name is still a question: it is asked as a conflict is, so the person reads
+ * what that file declares before naming this service. Before stage 8's slice
+ * 2 the name the Inspector read settled the name, and reached the conflict on
+ * its own (`recognise`); it is a hint now (`withHints`), and the question it
+ * left is this one. The draft's name, when it had one, is shown as the
+ * draft's. Undefined when the name is settled, or that file declares none.
+ */
+function unnamedConflict(
+  plan: Plan,
+  draft: Plan,
+  kept: readonly Kept[],
+  target: string,
+): { name: string | undefined; index: number; found: Recognition } | undefined {
+  const file = kept.find((one) => one.path === target)
+  const components = file === undefined ? [] : identitiesOf(file.text).identities.filter(isComponent)
+  if (file === undefined || components.length === 0) return undefined
+  const index = plan.operations.findIndex(
+    (operation) =>
+      operation.op === 'create-entity' &&
+      operation.entity.kind === 'Component' &&
+      typeof operation.entity.metadata.name !== 'string',
+  )
+  if (index === -1) return undefined
+  const drafted = draft.operations[index]
+  const name =
+    drafted?.op === 'create-entity' && typeof drafted.entity.metadata.name === 'string'
+      ? drafted.entity.metadata.name
+      : undefined
+  return { name, index, found: { conflictIn: file.path, refs: components.map(refOf) } }
 }
 
 /** The service's own: a catalog-info at the root, or the file init would add to. */
@@ -751,7 +843,7 @@ const renderDeclared = (
 /**
  * Exit 3, as every question is — and a close this command can keep. `plan`'s
  * "fill them in" names a plan file `init` has none of; here the answers are
- * the three flags, or a terminal, and a field no flag answers says so.
+ * the four flags, or a terminal, and a field no flag answers says so.
  */
 function renderInitQuestions(
   questions: readonly Question[],
@@ -795,7 +887,7 @@ export interface InitOptions {
   readonly project: string
   readonly client: LlmClient
   readonly emit: EventSink
-  /** The person's `--name`, `--lifecycle` and `--owner`, already held to their fields. */
+  /** The person's `--name`, `--type`, `--lifecycle` and `--owner`, already held to their fields. */
   readonly answers?: InitAnswers
   /**
    * How a question reaches a person (§7.5), as `plan` is handed one. Absent
@@ -1025,24 +1117,22 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
     // this repository ... from what its own files state", which is the engine
     // vouching for the model with its own prose.
     //
-    // What the inspection actually READ out of the project stands behind
-    // itself, as answers at the fields it was read for: the same four values
-    // the sentence names — a name, type, lifecycle or owner the Architect
-    // invents is vouched for by nothing and becomes a question. What the
-    // PERSON said, by flag or at the prompt, is laid over it: their word about
-    // a field outranks what a model read in a file.
+    // What the PERSON said, by flag or at the prompt, and nothing else: what
+    // the inspection read out of the project is a model's reading, and it
+    // stands behind nothing (stage 8, slice 2, Task 2.1). A name, type,
+    // lifecycle or owner nobody typed is vouched for by nothing and becomes a
+    // question, the Inspector's reading shown under it (`withHints`).
     const provenance: Provenance = {
       intent: request,
       wordsOf: 'engine',
-      answers: new Map([...inspected(facts, proposals), ...answered]),
+      answers: new Map(answered),
     }
     const draft: Plan = { intent: request, operations: proposals }
     const signed = signPlan(
       draft,
       {
         // Nothing the engine returned, because nothing was read: see the graph
-        // above. Every value is vouched for by the inspection, the person, or
-        // by nothing.
+        // above. Every value is vouched for by the person, or by nothing.
         witnessed: tools.witnessed,
         vocabulary: seeded,
         repoRoot: options.project,
@@ -1062,10 +1152,13 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
       }
     }
 
-    // Recognised before anything is asked about it: a service whose own
-    // catalog-info already declares it has nothing to answer (review,
+    // Recognised before anything else is asked about it: a service whose own
+    // catalog-info already declares it has nothing more to answer (review,
     // gap-init-real-repos-3). Only a name the signature settled is looked up —
-    // a name that is still a question names nothing yet.
+    // a name that is still a question names nothing yet — and since stage 8's
+    // slice 2 only the person settles one, by `--name` or at the prompt: what
+    // the Inspector read is a hint (Task 2.1). Until then the name is asked,
+    // as the conflict below when that file declares a Component.
     const names = settledNames(signed.plan)
     const recognised = names.map(({ name, index }) => ({
       name,
@@ -1085,8 +1178,11 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
     // The file init would add to already declares another Component: in a
     // service's own file, most likely this service under another name or
     // namespace. Appending would declare it twice, so the name is asked —
-    // that name, and nothing is added; another, and it is added beside.
-    const conflict = recognised.find(({ found }) => found !== undefined && 'conflictIn' in found)
+    // that name, and nothing is added; another, and it is added beside. Asked
+    // so too when the name is still a question (`unnamedConflict`).
+    const conflict =
+      recognised.find(({ found }) => found !== undefined && 'conflictIn' in found) ??
+      unnamedConflict(signed.plan, draft, kept, target)
     if (conflict?.found !== undefined && 'conflictIn' in conflict.found) {
       const { conflictIn, refs } = conflict.found
       const path = `operations.${String(conflict.index)}.entity.metadata.name`
@@ -1094,9 +1190,17 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
         `${inertLine(conflictIn, Number.POSITIVE_INFINITY)} already declares ${refs.join(', ')}. ` +
         'If this service is that one, answer its name and nothing is added; if it is another, ' +
         'answer this one’s name and it is added beside'
-      const question: Question = { path, question: reason, proposed: conflict.name }
+      const bare: Question = {
+        path,
+        question: reason,
+        ...(conflict.name === undefined ? {} : { proposed: conflict.name }),
+      }
+      const question = withHints([bare], facts)[0] ?? bare
       if (options.ask === undefined || round >= ASK_LIMITS.maxRounds) {
-        return renderInitQuestions([question])
+        // Nobody to ask: the name as this conflict, and every other question
+        // the run has, so a script learns every flag it needs in one run.
+        const rest = withHints(questionsOf(signed.plan, { draft }), facts).filter((one) => one.path !== path)
+        return renderInitQuestions([question, ...rest])
       }
       const asked: Plan = {
         ...signed.plan,
@@ -1124,7 +1228,7 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
       continue
     }
 
-    const questions = questionsOf(signed.plan, { draft })
+    const questions = withHints(questionsOf(signed.plan, { draft }), facts)
     if (questions.length === 0) {
       const ended = await concluded(signed, request, kept, target, options, { opened, read, config: written, coverage })
       return ended.ending === undefined ? ended.result : reported(ended.result, ended.ending)

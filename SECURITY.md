@@ -382,7 +382,9 @@ open.
   row pins it). An empty dependency list is kept once any file was read: which file states
   an absence is a format's question, and the witness reads no format (*keeps an empty list
   once a file was read: a pinned limit*). A witnessed value is "some file says so",
-  never "true", and on `init` it still signs as answered until stage 8 makes the facts hints.
+  never "true": on `init`, a value the Inspector reads is a hint beside a question — shown,
+  labelled as a model's reading, held to its field's grammar, and never a value; an empty
+  line declines (stage 8, slice 2, Task 2.1; `tests/unit/init-hints.test.ts`).
 
 ## Not guaranteed, by design
 

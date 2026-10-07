@@ -434,6 +434,18 @@ Each pull request adds its line here.
   service no file it read holds, fails the suite
   ([#138](https://github.com/pcaboor/idp-agent/pull/138)).
 
+- `idpa init` no longer takes a model's reading of the service as the person's word: the
+  name, type, lifecycle and owner the Inspector reads are shown beside the questions, labelled
+  as a model's reading and never selected — an empty line still declines — and only what a
+  person types, by flag or at the prompt, is signed as answered. `--type` answers the
+  Component's type as `--lifecycle` answers its lifecycle, refused with no character, more
+  than 63, a space at either end, or a control, format or bidi character — which the prompt now
+  refuses in a type typed there too, on both roads, and asks again, spelled out. A service its own catalog-info already
+  declares is recognised once its name is typed or answered: a re-run with no `--name` and
+  nobody to ask ends on the name, asked as the conflict with what the file declares and beside
+  the other open questions, exit 3, where it was "already declared", exit 0
+  ([#149](https://github.com/pcaboor/idp-agent/pull/149)).
+
 ### Fixed
 
 - The Inspector's report is held to the files it read, on both roads: a value it reports

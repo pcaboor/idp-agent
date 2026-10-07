@@ -338,23 +338,32 @@ interactive path runs with no terminal. The default is decided by `askOf`: a pro
 nothing at all otherwise, because a script has nobody to ask and blocking on a read is the
 worst thing a CLI in a pipeline can do — the questions print and the run exits 3, as it
 always has. `undefined` is a decline, and so is an empty line. `init` asks through the same
-seam and the same `fillAnswers`, and takes the three answers no file of a service states
-reliably as flags too — `--name`, `--lifecycle`, `--owner` — held at parsing to what an answer
-at the prompt is held to (`initAnswersOf`, exit 2) and vouched for as answered; with nobody to
-ask, its questions name those flags rather than a plan file it has none of.
+seam and the same `fillAnswers`, and takes the Component's four answers as flags too —
+`--name`, `--type`, `--lifecycle`, `--owner` — held at parsing to what an answer at the prompt
+is held to (`initAnswersOf`, exit 2; a type to 1–63 characters and no control, format or bidi
+character) and vouched for as answered; with nobody to ask, its questions name those flags
+rather than a plan file it has none of. What the Inspector read is never an answer: `withHints`
+puts each witnessed value beside the question at its field, held to the field's grammar
+(`hintGrammar`), and an empty line still declines.
 
 Printed and prompted, a question is the same lines (`questionLines`): the path, the reason
 the plan carries, and — when the engine knows them — what the draft had put there and what
 the field takes: `the draft says readwrite · accepted: read, readwrite` for the level of a
 grant whose type states one, `accepted: experimental, production, deprecated` for a
 Component's lifecycle, or `in use: dev, prod` for an environment, whose set is shown
-and never closed. They are the `Question`'s optional `proposed`, `accepted` and `inUse`, so
-`--json` carries them too; the `{unknown}` in the plan, which the Reviewer and the repair
+and never closed. A hint goes between the draft's value and the set, labelled by its source:
+`the draft says service · the Inspector, a model, read: service`, or for a CODEOWNERS entry
+beside the owner's question, `the Inspector, a model, read the forge handle @acme/tiger,
+which names no group`. They are the `Question`'s optional `proposed`, `hints`, `accepted` and
+`inUse`, so `--json` carries them too; the `{unknown}` in the plan, which the Reviewer and the repair
 loop read, is not reworded. An answer outside an `accepted` set is refused at the prompt,
 before any gate — it used to reach the schema at gate [1] and spend a redraft on a word only
 the user could fix — and the same question is put again with `not accepted: <value>` under
 it. A decline is still a decline; a third value outside the set ends the run on it, exit 1
-(`ASK_LIMITS.triesPerQuestion`).
+(`ASK_LIMITS.triesPerQuestion`). A Component's type holding a control, format or bidi
+character is put back the same way, the character spelled out (`spelledOut`) — what
+`init --type` refuses: the type is the one free-text field a question is at, and a direction
+override in it reads the wrong way round in the diff.
 
 Both roads then run **all the gates again** on the filled plan, bounded by
 `ASK_LIMITS.maxRounds`. An answer is not exempted from any gate: it joins what the user

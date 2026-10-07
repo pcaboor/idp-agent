@@ -21,6 +21,35 @@ import type { Provenance } from './provenance.js'
  * would be a second chance to disagree about what a leaf is.
  */
 
+/**
+ * Where a hint comes from: `inspector`, a model's reading of the service's
+ * files (stage 8, slice 2, Task 2.1); `manifest`, a value a manifest states,
+ * verified, from Task 2.6.
+ */
+export const HINT_SOURCES = ['inspector', 'manifest'] as const
+export type HintSource = (typeof HINT_SOURCES)[number]
+
+/**
+ * A value some reading suggests for a question's field: shown beside the
+ * question, labelled by where it came from, and never a default — an empty
+ * line still declines (`fillAnswers`), and nothing here is ever an answer.
+ * Held to its field's grammar by whoever attaches it: a value outside it
+ * gives no hint at all.
+ */
+export type Hint =
+  | {
+      readonly source: 'inspector'
+      readonly value: string
+      /** `forge-handle`: the Inspector read a CODEOWNERS handle, which names no group. */
+      readonly as?: 'forge-handle'
+    }
+  | {
+      readonly source: 'manifest'
+      readonly value: string
+      /** The file and line that state it, `<path>:<line>`. */
+      readonly at: string
+    }
+
 export interface Question {
   /** The dotted path, the same form a policy violation and a refusal carry. */
   readonly path: string
@@ -48,6 +77,12 @@ export interface Question {
    * first `qa` is a legitimate answer (§4.1).
    */
   readonly inUse?: readonly string[]
+  /**
+   * What a reading of the service suggests for this field, each labelled by
+   * its source (`Hint`). Shown, never selected: `questionsOf` sets none, and
+   * the caller that read something attaches it (`cli/commands/init.ts`).
+   */
+  readonly hints?: readonly Hint[]
   /**
    * What the person just typed, when it was outside `accepted` and the same
    * question is put to them again. Set by the prompt loop, never by

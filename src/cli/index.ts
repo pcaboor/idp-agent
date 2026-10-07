@@ -220,9 +220,9 @@ export type Command =
   | { name: 'init-platform'; directory: string; owner: string }
   /**
    * Absent `repo` means the repository the user is standing in (§7.3).
-   * `answers` are the person's own values for the three fields no file of a
-   * service states reliably — its catalogue name, lifecycle and owner —
-   * already held to what each field accepts.
+   * `answers` are the person's own values for the four fields of its
+   * Component — its catalogue name, type, lifecycle and owner — already held
+   * to what each field accepts.
    */
   | {
       name: 'init'
@@ -276,7 +276,7 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json] [--submit [--local]]
   idp-agent plan --from <plan.json> [--repo <directory>] [--json] [--submit [--local]]
   idp-agent protection [--repo <directory>]
-  idp-agent init [--repo <directory>] [--name <name>] [--lifecycle experimental|production|deprecated] [--owner group:<namespace>/<name>] [--submit [--local]] [--iac-repo <locator>] [--environment <name>]...
+  idp-agent init [--repo <directory>] [--name <name>] [--type <type>] [--lifecycle experimental|production|deprecated] [--owner group:<namespace>/<name>] [--submit [--local]] [--iac-repo <locator>] [--environment <name>]...
   idp-agent init platform <directory> --owner @org/team
   idp-agent version
 
@@ -299,8 +299,10 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   model; it writes nothing.
 
   init previews the catalog-info.yaml of the service it is run in, or adds to
-  the one the repository keeps. --name, --lifecycle and --owner answer what
-  its files do not state; at a terminal it asks instead. --iac-repo and
+  the one the repository keeps. --name, --type, --lifecycle and --owner answer
+  its questions; at a terminal it asks instead, what a model read in the
+  service's files shown beside each question and never taken as an answer,
+  and an empty line declines. --iac-repo and
   --environment, repeated, state the service's .idp-agent.yml, which is
   previewed beside it — from what was typed or answered, never from the
   inspection, and never over a committed one that says otherwise. With
@@ -397,6 +399,7 @@ export function parseArguments(argv: string[]): Command {
           options: {
             repo: { type: 'string' },
             name: { type: 'string' },
+            type: { type: 'string' },
             lifecycle: { type: 'string' },
             owner: { type: 'string' },
             submit: { type: 'boolean' },

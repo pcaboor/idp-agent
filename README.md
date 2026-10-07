@@ -15,7 +15,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 5446, no API key" src="https://img.shields.io/badge/tests-5446%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 5466, no API key" src="https://img.shields.io/badge/tests-5466%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -474,7 +474,7 @@ idp-agent plan "<intent>" [--repo <dir>] [--json]  # needs IDP_PROVIDER, IDP_MOD
     [--submit [--local]]                           # a branch, after all five gates; pushed and a pull request on github.com
 idp-agent protection [--repo <dir>]                # through your gh, reads only; no model
 idp-agent init [--repo <dir>]                      # needs IDP_PROVIDER, IDP_MODEL and its key
-    [--name <name>]                                # what its files do not state; asked at a terminal
+    [--name <name>] [--type <type>]                # the Component's fields; asked at a terminal
     [--lifecycle experimental|production|deprecated]
     [--owner group:<namespace>/<name>]
     [--iac-repo <locator>] [--environment <name>]… # its .idp-agent.yml, from what you type
@@ -482,6 +482,13 @@ idp-agent init [--repo <dir>]                      # needs IDP_PROVIDER, IDP_MOD
 idp-agent version                                  # or --version, -v
 idp-agent <command> --help                         # its usage; -h or --help alone, every one
 ```
+
+`init` asks the Component's name, type, lifecycle and owner unless you type them — `--name`,
+`--type`, `--lifecycle`, `--owner` — or answer at a terminal. What the Inspector, a model,
+read in the service's files is shown beside each question, labelled as its reading
+(`the Inspector, a model, read: production`; a CODEOWNERS entry as `the forge handle
+@acme/tiger, which names no group`), and never taken as an answer: an empty line declines.
+Without a terminal, the run prints the questions and exits 3.
 
 Without `--submit`, `init` writes nothing: it prints a diff of the service's repository and
 ends by saying how to apply it. Save a run to a file, read it, and apply that file in the
