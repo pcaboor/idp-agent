@@ -72,8 +72,9 @@ here, one pull request each, each naming the check run together at the end.
    value the Inspector reports reaches the Architect and `init`'s signature only where a file
    it read before its report states it, by the field's rule, and is otherwise an unknown with
    the engine's reason, said on stderr and in the trace. It holds the values a report states;
-   the reasons a model writes for its own unknowns wait for stage 8, slice 2, item 2 (owner's
-   decision, 2026-10-03). **Done.**
+   the reasons a model writes for its own unknowns waited for stage 8 (owner's decision,
+   2026-10-03), and slice 2's task 2.2 closes that question, the witness plan's fifth: the
+   Architect reads the engine's fixed reason for each unknown field. **Done.**
 2. **Stage 8, discovery** ([the design note](stage-8-brief.md)), with `backstage-http`'s
    slices 4 and 5. From any service repository, generate its catalog-info and discover the
    dependencies it already has, with evidence; two people discovering the same service see what
@@ -91,6 +92,11 @@ here, one pull request each, each naming the check run together at the end.
    are hints beside the questions and sign as nothing, which closes the review's *The
    Inspector's facts vouch for themselves, owner included* on its own, as the note says item 1
    does (2.6 adds the fifth signature class, and says so there); `--type` answers the type.
+   Its second, 2.2, is built ([#150](https://github.com/pcaboor/idp-agent/pull/150)),
+   the five plan-mode tapes with an Inspector re-recorded by the owner on 2026-10-08: the
+   Inspector reports no dependency and the Architect is told of none, and an unknown fact
+   reaches the Architect as the engine's fixed sentence for its field, never as the reason a
+   model wrote.
 3. **Removing and changing an access, and company rules** (2026-10-01). Revoking a right,
    changing its level or decommissioning a service, always as a pull request a person merges —
    today the tool only appends, and least privilege needs the other half; and gates a company
@@ -581,6 +587,20 @@ The owner's decisions, dated, each with where it is recorded.
   on both roads: a Component's type typed at the prompt holding a control, format or bidi
   character is asked again, spelled out, as `--type` refuses one (`fillAnswers`), since the
   prompt is now how that free-text field is mostly answered.
+
+**2026-10-08**
+
+- Slice 2's task 2.2 built ([#150](https://github.com/pcaboor/idp-agent/pull/150)):
+  `dependencies` leaves `ProjectFacts` — the report tool's strict schema refuses a report
+  listing them and hands it back — and `formatFacts` prints every unknown as
+  `unknown (the inspection did not establish this service's <label>)` (`FACT_UNKNOWN`),
+  which closes the witness plan's question 5. The five plan-mode tapes with an Inspector are
+  stale by design until the owner records them again (the plan's Step 8). One departure from
+  the plan's file list: no support fixture built a `ProjectFacts`; the scripted reports that
+  did are in fourteen test files, each losing its `dependencies` line, and
+  `tests/invariants/discovery-secrets.test.ts`, outside the list, loses its scripted
+  `dependencies: []` with the owner's go-ahead (a report the strict schema now refuses, which
+  had its run end with every fact unknown); no assertion changes.
 
 ## Known debts and open items
 

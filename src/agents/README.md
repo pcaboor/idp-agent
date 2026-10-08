@@ -194,19 +194,24 @@ Plain data, handed in. Never a graph, never a provider, never a path.
   is handed `NOT_INSPECTED` instead of `ProjectFacts`, and its opening message says that
   nothing was inspected rather than listing facts nobody established.
 
-  Its report is witnessed as the Analyst's answer is (`tools/project-witness.ts`). A value
-  it reports is kept only where a file `read_file` returned **before** the turn of the
-  report states it, by the field's rule: a whole token (`runtime`, `forgeHandle`, a
-  dependency's name), a line holding one of the field's keys and the value (`name`, `type`,
-  `lifecycle`), the reference in full (`owner`), and never for a dependency's type. A path
-  `list_files` gave, a refused read, the model's own arguments and the opening's list of
-  exclusions are no witness. A value no file states becomes an unknown with the engine's
-  reason, never quoting it, and an `unwitnessed` event says the value, for stderr and the
-  trace; one unstated dependency name makes the whole list unknown. Post hoc and never a
-  retry: no model turn is added. What it does not give: a witnessed value is "some file
-  says so", never "true", and the reason a model writes for a field it marks unknown is not
-  a value and passes as written, until stage 8. An inspection that ends with no report hands
-  on the engine's reason in every field, and the model's words only on `refused`.
+  It reports six fields — `name`, `type`, `lifecycle`, `runtime`, `owner`, `forgeHandle` —
+  each a value or `{ unknown }`, and **no dependency**: what a service installs is stage 8's
+  discovery's, a finding with its file and line read by a parser, which reaches no model.
+  The report tool's schema is strict, so a report still listing `dependencies` is refused
+  and handed back. Its report is witnessed as the Analyst's answer is
+  (`tools/project-witness.ts`). A value it reports is kept only where a file `read_file`
+  returned **before** the turn of the report states it, by the field's rule: a whole token
+  (`runtime`, `forgeHandle`), a line holding one of the field's keys and the value (`name`,
+  `type`, `lifecycle`), the reference in full (`owner`). A path `list_files` gave, a refused
+  read, the model's own arguments and the opening's list of exclusions are no witness. A
+  value no file states becomes an unknown with the engine's reason, never quoting it, and an
+  `unwitnessed` event says the value, for stderr and the trace. Post hoc and never a retry:
+  no model turn is added. What it does not give: a witnessed value is "some file says so",
+  never "true". The reason a model writes for a field it marks unknown is not a value and is
+  held to nothing, so no other model reads it: the Architect's opening prints every unknown
+  with the engine's fixed reason for that field (`FACT_UNKNOWN`, `architect.ts`). An
+  inspection that ends with no report hands on the engine's reason in every field, and the
+  model's words only on `refused`, for a person.
 - The **Reviewer** gets the `Plan`, the **original request**, and what the **engine**
   established about the plan (`ReviewInput`): each owner `deriveOwners` computed and the
   entity it follows from, what the repository declares of each grant an update would extend

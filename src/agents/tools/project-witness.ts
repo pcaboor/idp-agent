@@ -18,8 +18,9 @@ import type { ProjectFacts, ReadFile } from './project-tools.js'
  * file is right, or that it is about this field — the keyed rule reads a line,
  * not a format. A witnessed fact is "some file says so", never "true"; the
  * diff and the merge are where a person judges it. Nor does it hold the reason
- * a model writes for a field it marks unknown: that is not a value, and it
- * reaches the Architect as written until stage 8 makes it the engine's.
+ * a model writes for a field it marks unknown: that is not a value, and no
+ * other model reads it — the Architect is sent the engine's fixed reason for
+ * that field (`FACT_UNKNOWN`, `architect.ts`), whatever the report said.
  *
  * Every test is `echoes`, the signature's own: NFKC, case-folded, invisible
  * characters removed, a change of script ending a token. Since a kept value is
@@ -37,35 +38,28 @@ import type { ProjectFacts, ReadFile } from './project-tools.js'
  *              each as a whole token
  *   reference  some file holds the reference in full, or as `kind:name` when
  *              its namespace is `default`
- *   never      no file can state it
  */
-export type WitnessRule = 'token' | 'keyed' | 'reference' | 'never'
+export type WitnessRule = 'token' | 'keyed' | 'reference'
 
-type Scalar = Exclude<keyof ProjectFacts, 'dependencies'>
+type Field = keyof ProjectFacts
 
 /**
- * One rule per field the report carries, and one per field of a dependency: a
- * field added to the schema without one is a compile error.
+ * One rule per field the report carries: a field added to the schema without
+ * one is a compile error.
  *
  * `name`, `type` and `lifecycle` are keyed because their values are ordinary
  * words — "service", "production" — that a README or `NODE_ENV=production`
  * holds without saying anything about a catalogue entry. `owner` is a
  * reference because a bare `owner: platform` is turned into one only by
- * Backstage's defaults, and that is an inference. A dependency's `type` is
- * never stated: `pg` in a manifest says a library is installed, not what it is
- * reached for (`project-tools.ts`), and a line reading `pg: database` is
- * someone's classification.
+ * Backstage's defaults, and that is an inference.
  */
-export const WITNESS_RULES: { readonly [K in Scalar]: WitnessRule } & {
-  readonly dependencies: { readonly name: WitnessRule; readonly type: WitnessRule }
-} = {
+export const WITNESS_RULES: { readonly [K in Field]: WitnessRule } = {
   name: 'keyed',
   type: 'keyed',
   lifecycle: 'keyed',
   runtime: 'token',
   owner: 'reference',
   forgeHandle: 'token',
-  dependencies: { name: 'token', type: 'never' },
 }
 
 /**
@@ -90,7 +84,7 @@ export const WITNESS_KEYS: {
   lifecycle: ['lifecycle'],
 }
 
-/** `field` as a path into the report: `name`, `dependencies`, `dependencies.1.name`, `dependencies.0.type`. */
+/** `field` is the field of the report the value was withdrawn from: `name`, `forgeHandle`. */
 export interface Unwitnessed {
   readonly field: string
   readonly value: string
@@ -98,7 +92,7 @@ export interface Unwitnessed {
 }
 
 /** The words a reason names a field by: never the value, which is the model's. */
-const LABELS: { readonly [K in Scalar]: string } = {
+const LABELS: { readonly [K in Field]: string } = {
   name: 'name',
   type: 'type',
   lifecycle: 'lifecycle',
@@ -113,27 +107,8 @@ const LABELS: { readonly [K in Scalar]: string } = {
  * withdraws: quoting it would put the invention back in front of the model
  * that is drafting. The value goes to stderr and the trace, for a person.
  */
-export const unstatedReason = (field: Scalar): string =>
+export const unstatedReason = (field: Field): string =>
   `no file the Inspector read states the ${LABELS[field]} it reported`
-
-export const unnamedReason = (unstated: number, reported: number): string =>
-  `no file the Inspector read names ${String(unstated)} of the ${String(reported)} dependencies it reported`
-
-/**
- * An empty list names nothing to witness, and the Architect is sent it as
- * `(none declared)`: a claim of absence. With no file read, nothing establishes
- * it. Once one was, the list is kept, a pinned limit: which file states an
- * absence is a format's question, and the witness reads no format.
- */
-export const NOTHING_READ =
-  'the Inspector read no file, so nothing establishes that this repository declares no dependencies'
-
-/** How an empty list is said on stderr and in the trace: as the Architect would have read it. */
-const NONE_DECLARED = '(none declared)'
-
-export const DEPENDENCY_TYPE_REASON =
-  "a dependency's type is never read off a file: a package in a manifest says what is " +
-  'installed, not what it is reached for'
 
 /**
  * Every field's reason when the inspection ended with no report. The model's
@@ -198,8 +173,6 @@ function states(
       const forms = spellings(value)
       return read.some((file) => forms.some((form) => echoes(file.text, form)))
     }
-    case 'never':
-      return false
     default: {
       const exhaustive: never = rule
       return exhaustive
@@ -207,21 +180,15 @@ function states(
   }
 }
 
-const keysOf = (field: Scalar): readonly string[] =>
+const keysOf = (field: Field): readonly string[] =>
   field === 'name' || field === 'type' || field === 'lifecycle' ? WITNESS_KEYS[field] : []
 
-const SCALARS: readonly Scalar[] = ['name', 'type', 'lifecycle', 'runtime', 'owner', 'forgeHandle']
+const FIELDS: readonly Field[] = ['name', 'type', 'lifecycle', 'runtime', 'owner', 'forgeHandle']
 
 /**
  * The report, with every value no file in `read` states withdrawn, and what was
- * withdrawn. A value the model already marked unknown is passed on as written.
- *
- * One unstated dependency name makes the whole list unknown (owner's decision,
- * 2026-10-03): a list that has lost an entry reads as complete, and the
- * Architect would fill the gap. Said once per unstated name and once for the
- * list itself, naming every name it held, so a person sees that a stated one
- * was taken off the Architect's facts too. An empty list is withdrawn when no
- * file was read (`NOTHING_READ`).
+ * withdrawn. A value the model already marked unknown is passed on as written,
+ * and its reason reaches no model (`formatFacts`, `architect.ts`).
  */
 export function witnessFacts(
   facts: ProjectFacts,
@@ -230,49 +197,13 @@ export function witnessFacts(
   const unwitnessed: Unwitnessed[] = []
   const held: ProjectFacts = { ...facts }
 
-  for (const field of SCALARS) {
+  for (const field of FIELDS) {
     const value = facts[field]
     if (typeof value !== 'string') continue
     if (states(WITNESS_RULES[field], keysOf(field), value, read)) continue
     const reason = unstatedReason(field)
     held[field] = { unknown: reason }
     unwitnessed.push({ field, value, reason })
-  }
-
-  const dependencies = facts.dependencies
-  if (Array.isArray(dependencies) && dependencies.length === 0 && read.length === 0) {
-    held.dependencies = { unknown: NOTHING_READ }
-    unwitnessed.push({ field: 'dependencies', value: NONE_DECLARED, reason: NOTHING_READ })
-  } else if (Array.isArray(dependencies)) {
-    const unstated = dependencies.flatMap((dependency, index) =>
-      states(WITNESS_RULES.dependencies.name, [], dependency.name, read)
-        ? []
-        : [{ index, name: dependency.name }],
-    )
-    if (unstated.length > 0) {
-      const reason = unnamedReason(unstated.length, dependencies.length)
-      held.dependencies = { unknown: reason }
-      for (const { index, name } of unstated) {
-        unwitnessed.push({ field: `dependencies.${String(index)}.name`, value: name, reason })
-      }
-      unwitnessed.push({
-        field: 'dependencies',
-        value: dependencies.map((dependency) => dependency.name).join(', '),
-        reason,
-      })
-    } else {
-      held.dependencies = dependencies.map((dependency, index) => {
-        const type = dependency.type
-        if (typeof type !== 'string') return dependency
-        if (states(WITNESS_RULES.dependencies.type, [], type, read)) return dependency
-        unwitnessed.push({
-          field: `dependencies.${String(index)}.type`,
-          value: type,
-          reason: DEPENDENCY_TYPE_REASON,
-        })
-        return { ...dependency, type: { unknown: DEPENDENCY_TYPE_REASON } }
-      })
-    }
   }
 
   return { facts: unwitnessed.length === 0 ? facts : held, unwitnessed }

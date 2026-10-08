@@ -95,8 +95,9 @@ function opening(snapshot: ProjectSnapshot): string {
  * 5.4 defines. The repository root is deliberately not consulted — a checkout at
  * `~/work/billing-api` makes a very convincing name that no file in it states.
  * Nor is what the model said instead of reporting: "billing-api is a fastify
- * service" as the reason of seven unknowns reaches the Architect as facts no
- * file was read for. Its words go on the `refused` event, for a person.
+ * service" as the reason of six unknowns would be facts no file was read for.
+ * Its words go on the `refused` event, for a person; the Architect reads none
+ * of these reasons either, only the engine's for each field (`FACT_UNKNOWN`).
  */
 const undetermined = (reason: string): ProjectFacts => ({
   name: { unknown: reason },
@@ -105,7 +106,6 @@ const undetermined = (reason: string): ProjectFacts => ({
   runtime: { unknown: reason },
   owner: { unknown: reason },
   forgeHandle: { unknown: reason },
-  dependencies: { unknown: reason },
 })
 
 export async function inspect(
@@ -292,7 +292,7 @@ async function inspectRepository(
  * `plan.ts` says in as many words why a rejection that cannot name the field is
  * a rejection nobody can act on. The repair here is the same one, a layer up and
  * inside a single turn: "invalid input" sends the model guessing at which of
- * seven fields it got wrong.
+ * six fields it got wrong.
  */
 function issueOf(error: z.ZodError): string {
   const issue = error.issues[0]

@@ -79,7 +79,6 @@ const FACTS = {
   runtime: { unknown: 'no file states it' },
   owner: 'group:default/tiger',
   forgeHandle: '@acme/tiger',
-  dependencies: [],
 }
 
 const SPEC = { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' }
@@ -249,7 +248,6 @@ const WITNESSED: ProjectFacts = {
   runtime: { unknown: 'no file states it' },
   owner: 'group:default/tiger',
   forgeHandle: '@acme/tiger',
-  dependencies: [],
 }
 
 describe('a hint is held to its field’s grammar', () => {

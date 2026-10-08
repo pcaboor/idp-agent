@@ -253,13 +253,14 @@ for into a question rather than a value.
 The Inspector's report is held to what was read in the same spirit, on both roads: a value
 the Inspector reports reaches the Architect and `init`'s signature only where a file it read
 before its report states it, by the field's rule — a whole token, a keyed line, a reference
-in full, and a dependency's type never. A value that folding would change in anything but its
-case — a soft hyphen, a full-width letter — is stated by no file, since the diff would write
-bytes none holds, and an empty dependency list is withdrawn when no file was read. Otherwise it is an unknown with the engine's reason,
-said on stderr and in the trace, never quoted to the model, and asked where a proposal
-carries it. A witnessed value is "some file says so", not "true". The reason a model writes
-for a field it marks unknown is not checked: it reaches the Architect as written, bounded at
-8,192 characters, until stage 8 makes it the engine's.
+in full. A value that folding would change in anything but its case — a soft hyphen, a
+full-width letter — is stated by no file, since the diff would write bytes none holds.
+Otherwise it is an unknown with the engine's reason, said on stderr and in the trace, never
+quoted to the model, and asked where a proposal carries it. A witnessed value is "some file
+says so", not "true". The Inspector reports no dependency: what a service installs is the
+discovery's, with its file and line, and reaches no model. The reason a model writes for a
+field it marks unknown reaches no other model; the Architect reads the engine's fixed reason
+for that field (`FACT_UNKNOWN`, stage 8, slice 2).
 
 One source of vouching is the proposal itself. A grant over a resource the catalogue does
 not hold is two operations — declare the resource, then the right over it — and the second

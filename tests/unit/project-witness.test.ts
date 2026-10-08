@@ -12,10 +12,6 @@ describe('WITNESS_RULES', () => {
     // The type already makes a field without a rule a compile error; this is
     // the same check at run time, against the schema the model is handed.
     expect(Object.keys(WITNESS_RULES).sort()).toEqual(Object.keys(projectFactsSchema.shape).sort())
-    const dependency = projectFactsSchema.shape.dependencies.options[0].element
-    expect(Object.keys(WITNESS_RULES.dependencies).sort()).toEqual(
-      Object.keys(dependency.shape).sort(),
-    )
     const keyed = Object.entries(WITNESS_RULES)
       .filter(([, rule]) => rule === 'keyed')
       .map(([field]) => field)

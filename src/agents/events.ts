@@ -163,9 +163,8 @@ export type AgentEvent =
    * The engine withdrew a value the Inspector reported, because no file it
    * read before the report states it (`project-witness.ts`). The facts carry
    * an unknown with `reason`, the engine's and never quoting the value; the
-   * value is here, for a person on stderr and in the trace. `field` is a path
-   * into the report — `name`, `dependencies.1.name`, or `dependencies` for a
-   * list withdrawn whole, whose value is every name it held.
+   * value is here, for a person on stderr and in the trace. `field` is the
+   * field of the report it was withdrawn from: `name`, `forgeHandle`.
    */
   | { type: 'unwitnessed'; agent: 'inspector'; field: string; value: string; reason: string }
   | { type: 'ask'; question: Question }

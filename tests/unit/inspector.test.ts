@@ -1,9 +1,15 @@
+import { zodSchema } from 'ai'
 import { describe, expect, it } from 'vitest'
+import { draftPlan } from '../../src/agents/architect.js'
 import { INSPECTOR_LIMITS, inspect } from '../../src/agents/inspector.js'
-import { buildProjectTools } from '../../src/agents/tools/project-tools.js'
+import { buildTools } from '../../src/agents/tools/graph-tools.js'
+import { REPORT_TOOL, buildProjectTools } from '../../src/agents/tools/project-tools.js'
+import { PROPOSE_TOOL } from '../../src/agents/tools/propose-tool.js'
 import type { AgentEvent } from '../../src/agents/events.js'
 import { renderEvent } from '../../src/cli/index.js'
+import { EntityGraph } from '../../src/context/graph/entity-graph.js'
 import type { ProjectSnapshot } from '../../src/context/project-fs/snapshot.js'
+import { objectRooted } from '../../src/llm/tool-schema.js'
 import type {
   GenerateRequest,
   GenerateResult,
@@ -74,7 +80,6 @@ const report = (over: Record<string, unknown> = {}): Record<string, unknown> => 
   runtime: 'node',
   owner: { unknown: 'no entity reference is stated in this repository' },
   forgeHandle: { unknown: 'this repository has no CODEOWNERS' },
-  dependencies: [],
   ...over,
 })
 
@@ -99,7 +104,6 @@ const readingAll: GenerateResult = {
 }
 
 const FACT_FIELDS = [
-  'dependencies',
   'forgeHandle',
   'lifecycle',
   'name',
@@ -127,6 +131,41 @@ describe('projectFactsSchema', () => {
     ])
     const { emit } = collect()
     expect((await inspect(client, STATED, emit)).name).toBe('billing-api')
+  })
+
+  it('refuses a report that lists dependencies, and hands it back', async () => {
+    // What a service installs is the discovery's, with its file and line, and
+    // reaches no model. A report still listing them is refused by the strict
+    // schema and handed back, never accepted with the list set aside.
+    const reported = report()
+    const client = capturing([
+      readingAll,
+      turnCalling('report_facts', { ...reported, dependencies: [{ name: 'pg', type: 'database' }] }),
+      turnCalling('report_facts', reported),
+    ])
+    const { events, emit } = collect()
+    const facts = await inspect(client, STATED, emit)
+    expect(client.seen).toHaveLength(3)
+    expect(events.filter((event) => event.type === 'retry')).toEqual([
+      { type: 'retry', agent: 'inspector', reason: expect.stringContaining('dependencies') },
+    ])
+    const handedBack = client.seen[2]?.transcript.find(
+      (entry) => entry.role === 'tool' && entry.name === REPORT_TOOL,
+    )
+    expect(JSON.stringify(handedBack)).toContain('dependencies')
+    expect(Object.keys(facts).sort()).toEqual(FACT_FIELDS)
+    expect(facts.name).toBe('billing-api')
+  })
+
+  it('advertises a report tool with no dependencies', async () => {
+    // As a provider is shown it (llm/tool-schema.ts): a field it is shown is a
+    // field it fills, and the digest of every Inspector turn covers it.
+    const spec = buildProjectTools(EMPTY).specs.find((each) => each.name === REPORT_TOOL)
+    if (spec === undefined) throw new Error('no report tool')
+    const advertised = objectRooted(await zodSchema(spec.parameters).jsonSchema, spec.name)
+    expect(Object.keys(advertised.properties ?? {}).sort()).toEqual(FACT_FIELDS)
+    expect(JSON.stringify(advertised)).not.toContain('dependencies')
+    expect(JSON.stringify(advertised)).not.toContain('dependency')
   })
 })
 
@@ -515,7 +554,7 @@ describe('what a file it read states', () => {
     finishReason: 'tool-calls',
   })
 
-  /** What the four unchanged tapes report: the name and `pg`, everything else unknown. */
+  /** What the tapes report: the name, everything else unknown. */
   const HONEST = {
     name: 'billing-api',
     type: { unknown: 'package.json gives the package name but does not state the application type.' },
@@ -523,7 +562,6 @@ describe('what a file it read states', () => {
     runtime: { unknown: 'no file states a runtime' },
     owner: { unknown: 'no entity reference is stated in this repository' },
     forgeHandle: { unknown: 'this repository has no CODEOWNERS' },
-    dependencies: [{ name: 'pg', type: { unknown: 'a package does not say what it is reached for' } }],
   }
 
   /** The 2026-10-02 report, reconstructed: everything it stated, no file states. */
@@ -533,14 +571,9 @@ describe('what a file it read states', () => {
     type: 'service',
     lifecycle: 'production',
     runtime: 'Node.js',
-    dependencies: [
-      { name: 'postgresql', type: 'database' },
-      { name: 'redis', type: 'cache' },
-    ],
   }
 
   const SCALAR = (field: string): string => `no file the Inspector read states the ${field} it reported`
-  const LIST = 'no file the Inspector read names 2 of the 2 dependencies it reported'
 
   const unwitnessed = (events: readonly AgentEvent[]): AgentEvent[] =>
     events.filter((event) => event.type === 'unwitnessed')
@@ -567,9 +600,8 @@ describe('what a file it read states', () => {
       runtime: { unknown: SCALAR('runtime') },
       owner: HONEST.owner,
       forgeHandle: HONEST.forgeHandle,
-      dependencies: { unknown: LIST },
     })
-    for (const invented of ['gorilla', 'thronecode', 'Node.js', 'redis', 'postgresql']) {
+    for (const invented of ['gorilla', 'thronecode', 'Node.js']) {
       expect(JSON.stringify(facts)).not.toContain(invented)
     }
     expect(unwitnessed(events)).toEqual([
@@ -577,77 +609,18 @@ describe('what a file it read states', () => {
       { type: 'unwitnessed', agent: 'inspector', field: 'type', value: 'service', reason: SCALAR('type') },
       { type: 'unwitnessed', agent: 'inspector', field: 'lifecycle', value: 'production', reason: SCALAR('lifecycle') },
       { type: 'unwitnessed', agent: 'inspector', field: 'runtime', value: 'Node.js', reason: SCALAR('runtime') },
-      { type: 'unwitnessed', agent: 'inspector', field: 'dependencies.0.name', value: 'postgresql', reason: LIST },
-      { type: 'unwitnessed', agent: 'inspector', field: 'dependencies.1.name', value: 'redis', reason: LIST },
-      { type: 'unwitnessed', agent: 'inspector', field: 'dependencies', value: 'postgresql, redis', reason: LIST },
     ])
   })
 
   it('keeps what package.json states, and changes nothing else', async () => {
-    // The four tapes that stay as they are: their report is handed on in the
-    // bytes it came in, and nothing is said about it.
+    // An honest report is handed on in the bytes it came in, and nothing is
+    // said about it.
     const client = scripted([
       turnCalling('read_file', { path: 'package.json' }),
       turnCalling('report_facts', HONEST),
     ])
     const { events, emit } = collect()
     expect(await inspect(client, BILLING, emit)).toEqual(HONEST)
-    expect(unwitnessed(events)).toEqual([])
-  })
-
-  it('makes the whole list unknown when one name in it is unstated, and says every name it held', async () => {
-    // The owner's decision of 2026-10-03: a list that has lost an entry reads
-    // as complete, and the Architect would fill the gap. So `pg`, which the
-    // manifest states, is taken off the Architect's facts with `redis`, and the
-    // list's own event names it, so a person sees that it was. The types are
-    // not said a second time.
-    const reason = 'no file the Inspector read names 1 of the 2 dependencies it reported'
-    const client = scripted([
-      turnCalling('read_file', { path: 'package.json' }),
-      turnCalling('report_facts', {
-        ...HONEST,
-        dependencies: [
-          { name: 'pg', type: { unknown: 'a package does not say what it is reached for' } },
-          { name: 'redis', type: 'cache' },
-        ],
-      }),
-    ])
-    const { events, emit } = collect()
-    const facts = await inspect(client, BILLING, emit)
-
-    expect(facts.dependencies).toEqual({ unknown: reason })
-    expect(unwitnessed(events)).toEqual([
-      { type: 'unwitnessed', agent: 'inspector', field: 'dependencies.1.name', value: 'redis', reason },
-      { type: 'unwitnessed', agent: 'inspector', field: 'dependencies', value: 'pg, redis', reason },
-    ])
-  })
-
-  it('does not tell the Architect there are no dependencies when it read no file', async () => {
-    // An empty list holds no name to witness, and the Architect is sent it as
-    // "(none declared)": a claim of absence. With nothing read, nothing
-    // establishes it, which was the 2026-10-02 run's shape.
-    const reason =
-      'the Inspector read no file, so nothing establishes that this repository declares no dependencies'
-    const client = scripted([turnCalling('report_facts', { ...ALL_UNKNOWN, dependencies: [] })])
-    const { events, emit } = collect()
-    const facts = await inspect(client, BILLING, emit)
-
-    expect(facts.dependencies).toEqual({ unknown: reason })
-    expect(unwitnessed(events)).toEqual([
-      { type: 'unwitnessed', agent: 'inspector', field: 'dependencies', value: '(none declared)', reason },
-    ])
-  })
-
-  it('keeps an empty list once a file was read: a pinned limit', async () => {
-    // Which file would state an absence is a format's question, a manifest
-    // with no `dependencies` key, and the witness reads no format. Stage 8's
-    // extractors do. Tightening it is a visible change of this test.
-    const client = scripted([
-      turnCalling('read_file', { path: 'package.json' }),
-      turnCalling('report_facts', { ...HONEST, dependencies: [] }),
-    ])
-    const { events, emit } = collect()
-    expect((await inspect(client, BILLING, emit)).dependencies).toEqual([])
     expect(unwitnessed(events)).toEqual([])
   })
 
@@ -674,7 +647,6 @@ describe('what a file it read states', () => {
   const ALL_UNKNOWN = {
     ...HONEST,
     name: { unknown: 'not looked for' },
-    dependencies: { unknown: 'not looked for' },
   }
   const name = (facts: Record<string, unknown>): unknown => facts.name
   const field = (key: string) => (facts: Record<string, unknown>): unknown => facts[key]
@@ -709,7 +681,6 @@ describe('what a file it read states', () => {
     ['a forge handle, from CODEOWNERS', { ...reading('CODEOWNERS', '* @acme/platform\n'), over: { forgeHandle: '@acme/platform' }, at: field('forgeHandle'), kept: true }],
     ['a runtime, from engines', { ...reading('package.json', '{\n  "engines": { "node": ">=22" }\n}\n'), over: { runtime: 'node' }, at: field('runtime'), kept: true }],
     ['no runtime Node.js, from engines', { ...reading('package.json', '{\n  "engines": { "node": ">=22" }\n}\n'), over: { runtime: 'Node.js' }, at: field('runtime'), kept: false }],
-    ['no dependency type, even beside pg: database', { ...reading('deps.yml', 'pg: database\n'), over: { dependencies: [{ name: 'pg', type: 'database' }] }, at: (facts) => (facts.dependencies as Array<{ type: unknown }>)[0]?.type, kept: false }],
     // A value is compared folded, and kept as reported: one folding would hide
     // a difference in is never stated, since the diff would show its bytes and
     // a person reading it would not see that difference.
@@ -718,7 +689,6 @@ describe('what a file it read states', () => {
     ['no full-width type, from type: service', { ...reading('catalog-info.yaml', 'spec:\n  type: service\n'), over: { type: '\uFF53\uFF45\uFF52\uFF56\uFF49\uFF43\uFF45' }, at: field('type'), kept: false }],
     ['no runtime behind a bidi control, from runtime node', { ...reading('README.md', 'runtime node\n'), over: { runtime: '\u202Enode' }, at: field('runtime'), kept: false }],
     ['no runtime with a typographic hyphen, from node-js', { ...reading('README.md', 'runtime: node-js\n'), over: { runtime: 'node\u2010js' }, at: field('runtime'), kept: false }],
-    ['no dependency name with a zero-width space, from "pg"', { ...reading('package.json', PACKAGE_JSON), over: { dependencies: [{ name: 'p\u200Bg', type: { unknown: 'not looked for' } }] }, at: field('dependencies'), kept: false }],
     // The documented limits, kept today: tightening a rule is a visible change here.
     ['limit: a value in another case is stated: Service from type: service', { ...reading('catalog-info.yaml', 'spec:\n  type: service\n'), over: { type: 'Service' }, at: field('type'), kept: true }],
     ['limit: "type": "module" states the type module', { ...reading('package.json', '{\n  "type": "module"\n}\n'), over: { type: 'module' }, at: field('type'), kept: true }],
@@ -787,17 +757,32 @@ describe('what a file it read states', () => {
     expect(refused?.type === 'refused' ? refused.reason : '').toContain('fastify')
   })
 
-  it('passes a model’s own unknown reason through as written: the channel question 5 decides', async () => {
-    // A stated limit, pinned: the witness holds values, and the reason a model
-    // gives for its own unknown is not one. Stage 8 makes it the engine's.
+  it('keeps a model’s own unknown reason off the Architect’s opening', async () => {
+    // The witness holds values, and the reason a model gives for its own
+    // unknown is not one: it is neither held nor handed on. The Architect
+    // reads the engine's fixed reason for the field, whatever the report said
+    // (the witness plan's question 5, closed by stage 8).
     const why = 'a Node.js fastify service using postgresql and redis, named gorilla-service'
-    const client = scripted([
+    const inspector = scripted([
       turnCalling('read_file', { path: 'package.json' }),
       turnCalling('report_facts', { ...HONEST, runtime: { unknown: why } }),
     ])
     const { events, emit } = collect()
-    const facts = await inspect(client, BILLING, emit)
-    expect(facts.runtime).toEqual({ unknown: why })
+    const facts = await inspect(inspector, BILLING, emit)
     expect(unwitnessed(events)).toEqual([])
+
+    const built = buildTools(EntityGraph.from([]))
+    const architect = capturing([turnCalling(PROPOSE_TOOL, { operations: [] })])
+    await draftPlan(
+      architect,
+      { ...built, specs: built.specs.filter((spec) => spec.name !== 'answer') },
+      { intent: 'declare billing-api', facts, summary: 'si:\n  entities: 0', vocabulary: '' },
+      emit,
+    )
+    const first = architect.seen[0]?.transcript[0]
+    const opening = first?.role === 'user' ? first.text : ''
+    expect(opening).toContain("  runtime: unknown (the inspection did not establish this service's runtime)\n")
+    const sent = JSON.stringify(architect.seen)
+    for (const word of [why, 'fastify', 'gorilla', 'postgresql']) expect(sent).not.toContain(word)
   })
 })

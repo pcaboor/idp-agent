@@ -374,7 +374,6 @@ const FACTS = {
   runtime: 'node',
   owner: 'group:default/tiger',
   forgeHandle: '@acme/platform',
-  dependencies: [],
 }
 
 /**
@@ -683,7 +682,6 @@ describe('init, per application', () => {
           runtime: 'Node.js',
           owner: { unknown: 'no entity reference is stated in this repository' },
           forgeHandle: { unknown: 'no CODEOWNERS was read' },
-          dependencies: [{ name: 'redis', type: 'cache' }],
         }),
       ],
       architect: [

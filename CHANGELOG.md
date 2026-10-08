@@ -445,6 +445,11 @@ Each pull request adds its line here.
   nobody to ask ends on the name, asked as the conflict with what the file declares and beside
   the other open questions, exit 3, where it was "already declared", exit 0
   ([#149](https://github.com/pcaboor/idp-agent/pull/149)).
+- The Inspector reports no dependency and the Architect is told of none — what a service
+  installs is stage 8's discovery's, with its file and line, and reaches no model — and an
+  unknown fact reaches the Architect as the engine's fixed sentence for that field, never as the
+  reason a model wrote. The five plan-mode recordings with an Inspector are recorded again
+  ([#150](https://github.com/pcaboor/idp-agent/pull/150)).
 
 ### Fixed
 

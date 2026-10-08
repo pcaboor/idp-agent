@@ -1,8 +1,7 @@
 import { z } from 'zod'
 import type { ProjectSnapshot } from '../../context/project-fs/types.js'
 import { ownerRefSchema } from '../../core/schemas/entity.js'
-import { PLAN_LIMITS, proposedName, unknownSchema } from '../../core/schemas/plan.js'
-import { RESOURCE_TYPE_NAMES } from '../../core/schemas/resource-types.js'
+import { proposedName, unknownSchema } from '../../core/schemas/plan.js'
 import type { ModelToolCall, ModelToolSpec } from '../../llm/client.js'
 import { refused, type ToolOutcome } from './graph-tools.js'
 
@@ -20,20 +19,6 @@ import { refused, type ToolOutcome } from './graph-tools.js'
 const or = <T extends z.ZodType>(schema: T) => z.union([schema, unknownSchema])
 
 /**
- * One infrastructure dependency the repository declares.
- *
- * `name` is what the repository calls it — "postgres", "billing-cache" — because
- * that is the string the Architect searches the catalogue for before deciding
- * whether to propose a resource or only an access (design 7.4, step 4). `type`
- * is a registry type when a file says which, and unknown otherwise: "redis" in a
- * dependency list says a library is installed, not what it is reached for here.
- */
-const declaredDependencySchema = z.strictObject({
-  name: z.string().min(1).max(200),
-  type: or(z.enum(RESOURCE_TYPE_NAMES)),
-})
-
-/**
  * What the Architect needs about ONE application repository in order to propose
  * entities, and nothing else. Every field is consumed by a field of
  * `proposedComponentSchema` or `proposedResourceSchema`; a fact nobody consumes
@@ -47,11 +32,14 @@ const declaredDependencySchema = z.strictObject({
  *                   Architect has for spec.type
  *   owner         → spec.owner on both proposals, and owner is who authorises
  *   forgeHandle   → not an owner; see the comment on the field
- *   dependencies  → the resources and accesses the Architect proposes
  *
- * Two fields of the proposals are deliberately ABSENT, and each absence is a
- * guarantee:
+ * Three fields are deliberately ABSENT, and each absence is a guarantee:
  *
+ *   dependencies      what a service installs is stage 8's discovery's: a
+ *                     finding with its file and line, read by a parser, which
+ *                     reaches no model. A model's list of the packages it saw
+ *                     was a second, unverified reading of the same files, and
+ *                     the strict schema now refuses one.
  *   metadata.env      an environment is a property of the REQUEST, not of a
  *                     repository. The `environment-mismatch` policy (design 6.1)
  *                     exists to refuse an environment the intent did not name,
@@ -67,8 +55,10 @@ const declaredDependencySchema = z.strictObject({
  * handed (`project-witness.ts`): a value no file `read_file` returned before
  * the report states, by its field's rule, is withdrawn into an unknown with the
  * engine's reason, and said. A kept value is "some file says so", never
- * "true" — a file can state a wrong one — and the reason a model writes for a
- * field it marks unknown is not a value, and is not held to anything.
+ * "true" — a file can state a wrong one. The reason a model writes for a field
+ * it marks unknown is not a value and is held to nothing, so it reaches no other
+ * model: the Architect reads the engine's fixed reason for that field
+ * (`FACT_UNKNOWN`, `architect.ts`).
  */
 export const projectFactsSchema = z.strictObject({
   name: or(proposedName),
@@ -90,12 +80,6 @@ export const projectFactsSchema = z.strictObject({
    * written, not to recognise it. Nothing downstream may put it in `spec.owner`.
    */
   forgeHandle: or(z.string().min(1).max(200)),
-  /**
-   * Capped at the plan's own operation budget: a repository declaring more
-   * dependencies than a plan can carry operations is one no single plan serves,
-   * and the failure should land here rather than at `planSchema`.
-   */
-  dependencies: or(z.array(declaredDependencySchema).max(PLAN_LIMITS.maxOperations)),
 })
 
 export type ProjectFacts = z.infer<typeof projectFactsSchema>

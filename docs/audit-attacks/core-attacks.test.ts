@@ -123,7 +123,6 @@ describe('A. a Component spec.type is free text and signs as derived', () => {
       runtime: 'node',
       owner: 'group:default/tiger',
       forgeHandle: '@acme/platform',
-      dependencies: [],
     }
     const request = requestOf(facts)
     const invented = 'anything-the-model-likes'
@@ -317,7 +316,6 @@ describe('G. echoed is a whole-request word test, so filler words vouch for a na
       runtime: { unknown: 'no manifest' },
       owner: { unknown: 'no manifest' },
       forgeHandle: { unknown: 'no manifest' },
-      dependencies: { unknown: 'no manifest' },
     })
     // "declare this repository in the catalogue, from what its own files state"
     const plan = planSchema.parse({

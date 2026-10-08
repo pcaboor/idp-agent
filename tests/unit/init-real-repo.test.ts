@@ -217,7 +217,6 @@ const FACTS = {
   runtime: 'node',
   owner: 'group:default/payments',
   forgeHandle: '@acme/payments',
-  dependencies: [],
 }
 
 /**

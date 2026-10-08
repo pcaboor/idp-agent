@@ -70,8 +70,31 @@ export const NOT_INSPECTED: { readonly inspected: false } = Object.freeze({ insp
 /** Either what an inspection established, or that none was made. */
 export type ArchitectFacts = ProjectFacts | typeof NOT_INSPECTED
 
-const stated = (value: string | UnknownValue): string =>
-  typeof value === 'string' ? value : `unknown (${value.unknown})`
+/**
+ * The one reason the Architect reads for an unknown fact: the engine's,
+ * whatever the report said.
+ *
+ * True whichever way the unknown arose — the Inspector's model marked it, the
+ * witness withdrew it, the inspection ended with no report — so nothing here
+ * needs to know which, and the reason a model wrote, up to 8,192 characters of
+ * its own prose, reaches no other model. The cost, stated: the Architect no
+ * longer learns why. The witness's reasons (`unstatedReason`, `NO_REPORT`)
+ * still reach a person, on stderr and in the trace.
+ */
+export const FACT_UNKNOWN: { readonly [K in keyof ProjectFacts]: string } = Object.freeze({
+  name: "the inspection did not establish this service's name",
+  type: "the inspection did not establish this service's type",
+  lifecycle: "the inspection did not establish this service's lifecycle",
+  runtime: "the inspection did not establish this service's runtime",
+  owner: "the inspection did not establish this service's owner",
+  forgeHandle: "the inspection did not establish this service's forge handle",
+})
+
+/** What the Architect reads of one fact. An unknown's own reason is never read. */
+const stated = (facts: ProjectFacts, field: keyof ProjectFacts): string => {
+  const value: string | UnknownValue = facts[field]
+  return typeof value === 'string' ? value : `unknown (${FACT_UNKNOWN[field]})`
+}
 
 /**
  * The established facts as lines rather than as JSON.
@@ -82,7 +105,8 @@ const stated = (value: string | UnknownValue): string =>
  * reason to agree on key order.
  *
  * An unknown is printed, never dropped. A fact that arrives as an absent line
- * reads as a fact nobody needed, and the Architect would fill it in.
+ * reads as a fact nobody needed, and the Architect would fill it in. Nothing a
+ * service installs is printed: that is the discovery's, and reaches no model.
  */
 function formatFacts(facts: ArchitectFacts): string {
   // Stated, never omitted, and naming nothing: no file was read, so there is
@@ -95,22 +119,14 @@ function formatFacts(facts: ArchitectFacts): string {
       '  catalogue states is unknown',
     ].join('\n')
   }
-  const dependencies = facts.dependencies
-
   return [
     'repository:',
-    `  name: ${stated(facts.name)}`,
-    `  type: ${stated(facts.type)}`,
-    `  lifecycle: ${stated(facts.lifecycle)}`,
-    `  runtime: ${stated(facts.runtime)}`,
-    `  owner: ${stated(facts.owner)}`,
-    `  forge handle: ${stated(facts.forgeHandle)}`,
-    '  declared dependencies:',
-    ...(Array.isArray(dependencies)
-      ? dependencies.length === 0
-        ? ['    (none declared)']
-        : dependencies.map((declared) => `    ${declared.name}: ${stated(declared.type)}`)
-      : [`    ${stated(dependencies)}`]),
+    `  name: ${stated(facts, 'name')}`,
+    `  type: ${stated(facts, 'type')}`,
+    `  lifecycle: ${stated(facts, 'lifecycle')}`,
+    `  runtime: ${stated(facts, 'runtime')}`,
+    `  owner: ${stated(facts, 'owner')}`,
+    `  forge handle: ${stated(facts, 'forgeHandle')}`,
   ].join('\n')
 }
 
