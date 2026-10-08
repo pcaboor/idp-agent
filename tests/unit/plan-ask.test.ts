@@ -196,7 +196,6 @@ const FACTS = {
   runtime: 'node',
   owner: 'group:default/tiger',
   forgeHandle: '@acme/platform',
-  dependencies: [{ name: 'pg', type: 'database' }],
 }
 
 /**

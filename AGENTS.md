@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 5466 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 5464 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -524,16 +524,17 @@ That witness check is a **read-side** guarantee and does not transfer to `propos
 which is why the write side has a signature of its own.
 A value the Inspector reports reaches the Architect only where a file
 it read before its report states it, by the field's rule (`agents/tools/project-witness.ts`:
-a whole token, a keyed line, a reference in full; a dependency's type never; a value folding
-would change in anything but its case, by none; an empty dependency list, by none when no file
-was read); otherwise it is
+a whole token, a keyed line, a reference in full; a value folding would change in anything
+but its case, by none); otherwise it is
 an unknown with the engine's reason, said on stderr and in the trace, and asked where a
 proposal carries it — a `package.json` the model wrote into a tool's arguments is read by
 nobody. On `init` a witnessed value vouches for nothing: it is a hint beside the question at
 its field, shown as a model's reading and held to the field's grammar, and the signature
-reads what the person typed alone (stage 8, slice 2, Task 2.1). The reason a model writes for
-a field it marks unknown is not checked, and reaches the Architect as written, bounded at
-8,192 characters, until stage 8 makes it the engine's — it is never shown as a hint.
+reads what the person typed alone (stage 8, slice 2, Task 2.1). The Inspector reports no
+dependency: what a service installs is the discovery's, with its file and line, and reaches no
+model. The reason a model writes for a field it marks unknown reaches no other model, and is
+never shown as a hint: the Architect reads the engine's fixed reason for that field
+(`FACT_UNKNOWN`, `agents/architect.ts`; Task 2.2).
 
 ```
 Supervisor → Inspector → Architect → Reviewer  │  Zod → signature → policies

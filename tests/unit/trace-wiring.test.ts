@@ -288,7 +288,6 @@ const FACTS = {
   runtime: 'node',
   owner: 'group:default/tiger',
   forgeHandle: '@acme/platform',
-  dependencies: [],
 }
 
 const INTENT = 'declare the database orders-db-prod in prod owned by group:default/tiger'

@@ -126,7 +126,6 @@ const FACTS = {
   runtime: 'node',
   owner: 'group:default/tiger',
   forgeHandle: '@acme/platform',
-  dependencies: [{ name: 'pg', type: 'database' }],
 }
 
 /**
@@ -576,10 +575,6 @@ describe('plan "<intent>"', () => {
         runtime: 'Node.js',
         owner: { unknown: 'no entity reference is stated in this repository' },
         forgeHandle: { unknown: 'no CODEOWNERS was read' },
-        dependencies: [
-          { name: 'postgresql', type: 'database' },
-          { name: 'redis', type: 'cache' },
-        ],
       }),
     ])
     const honest = await run([
@@ -591,7 +586,6 @@ describe('plan "<intent>"', () => {
         runtime: { unknown: 'no file states one' },
         owner: { unknown: 'no file states one' },
         forgeHandle: { unknown: 'CODEOWNERS was not read' },
-        dependencies: [{ name: 'pg', type: { unknown: 'a package says what is installed' } }],
       }),
     ])
 
@@ -599,13 +593,12 @@ describe('plan "<intent>"', () => {
       invented.client.seen.find((request) => request.agent === 'architect'),
     )
     expect(opening).toContain(
-      '  name: unknown (no file the Inspector read states the name it reported)',
+      "  name: unknown (the inspection did not establish this service's name)",
     )
     for (const value of ['gorilla', 'thronecode', 'Node.js', 'redis', 'postgresql', 'fastify']) {
       expect(opening).not.toContain(value)
     }
     const said = 'no file the Inspector read'
-    const names = 'no file the Inspector read names 2 of the 2 dependencies it reported'
     expect(
       invented.events
         .map((event) => renderEvent(event))
@@ -615,9 +608,6 @@ describe('plan "<intent>"', () => {
       `  = type is unknown, not service: ${said} states the type it reported`,
       `  = lifecycle is unknown, not production: ${said} states the lifecycle it reported`,
       `  = runtime is unknown, not Node.js: ${said} states the runtime it reported`,
-      `  = dependencies.0.name is unknown, not postgresql: ${names}`,
-      `  = dependencies.1.name is unknown, not redis: ${names}`,
-      `  = dependencies is unknown, not postgresql, redis: ${names}`,
     ])
     // The facts reach the Architect's context only: what it drafts is signed
     // against the request, so the run ends as the honest one does.

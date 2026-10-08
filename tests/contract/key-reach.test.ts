@@ -230,7 +230,6 @@ const FACTS = {
   runtime: 'node',
   owner: 'group:default/tiger',
   forgeHandle: { unknown: 'no CODEOWNERS file' },
-  dependencies: [],
 }
 
 interface Road {

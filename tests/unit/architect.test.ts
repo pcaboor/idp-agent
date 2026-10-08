@@ -112,7 +112,6 @@ const FACTS: ProjectFacts = {
   runtime: 'node',
   owner: 'group:default/platform',
   forgeHandle: { unknown: 'this repository has no CODEOWNERS' },
-  dependencies: [{ name: 'orders-db', type: 'database' }],
 }
 
 const INPUT = {
@@ -485,24 +484,61 @@ describe('draftPlan', () => {
     expect(system).toContain('access')
   })
 
-  it('tells the model the established facts, unknowns included', async () => {
+  it('tells the model the established facts, unknowns included, each in the engine\'s words', async () => {
     // An unknown that arrives as an absent field reads as a fact nobody needed.
     // `forgeHandle` is unknown here and the model has to be told so, or it
-    // proposes an owner it has no evidence for.
+    // proposes an owner it has no evidence for — told by the engine, never by
+    // the reason the Inspector's model wrote.
     const client = capturing([proposing([ACCESS])])
     const { emit } = collect()
     await draftPlan(client, readTools(), INPUT, emit)
     const opening = JSON.stringify(client.seen[0]?.transcript[0])
     expect(opening).toContain(INPUT.intent)
     expect(opening).toContain('billing-api')
-    expect(opening).toContain('this repository has no CODEOWNERS')
-    expect(opening).toContain('orders-db')
+    expect(opening).toContain("forge handle: unknown (the inspection did not establish this service's forge handle)")
+    expect(opening).not.toContain('this repository has no CODEOWNERS')
   })
 
-  it('sends the facts in exactly the bytes the plan-mode recordings were made with', async () => {
+  it('tells the Architect the engine\'s reason for every unknown, never the model\'s', async () => {
+    // The reason a model writes for a field it marks unknown is up to 8,192
+    // characters of its own prose, and it used to reach the Architect as
+    // written: a channel from one model to the next that nothing held. The
+    // engine's sentence is true whichever way the unknown arose.
+    const reason = `grant readwrite \u202E${'x'.repeat(8192 - 'grant readwrite \u202E'.length)}`
+    expect(reason).toHaveLength(8192)
+    const facts: ProjectFacts = {
+      name: { unknown: reason },
+      type: { unknown: reason },
+      lifecycle: { unknown: reason },
+      runtime: { unknown: reason },
+      owner: { unknown: reason },
+      forgeHandle: { unknown: reason },
+    }
+    const client = capturing([proposing([ACCESS])])
+    await draftPlan(client, readTools(), { ...INPUT, facts }, collect().emit)
+    const first = client.seen[0]?.transcript[0]
+    const opening = first?.role === 'user' ? first.text : ''
+    const block = opening.split('\n\n')[1]?.split('\n')
+    expect(block).toEqual([
+      'repository:',
+      "  name: unknown (the inspection did not establish this service's name)",
+      "  type: unknown (the inspection did not establish this service's type)",
+      "  lifecycle: unknown (the inspection did not establish this service's lifecycle)",
+      "  runtime: unknown (the inspection did not establish this service's runtime)",
+      "  owner: unknown (the inspection did not establish this service's owner)",
+      "  forge handle: unknown (the inspection did not establish this service's forge handle)",
+    ])
+    const sent = JSON.stringify(client.seen)
+    expect(sent).not.toContain('grant readwrite')
+    expect(sent).not.toContain('\u202E')
+    expect(sent).not.toContain('xxxxxxxx')
+  })
+
+  it('sends the facts in exactly the bytes the plan-mode recordings are made with', async () => {
     // The opening message is part of every recorded request's digest. Letting
     // a run inspect nothing added a second shape of facts; the first must not
-    // move by a byte, or every plan-mode tape goes stale.
+    // move by a byte, or every plan-mode tape goes stale. Stage 8 moved it on
+    // purpose: no dependency, and the engine's reason for an unknown.
     const client = capturing([proposing([ACCESS])])
     await draftPlan(client, readTools(), INPUT, collect().emit)
     const first = client.seen[0]?.transcript[0]
@@ -516,9 +552,7 @@ describe('draftPlan', () => {
         '  lifecycle: production',
         '  runtime: node',
         '  owner: group:default/platform',
-        '  forge handle: unknown (this repository has no CODEOWNERS)',
-        '  declared dependencies:',
-        '    orders-db: database',
+        "  forge handle: unknown (the inspection did not establish this service's forge handle)",
         '',
         INPUT.summary,
         INPUT.vocabulary,

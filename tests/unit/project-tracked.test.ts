@@ -398,7 +398,6 @@ describe('the CLI says how the application repository was read', () => {
     runtime: 'node',
     owner: 'group:default/tiger',
     forgeHandle: '@acme/platform',
-    dependencies: [],
   }
   const reporting = (): LlmClient => ({
     generate: async (request: GenerateRequest): Promise<GenerateResult> =>

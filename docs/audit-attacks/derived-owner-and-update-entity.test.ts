@@ -85,7 +85,6 @@ const FACTS = {
   runtime: 'node',
   owner: 'group:default/tiger',
   forgeHandle: '@acme/platform',
-  dependencies: [{ name: 'pg', type: 'database' }],
 }
 
 // ---- copied from tests/scenarios/plan-mode.test.ts --------------------------

@@ -817,7 +817,6 @@ describe('wired to the agents it calls back into', () => {
     runtime: 'node',
     owner: 'group:default/tiger',
     forgeHandle: { unknown: 'this repository has no CODEOWNERS' },
-    dependencies: [{ name: 'orders-db', type: 'database' }],
   }
 
   it('signs and previews a plan drafted and reviewed without a model', async () => {

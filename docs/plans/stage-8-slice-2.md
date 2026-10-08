@@ -1,6 +1,6 @@
 # Stage 8, slice 2 — matching and asking
 
-**Status: plan accepted by the owner on 2026-10-07 ([#148](https://github.com/pcaboor/idp-agent/pull/148)), from `main` at `48a70ec`; 2.1 built ([#149](https://github.com/pcaboor/idp-agent/pull/149)), validated by the owner before it merged; 2.2 to 2.7 not started.** Seven
+**Status: plan accepted by the owner on 2026-10-07 ([#148](https://github.com/pcaboor/idp-agent/pull/148)), from `main` at `48a70ec`; 2.1 built ([#149](https://github.com/pcaboor/idp-agent/pull/149)), validated by the owner before it merged; 2.2 built ([#150](https://github.com/pcaboor/idp-agent/pull/150)), its five tapes re-recorded by the owner on 2026-10-08, validated by the owner before it merged; 2.3 to 2.7 not started.** Seven
 pull requests, 2.1 to 2.7, after this plan merged on its own. They are not stacked ahead of
 time: **the owner validates each pull request before it merges and before the next one starts**
 (owner's decision of 2026-10-04, `docs/roadmap.md`), so each branch is cut from `main` once the
@@ -1009,11 +1009,11 @@ export const FACT_UNKNOWN: { readonly [K in keyof ProjectFacts]: string }
 //   name → "the inspection did not establish this service's name", … forgeHandle → "… forge handle"
 ```
 
-- [ ] **Step 1: Pin the before (passes now).**
+- [x] **Step 1: Pin the before (passes now).**
   `pnpm vitest run tests/unit/inspector.test.ts tests/unit/architect.test.ts tests/unit/project-witness.test.ts tests/scenarios`:
   green, the plan-mode scenarios with no stale warning; `prompt-digests.test.ts` green.
 
-- [ ] **Step 2: Write the tests, and see them fail.**
+- [x] **Step 2: Write the tests, and see them fail.**
   1. `architect.test.ts`, *tells the Architect the engine's reason for every unknown, never the
      model's*: facts whose every field is `{ unknown: '<8,192 characters, holding "grant
      readwrite" and a U+202E>' }` give an opening whose `repository:` block is exactly seven
@@ -1036,19 +1036,19 @@ export const FACT_UNKNOWN: { readonly [K in keyof ProjectFacts]: string }
      no dependency row; its dependency tests are removed with the branch they test, each named in
      the pull request.
 
-- [ ] **Step 3: Build it.** The removals above, and `formatFacts` printing each field
+- [x] **Step 3: Build it.** The removals above, and `formatFacts` printing each field
   `${label}: ${typeof value === 'string' ? value : `unknown (${FACT_UNKNOWN[field]})`}` in the
   fixed order it has today. `undetermined(NO_REPORT)` keeps its `refused` event, for a person.
   Step 2's tests pass. `ProjectFacts` has no `dependencies`, so the compiler names every reader:
   `init.ts`'s `known`, the witness, the fixtures; each is fixed where it stands.
 
-- [ ] **Step 4: See exactly the five tapes fail.** `pnpm vitest run tests/scenarios`: the five
+- [x] **Step 4: See exactly the five tapes fail.** `pnpm vitest run tests/scenarios`: the five
   plan-mode scenarios fail, each with `<scenario>: the recording is stale — re-record it` or a
   refused `report_facts` the tape answered with `dependencies` (`no recording for <scenario>
   inspector turn 3` or the like); `question-mode`, `backstage-mode` and `prompt-digests` pass,
   unchanged. Anything else failing is a bug of Step 3.
 
-- [ ] **Step 5: The docs it makes true.** `AGENTS.md:529` and the trust boundary, `SECURITY.md:375`
+- [x] **Step 5: The docs it makes true.** `AGENTS.md:529` and the trust boundary, `SECURITY.md:375`
   and design `:262` lose their "until stage 8" clauses: "the reason a model writes for a field it
   marks unknown reaches no other model; the Architect reads the engine's fixed reason for that
   field". `src/agents/README.md`: what the Inspector reports, and that a service's dependencies
@@ -1056,7 +1056,7 @@ export const FACT_UNKNOWN: { readonly [K in keyof ProjectFacts]: string }
   Status (`docs/reviews/2026-09-23-deep-review.md:224`): security-5's "the reason a model writes
   for its own unknown is not held, until stage 8" becomes closed by this pull request.
 
-- [ ] **Step 6: Checks, before the re-record**
+- [x] **Step 6: Checks, before the re-record**
 
 ```bash
 df -h "$TMPDIR"
@@ -1073,7 +1073,7 @@ The scenarios fail as Step 4 says and in no other way; the last diff prints noth
 
 **Architecture rules:** none change. Thirty-two.
 
-- [ ] **Step 7: The pull request, opened as waiting for the owner's key** (after the owner's go-ahead)
+- [x] **Step 7: The pull request, opened as waiting for the owner's key** (after the owner's go-ahead)
 
 ```bash
 git add src/agents/tools/project-tools.ts src/agents/tools/project-witness.ts src/agents/inspector.ts src/agents/architect.ts \
@@ -1092,7 +1092,7 @@ Base `main`. CHANGELOG, `### Changed`:
 >   reason a model wrote. The five plan-mode recordings with an Inspector are recorded again
 >   ([#PRNUM](https://github.com/pcaboor/idp-agent/pull/PRNUM)).
 
-- [ ] **Step 8: The owner's keyed re-record of the five tapes**, on the branch, before the
+- [x] **Step 8: The owner's keyed re-record of the five tapes**, on the branch, before the
   merge, with the command of [`tests/README.md`](../../tests/README.md#when-your-change-stales-one),
   the provider and model the tapes hold today, the key loaded in a subshell so it is gone when the
   subshell ends:
@@ -1153,6 +1153,38 @@ Attendu :
   request's description gives it: its `report_facts` no longer carries `dependencies`, which the
   strict schema now refuses (with 2.1's content, the scripted Inspector's report is handed back
   and every fact stays unknown, so the hints vanish).
+
+**As built**, where the code asked for it (2026-10-08):
+
+- **No support fixture builds a `ProjectFacts`.** `tests/support/forge-fixture.ts` and
+  `tests/support/github-fixture.ts` name `dependencies/` only as a folder, and are unchanged.
+  The scripted reports and facts that carried `dependencies` are in test files the list does not
+  name, each losing that line and nothing else: `tests/contract/key-reach.test.ts`,
+  `tests/unit/backstage-source.test.ts`, `entry.test.ts`, `init-command.test.ts`,
+  `init-discovery.test.ts`, `init-hints.test.ts`, `init-real-repo.test.ts`, `plan-ask.test.ts`,
+  `project-tracked.test.ts`, `repair.test.ts` and `trace-wiring.test.ts`; and
+  `tests/unit/plan-intent.test.ts`, whose test of the witness's withdrawn values also loses its
+  three dependency lines and reads the engine's reason for the name. In the list,
+  `plan-project.test.ts` loses one line and `project-witness.test.ts` its dependency rule.
+- **`tests/scenarios/plan-mode.test.ts` needed no change.** *holds an Inspector that reports
+  what a file it read says* reads the reported `name` alone, never a dependency.
+- **`tests/invariants/discovery-secrets.test.ts` loses its scripted `dependencies: []`** (`:371`),
+  with the owner's go-ahead of 2026-10-08. The strict schema refused that report and handed it
+  back, the script answered `stop`, and the run ended on no report, every fact unknown: the
+  property held and the test passed, but the run no longer took the road its script describes,
+  an accepted report reaching the Architect. One line of the script, no assertion changed, as
+  2.1 gave the same file its four flags; named in the pull request.
+- **The audit oracle** (`docs/audit-attacks/`, never run by `pnpm test` nor typechecked): three
+  scripted facts lost their `dependencies` line (`core-attacks.test.ts`, two;
+  `derived-owner-and-update-entity.test.ts`, one — its scripted Inspector's report was being
+  refused). The two files' outcomes are identical before and after, 11 failed and 3 passed.
+  `plan-outcomes.test.ts`'s *what each shipped plan recording makes the CLI do, and F6 under it*
+  crashes, "link-db-exists replayed a stale tape", until Step 8; after it,
+  `pnpm vitest run --config docs/audit-attacks/vitest.config.ts` is run again and that test is
+  back to failing (closed), the pull request saying so.
+- **The owner's kit**: `~/Documents/idp-agent-tests/s8-2/init.mjs`'s scripted `report_facts`
+  lost `dependencies: []`, that line alone, and `opening.mjs` was written: it prints the
+  Architect's first opening of a tape, from `request:` to the line before `si:`.
 
 ---
 

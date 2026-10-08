@@ -368,7 +368,6 @@ describe('a password reaches no line init writes, no trace and no pull request b
           runtime: 'node',
           owner: 'group:default/tiger',
           forgeHandle: '@acme/platform',
-          dependencies: [],
         }),
       ],
       architect: [
