@@ -2,11 +2,11 @@ import path from 'node:path'
 import { draftPlan } from '../../agents/architect.js'
 import type { EventSink } from '../../agents/events.js'
 import { inspect } from '../../agents/inspector.js'
+import { repair } from '../../agents/repair.js'
+import { reviewPlan } from '../../agents/reviewer.js'
 import { formatSummary } from '../../agents/summary.js'
 import { buildTools } from '../../agents/tools/graph-tools.js'
 import type { ProjectFacts } from '../../agents/tools/project-tools.js'
-import { EntityGraph } from '../../context/graph/entity-graph.js'
-import { summariseGraph } from '../../context/graph/summary.js'
 import { discover } from '../../context/discovery/discover.js'
 import { readProject } from '../../context/project-fs/snapshot.js'
 import {
@@ -24,9 +24,9 @@ import {
 import { coverageSentence, isComplete, verifiedFindings, type Coverage } from '../../core/discovery/report.js'
 import { protectionText } from '../../core/github/protection.js'
 import { clearService } from '../../core/plan/clear.js'
-import { questionsOf, type Hint, type Question } from '../../core/plan/clarify.js'
-import type { Provenance } from '../../core/plan/provenance.js'
-import { signPlan } from '../../core/plan/sign.js'
+import type { Hint, Question } from '../../core/plan/clarify.js'
+import type { RecordedAnswer } from '../../core/plan/reapply.js'
+import type { SignedPlan } from '../../core/plan/sign.js'
 import {
   CONFIG_FILE,
   holdsInvisible,
@@ -40,7 +40,7 @@ import { planSchema, proposedName, type Operation, type Plan } from '../../core/
 import { reasonOf } from '../../core/schemas/reject.js'
 import { parseDocuments } from '../../core/yaml/serialize.js'
 import type { LlmClient } from '../../llm/client.js'
-import { ConfigError, readConfigFile, seededVocabulary } from '../config.js'
+import { ConfigError, readConfigFile } from '../config.js'
 import { budgetNotice, selectionNotice } from '../repository.js'
 import { isForgeHandle } from '../../scaffold/codeowners.js'
 import { loadTemplates } from '../../scaffold/templates.js'
@@ -51,18 +51,23 @@ import {
   type FileIO,
   type WriteReport,
 } from '../../scaffold/write.js'
-import { readRegistrationFile } from '../../context/iac-fs/snapshot.js'
+import { readRegistrationFile, readRepository } from '../../context/iac-fs/snapshot.js'
 import {
   REGISTRATION_FILE,
   registers,
   renderRegistration,
 } from '../../core/validate/registration.js'
+import type { RepositorySnapshot, Violation } from '../../core/validate/rules.js'
 import {
   ASK_LIMITS,
+  contextsOf,
   fillAnswers,
+  graphOf,
   questionLines,
+  readContents,
   renderPreview,
   renderRefusedAnswer,
+  renderStopped,
   type Ask,
 } from './plan.js'
 import { coverageLines } from '../render/coverage.js'
@@ -195,7 +200,7 @@ const listing = (report: WriteReport): string[] => [
 ]
 
 /**
- * `idp-agent init --repo <dir>` — once per application (design §7.3).
+ * `idp-agent init --project <dir>` — once per application (design §7.3).
  *
  * Stage 3 shipped this as a tested refusal naming what it waited for: the
  * Inspector, and `propose()`. Both exist, so this is the refusal answered.
@@ -232,10 +237,13 @@ const listing = (report: WriteReport): string[] => [
  * only true because `sign.ts` stopped classifying a Component's `spec.type`
  * structurally. It is `z.string().min(1).max(63)`, not the closed union a
  * Resource's is, so an invented one signed `derived` and reached the
- * `catalog-info.yaml` below without anyone being asked. On this road the
- * vocabulary is empty — the graph is `EntityGraph.from([])`, see `runInitRepo`
- * — so a Component type is the one the inspection read or it is a question,
- * and there is no third answer.
+ * `catalog-info.yaml` below without anyone being asked. Since stage 8's slice
+ * 2 (Task 2.3) this road signs against the declarations repository's graph,
+ * whose vocabulary holds the types and owners it uses, and the signature is
+ * told the Component is the person's (`ownComponent`, which `runInitRepo`
+ * passes): its type, like its name, lifecycle, owner and every `dependsOn`
+ * entry, is typed, answered or a question — never enumerated off the
+ * catalogue — and there is no fourth answer.
  *
  * `forgeHandle` is deliberately absent, and its absence is the point of the
  * field: `@acme/platform` is a forge handle and `group:default/platform` is an
@@ -283,30 +291,29 @@ export function requestOf(facts: ProjectFacts): string {
  *     system prompt would be a request.
  *   - What it CAN express is a Component creation, and anything else — a
  *     Resource, a patch — is refused by path here. Not dropped: an operation
- *     that vanishes is an operation nobody can argue with.
- *   - The engine mints the real operation, and does it AFTER the signature has
+ *     that vanishes is an operation nobody can argue with. Since stage 8's
+ *     slice 2 (Task 2.3) the refusal is `repair`'s scope: reported at gate [1]
+ *     in these words, so the Architect drafts again rather than the run ending.
+ *   - The engine mints the real operation, and does it AFTER the gates have
  *     judged what the model proposed. See `runInitRepo`.
  */
-function componentsOf(
-  operations: readonly Operation[],
-): { proposals: Operation[] } | { refusals: string[] } {
-  const proposals: Operation[] = []
-  const refusals: string[] = []
-
-  for (const [opIndex, operation] of operations.entries()) {
-    if (operation.op === 'create-entity' && operation.entity.kind === 'Component') {
-      proposals.push(operation)
-      continue
-    }
-    refusals.push(
-      `operations.${String(opIndex)}: init declares this repository and nothing else; ` +
-        `a ${operation.op === 'create-entity' ? operation.entity.kind : operation.op} ` +
-        'belongs to a plan, not to an init',
-    )
-  }
-
-  return refusals.length > 0 ? { refusals } : { proposals }
+function componentsOf(plan: Plan): string[] {
+  return plan.operations.flatMap((operation, opIndex) =>
+    operation.op === 'create-entity' && operation.entity.kind === 'Component'
+      ? []
+      : [
+          `operations.${String(opIndex)}: init declares this repository and nothing else; ` +
+            `a ${operation.op === 'create-entity' ? operation.entity.kind : operation.op} ` +
+            'belongs to a plan, not to an init',
+        ],
+  )
 }
+
+/** The close of a stop on `componentsOf`: what init takes, since the person has no value to name. */
+const SCOPE_STOP = [
+  "Nothing was previewed, and nothing was written. init declares this service's Component and nothing " +
+    'else, and every draft declared more; run it again, and a plan declares the rest.',
+]
 
 /** The four facts a hint is shown for, and the forge handle beside the owner. */
 type HintField = 'name' | 'type' | 'lifecycle' | 'owner' | 'forgeHandle'
@@ -748,6 +755,26 @@ function recognise(
 }
 
 /**
+ * The Component whose name is still a question, by operation, and the name the
+ * draft gave it — shown as the draft's (`Question.proposed`). Undefined when
+ * every Component's name is settled.
+ */
+function unnamedOf(
+  plan: Plan,
+  questions: readonly Question[],
+): { readonly index: number; readonly name: string | undefined } | undefined {
+  const index = plan.operations.findIndex(
+    (operation) =>
+      operation.op === 'create-entity' &&
+      operation.entity.kind === 'Component' &&
+      typeof operation.entity.metadata.name !== 'string',
+  )
+  if (index === -1) return undefined
+  const path = `operations.${String(index)}.entity.metadata.name`
+  return { index, name: questions.find((question) => question.path === path)?.proposed }
+}
+
+/**
  * The file init would add to already declares a Component, and this one's
  * name is still a question: it is asked as a conflict is, so the person reads
  * what that file declares before naming this service. Before stage 8's slice
@@ -758,40 +785,81 @@ function recognise(
  */
 function unnamedConflict(
   plan: Plan,
-  draft: Plan,
+  questions: readonly Question[],
   kept: readonly Kept[],
   target: string,
-): { name: string | undefined; index: number; found: Recognition } | undefined {
+): Conflict | undefined {
   const file = kept.find((one) => one.path === target)
   const components = file === undefined ? [] : identitiesOf(file.text).identities.filter(isComponent)
-  if (file === undefined || components.length === 0) return undefined
-  const index = plan.operations.findIndex(
-    (operation) =>
-      operation.op === 'create-entity' &&
-      operation.entity.kind === 'Component' &&
-      typeof operation.entity.metadata.name !== 'string',
-  )
-  if (index === -1) return undefined
-  const drafted = draft.operations[index]
-  const name =
-    drafted?.op === 'create-entity' && typeof drafted.entity.metadata.name === 'string'
-      ? drafted.entity.metadata.name
-      : undefined
-  return { name, index, found: { conflictIn: file.path, refs: components.map(refOf) } }
+  const unnamed = unnamedOf(plan, questions)
+  if (file === undefined || components.length === 0 || unnamed === undefined) return undefined
+  return {
+    ...unnamed,
+    reason:
+      `${inertLine(file.path, Number.POSITIVE_INFINITY)} already declares ${components.map(refOf).join(', ')}. ` +
+      'If this service is that one, answer its name and nothing is added; if it is another, ' +
+      'answer this one’s name and it is added beside',
+  }
+}
+
+/** A name question asked as a conflict: the operation, the draft's name, and what is already declared. */
+interface Conflict {
+  readonly index: number
+  readonly name: string | undefined
+  readonly reason: string
+}
+
+/** A Component the declarations repository declares: the file, and its name as the file states it. */
+interface DeclaredComponent {
+  readonly path: string
+  readonly name: string
+}
+
+/**
+ * The Component the declarations repository already gives `name`, compared
+ * case-folded and in any namespace, as `recognise` compares a service's own
+ * file (stage 8, slice 2, Task 2.3). The first declaration wins, as the
+ * catalogue resolves a duplicate (§4.4). A name is all this compares: it says
+ * what is declared, and nothing about whether this repository is that
+ * Component's — the source location decides that from 2.5, never a name
+ * (§ 14).
+ */
+function declaredComponent(snapshot: RepositorySnapshot, name: string): DeclaredComponent | undefined {
+  for (const file of snapshot.files) {
+    for (const entity of file.entities) {
+      if (entity.kind === 'Component' && fold(entity.metadata.name) === fold(name)) {
+        return { path: file.path, name: entity.metadata.name }
+      }
+    }
+  }
+  return undefined
+}
+
+/**
+ * The Architect proposed a name nobody typed, and the declarations repository
+ * gives it to a Component already: the name is asked, the declaration shown.
+ * Answering that name proposes nothing (`renderNamed`); answering another
+ * proposes this one under it.
+ */
+function declaredConflict(
+  plan: Plan,
+  questions: readonly Question[],
+  snapshot: RepositorySnapshot,
+): Conflict | undefined {
+  const unnamed = unnamedOf(plan, questions)
+  const found = unnamed?.name === undefined ? undefined : declaredComponent(snapshot, unnamed.name)
+  if (unnamed === undefined || found === undefined) return undefined
+  return {
+    ...unnamed,
+    reason:
+      `${inertLine(found.path, Number.POSITIVE_INFINITY)} in the declarations repository already declares ` +
+      `a Component named ${inertLine(found.name)}. If this service is that one, answer its name and ` +
+      'nothing is proposed; if it is another, answer this one’s name',
+  }
 }
 
 /** The service's own: a catalog-info at the root, or the file init would add to. */
 const isOwn = (file: string, target: string): boolean => !file.includes('/') || file === target
-
-/** The Component names a signed plan has settled, by operation — a question is no name yet. */
-const settledNames = (plan: Plan): { name: string; index: number }[] =>
-  plan.operations.flatMap((operation, index) =>
-    operation.op === 'create-entity' &&
-    operation.entity.kind === 'Component' &&
-    typeof operation.entity.metadata.name === 'string'
-      ? [{ name: operation.entity.metadata.name, index }]
-      : [],
-  )
 
 /**
  * The run had nothing to change, and says which file already says it —
@@ -826,6 +894,33 @@ const renderDeclared = (
             ...refused.map((reason) => `      ${inertLine(reason)}`),
           ]),
     ]),
+    ...(unwritten === undefined
+      ? []
+      : [
+          '',
+          `${unwritten} is not written either: init writes it beside a Component it adds, and ` +
+            'there is none to add — write it by hand, in a reviewed change.',
+        ]),
+    ...(report === undefined ? [] : ['', ...report]),
+    '',
+    '0 files · nothing written',
+  ].join('\n'),
+  found: true,
+})
+
+/**
+ * The name the person typed is one the declarations repository already gives
+ * a Component (stage 8, slice 2, Task 2.3): nothing is proposed, and the run
+ * says what is declared and where — in the declarations repository, not in
+ * the service, so `renderDeclared`'s "the repository already declares it"
+ * would name the wrong one. It claims nothing about which repository that
+ * Component is (§ 14 rejects recognising a consumer by name), and writes
+ * nothing, the safe direction. Exit 0, unless `initExit` makes it 1.
+ */
+const renderNamed = (found: DeclaredComponent, unwritten?: string, report?: readonly string[]): CommandResult => ({
+  text: [
+    `nothing to change — a Component named ${inertLine(found.name)} is already declared ` +
+      `(${inertLine(found.path, Number.POSITIVE_INFINITY)}); nothing is proposed`,
     ...(unwritten === undefined
       ? []
       : [
@@ -885,6 +980,14 @@ function renderInitQuestions(
 export interface InitOptions {
   /** The application repository: read, inspected, and never written. */
   readonly project: string
+  /**
+   * The declarations repository `plan`'s chain found — `IDP_REPO`, or `repo`
+   * in the personal config.yml — absolute, and read, never written (stage 8,
+   * slice 2, Task 2.3). The Architect drafts over its graph and the gates
+   * judge against it, as `plan`'s do. Absent: none was found, `cli/index.ts`
+   * has said so on stderr, and the five gates judge against an empty one.
+   */
+  readonly declarations?: string
   readonly client: LlmClient
   readonly emit: EventSink
   /** The person's `--name`, `--type`, `--lifecycle` and `--owner`, already held to their fields. */
@@ -913,6 +1016,9 @@ export interface InitOptions {
   /** `--iac-repo` and `--environment`: what `.idp-agent.yml` says, as a person typed it. */
   readonly flags?: ConfigFlags
 }
+
+/** No declarations repository was found: the gates judge against this, an empty one. */
+const NO_DECLARATIONS: RepositorySnapshot = { folders: [], witnesses: [], files: [] }
 
 export async function runInitRepo(options: InitOptions): Promise<CommandResult> {
   // Everything free, and every question for a person, before the first model
@@ -1002,6 +1108,20 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
     }
   }
 
+  // The declarations repository, read whole before any model is paid, as
+  // `plan` reads it (stage 8, slice 2, Task 2.3): a file it cannot read is
+  // refused, named, exit 2, rather than judged as absent. Read and never
+  // written — slice 2's `init --submit` writes into the service's repository
+  // alone, so its preflight and what it has in flight are slice 4's.
+  let declared: { readonly snapshot: RepositorySnapshot; readonly contents: ReadonlyMap<string, string> } = {
+    snapshot: NO_DECLARATIONS,
+    contents: new Map(),
+  }
+  if (options.declarations !== undefined) {
+    const repository = await readRepository(options.declarations)
+    declared = { snapshot: repository, contents: await readContents(options.declarations, repository, 'init') }
+  }
+
   if (opened !== undefined) {
     // The gates are about to judge these bytes, and the branch is cut from
     // HEAD: the target's bytes or its absence, every kept declaration the
@@ -1060,151 +1180,190 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
   const facts = await inspect(options.client, snapshot, options.emit)
   const request = requestOf(facts)
 
-  // An empty catalogue, stated as such. This build has no local declarations
-  // repository at init time — §7.0's `iacRepo` is a URL and nothing here clones
-  // one — so the Architect reads nothing and witnesses nothing. What that does
-  // NOT cover: it cannot tell whether this component is already declared in
-  // the declarations repository (stage 8 reads it); what the SERVICE's own
-  // repository declares is read below, from `kept`.
-  const graph = EntityGraph.from([])
-  // The Architect's tools, as `plan` builds them. An empty catalogue refuses
-  // no value anyway; the option is here so the two Architects cannot drift.
+  // The catalogue the Architect drafts over and the gates judge against: the
+  // declarations repository `plan` reads, built as `plan` builds it — the
+  // graph, the read tools and their witness set, the vocabulary seeded from
+  // the service's `.idp-agent.yml`, the owners — so the two commands cannot
+  // measure one repository two ways (stage 8, slice 2, Task 2.3). With none
+  // found, an empty one, stated as such: every Component is new, and the gates
+  // run all the same, so there is one road and the Reviewer reads every init.
+  const graph = graphOf(declared.snapshot)
   const tools = buildTools(graph, { refuseUnusedValues: false })
-  const { summary, vocabulary } = summariseGraph(graph)
-  const seeded = seededVocabulary(vocabulary, config)
-
-  const drafted = await draftPlan(
-    options.client,
-    tools,
-    { intent: request, facts, summary: formatSummary(summary, seeded), vocabulary: '' },
-    options.emit,
+  const contexts = contextsOf(
+    options.declarations ?? options.project,
+    declared.snapshot,
+    declared.contents,
+    graph,
+    { config, witnessed: tools.witnessed },
   )
+  const summary = formatSummary(contexts.summary, contexts.vocabulary)
 
-  if (drafted.plan === undefined) {
-    // `draftPlan` has already emitted `refused` with the model's own account of
-    // why. Repeated here because an exit code is not a sentence.
-    return {
-      text: 'the Architect proposed nothing, so there is no catalog-info to show.',
-      found: false,
+  /**
+   * What the person typed for the four fields of the Component — a flag, or
+   * an answer at the prompt. Their word about the one Component `init`
+   * declares, whatever a draft calls it: put into every Component the
+   * Architect drafts, a redraft included, as a flag always was (`withFlags`),
+   * and vouched for at operation 0's fields, where the one Component of a
+   * draft the scope accepts sits. Not `recordAnswers`: that follows an answer
+   * by its entity's name, and here the name is one of the answers.
+   */
+  const typed: { -readonly [K in keyof InitAnswers]: InitAnswers[K] } = { ...(options.answers ?? {}) }
+  /** Every other answer typed at the prompt, at the path it was typed at. */
+  const elsewhere = new Map<string, string>()
+  const answersNow = (): RecordedAnswer[] => [
+    ...INIT_FLAGS.flatMap(([field, key]) => {
+      const value = typed[key]
+      return value === undefined ? [] : [{ path: `operations.0.entity.${field}`, value }]
+    }),
+    ...[...elsewhere].map(([path, value]) => ({ path, value })),
+  ]
+  /** An answer typed at the prompt: one of the four fields, or another. */
+  const heard = (answers: readonly { readonly path: string; readonly value: string }[]): void => {
+    for (const { path, value } of answers) {
+      const field = /^operations\.\d+\.entity\.(.+)$/.exec(path)?.[1]
+      const key = INIT_FLAGS.find(([one]) => one === field)?.[1]
+      if (key !== undefined) typed[key] = value
+      elsewhere.set(path, value)
     }
   }
 
-  const narrowed = componentsOf(drafted.plan.operations)
-  if ('refusals' in narrowed) {
-    return {
-      text: [
-        'refused before signing — init declares one Component, this repository’s own:',
-        ...narrowed.refusals.map((refusal) => `  ${inertLine(refusal)}`),
-      ].join('\n'),
-      found: false,
-    }
-  }
+  /**
+   * The plan the person just filled, which the next run of the gates starts
+   * from — `runIntent`'s seed: a filled plan cost no round-trip, and goes
+   * through all five gates as a draft does.
+   */
+  let seed: Plan | undefined
 
-  // The flags first: they are the person's, and replace whatever the draft
-  // put at their fields before anything judges the draft.
-  const flagged = withFlags(narrowed.proposals, options.answers ?? {})
-  let proposals = flagged.proposals
-  /** Every value the person gave — a flag, or an answer at the prompt — by the field it answered. */
-  const answered = new Map(flagged.answers)
-
-  // The ask loop `plan --from` runs, over the one operation init proposes:
-  // sign, ask what nobody can vouch for, fill, re-parse, and sign again. The
-  // plan never moves between rounds — nothing redrafts it — so an answer stays
-  // at the path it was typed at.
+  // The loop `plan "<intent>"` runs (§7.5): the five gates, the questions put
+  // to a person, the filled plan through the five gates again.
   for (let round = 0; ; round += 1) {
-    // `requestOf` wrote this sentence, so it vouches for no word in it — a
-    // Component named `repository-files` used to sign echoed against "declare
-    // this repository ... from what its own files state", which is the engine
-    // vouching for the model with its own prose.
-    //
-    // What the PERSON said, by flag or at the prompt, and nothing else: what
-    // the inspection read out of the project is a model's reading, and it
-    // stands behind nothing (stage 8, slice 2, Task 2.1). A name, type,
-    // lifecycle or owner nobody typed is vouched for by nothing and becomes a
-    // question, the Inspector's reading shown under it (`withHints`).
-    const provenance: Provenance = {
-      intent: request,
-      wordsOf: 'engine',
-      answers: new Map(answered),
-    }
-    const draft: Plan = { intent: request, operations: proposals }
-    const signed = signPlan(
-      draft,
-      {
-        // Nothing the engine returned, because nothing was read: see the graph
-        // above. Every value is vouched for by the person, or by nothing.
-        witnessed: tools.witnessed,
-        vocabulary: seeded,
-        repoRoot: options.project,
-        declared: new Map(),
-      },
-      provenance,
-    )
-    if ('outcome' in signed) {
-      return {
-        text: [
-          'refused at the signature — the engine signs what it can vouch for:',
-          // A reason quotes at most a name the schema has held to Backstage's
-          // characters; cleaned anyway, for the refusal that quotes more.
-          ...signed.refusals.map((refusal) => `  ${refusal.path}: ${inertLine(refusal.reason)}`),
-        ].join('\n'),
-        found: false,
+    // Recognised before anything is drafted or asked about it: a name the
+    // person gave — by flag or at the prompt — that the service's own
+    // catalog-info already declares (review, gap-init-real-repos-3), or that
+    // the declarations repository already gives a Component (stage 8, slice
+    // 2, Task 2.3), has nothing more to answer, and no Reviewer is paid for
+    // it. Only the person's name: what the Inspector read is a hint (Task
+    // 2.1), and a name the Architect drafted is asked, the declaration shown.
+    if (typed.name !== undefined) {
+      const own = recognise(kept, typed.name, true, target)
+      if (own !== undefined && 'declaredIn' in own) {
+        return reported(
+          renderDeclared([own], written === undefined ? undefined : CONFIG_FILE, coverageLines(coverage)),
+          { kind: 'nothing-to-change' },
+        )
+      }
+      const there = declaredComponent(declared.snapshot, typed.name)
+      if (there !== undefined) {
+        return reported(
+          renderNamed(there, written === undefined ? undefined : CONFIG_FILE, coverageLines(coverage)),
+          { kind: 'nothing-to-change' },
+        )
       }
     }
 
-    // Recognised before anything else is asked about it: a service whose own
-    // catalog-info already declares it has nothing more to answer (review,
-    // gap-init-real-repos-3). Only a name the signature settled is looked up —
-    // a name that is still a question names nothing yet — and since stage 8's
-    // slice 2 only the person settles one, by `--name` or at the prompt: what
-    // the Inspector read is a hint (Task 2.1). Until then the name is asked,
-    // as the conflict below when that file declares a Component.
-    const names = settledNames(signed.plan)
-    const recognised = names.map(({ name, index }) => ({
-      name,
-      index,
-      found: recognise(kept, name, answered.has(`operations.${String(index)}.entity.metadata.name`), target),
-    }))
-    const declared = recognised.flatMap(({ found }) =>
-      found !== undefined && 'declaredIn' in found ? [found] : [],
+    let seeded = seed
+    seed = undefined
+    const outcome = await repair(
+      {
+        // `requestOf` wrote this sentence, so it vouches for no word in it — a
+        // Component named `repository-files` used to sign echoed against
+        // "declare this repository ... from what its own files state", which
+        // is the engine vouching for the model with its own prose. What the
+        // PERSON said is `answers`, and nothing else: what the inspection
+        // read is a model's reading, a hint beside the question (`withHints`).
+        provenance: { intent: request, wordsOf: 'engine', answers: new Map() },
+        answers: answersNow(),
+        draft: async (report) => {
+          if (seeded !== undefined) {
+            const filled = seeded
+            seeded = undefined
+            return { plan: filled, truncated: 0, rejections: 0 }
+          }
+          const drafted = await draftPlan(
+            options.client,
+            tools,
+            // The report in the trailing slot, never in `intent`: see
+            // `runIntent`, which does the same for the same reason.
+            { intent: request, facts, summary, vocabulary: report === undefined ? '' : `\n${report}` },
+            options.emit,
+          )
+          // The person's values replace whatever the draft put at their
+          // fields, before anything judges it.
+          return drafted.plan === undefined
+            ? drafted
+            : { ...drafted, plan: { ...drafted.plan, operations: withFlags(drafted.plan.operations, typed).proposals } }
+        },
+        // The plan and the engine's sentence, and nothing of the Architect's:
+        // `runIntent`'s Reviewer, told what the Component writes in the
+        // service's repository (`elsewhere`).
+        review: (plan, reviewed) => reviewPlan(options.client, { plan, intent: request, ...reviewed }, options.emit),
+        // The service's own Component is the person's (row 10b): its name,
+        // type, lifecycle and owner are typed or asked, never enumerated off
+        // the catalogue this graph now holds.
+        signature: { ...contexts.signature, ownComponent: 'stated-or-asked' },
+        policy: contexts.policy,
+        owners: contexts.owners,
+        snapshot: declared.snapshot,
+        contents: declared.contents,
+        scope: componentsOf,
+        elsewhere: (signed) => {
+          const minted = mintedEdits(signed, request, kept, target)
+          return 'refused' in minted ? [] : minted.edits
+        },
+      },
+      options.emit,
     )
-    if (names.length > 0 && declared.length === names.length) {
-      return reported(
-        renderDeclared(declared, written === undefined ? undefined : CONFIG_FILE, coverageLines(coverage)),
-        { kind: 'nothing-to-change' },
-      )
+
+    if (outcome.outcome === 'stopped') {
+      // A stop on the scope: every draft parsed and declared more than the
+      // service, so there is no value for the person to name — the close says
+      // what init takes instead. Read off the last refusal's own words.
+      const scoped =
+        outcome.gate === 'zod' &&
+        outcome.plan !== undefined &&
+        componentsOf(outcome.plan).some((line) => outcome.reason.includes(line))
+      return renderStopped(outcome.plan, outcome.gate, outcome.reason, outcome.kept, scoped ? SCOPE_STOP : undefined)
+    }
+    if (outcome.outcome === 'planned') {
+      const ended = await concluded(outcome.signed, request, kept, target, options, {
+        opened,
+        read,
+        config: written,
+        coverage,
+        // What was already wrong in the declarations repository, counted as
+        // `plan` counts it; nothing when none was read.
+        ...(options.declarations === undefined
+          ? {}
+          : { standing: { violations: outcome.recheck.standing, repo: options.declarations } }),
+      })
+      return ended.ending === undefined ? ended.result : reported(ended.result, ended.ending)
     }
 
-    // The file init would add to already declares another Component: in a
-    // service's own file, most likely this service under another name or
-    // namespace. Appending would declare it twice, so the name is asked —
-    // that name, and nothing is added; another, and it is added beside. Asked
-    // so too when the name is still a question (`unnamedConflict`).
+    const questions = withHints(outcome.questions, facts)
+    // The name is still a question, and something already declares the
+    // draft's: the file init would add to (`unnamedConflict`), or the
+    // declarations repository (`declaredConflict`). Asked as that conflict,
+    // naming what is declared, so the person reads it before naming this
+    // service; that name, and nothing is added.
     const conflict =
-      recognised.find(({ found }) => found !== undefined && 'conflictIn' in found) ??
-      unnamedConflict(signed.plan, draft, kept, target)
-    if (conflict?.found !== undefined && 'conflictIn' in conflict.found) {
-      const { conflictIn, refs } = conflict.found
+      unnamedConflict(outcome.plan, questions, kept, target) ??
+      declaredConflict(outcome.plan, questions, declared.snapshot)
+    if (conflict !== undefined) {
       const path = `operations.${String(conflict.index)}.entity.metadata.name`
-      const reason =
-        `${inertLine(conflictIn, Number.POSITIVE_INFINITY)} already declares ${refs.join(', ')}. ` +
-        'If this service is that one, answer its name and nothing is added; if it is another, ' +
-        'answer this one’s name and it is added beside'
       const bare: Question = {
         path,
-        question: reason,
+        question: conflict.reason,
         ...(conflict.name === undefined ? {} : { proposed: conflict.name }),
       }
       const question = withHints([bare], facts)[0] ?? bare
       if (options.ask === undefined || round >= ASK_LIMITS.maxRounds) {
         // Nobody to ask: the name as this conflict, and every other question
         // the run has, so a script learns every flag it needs in one run.
-        const rest = withHints(questionsOf(signed.plan, { draft }), facts).filter((one) => one.path !== path)
-        return renderInitQuestions([question, ...rest])
+        return renderInitQuestions([question, ...questions.filter((one) => one.path !== path)])
       }
       const asked: Plan = {
-        ...signed.plan,
-        operations: signed.plan.operations.map((operation, index) =>
+        ...outcome.plan,
+        operations: outcome.plan.operations.map((operation, index) =>
           index === conflict.index && operation.op === 'create-entity'
             ? ({
                 ...operation,
@@ -1212,7 +1371,7 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
                   ...operation.entity,
                   // A name is a string in the plan's type and a question at run
                   // time, as the signature leaves one (`questionsOf`).
-                  metadata: { ...operation.entity.metadata, name: { unknown: reason } },
+                  metadata: { ...operation.entity.metadata, name: { unknown: conflict.reason } },
                 },
               } as unknown as Operation)
             : operation,
@@ -1223,21 +1382,15 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
       if (filled.outcome === 'declined') return renderInitQuestions(filled.unanswered, true)
       const reparsed = planSchema.safeParse(filled.plan)
       if (!reparsed.success) return renderRefusedAnswer(reasonOf(reparsed.error))
-      proposals = reparsed.data.operations
-      for (const one of filled.answers) answered.set(one.path, one.value)
+      heard(filled.answers)
+      seed = reparsed.data
       continue
     }
 
-    const questions = withHints(questionsOf(signed.plan, { draft }), facts)
-    if (questions.length === 0) {
-      const ended = await concluded(signed, request, kept, target, options, { opened, read, config: written, coverage })
-      return ended.ending === undefined ? ended.result : reported(ended.result, ended.ending)
-    }
     if (options.ask === undefined || round >= ASK_LIMITS.maxRounds) {
       return renderInitQuestions(questions)
     }
-
-    const filled = await fillAnswers(signed.plan, questions, options.ask)
+    const filled = await fillAnswers(outcome.plan, questions, options.ask)
     if (filled.outcome === 'refused') return renderRefusedAnswer(filled.reason)
     if (filled.outcome === 'declined') return renderInitQuestions(filled.unanswered, true)
 
@@ -1247,9 +1400,32 @@ export async function runInitRepo(options: InitOptions): Promise<CommandResult> 
     // reaching a catalog-info because the person said it.
     const reparsed = planSchema.safeParse(filled.plan)
     if (!reparsed.success) return renderRefusedAnswer(reasonOf(reparsed.error))
-    proposals = reparsed.data.operations
-    for (const one of filled.answers) answered.set(one.path, one.value)
+    heard(filled.answers)
+    seed = reparsed.data
   }
+}
+
+/**
+ * The signed plan's Components, minted into the file the engine chose, and
+ * what that does to the service's repository — the catalog-info `previewOf`
+ * shows, and what the Reviewer is told the Component writes there
+ * (`RepairInput.elsewhere`). The plan boundary is re-crossed because this is
+ * a different object from the one the gates parsed — the same reason `repair`
+ * runs gate [1] over a callback's output rather than trusting the callback.
+ * Refused, with the schema's reason, when the composed plan is not one.
+ */
+function mintedEdits(
+  signed: SignedPlan,
+  request: string,
+  kept: readonly Kept[],
+  target: string,
+): ReturnType<typeof catalogInfoEdits> | { readonly refused: string } {
+  const minted = planSchema.safeParse({
+    intent: request,
+    operations: signed.plan.operations.map((operation) => filedIn(asCatalogInfo(operation), target)),
+  })
+  if (!minted.success) return { refused: reasonOf(minted.error) }
+  return catalogInfoEdits(minted.data, { files: kept })
 }
 
 /**
@@ -1265,21 +1441,11 @@ export function previewOf(
   options: Pick<InitOptions, 'colour'>,
   /** The discovery report's lines, after the diff (`coverageLines`). */
   report?: readonly string[],
+  /** What was already wrong in the declarations repository the gates judged against (`Standing`). */
+  standing?: Standing,
 ): CommandResult {
-  // Only now. The plan boundary is re-crossed because this is a different
-  // object from the one `draftPlan` parsed — the same reason `repair` runs gate
-  // [1] over a callback's output rather than trusting the callback.
-  const minted = planSchema.safeParse({
-    intent: request,
-    operations: signed.plan.operations.map((operation) => filedIn(asCatalogInfo(operation), target)),
-  })
-  if (!minted.success) {
-    return {
-      text: `the composed plan is not a plan — ${inertLine(reasonOf(minted.error))}`,
-      found: false,
-    }
-  }
-
+  // Only now: `mintedEdits` re-crosses the plan boundary.
+  //
   // The `before` is the file as the repository keeps it, read whole and
   // outside the budget — never a capped snapshot, which previewed a creation
   // over a file the budget had left out (review, gap-stage5-readiness-8). The
@@ -1292,7 +1458,11 @@ export function previewOf(
   // `plan` renders one. No signed plan reaches it today: a question stops
   // before this, and an own catalog-info nobody can read whole is refused
   // before the model (`runInitRepo`).
-  const { edits, dropped } = catalogInfoEdits(minted.data, { files: kept })
+  const minted = mintedEdits(signed, request, kept, target)
+  if ('refused' in minted) {
+    return { text: `the composed plan is not a plan — ${inertLine(minted.refused)}`, found: false }
+  }
+  const { edits, dropped } = minted
   const preview = renderPreview({
     signed,
     edits,
@@ -1300,6 +1470,7 @@ export function previewOf(
     ...(options.colour !== undefined ? { colour: options.colour } : {}),
     apply: APPLY,
     ...(report === undefined ? {} : { report }),
+    ...(standing === undefined ? {} : { standing: standing.violations, repo: standing.repo }),
   })
   // A drop is a negative answer, whatever else the diff shows: `renderPreview`
   // has no re-check to read one from here, and would end a plan whose only
@@ -1331,12 +1502,13 @@ async function concluded(
     readonly read: Parameters<typeof clearService>[1]['existing']
     readonly config: WrittenConfig | undefined
     readonly coverage: Coverage
+    readonly standing?: Standing
   },
 ): Promise<{ readonly result: CommandResult; readonly ending: InitEnding | undefined }> {
-  const { opened, read, config, coverage } = submission
+  const { opened, read, config, coverage, standing } = submission
   const report = coverageLines(coverage)
   if (opened === undefined && config === undefined) {
-    return { result: previewOf(signed, request, kept, target, options, report), ending: { kind: 'preview' } }
+    return { result: previewOf(signed, request, kept, target, options, report, standing), ending: { kind: 'preview' } }
   }
   const cleared = clearService(signed, { target, kept, existing: read, config, coverage })
   if ('outcome' in cleared) {
@@ -1360,6 +1532,7 @@ async function concluded(
       status,
       apply: APPLY,
       report,
+      ...(standing === undefined ? {} : { standing: standing.violations, repo: standing.repo }),
       ...(options.colour !== undefined ? { colour: options.colour } : {}),
     })
   // Without --submit, the tail is APPLY, as a preview's always was.
@@ -1375,6 +1548,16 @@ async function concluded(
     ...(options.submit?.notice !== undefined ? { notice: options.submit.notice } : {}),
   })
   return { result, ending: { kind: 'submitted', report: submitted } }
+}
+
+/**
+ * What was already wrong in the declarations repository the gates judged
+ * against, in files no plan of `init`'s touches, and the repository, for the
+ * one line `plan` prints about it (`renderPreview`'s `standing`).
+ */
+interface Standing {
+  readonly violations: readonly Violation[]
+  readonly repo: string
 }
 
 /** How an init run ended where the report is printed: the preview, nothing to change, or what `submit` reported. */

@@ -11,8 +11,8 @@ one stale, and what to do when your change does.
 | `architecture/` | the import rules of `AGENTS.md`, and checks that they cannot pass on an empty tree |
 | `invariants/` | properties over generated input (`fast-check`) |
 | `golden/` | small catalogues the unit tests read, each built for one case |
-| `scenarios/` | the whole chain against a recorded model: `plan-mode.test.ts`, `question-mode.test.ts`, and `backstage-mode.test.ts`, questions over the fake Backstage |
-| `recordings/` | the tapes those three replay, one JSON file per scenario |
+| `scenarios/` | the whole chain against a recorded model: `plan-mode.test.ts`, `question-mode.test.ts`, `backstage-mode.test.ts`, questions over the fake Backstage, and `init-mode.test.ts`, `idpa init` over a temporary service and a copy of the demo SI |
+| `recordings/` | the tapes those four replay, one JSON file per scenario |
 | `setup/` | what runs before every test file, below |
 | `support/` | helpers shared by tests; `fake-backstage.ts`, the fake catalogue as an injected `fetch`, and `fake-gh.ts`, the fake gh and the doors, below; `stub-gh.ts`, a recording `gh` or `git` put first on `PATH` |
 | `live/` | stage 6's live test, `pnpm test:live:github`, run by hand with the owner's own gh against a throwaway repository on GitHub; never collected by `pnpm test` (`vitest.config.ts` excludes it), below |
@@ -146,7 +146,7 @@ loops, the tools, the gates, the renderers all run for real.
   longer sends. `scenarios/plan-mode.test.ts` turns the warning into a failure, naming the
   scenario: `the recording is stale — re-record it`, and so do
   `scenarios/backstage-mode.test.ts` and `scenarios/question-mode.test.ts` (since stage 6,
-  Task 6.4.3). A tape the owner decides to leave as it was recorded is named in
+  Task 6.4.3), and `scenarios/init-mode.test.ts` (since stage 8's slice 2, Task 2.3). A tape the owner decides to leave as it was recorded is named in
   `scenarios/left.ts`, with the date of that decision in [`docs/roadmap.md`](../docs/roadmap.md),
   and is exempt from that failure and from nothing else; the list is empty. `the recordings
   themselves` also holds each tape's Inspector to the files it read: a `report_facts` that
@@ -180,7 +180,8 @@ changes it:
 What does not: the timeout, and the settings of a call that are not part of the request.
 
 That is a turn recorded since 2026-09-30, whose digest starts `sent:sha256:`, and every turn
-of every tape here is one: the owner recorded the twelve tapes again on 2026-10-02, and `the
+of every tape here is one: the owner recorded the twelve tapes again on 2026-10-02, and the
+thirteenth, `init-new-service`, on 2026-10-09; `the
 recordings themselves` in `plan-mode.test.ts` fails on a turn under any other digest (`records
 every turn under the digest of what the provider is sent`). A turn recorded before held a
 `sha256:` digest, taken over the request as the agents build it, with each tool's Zod schema

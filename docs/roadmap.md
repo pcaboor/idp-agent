@@ -601,6 +601,30 @@ The owner's decisions, dated, each with where it is recorded.
   `tests/invariants/discovery-secrets.test.ts`, outside the list, loses its scripted
   `dependencies: []` with the owner's go-ahead (a report the strict schema now refuses, which
   had its run end with every fact unknown); no assertion changes.
+- Slice 2's task 2.3 built ([#151](https://github.com/pcaboor/idp-agent/pull/151)): `init
+  --project` names the service and `init --repo` is refused, naming `--project`; `init` finds
+  the declarations repository by `IDP_REPO`, then `repo` in `config.yml`, says so when there is
+  none, and runs the five gates over the Architect's draft, the Reviewer last
+  (`RepairInput.scope` and `elsewhere`); a typed name the declarations repository already gives a
+  Component is *nothing to change*, a drafted one is asked; the Component's four fields sign
+  `echoed` or are asked (`SignatureContext.ownComponent`). The first `init` tape,
+  `init-new-service`, is recorded by the owner on 2026-10-09 (the plan's Step 9), OpenAI
+  `gpt-6-luna`, six turns: three of the Inspector, two of the Architect, one of the Reviewer;
+  neither of the scenario's marked passwords is in it. Departures from the plan, following the code: the person's four values are not
+  `recordAnswers`' — that follows an answer by its entity's name, and the name is one of them —
+  but put into every Component the Architect drafts, a redraft included, as the flags always
+  were, and vouched for at operation 0's fields, where the one Component a draft the scope
+  accepts sits; a typed name is looked up in both repositories before each round of the gates,
+  so no Reviewer is paid for a name already declared; `renderPreview` gains `standing`, so the
+  line `plan` prints about violations already in the declarations repository is printed by
+  `init` too, whose diff the re-check did not compose; `readContents`, `graphOf` and
+  `contextsOf` are exported from `plan.ts` rather than copied. From the task's review:
+  `ownComponent` covers the Component's `dependsOn` entries too, which a graph tool's result
+  would otherwise vouch for; a service that is the declarations repository, or lies under its
+  `catalog/` or `dependencies/`, is refused before any model (`initApart`, and `initRoot` on the
+  markers); the report's *declared, not evidenced* line says nothing of a read on a run that
+  found no repository; a stop on the scope shows the draft it refused; and `init --submit`'s
+  pull request body names the five gates.
 
 ## Known debts and open items
 
@@ -722,7 +746,14 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
 - **A same-named Component in a workspace's catalog-info counts as declared.** It is read
   like the service's own; in a monorepo it is most often another service's name.
 - **The declarations repository is still not read at `init` time**, so a Component declared
-  there and not in the service's own catalog-info is proposed again (stage 8, slice 3).
+  there and not in the service's own catalog-info is proposed again (stage 8, slice 3). Closed
+  by stage 8's slice 2, Task 2.3 ([#151](https://github.com/pcaboor/idp-agent/pull/151)):
+  `init` reads it as `plan` finds it, and a name it already gives a Component is never proposed
+  again — typed, *nothing to change*; drafted, asked.
+- **`init --repo` is refused in this release** (stage 8, slice 2, question 1): it named the
+  service until Task 2.3, and `--repo` names the declarations repository everywhere else. The
+  refusal is removed in the release after the first one that ships stage 8, when `init --repo`
+  can take `plan`'s meaning.
 
 **Recordings that need the owner's key**
 
@@ -736,8 +767,8 @@ Checked against this change ([#82](https://github.com/pcaboor/idp-agent/pull/82)
   `src/agents/repair.ts` still tells the Reviewer that update "would be written to the
   repository". The recorded `link-already-declared` scenario is exactly that update, so
   saying "changes nothing" stales its Reviewer turn; it waits for a re-record.
-- **No Anthropic recording exists.** The twelve recordings are OpenAI's, `gpt-6-luna` for
-  eleven, and Mistral's, `mistral-small-2603` for `question-prod-databases` (recorded again on
+- **No Anthropic recording exists.** The thirteen recordings are OpenAI's, `gpt-6-luna` for
+  twelve (`init-new-service`, the first of `init`, recorded by the owner on 2026-10-09), and Mistral's, `mistral-small-2603` for `question-prod-databases` (recorded again on
   2026-10-02); the provider contract test checks Anthropic's request shape, not a live run.
 - **No `question-overview` scenario is recorded** ([#54](https://github.com/pcaboor/idp-agent/pull/54)
   suggested one): an overview answered from the demo SI is replayed by no tape. It is a new

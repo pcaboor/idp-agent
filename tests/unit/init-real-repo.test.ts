@@ -11,6 +11,7 @@ import { budgetNotice } from '../../src/cli/repository.js'
 import type { Question } from '../../src/core/plan/clarify.js'
 import { REPORT_TOOL } from '../../src/agents/tools/project-tools.js'
 import { PROPOSE_TOOL } from '../../src/agents/tools/propose-tool.js'
+import { VERDICT_TOOL } from '../../src/agents/reviewer.js'
 import type {
   AgentName,
   GenerateRequest,
@@ -269,6 +270,7 @@ const drafting = (operations: unknown[], facts: unknown = FACTS) =>
   scripted({
     inspector: [READING, turnCalling(REPORT_TOOL, facts)],
     architect: [turnCalling(PROPOSE_TOOL, { operations })],
+    reviewer: [turnCalling(VERDICT_TOOL, { verdict: 'ok' })],
   })
 
 describe('an existing catalog-info is recognised (gap-init-real-repos-3, core-yaml-4)', () => {
@@ -653,7 +655,7 @@ describe('questions init cannot answer are asked, or answered by flags (gap-init
     const code = await main(
       [
         'init',
-        '--repo',
+        '--project',
         root,
         '--owner',
         'group:default/payments',
@@ -688,7 +690,7 @@ describe('questions init cannot answer are asked, or answered by flags (gap-init
     const root = await realistic()
     const err: string[] = []
 
-    await main(['init', '--repo', root], {
+    await main(['init', '--project', root], {
       client: undeclaredDraft(),
       out: () => {},
       err: (chunk) => void err.push(chunk),
@@ -799,7 +801,7 @@ describe('questions init cannot answer are asked, or answered by flags (gap-init
     expect(
       parseArguments([
         'init',
-        '--repo',
+        '--project',
         'svc',
         '--owner',
         'group:default/payments',
@@ -810,7 +812,7 @@ describe('questions init cannot answer are asked, or answered by flags (gap-init
       ]),
     ).toEqual({
       name: 'init',
-      repo: 'svc',
+      project: 'svc',
       answers: { owner: 'group:default/payments', lifecycle: 'experimental', name: 'billing-api' },
     })
     expect(parseArguments(['init'])).toEqual({ name: 'init', answers: {} })

@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 5464 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 5493 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -97,10 +97,12 @@ push to, that is archived or that answers under another name, a clone not level 
 push refused, a service whose `.idp-agent.yml` names another repository than the one a
 submission goes to, an idp-agent pull request in flight that changes a file this change
 writes, differently, or more of them than this build compares — or something failed unexpectedly · `2`
-the arguments were refused — a bad flag, a plan file that is not a plan, a `--repo`, a
-`--project`, a configured repository or the directory `validate` or `init` is handed that is
+the arguments were refused — a bad flag, a plan file that is not a plan, `init --repo`
+whatever it names (it named the service until stage 8's slice 2; `--project` does now), a
+`--repo`, a `--project`, a configured repository or the directory `validate` or `init` is handed that is
 not a directory, a `--project` that is a declarations repository or the one the change is
-decided against, a change with no declarations repository to decide against, a single word
+decided against (on `init` too, or the directory it runs in, against the one `IDP_REPO` or
+`config.yml` names), a change with no declarations repository to decide against, a single word
 one slip away from a command name (`idpa grpah`, `idpa relation`), a command typed after its
 options, two relation flags or one beside `--to`, a `--depth` that is not a whole number
 from 1 to 100, a `.idp-agent.yml` or a personal `config.yml` that does not parse, a
@@ -226,7 +228,7 @@ idpa "<phrase>" [--repo <dir> | --demo | --backstage] [--refresh | --cached] [--
 idp-agent relations <name-or-ref> [--consumes | --consumed-by | --depends-on | --impacts | --provides | --provided-by | --owns | --owned-by | --member-of | --has-member | --part-of | --has-part | --to <name-or-ref>] [--depth <n>] [--repo <dir> | --demo | --backstage] [--refresh | --cached]  # no model
 idp-agent plan --from <plan.json> --repo <dir> [--submit [--local]]  # no model, and none is possible
 idp-agent plan "<intent>" --repo <dir> [--json] [--submit [--local]]  # Inspector, Architect, five gates
-idp-agent init [--repo <dir>] [--name <n>] [--type <t>] [--lifecycle <l>] [--owner <ref>] [--submit [--local]] [--iac-repo <locator>] [--environment <name>]...  # the catalog-info.yaml, and .idp-agent.yml when a flag states it
+idp-agent init [--project <dir>] [--name <n>] [--type <t>] [--lifecycle <l>] [--owner <ref>] [--submit [--local]] [--iac-repo <locator>] [--environment <name>]...  # the catalog-info.yaml, and .idp-agent.yml when a flag states it
 idp-agent protection [--repo <dir>]  # through the person's gh, reads only; no model, no write
 ```
 
@@ -243,6 +245,18 @@ as the person's word (slice 2, Task 2.1): the name, type, lifecycle and owner th
 reads are hints shown beside the questions, labelled as a model's reading, each held to its
 field's grammar and never selected — an empty line declines — and only what a person types,
 by `--name`, `--type`, `--lifecycle`, `--owner` or at the prompt, signs as answered.
+`init` reads both repositories (slice 2, Task 2.3): the service `--project` names, or the
+working directory, and the declarations repository `plan`'s chain finds without its first two
+steps — `IDP_REPO`, then `repo` in the personal `config.yml`; with neither it says so on
+stderr and goes on against an empty catalogue. The Architect drafts the Component over that
+repository's graph, and `repair` runs the five gates, the Reviewer last, the Architect drafting
+again what a gate refuses — a draft that declares more than the service included, at gate
+[1]. A name the declarations repository already gives a Component is never proposed again:
+typed, it is *nothing to change*, naming the declaration; drafted, it is asked. The service's
+own Component's name, type, lifecycle, owner and every `dependsOn` entry sign as typed or are
+asked, never enumerated off the catalogue's vocabulary nor vouched for by a graph tool
+(`SignatureContext.ownComponent`). A service that is the declarations repository, or lies under
+its `catalog/` or `dependencies/`, is refused, exit 2, before any model.
 
 **`init platform` writes into the directory it was handed, and through no symbolic link
 under it. `plan … --submit`, `idpa "<phrase>" --submit` and
@@ -267,11 +281,14 @@ path, every byte and every directory of both repositories either side of a full 
 compares every ref, `HEAD`, the index and the working tree either side of a submission, and
 `pnpm smoke` makes the same assertions about the built binary.
 
-The two `--repo` flags name different repositories, which is the first thing that trips
-someone up. `plan --repo` is the **declarations** repository the preview is decided
-against; `init --repo` is the **application** repository being declared. `idpa
-"<phrase>"`, `graph`, `show`, `relations`, `ask` and `plan` take `--repo` in `plan`'s
-sense, through the same guard, and find it the same way without it: the working directory
+`--repo` names the **declarations** repository the preview is decided against, on every
+command that takes it. `init` names the **application** repository being declared with
+`--project`, as `plan` names the one its Inspector reads; `init --repo`, which named the
+application repository until stage 8's slice 2, is refused in this release whatever it
+names, the refusal naming `--project`, and `init` finds the declarations repository by
+`IDP_REPO`, then `repo` in the personal `config.yml`, never by the working directory, which
+is the service. `idpa "<phrase>"`, `graph`, `show`, `relations`, `ask` and `plan` take
+`--repo` in `plan`'s sense, through the same guard, and find it the same way without it: the working directory
 when its root carries the markers `init platform` writes — a witnessed folder under
 `catalog/` or `dependencies/`, looked for there and never by walking — then `IDP_REPO`,
 then `repo` in the personal `config.yml`. A Backstage catalogue answers the read commands

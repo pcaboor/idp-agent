@@ -450,6 +450,13 @@ Each pull request adds its line here.
   unknown fact reaches the Architect as the engine's fixed sentence for that field, never as the
   reason a model wrote. The five plan-mode recordings with an Inspector are recorded again
   ([#150](https://github.com/pcaboor/idp-agent/pull/150)).
+- `idpa init` reads the declarations repository as `plan` finds it and runs the five gates —
+  the schema, the signature, the policies, the re-check and the Reviewer — the Architect
+  drafting again what a gate refuses, and never proposes again a Component the declarations
+  repository already declares under that name. The service is named with `--project`, as on
+  `plan`; `init --repo`, which named it until now, is refused in this release, naming
+  `--project`, and so is a service that is the declarations repository it reads
+  ([#151](https://github.com/pcaboor/idp-agent/pull/151)).
 
 ### Fixed
 

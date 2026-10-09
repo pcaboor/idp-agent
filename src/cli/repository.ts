@@ -21,12 +21,22 @@ export class RepositoryArgumentError extends Error {
 }
 
 /**
- * The commands whose `--repo` names the declarations repository, as their
- * refusals name them: `idpa` is the phrase, `idpa "<phrase>"`, which is typed
- * with no command word and is told so in none. `protection` checks the branch
- * that repository's clone tracks on github.com.
+ * The commands that read a declarations repository, as their refusals name
+ * them: `idpa` is the phrase, `idpa "<phrase>"`, which is typed with no command
+ * word and is told so in none. `protection` checks the branch that
+ * repository's clone tracks on github.com. `init` finds one as `plan` does and
+ * takes no `--repo` for it in this release (stage 8, slice 2, Task 2.3): its
+ * `--repo` named the service until then, and is refused.
  */
-export type DeclarationsCommand = 'plan' | 'protection' | 'graph' | 'show' | 'relations' | 'ask' | 'idpa'
+export type DeclarationsCommand =
+  | 'plan'
+  | 'protection'
+  | 'init'
+  | 'graph'
+  | 'show'
+  | 'relations'
+  | 'ask'
+  | 'idpa'
 
 /**
  * The declarations repository a `--repo` names, as an absolute directory — the
@@ -412,12 +422,12 @@ export async function platformRoot(directory: string, cwd: () => string): Promis
 }
 
 /**
- * The directory `init` inspects, as an absolute path: the one `--repo` names,
- * resolved from where it was typed, else the working directory. Refused, each
- * on exit 2 before a model is chosen:
+ * The directory `init` inspects, as an absolute path: the one `--project`
+ * names, resolved from where it was typed, else the working directory. Refused,
+ * each on exit 2 before a model is chosen:
  *
- *   - an empty `--repo`, for the reason `declarationsRoot` gives: resolved, it
- *     is the working directory, the directory the flag was typed to avoid;
+ *   - an empty `--project`, for the reason `declarationsRoot` gives: resolved,
+ *     it is the working directory, the directory the flag was typed to avoid;
  *   - a path that is no directory. It was inspected — as nothing — and the run
  *     paid for two model calls or more before it failed, in words about the
  *     service rather than the path (review, gap-init-real-repos-6, cli-ux-8);
@@ -427,26 +437,35 @@ export async function platformRoot(directory: string, cwd: () => string): Promis
  *     it runs in whatever it is, and a terminal opens in `~` — the Inspector
  *     would be handed a listing of someone's home and the text of their
  *     documents. Refused, not skipped: `init` has nothing to do without a
- *     repository to inspect.
+ *     repository to inspect;
+ *   - a declarations repository by its markers (stage 8, slice 2, Task 2.3),
+ *     as `plan --project` refuses one (`projectRoot`): from 2.3 `init` judges
+ *     the service against a declarations repository, and one inspected as a
+ *     service would be sent to the Inspector, reviewed, and given a
+ *     Component appended to its own Backstage registration.
  *
  * Nothing else is refused here: a directory that is not a service's is
- * `init`'s own business, as it was.
+ * `init`'s own business, as it was. Where the service sits against the
+ * declarations repository found is `initApart`'s, once it is found.
+ * `--project` is the flag's name since stage 8's slice 2 (Task 2.3), as on
+ * `plan`; `init --repo` is refused at parsing.
  */
 export async function initRoot(options: {
   /** As typed. Absent means the directory the user is standing in (§7.3). */
-  readonly repo: string | undefined
-  /** Asked for only when `repo` is absent or relative: see `applicationRoot`. */
+  readonly project: string | undefined
+  /** Asked for only when `project` is absent or relative: see `applicationRoot`. */
   readonly cwd: () => string
   readonly home: string | undefined
 }): Promise<string> {
-  const { repo, home } = options
-  const flag = 'init --repo names the application repository of the service being declared'
-  if (repo !== undefined && repo.trim() === '') {
-    throw new RepositoryArgumentError(`--repo is empty; ${flag}`)
+  const { home } = options
+  const typed = options.project
+  const flag = 'init --project names the application repository of the service being declared'
+  if (typed !== undefined && typed.trim() === '') {
+    throw new RepositoryArgumentError(`--project is empty; ${flag}`)
   }
   const gone = (): never => {
     throw new RepositoryArgumentError(
-      'the working directory no longer exists; name the service with init --repo <dir>',
+      'the working directory no longer exists; name the service with init --project <dir>',
     )
   }
   // `process.cwd()` throws in a directory since removed.
@@ -458,7 +477,7 @@ export async function initRoot(options: {
     }
   }
   let project: string
-  if (repo !== undefined) project = await directoryArgument(repo, here, flag)
+  if (typed !== undefined) project = await directoryArgument(typed, here, flag)
   else {
     project = here()
     if (!(await isDirectory(project))) gone()
@@ -467,12 +486,48 @@ export async function initRoot(options: {
   const refuse = (what: string): never => {
     throw new RepositoryArgumentError(
       `init inspects the application repository it runs in, and ${what}; run it from the ` +
-        "service's repository, or name it with init --repo <dir>.",
+        "service's repository, or name it with init --project <dir>.",
     )
   }
   if (path.parse(real).root === real) refuse(`${oneLine(real)} is the filesystem root`)
   if (home !== undefined && real === (await realpath(home).catch(() => undefined))) {
     refuse(`${folderOf(real)} is your home directory`)
   }
+  if (await isDeclarationsRepository(project)) {
+    if (typed === undefined) refuse(`${folderOf(real)} is a declarations repository`)
+    throw new RepositoryArgumentError(
+      `${flag}, and ${folderOf(real)} is a declarations repository; IDP_REPO, or repo in ` +
+        'config.yml, names that one.',
+    )
+  }
   return project
+}
+
+/**
+ * The service `init` inspects, refused, exit 2 before a model is chosen, when
+ * it is the declarations repository it is judged against or lies under that
+ * repository's `catalog/` or `dependencies/`, both by real path — the two
+ * checks `applicationRoot` makes for `plan`, against the repository `init`
+ * found rather than one `--repo` named (stage 8, slice 2, Task 2.3). A
+ * repository with no markers yet is a declarations repository all the same
+ * once `IDP_REPO` names it, which `initRoot`'s marker check cannot see.
+ * `named` is what named it — `IDP_REPO`, or `repo in <config.yml>` — and is
+ * said in the refusal, since that is what the person changes.
+ */
+export async function initApart(project: string, repo: string, named: string): Promise<void> {
+  const inside = await declaredIn(repo, project)
+  if (inside === 'same') {
+    throw new RepositoryArgumentError(
+      `init would inspect ${folderOf(project)}, and ${named} names the same directory: ${named} ` +
+        "names the declarations repository, and init reads the service's own. Run it from the " +
+        "service's repository, or name it with init --project <dir>.",
+    )
+  }
+  if (inside !== undefined) {
+    throw new RepositoryArgumentError(
+      "init reads the application repository of the service you are declaring, and " +
+        `${inside} is where the declarations repository ${named} names keeps its ` +
+        "declarations. Run it from the service's repository, or name it with init --project <dir>.",
+    )
+  }
 }

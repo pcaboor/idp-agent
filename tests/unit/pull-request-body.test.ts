@@ -107,8 +107,8 @@ describe('pullRequestBody', () => {
       // a person's, and that is what the words say.
       init:
         "drafted by a model from the service's own files and written by idpa init in its own repository: " +
-        'two gates, the schema and the signature, every value the model chose either read by the inspection ' +
-        'or typed by a person, and no Reviewer',
+        'five gates, the schema, the signature, the policies, the re-check and the Reviewer last, every ' +
+        'value the model chose typed or answered by a person',
     }
     for (const [road, words] of Object.entries(said) as [PullRequestInput['road'], string][]) {
       const { body } = pullRequestBody(input(change, change.request, road))

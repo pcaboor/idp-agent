@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import fc from 'fast-check'
 import { afterAll, describe, expect, it } from 'vitest'
+import { VERDICT_TOOL } from '../../src/agents/reviewer.js'
 import { REPORT_TOOL } from '../../src/agents/tools/project-tools.js'
 import { PROPOSE_TOOL } from '../../src/agents/tools/propose-tool.js'
 import { main } from '../../src/cli/index.js'
@@ -384,6 +385,7 @@ describe('a password reaches no line init writes, no trace and no pull request b
           ],
         }),
       ],
+      reviewer: [call(VERDICT_TOOL, { verdict: 'ok' })],
     }
     const spent = new Map<AgentName, number>()
     return {
@@ -427,7 +429,7 @@ describe('a password reaches no line init writes, no trace and no pull request b
           // hint, never an answer (stage 8, slice 2, Task 2.1).
           const typed = ['--name', 'billing-api', '--type', 'service', '--lifecycle', 'production', '--owner', 'group:default/tiger']
           const code = await main(
-            ['init', '--repo', clone.repo, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev', ...typed],
+            ['init', '--project', clone.repo, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev', ...typed],
             {
               cwd: clone.repo,
               env: clone.env,

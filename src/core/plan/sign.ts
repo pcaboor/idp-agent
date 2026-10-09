@@ -68,7 +68,27 @@ export interface SignatureContext {
    */
   readonly environments?: ReadonlyMap<string, string>
   readonly namesakes?: Namesakes
+  /**
+   * `init`'s, and only `init`'s (stage 8, slice 2, Task 2.3): the service's
+   * own Component is the person's. The name, type, lifecycle and owner of a
+   * Component a `create-entity` creates sign `echoed` when the person stated
+   * them, and are otherwise asked — never `enumerated` because the
+   * declarations repository uses the value, never vouched for because a graph
+   * tool returned it, and never `composed` out of words the catalogue holds.
+   * `group:default/tiger` owning other Components says nothing about who owns
+   * this one. Every entry of its `spec.dependsOn` too: a Resource a graph tool
+   * returned is not anybody saying this service reaches it, and a service
+   * declaring its own dependency vouches for nothing (the note's § 5,
+   * `claimed`) — slice 3 drafts the rights that do. Absent on the plan road,
+   * which signs as it always has.
+   */
+  readonly ownComponent?: 'stated-or-asked'
 }
+
+/** The four fields of a created Component that `ownComponent` leaves to the person, under `operations.<n>.entity`. */
+const OWN_FIELDS = ['metadata.name', 'spec.type', 'spec.lifecycle', 'spec.owner'] as const
+/** And each entry of its `spec.dependsOn`, `operations.<n>.entity.spec.dependsOn.<i>`. */
+const OWN_LIST = 'spec.dependsOn.'
 
 /**
  * Only `signPlan` can mint one: the brand is not exported, so everything
@@ -303,6 +323,16 @@ export function signPlan(
   const classified: LeafFinding[] = []
   const refusals: LeafRefusal[] = []
   const asked = new Map<string, string>()
+  /** Whether `path` is one of the four fields of a Component this plan creates, or a `dependsOn` entry of it, on `init`. */
+  const own = (opIndex: number, path: string, kind: string | undefined): boolean => {
+    if (context.ownComponent !== 'stated-or-asked' || kind !== 'Component') return false
+    if (plan.operations[opIndex]?.op !== 'create-entity') return false
+    const entity = `operations.${String(opIndex)}.entity.`
+    return (
+      OWN_FIELDS.some((field) => path === `${entity}${field}`) ||
+      (path.startsWith(`${entity}${OWN_LIST}`) && /^\d+$/.test(path.slice(`${entity}${OWN_LIST}`.length)))
+    )
+  }
 
   const stack: Frame[] = plan.operations.map((operation, index) => ({
     value: operation,
@@ -442,6 +472,11 @@ export function signPlan(
       // or their answer to this field, not merely something that happens to
       // exist somewhere.
       leafClass = 'echoed'
+    } else if (own(opIndex, path, kind)) {
+      // The service's own Component, on `init`: what the person did not
+      // state is asked, whatever the catalogue uses or a tool returned. See
+      // `SignatureContext.ownComponent`.
+      leafClass = 'novel'
     } else if (context.witnessed.has(text) || enumerated(context.vocabulary, path, text)) {
       leafClass = 'enumerated'
     } else if (

@@ -702,7 +702,7 @@ describe('what the root says a run printed', () => {
     try {
       // The four flags: what the Inspector reads is a hint, never an answer (stage 8, slice 2, Task 2.1).
       const typed = ['--name', 'billing-api', '--type', 'service', '--lifecycle', 'production', '--owner', 'group:default/tiger']
-      const code = await main(['init', '--repo', await application(), ...typed], {
+      const code = await main(['init', '--project', await application(), ...typed], {
         client: byAgent({
           inspector: [READING, calling(REPORT_TOOL, FACTS)],
           architect: [
@@ -719,6 +719,7 @@ describe('what the root says a run printed', () => {
               ],
             }),
           ],
+          reviewer: [calling(VERDICT_TOOL, { verdict: 'ok' })],
         }),
         env: { FORCE_COLOR: '1' },
         err: () => {},
@@ -807,7 +808,7 @@ describe('a memory sink changes nothing a person sees, on any road', () => {
     [
       'init',
       async () => ({
-        argv: ['init', '--repo', await application()],
+        argv: ['init', '--project', await application()],
         deps: { env: {}, client: initClient() },
       }),
     ],

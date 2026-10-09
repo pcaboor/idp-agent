@@ -441,7 +441,7 @@ const withService = (session) => {
     repositories: [...repositories.filter((one) => one.name !== 'billing-api'), BILLING],
   }
 }
-const INIT = ['init', '--repo', 'billing-api', '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev', '--environment', 'prod']
+const INIT = ['init', '--project', 'billing-api', '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev', '--environment', 'prod']
 const SERVICE_CLONE = ['-C', SERVICE]
 const SERVICE_GITHUB = ['--git-dir', SERVICE_BARE]
 const serviceUntouched = () => ourBranches(SERVICE_CLONE) === '' && ourBranches(SERVICE_GITHUB) === ''

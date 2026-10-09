@@ -383,7 +383,11 @@ idpa init --submit --iac-repo github.com/acme/iac --environment dev --environmen
 opened there: on `github.com/<you>/my-service`, into the branch your clone's `main` tracks — never on
 the declarations repository. The branch holds two files at most: the `catalog-info.yaml` it
 previews, and `.idp-agent.yml` when `--iac-repo` and `--environment` were typed, or answered at the
-terminal.
+terminal. Standing elsewhere, name the service with `init --project ~/my-service`; `init --repo`,
+which named it before stage 8, is refused in this release, because `--repo` names the declarations
+repository everywhere else. `init` reads that repository — `IDP_REPO`, or `repo` in the personal
+`config.yml` — and judges the Component against it, the Reviewer last, but writes nothing there:
+its submission writes into the service's repository alone.
 
 The service's repository is held to exactly what the declarations repository is: the same clone
 configuration check, gh's identity, and **the same ruleset on its base branch**
@@ -407,7 +411,7 @@ order, every step before the Inspector, the first model call:
 
    Rules that let you merge alone are said in the note, and the run goes on.
 
-4. **The Inspector and the Architect**, then the diff, the question and the moment of acting, as
+4. **The Inspector, the Architect and the five gates**, the Reviewer last, then the diff, the question and the moment of acting, as
    for a plan file.
 
 `iacRepo` is not held to the clone here, as it is on the intent road: there the clone *is* the

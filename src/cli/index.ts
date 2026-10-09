@@ -84,6 +84,7 @@ import { homeOf, shownPath, type CacheRoot } from './personal.js'
 import {
   RepositoryArgumentError,
   applicationRoot,
+  initApart,
   initRoot,
   platformRoot,
   projectRoot,
@@ -101,6 +102,8 @@ import {
   declarationsFor,
   noCacheRefusal,
   overviewName,
+  initFoundNoRepository,
+  originText,
   planNeedsRepository,
   protectionNeedsRepository,
   sourceNotice,
@@ -219,14 +222,16 @@ export type Command =
   | { name: 'protection'; repo?: string }
   | { name: 'init-platform'; directory: string; owner: string }
   /**
-   * Absent `repo` means the repository the user is standing in (§7.3).
+   * Absent `project` means the repository the user is standing in (§7.3).
    * `answers` are the person's own values for the four fields of its
    * Component — its catalogue name, type, lifecycle and owner — already held
-   * to what each field accepts.
+   * to what each field accepts. No `repo`: the declarations repository is
+   * found as `plan` finds it (stage 8, slice 2, Task 2.3), and `init --repo`,
+   * which named the service until then, is refused.
    */
   | {
       name: 'init'
-      repo?: string
+      project?: string
       answers: InitAnswers
       /** `--submit`: the preview becomes a branch in the service's repository. Omitted when absent. */
       submit?: true
@@ -276,7 +281,7 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   idp-agent plan "<intent>" [--repo <directory>] [--project <directory>] [--json] [--submit [--local]]
   idp-agent plan --from <plan.json> [--repo <directory>] [--json] [--submit [--local]]
   idp-agent protection [--repo <directory>]
-  idp-agent init [--repo <directory>] [--name <name>] [--type <type>] [--lifecycle experimental|production|deprecated] [--owner group:<namespace>/<name>] [--submit [--local]] [--iac-repo <locator>] [--environment <name>]...
+  idp-agent init [--project <directory>] [--name <name>] [--type <type>] [--lifecycle experimental|production|deprecated] [--owner group:<namespace>/<name>] [--submit [--local]] [--iac-repo <locator>] [--environment <name>]...
   idp-agent init platform <directory> --owner @org/team
   idp-agent version
 
@@ -298,11 +303,16 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   add when it does not. It needs gh logged in to github.com as you, and no
   model; it writes nothing.
 
-  init previews the catalog-info.yaml of the service it is run in, or adds to
-  the one the repository keeps. --name, --type, --lifecycle and --owner answer
-  its questions; at a terminal it asks instead, what a model read in the
-  service's files shown beside each question and never taken as an answer,
-  and an empty line declines. --iac-repo and
+  init previews the catalog-info.yaml of the service it is run in, or that
+  --project names, or adds to the one the repository keeps. It reads the
+  declarations repository IDP_REPO, or repo in the personal config.yml, names
+  — never one --repo names, which init refuses in this release — and judges
+  the Component against it through the five gates, the Reviewer last; a name a
+  Component there already has is never proposed again. With neither set, it
+  says so and judges against an empty catalogue. --name, --type, --lifecycle
+  and --owner answer its questions; at a terminal it asks instead, what a
+  model read in the service's files shown beside each question and never
+  taken as an answer, and an empty line declines. --iac-repo and
   --environment, repeated, state the service's .idp-agent.yml, which is
   previewed beside it — from what was typed or answered, never from the
   inspection, and never over a committed one that says otherwise. With
@@ -311,9 +321,9 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   one on github.com, a pull request is opened there; a service in a subfolder
   of its repository is not submitted yet.
 
-  idpa is idp-agent. Every command but init and validate finds the
-  declarations repository the same way: --repo, else the current directory
-  when it is one, else IDP_REPO, else repo in the personal config.yml
+  idpa is idp-agent. Every command but validate finds the declarations
+  repository the same way, init from IDP_REPO on: --repo, else the current
+  directory when it is one, else IDP_REPO, else repo in the personal config.yml
   ($XDG_CONFIG_HOME/idp-agent/, else ~/.config/idp-agent/). With none, graph,
   show, relations and a question read the fictional demo SI, as --demo does,
   and a change or idpa protection is refused. A change inspects the service
@@ -357,6 +367,17 @@ export const HELP = `idp-agent - turn an intent into reviewed infrastructure dec
   another model of the same provider; unset, it uses IDP_MODEL.
 `
 
+/**
+ * `init --repo`, refused for this release whatever it names (stage 8, slice 2,
+ * Task 2.3, question 1): it named the service's repository until now, and
+ * `--repo` names the declarations repository on every other command. Never
+ * reinterpreted — a typed value that could mean either is read as neither —
+ * and the release after the first one that ships stage 8 removes the refusal.
+ */
+const INIT_REPO =
+  "init --repo named the service's repository until this release; name it with --project. " +
+  'The declarations repository is found as plan finds it — IDP_REPO, or repo in config.yml'
+
 /** `--local` alone: it says where a submission's branch goes, and nothing is submitted. */
 const LOCAL_WITHOUT_SUBMIT =
   '--local says where --submit cuts its branch, and there is no --submit here: add --submit, or leave --local out'
@@ -397,7 +418,9 @@ export function parseArguments(argv: string[]): Command {
         const { values } = parseArgs({
           args: rest,
           options: {
+            // Parsed only to be refused: see `INIT_REPO`.
             repo: { type: 'string' },
+            project: { type: 'string' },
             name: { type: 'string' },
             type: { type: 'string' },
             lifecycle: { type: 'string' },
@@ -410,6 +433,8 @@ export function parseArguments(argv: string[]): Command {
           },
           strict: true,
         })
+        // First, whatever it names: no value can then mean two things.
+        if (values.repo !== undefined) return { name: 'error', message: INIT_REPO }
         // Refused here, as a bad flag, rather than after an inspection a
         // model was paid for: the same rules an answer typed at the prompt is
         // held to (`initAnswersOf`, `configFlagsOf`).
@@ -423,7 +448,7 @@ export function parseArguments(argv: string[]): Command {
         // absence rather than a value main has to invent here.
         return {
           name: 'init',
-          ...(values.repo !== undefined ? { repo: values.repo } : {}),
+          ...(values.project !== undefined ? { project: values.project } : {}),
           answers: answers.answers,
           ...(values.submit === true ? { submit: true as const } : {}),
           ...(values.local === true ? { local: true as const } : {}),
@@ -1320,7 +1345,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
 
   if (command.name === 'init') {
     // Resolved against the working directory, because §7.3 is run once per
-    // application from inside it, and `--repo` is how someone standing
+    // application from inside it, and `--project` is how someone standing
     // elsewhere says which one.
     //
     // Refused before a model is chosen when it is not a directory, or is the
@@ -1329,15 +1354,33 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     // before the configuration is. One that did not exist was inspected — as
     // nothing — by a model somebody paid for (review, gap-init-real-repos-6).
     let project: string
+    // The declarations repository the Component is judged against (stage 8,
+    // slice 2, Task 2.3): `plan`'s chain without `--repo`, which `init`
+    // refuses, and without the working directory, which is the service —
+    // IDP_REPO, then repo in the personal file. Found here, before the
+    // configuration is read and before any model, so a broken IDP_REPO is
+    // exit 2 with nothing paid; none found is said, and the run goes on.
+    const context = sourceContextOf(deps)
+    let declarations: RepositorySource | undefined
     try {
       project = await initRoot({
-        repo: command.repo,
+        project: command.project,
         cwd: () => deps.cwd ?? process.cwd(),
         home: homeOf(deps.env ?? process.env),
       })
+      declarations = await sourceOf({ command: 'init' }, context)
+      // The service is never the repository it is judged against, nor a
+      // folder of its declarations: `applicationRoot`'s two checks for `plan`.
+      if (declarations !== undefined) {
+        const { origin } = declarations
+        await initApart(project, declarations.root, origin.by === 'file' ? `repo in ${origin.file}` : originText(origin))
+      }
     } catch (error) {
       return failed(error, err)
     }
+    const notice =
+      declarations === undefined ? initFoundNoRepository(context) : sourceNotice('init', declarations, context)
+    if (notice !== undefined) err(`${notice}\n`)
     // --submit's repository, the service's own, opened before a model is
     // configured, as `plan "<intent>"` opens its own: a directory that cannot
     // take a branch — not a clone's root, a service in a subfolder of its
@@ -1375,6 +1418,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
         const ask = askOf(deps)
         return runInitRepo({
           project,
+          ...(declarations !== undefined ? { declarations: declarations.root } : {}),
           client,
           emit,
           answers: command.answers,
@@ -1395,7 +1439,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
     // belongs to the files written UNDER that root, and `scaffold/write.ts`
     // checks every one of them against it; applying it to the root itself
     // refused a path the user typed in their own shell. A file there is
-    // refused, exit 2, as `init --repo` refuses one.
+    // refused, exit 2, as `init --project` refuses one.
     let root: string
     try {
       root = await platformRoot(command.directory, () => deps.cwd ?? process.cwd())
@@ -1781,7 +1825,7 @@ export async function main(argv: string[], deps: MainDeps = {}): Promise<number>
   // A repository that declares nothing answers every question with a miss —
   // "No entity named", "No entity matches" — which reads as a fact about the
   // name or the filter. The likeliest cause is the other one: `--repo` pointed
-  // at an application repository, which is what `init --repo` names. Said on
+  // at an application repository, which is what `init --project` names. Said on
   // stderr so stdout stays the command's own answer, and not an error, because
   // an empty declarations repository is a real, freshly scaffolded state.
   // Not when something was rejected: those files were entity declarations
@@ -2022,7 +2066,7 @@ interface Read {
  * through — the injected one in a test, the global one in a real run.
  */
 async function providerOf(
-  name: Exclude<DeclarationsCommand, 'plan' | 'protection'>,
+  name: Exclude<DeclarationsCommand, 'plan' | 'protection' | 'init'>,
   from: ReadFrom,
   deps: MainDeps,
 ): Promise<Read> {

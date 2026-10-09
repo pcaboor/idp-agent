@@ -193,9 +193,11 @@ async function loadPlan(from: string): Promise<Plan> {
  * skipping it here is not: `planEdits` takes a path it holds no bytes for as a
  * file that does not exist, and would preview a creation over one that does.
  */
-async function readContents(
+export async function readContents(
   root: string,
   snapshot: RepositorySnapshot,
+  /** The command a refusal names: `init` reads the declarations repository too (stage 8, slice 2, Task 2.3). */
+  who: 'plan' | 'init' = 'plan',
 ): Promise<ReadonlyMap<string, string>> {
   const entries = await Promise.all(
     snapshot.files.map(async (file) => {
@@ -210,14 +212,14 @@ async function readContents(
             : error instanceof Error
               ? error.message
               : String(error)
-        throw new PlanInputError(`${why}; plan needs every file of the repository`)
+        throw new PlanInputError(`${why}; ${who} needs every file of the repository`)
       }
     }),
   )
   return new Map(entries)
 }
 
-interface Contexts {
+export interface Contexts {
   readonly signature: SignatureContext
   readonly policy: PolicyContext
   /** What both gates measure a value against, `.idp-agent.yml` included. */
@@ -243,7 +245,7 @@ interface Contexts {
  * witness set built from one graph while the plan is signed against another
  * would vouch for references this repository has never seen.
  */
-const graphOf = (snapshot: RepositorySnapshot): EntityGraph =>
+export const graphOf = (snapshot: RepositorySnapshot): EntityGraph =>
   EntityGraph.from(
     snapshot.files.flatMap((file) => file.entities.map(unprovided)),
     // A document set aside — a Location, a Group Backstage would refuse —
@@ -295,8 +297,12 @@ const unprovided = (entity: Entity): Entity => {
  * has one, and `buildTools` holds it: what the engine returned during the
  * draft, never what the model wrote. Defaulting to the declarations is what the
  * file form wants and what the intent form must not silently inherit.
+ *
+ * Exported for `init`, which judges the service's Component against the same
+ * repository through the same gates (stage 8, slice 2, Task 2.3): one builder,
+ * so `plan` and `init` cannot measure one repository two ways.
  */
-function contextsOf(
+export function contextsOf(
   root: string,
   snapshot: RepositorySnapshot,
   contents: ReadonlyMap<string, string>,
@@ -416,10 +422,10 @@ const shellWord = (text: string): string =>
  * may already be red — so it is counted, errors and warnings apart, and names
  * the command that lists them.
  */
-const standingLines = (recheck: Recheck | undefined, repo: string | undefined): string[] => {
-  if (recheck === undefined || recheck.standing.length === 0) return []
-  const errors = recheck.standing.filter((violation) => violation.severity === 'error').length
-  const warnings = recheck.standing.length - errors
+const standingLines = (standing: readonly Violation[] | undefined, repo: string | undefined): string[] => {
+  if (standing === undefined || standing.length === 0) return []
+  const errors = standing.filter((violation) => violation.severity === 'error').length
+  const warnings = standing.length - errors
   const counted = [
     ...(errors > 0 ? [plural(errors, 'error', 'errors')] : []),
     ...(warnings > 0 ? [plural(warnings, 'warning', 'warnings')] : []),
@@ -621,14 +627,14 @@ const droppedLines = (dropped: readonly DroppedOperation[]): string[] =>
 /**
  * The bytes a plan would leave behind, and the one line every such run ends on.
  *
- * **The single renderer.** `plan --from`, `plan "<intent>"` and `init --repo`
+ * **The single renderer.** `plan --from`, `plan "<intent>"` and `init`
  * all arrive here, and that is deliberate: the deterministic entry point exists
  * so a drafted preview and a file-borne one can be compared byte for byte, and
  * a second renderer would quietly end that.
  *
  * `recheck` is optional, and its absence is a fact rather than a gap. It says
  * what CI would say about the repository this plan would leave behind, and
- * `init --repo` leaves none: `create-catalog-info` writes into the service's own
+ * `init` leaves none: `create-catalog-info` writes into the service's own
  * repository, which this preview does not cover (`edits.ts` says so where the
  * operation is dropped). With no re-check there are no warnings to report and
  * nothing that could have been 'already-declared', which is exactly what
@@ -646,6 +652,12 @@ const droppedLines = (dropped: readonly DroppedOperation[]): string[] =>
  * absent, or what `--submit` did with it (`render/footer.ts`). Only the lines
  * after the diff depend on it: the diff a person confirms is this one.
  *
+ * `standing` is for a caller whose diff the re-check did not compose — `init`'s,
+ * whose catalog-info lands in the service's repository — and that judged its
+ * plan against a declarations repository all the same (stage 8, slice 2, Task
+ * 2.3): what was already wrong there, counted on the line `plan` prints for it,
+ * and nothing else of that re-check, which says nothing about these bytes.
+ *
  * `report` is `init`'s discovery report (stage 8, `render/coverage.ts`):
  * printed after the diff and before the closing lines, so stdout is still a
  * patch `git apply` takes as it is and still ends on how to apply it. `plan`
@@ -657,13 +669,14 @@ export function renderPreview(preview: {
   readonly dropped: readonly DroppedOperation[]
   readonly recheck?: Recheck | undefined
   readonly repo?: string
+  readonly standing?: readonly Violation[]
   readonly colour?: boolean
   readonly apply?: string
   readonly status?: PreviewStatus
   readonly report?: readonly string[]
 }): CommandResult {
   const { signed, edits, dropped, recheck } = preview
-  const standing = standingLines(recheck, preview.repo)
+  const standing = standingLines(recheck?.standing ?? preview.standing, preview.repo)
   const changed = edits.filter((edit) => edit.before !== edit.after)
   const diff = renderUnifiedDiff(edits)
 
@@ -1055,13 +1068,16 @@ export async function fillAnswers(
  *
  * `kept` is the user's values the last refusal was at, and when there are any
  * the close says so rather than asking for a value they already gave — see
- * `keptLines`. `--json` keeps its keys: the reason already carries the remedy.
+ * `keptLines`. `close` is a caller's own, for a stop no value of the person's
+ * can move: `init`'s, when every draft declared more than the service.
+ * `--json` keeps its keys: the reason already carries the remedy.
  */
 export function renderStopped(
   plan: Plan | undefined,
   gate: Gate | undefined,
   reason: string,
   kept: readonly KeptValue[] = [],
+  close?: readonly string[],
 ): CommandResult {
   const where = gate === undefined ? 'the plan was refused' : `refused at the ${gate} gate`
   return {
@@ -1078,12 +1094,14 @@ export function renderStopped(
             visible(asJson(plan.operations)),
           ]),
       '',
-      ...(kept.length === 0
-        ? [
-            'Nothing was previewed, and nothing was written. Name the value the gate ' +
-              'could not accept and run this again.',
-          ]
-        : keptLines(kept)),
+      ...(close !== undefined
+        ? close
+        : kept.length === 0
+          ? [
+              'Nothing was previewed, and nothing was written. Name the value the gate ' +
+                'could not accept and run this again.',
+            ]
+          : keptLines(kept)),
     ].join('\n'),
     found: false,
   }
@@ -1376,7 +1394,7 @@ async function previewPlan(
     // Only what the plan introduces or leaves in a file it edits: a fault that
     // was already elsewhere is no reason to refuse THIS plan, and listing it
     // here would ask the user to fix it before anything else can land.
-    const standing = standingLines(recheck, options.repo)
+    const standing = standingLines(recheck.standing, options.repo)
     return {
       text: [
         ...errors.map(violationLine),

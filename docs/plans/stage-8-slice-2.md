@@ -1,6 +1,6 @@
 # Stage 8, slice 2 — matching and asking
 
-**Status: plan accepted by the owner on 2026-10-07 ([#148](https://github.com/pcaboor/idp-agent/pull/148)), from `main` at `48a70ec`; 2.1 built ([#149](https://github.com/pcaboor/idp-agent/pull/149)), validated by the owner before it merged; 2.2 built ([#150](https://github.com/pcaboor/idp-agent/pull/150)), its five tapes re-recorded by the owner on 2026-10-08, validated by the owner before it merged; 2.3 to 2.7 not started.** Seven
+**Status: plan accepted by the owner on 2026-10-07 ([#148](https://github.com/pcaboor/idp-agent/pull/148)), from `main` at `48a70ec`; 2.1 built ([#149](https://github.com/pcaboor/idp-agent/pull/149)), validated by the owner before it merged; 2.2 built ([#150](https://github.com/pcaboor/idp-agent/pull/150)), its five tapes re-recorded by the owner on 2026-10-08, validated by the owner before it merged; 2.3 built ([#151](https://github.com/pcaboor/idp-agent/pull/151)), its tape recorded by the owner on 2026-10-09, validated by the owner before it merged; 2.4 to 2.7 not started.** Seven
 pull requests, 2.1 to 2.7, after this plan merged on its own. They are not stacked ahead of
 time: **the owner validates each pull request before it merges and before the next one starts**
 (owner's decision of 2026-10-04, `docs/roadmap.md`), so each branch is cut from `main` once the
@@ -321,8 +321,10 @@ Nothing on the list reopens a decision of § 13.
   `--type` was not given. The note's table says `spec.owner` is "asked for a Component"; this is
   where it holds once `init` has a vocabulary.
 - **The report's *declared, not evidenced* part** stops saying `init reads no declarations
-  repository`, which is false from here: it reads `not compared: this version reads the
-  declarations repository and matches nothing yet` (`report.ts:613-614`) until 2.5 fills it.
+  repository`, which is false from here: it reads `not compared: this version matches nothing
+  against a declarations repository yet` (`report.ts:613-614`) until 2.5 fills it — true on a
+  run that found none as well, where stderr says so (the wording first planned, *this version
+  reads the declarations repository*, was false there; the task's review).
 - **The gates are `repair`'s.** `runInitRepo` calls `repair` as `runIntent` does
   (`src/cli/commands/plan.ts:1619`), with two seams `RepairInput` gains, each optional and absent
   on the plan road, so `plan` sends the same bytes:
@@ -1250,10 +1252,10 @@ export interface InitOptions {
 }
 ```
 
-- [ ] **Step 1: Pin the before.** `pnpm vitest run tests/unit/repair.test.ts tests/unit/init-command.test.ts tests/scenarios`:
+- [x] **Step 1: Pin the before.** `pnpm vitest run tests/unit/repair.test.ts tests/unit/init-command.test.ts tests/scenarios`:
   green. `ORDER` in `repair.test.ts` pins the five gates.
 
-- [ ] **Step 2: Write the tests, and see them fail.** `tests/unit/init-both-repositories.test.ts`,
+- [x] **Step 2: Write the tests, and see them fail.** `tests/unit/init-both-repositories.test.ts`,
   each over a temporary `invoicing-worker` and a copy of `fixtures/si-demo`, with a scripted
   client whose every request is kept:
   1. *finds the declarations repository as plan finds it*: with `IDP_REPO` the copy's path,
@@ -1296,9 +1298,9 @@ export interface InitOptions {
       no `ownComponent`, both sign `enumerated` and the run previews, which is the defect this
       test exists for.
   12. *says the report's comparison is not made yet*: with a declarations repository found,
-      *declared, not evidenced by this repository* reads `not compared: this version reads the
-      declarations repository and matches nothing yet`. *Fails today:* it reads `not read: init
-      reads no declarations repository in this version` (`report.ts:614`).
+      and with none, *declared, not evidenced by this repository* reads `not compared: this
+      version matches nothing against a declarations repository yet`. *Fails today:* it reads
+      `not read: init reads no declarations repository in this version` (`report.ts:614`).
   `tests/unit/cli-args.test.ts`:
   8. *names the service with --project, and refuses init --repo naming it*: `init --project d`
      → `project: 'd'`; `init --repo d` → `error`, exit 2, the message naming `--project` and the
@@ -1319,13 +1321,13 @@ export interface InitOptions {
       password of the service's `.env.example` or of its untracked `.env`. *Fails today, and
       until Step 9:* `no recording for init-new-service inspector turn 0`.
 
-- [ ] **Step 3: Build `repair`'s seams.** `scope` runs after `planSchema` parses a draft: its
+- [x] **Step 3: Build `repair`'s seams.** `scope` runs after `planSchema` parses a draft: its
   refusals fail gate [1] with them as findings. `elsewhere` is called after `planEdits`, and
   `effectsOf` reports an operation `planEdits` dropped as its edit in the other repository when
   `elsewhere` holds one for it. Both absent, `repair` is byte-identical in what it hands the
   Architect and the Reviewer: Step 2's test 9 and the plan-mode scenarios say so.
 
-- [ ] **Step 4: Build `init`'s two repositories.** `cli/index.ts` resolves the service
+- [x] **Step 4: Build `init`'s two repositories.** `cli/index.ts` resolves the service
   (`initRoot`, saying `--project`) and then the declarations repository through `sourceOf({
   command: 'init' })`, both before the configuration is read and before any model; a broken
   `IDP_REPO` is exit 2 there. `runInitRepo` reads the declarations snapshot and its contents as
@@ -1340,7 +1342,7 @@ export interface InitOptions {
   conflict question, `concluded` and `initExit` are otherwise unchanged; `report.ts`'s line
   changes. Step 2's tests 1 to 9, 11 and 12 pass.
 
-- [ ] **Step 5: The tests that run `init`, counted from the suite.** `df -h "$TMPDIR"`, `pnpm test`,
+- [x] **Step 5: The tests that run `init`, counted from the suite.** `df -h "$TMPDIR"`, `pnpm test`,
   and every failure listed with its file and title, as 2.1's Step 6 does; a failure that is not
   one of the three causes below is a bug of Step 4 and is fixed there. Each is fixed by exactly
   one of them, and nothing else in a test changes:
@@ -1357,14 +1359,14 @@ export interface InitOptions {
   /nonexistent` with today's words, `--project` in place of `--repo`, and `init --repo /x`, exit
   2, naming `--project`. `scripts/demo-github.mjs`'s `INIT` spells `--project`.
 
-- [ ] **Step 6: The docs it makes true.** `AGENTS.md`: `--repo` names the declarations repository
+- [x] **Step 6: The docs it makes true.** `AGENTS.md`: `--repo` names the declarations repository
   on every command but `init`, where it is refused this release; exit `2` gains "`init --repo`";
   *Current state*: `init` reads both repositories and runs the five gates; the usage block.
   `README.md` `:476` and `:589`, design § 7.3 and § 7.4's paragraph on the two `--repo` flags,
   `docs/submitting.md` (`init --project`), `src/cli/README.md`, `src/agents/README.md` (`scope`,
   `elsewhere`), `README.md:635`.
 
-- [ ] **Step 7: Checks, before the recording**
+- [x] **Step 7: Checks, before the recording**
 
 ```bash
 df -h "$TMPDIR"
@@ -1384,7 +1386,7 @@ The plan-mode scenarios replay clean (the plan road sends the bytes it sent); on
 **Architecture rules:** none change. Thirty-two: `init.ts` reaches the declarations repository
 through `context/iac-fs`, as `plan.ts` does.
 
-- [ ] **Step 8: The pull request, opened as waiting for the owner's key** (after the owner's go-ahead)
+- [x] **Step 8: The pull request, opened as waiting for the owner's key** (after the owner's go-ahead)
 
 ```bash
 git add src/cli/index.ts src/cli/repository.ts src/cli/source.ts src/cli/commands/init.ts src/cli/commands/plan.ts src/core/plan/sign.ts \
@@ -1404,12 +1406,11 @@ The test files Step 5 changes are staged by name too. Base `main`. CHANGELOG, `#
 >   `plan`; `init --repo`, which named it until now, is refused in this release, naming
 >   `--project` ([#PRNUM](https://github.com/pcaboor/idp-agent/pull/PRNUM)).
 
-- [ ] **Step 9: The owner's keyed recording of `init-new-service`**, on the branch, before the
+- [x] **Step 9: The owner's keyed recording of `init-new-service`**, on the branch, before the
   merge:
 
 ```bash
-cd ~/Documents/idp-agent-worktrees/s823
-(set -a; source /Users/pierrecaboor/Documents/idp-agent/.env; set +a; IDP_PROVIDER=openai IDP_MODEL=gpt-6-luna IDP_RECORDING=record pnpm vitest run tests/scenarios/init-mode.test.ts -t "init-new-service: a service the declarations repository does not declare yet")
+cd ~/Documents/idp-agent-worktrees/s823 && (set -a; source /Users/pierrecaboor/Documents/idp-agent/.env; set +a; IDP_PROVIDER=openai IDP_MODEL=gpt-6-luna IDP_RECORDING=record pnpm vitest run tests/scenarios/init-mode.test.ts -t "init-new-service: a service the declarations repository does not declare yet")
 git status --porcelain tests/recordings
 pnpm vitest run tests/scenarios
 pnpm test
@@ -1429,6 +1430,9 @@ Attendu :
   cover this one too (no hand-authored turn, the digest scheme, an Inspector holding to the files
   it read, no credential);
 - `pnpm test` passes whole.
+
+The commit that adds the tape also updates `docs/roadmap.md`'s count of the recordings (*No
+Anthropic recording exists*: thirteen, `gpt-6-luna` for twelve).
 
 **What changes that a person sees:** `init --project`; `init --repo` refused; the run reads the
 declarations repository named by `IDP_REPO` or `config.yml`, or says it found none; `init` calls
@@ -1475,6 +1479,73 @@ Attendu :
   rather than guessed:` at `operations.0.entity.spec.type` and `operations.0.entity.spec.owner`,
   the owner's with the forge-handle hint; `exit 3` — the catalogue's values vouch for nothing
   about this service.
+
+**As built**, where the code asked for it (2026-10-08):
+
+- **`init` walks the last two steps of `plan`'s chain, and no other.** `sourceOf({ command:
+  'init' })` reads `IDP_REPO`, then the personal file's `repo` (`configuredRepository`), never
+  the working directory, which is the service, so `init` run from inside a declarations
+  repository does not read it as one. None found is `initFoundNoRepository`'s line on stderr;
+  one found is `sourceNotice`'s, naming `IDP_REPO` or the file as the way to name another.
+- **The person's answers are not `recordAnswers`'.** That follows an answer by its entity's
+  name, and on `init` the name is one of the answers. The four values typed — by flag or at the
+  prompt — are put into every Component the Architect drafts, a redraft included, as `withFlags`
+  always did, and handed to `repair` as answers at operation 0's fields, with no `about`, where
+  the one Component a draft the scope accepts sits. Any other answer stays at the path it was
+  typed at. A filled plan is the next round's seed, as on `runIntent`'s road, and goes through
+  the five gates again.
+- **A typed name is looked up before each round of the gates**, in the service's own files
+  (`recognise`, as before) and in the declarations repository (`declaredComponent`), so neither
+  the Architect nor the Reviewer is paid for a name already declared; the Inspector has run by
+  then. A drafted name the declarations repository gives a Component is asked as a conflict
+  (`declaredConflict`), beside the service-file conflict `unnamedConflict` already asked.
+- **`renderPreview` gains `standing`.** `init`'s diff is the catalog-info, which the re-check does
+  not compose, so `recheck` stays absent from its preview; what was already wrong in the
+  declarations repository reaches the line `plan` prints for it through `standing` (test 6:
+  `1 error already in the repository, in files this plan does not touch`).
+- **`readContents`, `graphOf` and `contextsOf` are exported from `plan.ts`**, not copied;
+  `readContents` takes the command its refusal names. `previewOf`'s minting moved into
+  `mintedEdits`, which `elsewhere` calls too, so the Reviewer is told exactly the edit the
+  preview shows. `effectsOf` takes the signed plan, to tell a Component the engine filed
+  nowhere in this repository from one it dropped.
+- **Step 5's causes, counted from the suite** (95 failures in 10 files beside
+  `init-mode.test.ts`'s one, then none but that one): `--repo` → `--project` in `init-command`, `init-real-repo`,
+  `init-discovery`, `init-hints`, `trace-wiring`, `key-reach` (its `init` road alone),
+  `command-line-edges`, `plan-project`, `project-tracked` and the property's `:428`; the
+  Reviewer's `ok` verdict in the scripted clients of `init-command`, `init-real-repo`,
+  `init-discovery`, `init-hints`, `trace-wiring` and `discovery-secrets`. No stderr assertion
+  needed the third cause. `init-hints.test.ts`, `plan-project.test.ts` and
+  `project-tracked.test.ts` were outside the estimate.
+- **The owner's kit**: `init.mjs` needed no change — 2.1's content already chooses `--project`
+  off `HELP` and scripts the Reviewer's `ok`. `iac/` was built by the commands above.
+- **From the task's review** (2026-10-08), each test first, in
+  `tests/unit/init-both-repositories.test.ts` (*init keeps its two repositories apart*) unless
+  said:
+  - `ownComponent` covers every `operations.<n>.entity.spec.dependsOn.<i>` of the created
+    Component too (`sign.ts`'s `OWN_LIST`; three rows in `sign.test.ts`): with the graph `init`
+    now has, an Architect that read `resource:default/billing-db-prod` through `get_entity` and
+    put it in the Component's `dependsOn` signed `enumerated` and was previewed and submitted
+    with nobody's word. It is asked, as it was over the empty graph before 2.3; slice 3 drafts
+    the rights that vouch for a dependency.
+  - Row 3's refusal, which Step 4 did not build: `initRoot` refuses a declarations repository by
+    its markers, typed or stood in, and `initApart` (`cli/repository.ts`, called by `main` once
+    the repository is found) a service that is that repository by real path or lies under its
+    `catalog/` or `dependencies/` — `applicationRoot`'s two checks — exit 2 before any model,
+    naming `--project` and what named the repository.
+  - The report's line, above (Choices, 2.3), and test 12 on both roads.
+  - A stop on the scope keeps the draft it refused as the partial plan (`repair.ts`; a row in
+    `repair.test.ts`), and `init` closes it on what it takes (`SCOPE_STOP`, through
+    `renderStopped`'s new `close`), never "No draft ever parsed" or "Name the value".
+  - The guards of the chain, each a test through `main`: `config.yml`'s `repo` with `IDP_REPO`
+    unset; the working directory with markers and `IDP_BACKSTAGE_URL` both ignored; a broken
+    `IDP_REPO` (not a directory, relative) or `repo` exit 2 with no model called. On `init`
+    those refusals no longer say `when no --repo is given`, and the notice names `IDP_REPO`
+    alone when `IDP_REPO` named the repository (`source.ts`).
+  - Outside the task's file list: `src/core/github/pull-request.ts`'s `made('init')` said `two
+    gates … and no Reviewer` in `init --submit`'s pull request body; it names the five gates now,
+    with its two pinned assertions (`pull-request-body.test.ts`, `init-command.test.ts`).
+    Stale comments and docs: `init.ts`'s header and `requestOf`'s comment,
+    `src/scaffold/README.md`, `tests/README.md` (`init-mode.test.ts` among the scenarios).
 
 ---
 

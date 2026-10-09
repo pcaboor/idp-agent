@@ -266,9 +266,18 @@ check({
   absentFromStdout: /violations/,
 })
 check({
-  args: ['init', '--repo', '/nonexistent'],
+  args: ['init', '--project', '/nonexistent'],
   code: 2,
-  stderr: /^\/nonexistent is not a directory; init --repo names the application repository/,
+  stderr: /^\/nonexistent is not a directory; init --project names the application repository/,
+  absentFromStderr: /no model configured/,
+})
+// `init --repo` named the service until stage 8's slice 2, and `--repo` names
+// the declarations repository everywhere else: refused, whatever it names,
+// naming the flag that replaced it, before any model.
+check({
+  args: ['init', '--repo', '/x'],
+  code: 2,
+  stderr: /init --repo named the service's repository until this release; name it with --project/,
   absentFromStderr: /no model configured/,
 })
 check({ args: ['graph', '--env', 'prod'], code: 0, stdout: /billing-db-prod/ })

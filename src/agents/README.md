@@ -241,6 +241,15 @@ on the repository the re-check has already computed. The harness renders nothing
 emits `AgentEvent`s, `cli/index.ts` writes one line per event to stderr, Ink draws them at
 stage 7, and the tests assert the same stream.
 
+`plan` and `init` call the same `repair` (stage 8, slice 2, Task 2.3). `init` hands it two
+seams, both optional and absent on the plan road, which therefore sends the bytes it sent:
+`scope`, the refusals of operations a caller does not take — on `init`, anything but the
+service's own Component — reported at gate [1] in the engine's words so the Architect drafts
+again rather than the run ending; and `elsewhere`, what a signed plan writes into another
+repository than the one re-checked — `init`'s catalog-info, in the service's own — which
+`effectsOf` shows the Reviewer as that Component's effect (`creates catalog-info.yaml in the
+service's repository`) instead of "writes nothing". Neither reaches the re-check or the diff.
+
 ## The cost, stated plainly
 
 Every capability an agent needs has to be handed to it from outside. Adding one is a change

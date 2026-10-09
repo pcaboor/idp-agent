@@ -119,7 +119,9 @@ const fileLine = (line: string): string => {
  * How each road made the change, in D4's words, completing "This change was".
  * `init` is drafted by a model too — the Inspector reads the service's files
  * and the Architect proposes the Component — so it says so: what is a
- * person's there is only what the signature vouches for as typed.
+ * person's there is only what the signature vouches for as typed or answered.
+ * Since stage 8's slice 2 (Task 2.3) it runs `plan`'s five gates, the Reviewer
+ * last, and what the inspection read is a hint, never a value.
  */
 const made = (road: PullRequestInput['road']): string => {
   switch (road) {
@@ -132,8 +134,8 @@ const made = (road: PullRequestInput['road']): string => {
     case 'init':
       return (
         "drafted by a model from the service's own files and written by idpa init in its own repository: " +
-        'two gates, the schema and the signature, every value the model chose either read by the inspection ' +
-        'or typed by a person, and no Reviewer'
+        'five gates, the schema, the signature, the policies, the re-check and the Reviewer last, every ' +
+        'value the model chose typed or answered by a person'
       )
     default: {
       const _exhaustive: never = road

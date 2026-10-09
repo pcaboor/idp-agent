@@ -110,10 +110,10 @@ export interface BackstageSource {
 
 export type Source = RepositorySource | DemoSource | BackstageSource
 
-type ReadCommand = Exclude<DeclarationsCommand, 'plan' | 'protection'>
+type ReadCommand = Exclude<DeclarationsCommand, 'plan' | 'protection' | 'init'>
 
 /** The commands that act on a declarations repository, never on the demo SI or a catalogue. */
-type RepositoryCommand = Extract<DeclarationsCommand, 'plan' | 'protection'>
+type RepositoryCommand = Extract<DeclarationsCommand, 'plan' | 'protection' | 'init'>
 
 /** What the command line said. `demo` and `backstage` exist only for the read commands. */
 export type SourceRequest =
@@ -125,6 +125,7 @@ export type SourceRequest =
     }
   | { command: 'plan'; repo?: string | undefined }
   | { command: 'protection'; repo?: string | undefined }
+  | { command: 'init' }
 
 export interface SourceContext {
   /**
@@ -192,6 +193,13 @@ const standingIn = (context: SourceContext): string | undefined => {
  * still reads what is configured. Which directory the Inspector reads is
  * another question, answered by `repository.ts`'s `applicationRoot`.
  *
+ * `init` (stage 8, slice 2, Task 2.3): `plan`'s chain without its first two
+ * steps — `IDP_REPO` → the file's `repo` — and `undefined` when neither names
+ * one, which `init` says on stderr and previews against an empty catalogue.
+ * No `--repo`: it named the service until this release, and is refused at
+ * parsing. Never the working directory: `init` stands in the service, and a
+ * service's repository carries no declarations markers.
+ *
  * First match wins, so what is not reached is not read: a malformed file
  * cannot refuse a run that `IDP_REPO`, `IDP_BACKSTAGE_URL` or `--repo`
  * already answered, and the file is read once, only when reached. A
@@ -203,7 +211,11 @@ const standingIn = (context: SourceContext): string | undefined => {
  * and a host that is not this machine is refused without a token.
  */
 export async function sourceOf(
-  request: { command: RepositoryCommand; repo?: string | undefined },
+  request: { command: Exclude<RepositoryCommand, 'init'>; repo?: string | undefined },
+  context: SourceContext,
+): Promise<RepositorySource | undefined>
+export async function sourceOf(
+  request: { command: 'init' },
   context: SourceContext,
 ): Promise<RepositorySource | undefined>
 export async function sourceOf(
@@ -221,6 +233,7 @@ export async function sourceOf(
 ): Promise<Source | undefined> {
   if (request.command === 'plan') return repositoryChain('plan', request.repo, context, false)
   if (request.command === 'protection') return repositoryChain('protection', request.repo, context, false)
+  if (request.command === 'init') return configuredRepository('init', context)
   // `--repo` first, as the chain takes it: the command line refuses two of
   // the three together, and a caller that passes both reads the repository.
   if (request.repo === undefined && request.demo === true) {
@@ -300,6 +313,29 @@ async function repositoryChain(
   return repositoryInFile(command, config, context)
 }
 
+/**
+ * The declarations repository configured once — `IDP_REPO`, then the personal
+ * file's `repo` — the last two steps of the chain, and the only two `init`
+ * walks.
+ */
+async function configuredRepository(
+  command: DeclarationsCommand,
+  context: SourceContext,
+): Promise<RepositorySource | undefined> {
+  const variable = await repositoryVariable(command, context)
+  if (variable !== undefined) return variable
+  const config = await readPersonalConfig(context.env, context.platform ?? process.platform)
+  return repositoryInFile(command, config, context)
+}
+
+/**
+ * When a configured repository is read: `when no --repo is given`, except on
+ * `init`, which takes no `--repo` in this release — pointing someone refused
+ * there at that flag would name a second refusal.
+ */
+const unlessFlag = (command: DeclarationsCommand): string =>
+  command === 'init' ? '' : ' when no --repo is given'
+
 /** `IDP_REPO`, checked to be a directory, or `undefined` when it is unset. */
 async function repositoryVariable(
   command: DeclarationsCommand,
@@ -331,7 +367,7 @@ async function repositoryVariable(
     const root = p.resolve(expanded)
     await mustBeDirectory(
       root,
-      `${REPO_VARIABLE}=${variable} is not a directory; ${REPO_VARIABLE} names the declarations repository ${command} reads when no --repo is given`,
+      `${REPO_VARIABLE}=${variable} is not a directory; ${REPO_VARIABLE} names the declarations repository ${command} reads${unlessFlag(command)}`,
     )
     return repository(root, { by: 'variable', name: REPO_VARIABLE }, p)
   }
@@ -349,7 +385,7 @@ async function repositoryInFile(
   await mustBeDirectory(
     config.repo,
     `${config.shown}: repo ${config.repo} is not a directory; ` +
-      `it names the declarations repository ${command} reads when no --repo is given`,
+      `it names the declarations repository ${command} reads${unlessFlag(command)}`,
   )
   return repository(config.repo, { by: 'file', file: config.shown }, p)
 }
@@ -784,14 +820,22 @@ export function sourceNotice(
       const alternatives =
         command === 'plan'
           ? '--repo <directory> decides against another'
-          : command === 'protection'
-            ? '--repo <directory> checks another'
-            : command === 'idpa'
-              ? '--repo <directory> reads another, --demo the fictional SI for a question'
-              : '--repo <directory> reads another, --demo the fictional SI'
+          : command === 'init'
+            ? // No `--repo` on init in this release: what can name another is
+              // IDP_REPO, which a file's `repo` does not override, or, when the
+              // file named it, either.
+              source.origin.by === 'variable'
+                ? `${REPO_VARIABLE} names another`
+                : `${REPO_VARIABLE} or repo in ${flat(personalFileHint(context.env, context.platform))} names another`
+            : command === 'protection'
+              ? '--repo <directory> checks another'
+              : command === 'idpa'
+                ? '--repo <directory> reads another, --demo the fictional SI for a question'
+                : '--repo <directory> reads another, --demo the fictional SI'
       const catalogue =
         command !== 'plan' &&
         command !== 'protection' &&
+        command !== 'init' &&
         source.origin.by === 'working-directory' &&
         read.catalogue === true
           ? ', --backstage the catalogue'
@@ -861,6 +905,21 @@ export function planNeedsRepository(
     `${who} needs a declarations repository: --repo <directory>, the current directory ` +
     `when it is one, or ${REPO_VARIABLE} or repo in ${file} set once; ` +
     'a write preview is decided against the repository, never against the catalogue'
+  )
+}
+
+/**
+ * What `init` says on stderr when nothing names a declarations repository
+ * (stage 8, slice 2, Task 2.3): it goes on — the service's catalog-info,
+ * judged against an empty catalogue, as it was before `init` read one — and
+ * names the two ways it takes one in this release. Not `--repo`, which is
+ * refused, and not the working directory, which is the service.
+ */
+export function initFoundNoRepository(context: Pick<SourceContext, 'env' | 'platform'>): string {
+  const file = flat(personalFileHint(context.env, context.platform))
+  return (
+    `no declarations repository found: set ${REPO_VARIABLE}, or repo in ${file}, to the one ` +
+    "this service's Component is compared with; init goes on against an empty catalogue"
   )
 }
 
