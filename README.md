@@ -15,7 +15,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 5493, no API key" src="https://img.shields.io/badge/tests-5493%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 5552, no API key" src="https://img.shields.io/badge/tests-5552%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -511,19 +511,25 @@ said where they let you merge alone, and a repository you cannot push to refused
 
 `init` also reports what the service's committed configuration states, between the diff and
 its closing lines, so a saved run still applies: the connection strings of its sample
-environment files (`.env.example` and its family), a password never shown, and the database,
-cache and queue clients its `package.json` installs, each with its file and line — and what
+environment files (`.env.example` and its family) and of its Kubernetes manifests' container
+environment (a `.yaml` under `k8s/`, `deploy/`, `manifests/` and their kin, Helm's `charts/`
+and `templates/` excepted), a password never shown, the Secrets and ConfigMaps a manifest
+names, by name and key and never read, and the database, cache and queue clients its
+`package.json` installs, each with its file and line — a stream holding a `Secret`, a
+`SealedSecret` or SOPS metadata, even inside a `List`, is set aside whole — and what
 it did not read, and why: code, formats no rule reads yet, files changed since `HEAD`, files
 it never opens by design, and how many paths git does not track or are staged and never
 committed, counted and never named. The report ends on one sentence, also said on stderr —
 `no dependency evidenced in 2 files analysed (4 findings verified); 4 paths not analysed; 1
-reference configured outside this repository` — and goes after the engine's block in
+reference configured outside this repository`, and `2 dependencies evidenced …` once a
+manifest's `value:` states a database and an endpoint — and goes after the engine's block in
 `init --submit`'s pull request. Nothing is proposed from it yet, and no model is sent any of
 it. A preview, a run with nothing to change or a confirmation declined exits 1 when no
 finding was verified in a repository read in part (a service with no committed
 `package.json`, say); a run that cuts a branch or opens a pull request exits 0. A finding is
 verified when it is committed, read again unchanged, comes from the service's own
-configuration rather than a sample, a test or a development dependency, and holds a value
+configuration rather than a sample, a test, a development dependency or a setting for this
+machine alone (`localhost`, `127.0.0.1`, a `.local` host), and holds a value
 the engine could read: a
 `package.json` whose name is `5`, outside npm's grammar or shaped like a credential has that
 name listed as what it is, and not counted. A `package.json` written on one line longer than

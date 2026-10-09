@@ -53,6 +53,17 @@ describe('the discovery allow-list', () => {
     ['.env', undefined, undefined, undefined],
     ['README.md', undefined, undefined, undefined],
     ['values.yaml', undefined, undefined, undefined],
+    ['k8s/deployment.yaml', 'k8s', 'yaml', 'evidence'],
+    ['deploy/app.yml', 'k8s', 'yaml', 'evidence'],
+    ['manifests/x.yaml', 'k8s', 'yaml', 'evidence'],
+    ['services/api/Kubernetes/base/worker.YAML', 'k8s', 'yaml', 'evidence'],
+    ['test/fixtures/k8s/deployment.yaml', 'k8s', 'yaml', 'mention'],
+    ['charts/x/templates/deployment.yaml', undefined, undefined, undefined],
+    ['k8s/templates/a.yaml', undefined, undefined, undefined],
+    ['charts/k8s/a.yaml', undefined, undefined, undefined],
+    ['config/app.yaml', undefined, undefined, undefined],
+    ['k8s/README.md', undefined, undefined, undefined],
+    ['deployment.yaml', undefined, undefined, undefined],
   ])('opens only the allow-list, by name: %s', (file, extractor, format, standing) => {
     expect(allowed(file)).toEqual(extractor === undefined ? undefined : { extractor, format, standing })
   })
@@ -95,6 +106,8 @@ describe('the discovery allow-list', () => {
     ['.aws/.env.example', 'cloud-credentials'],
     ['ID_RSA', 'key-material'],
     ['Secrets/package.json', 'credential-store'],
+    ['.kube/k8s/a.yaml', 'kubeconfig'],
+    ['k8s/kubeconfig.yaml', 'kubeconfig'],
   ])('rules a credential folder out before the allow-list, whatever its case: %s', (file, why) => {
     // APFS and NTFS serve `ID_RSA` for `id_rsa`: every name is lowercased first.
     expect(neverOpened(file)).toBe(why)
@@ -125,6 +138,37 @@ describe('the discovery allow-list', () => {
     expect(discardedWhole('data: ENC[AES256_GCM]\nsops:\n  version: 3.8.1\n', 'yaml')).toBe('discarded-sops')
     expect(discardedWhole('kind: ConfigMap\n---\nkind: Secret\n', 'yaml')).toBe('discarded-secret')
     expect(discardedWhole('kind: Deployment\n', 'yaml')).toBeUndefined()
+
+    // A List is read for what its items are, never for what they say (2.4):
+    // a Secret inside one is a Secret in the stream.
+    const list = (items: string): string => `apiVersion: v1\nkind: List\nitems:\n${items}`
+    expect(discardedWhole(list('  - kind: Deployment\n  - kind: Secret\n    stringData: { password: x }\n'), 'yaml')).toBe(
+      'discarded-secret',
+    )
+    expect(discardedWhole(list('  - kind: SealedSecret\n'), 'yaml')).toBe('discarded-secret')
+    expect(discardedWhole(list('  - kind: List\n    items:\n      - kind: Secret\n'), 'yaml')).toBe('discarded-secret')
+    expect(discardedWhole(list('  - kind: ConfigMap\n    sops: { version: 3.8.1 }\n'), 'yaml')).toBe('discarded-sops')
+    expect(discardedWhole('kind: SecretList\nitems:\n  - metadata: { name: db }\n', 'yaml')).toBe('discarded-secret')
+    expect(discardedWhole(list('  - kind: Deployment\n'), 'yaml')).toBeUndefined()
+
+    // A List that holds itself is a reading error, never a hang: Kubernetes'
+    // decoder refuses an anchor that contains itself, and a walk of one never
+    // ends. One item named twice holds nothing twice, and is read once.
+    expect(discardedWhole('&a {kind: List, items: [*a]}\n', 'yaml')).toBe('parse-failure')
+    expect(discardedWhole('&a\nkind: List\nitems:\n  - *a\n', 'yaml')).toBe('parse-failure')
+    expect(discardedWhole('kind: Deployment\n---\n&a {kind: List, items: [*a]}\n', 'yaml')).toBe('parse-failure')
+    expect(discardedWhole('d: &d {kind: Deployment}\nkind: List\nitems: [*d, *d]\n', 'yaml')).toBeUndefined()
+
+    // A merge key is applied, as Kubernetes' decoder applies it: a Secret
+    // merged into a document, or into a List's item, is a Secret, and a
+    // document's own kind is the one it keeps. A merge Kubernetes refuses, or
+    // one that holds itself, cannot be read whole.
+    expect(discardedWhole('base: &b\n  kind: Secret\n<<: *b\nstringData:\n  password: x\n', 'yaml')).toBe('discarded-secret')
+    expect(discardedWhole(list('  - <<: { kind: Secret }\n'), 'yaml')).toBe('discarded-secret')
+    expect(discardedWhole('<<: { sops: { version: 3.8.1 } }\nkind: ConfigMap\n', 'yaml')).toBe('discarded-sops')
+    expect(discardedWhole('<<: { kind: Secret }\nkind: ConfigMap\n', 'yaml')).toBeUndefined()
+    expect(discardedWhole('<<: 3\nkind: Deployment\n', 'yaml')).toBe('parse-failure')
+    expect(discardedWhole('&a {<<: *a, kind: List}\n', 'yaml')).toBe('parse-failure')
 
     // An alias bomb is a reading error, through `readDocuments`'s alias bound,
     // and never a hang: a stream that cannot be read whole cannot be shown to

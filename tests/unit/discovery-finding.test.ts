@@ -6,6 +6,7 @@ import {
   isHost,
   isHttpUrl,
   isIdentifier,
+  isLoopback,
   isPackageName,
   isPort,
   isVariable,
@@ -103,6 +104,24 @@ describe('a finding', () => {
     expect(findingId({ ...first, ruleVersion: first.ruleVersion + 1 })).not.toBe(first.id)
     // `shown` follows from the fields, and is not part of the name.
     expect(findingId({ ...first, shown: 'anything' } as typeof first)).toBe(first.id)
+  })
+
+  it.each([
+    ['localhost', true],
+    ['cache.local', true],
+    ['127.0.0.9', true],
+    ['[::1]', true],
+    ['[0:0:0:0:0:0:0:1]', true],
+    ['[::0:1]', true],
+    ['[0::1]', true],
+    ['[::]', false],
+    ['[::2]', false],
+    ['[1::1]', false],
+    ['[::ffff:127.0.0.1]', false],
+    ['128.0.0.1', false],
+    ['localhost.example.com', false],
+  ] as const)('tells this machine’s own host: %s is %s', (host, expected) => {
+    expect(isLoopback(host)).toBe(expected)
   })
 
   it('makes a value outside its grammar an unparsed finding, its file and line only', () => {

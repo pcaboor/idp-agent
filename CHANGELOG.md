@@ -363,6 +363,12 @@ Each pull request adds its line here.
   it yet, and no model is sent any of it. A preview with no verified finding in a
   repository read in part exits 1; a run that cuts a branch or opens a pull request exits 0
   ([#147](https://github.com/pcaboor/idp-agent/pull/147)).
+- `idpa init` reads the container environment of a service's committed Kubernetes manifests: a
+  connection string or URL is reported as what the repository states, with its file and line
+  and never its password, and a secret or config map is named as configured outside the
+  repository and never read; a stream holding a `Secret`, a `SealedSecret` or SOPS metadata is
+  set aside whole. The first finding that can evidence a dependency's target
+  ([#152](https://github.com/pcaboor/idp-agent/pull/152)).
 
 ### Changed
 

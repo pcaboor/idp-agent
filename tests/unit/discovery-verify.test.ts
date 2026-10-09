@@ -70,7 +70,8 @@ const urls: Extract = (file, bytes) => {
     })
 }
 
-const EXTRACT = { npm: names, 'env-file': urls } as const
+/** No finding here is a manifest's: the k8s extractor's own re-read is `discovery-discover.test.ts`'s. */
+const EXTRACT = { npm: names, 'env-file': urls, k8s: () => [] } as const
 
 const PACKAGE = '{\n  "name": "invoicing-worker",\n  "dependencies": { "mysql2": "^3.9.0" }\n}\n'
 const SAMPLE = 'DATABASE_URL=mysql://app_billing:placeholder-not-a-secret@localhost:3306/billing\n'

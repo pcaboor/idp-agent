@@ -8,7 +8,7 @@ import {
   type Walked,
 } from './allow.js'
 import { parseFailureReason, type Extracted, type ParseFailure } from './extractors.js'
-import { ENGINES, type Engine, type Finding, type HostPort, type Standing } from './finding.js'
+import { ENGINES, type Engine, type Finding, type HostPort, type Reference, type Standing } from './finding.js'
 import { DISCOVERY_LIMITS } from './limits.js'
 import { ENGINE_TYPE, RULES, type ExtractorName } from './rules.js'
 import type { Check, Checked } from './verify.js'
@@ -263,8 +263,10 @@ const isEngine = (kind: string): kind is Engine => (ENGINES as readonly string[]
 /**
  * A verified finding whose rule supports a target and whose kind is an
  * engine: 0 in slice 1, by construction — the sample family is never
- * `evidence`, and an installed client says a kind, not a target. 2.4's
- * Kubernetes extractor is the first that can make it more.
+ * `evidence`, and an installed client says a kind, not a target. A
+ * Kubernetes manifest's connection (2.4) is the first that makes it more; one
+ * naming this machine alone is `local`, and one naming another value a
+ * `placeholder`, and neither vouches.
  */
 export const evidencedDependencies = (coverage: Coverage): number => {
   const verified = new Set(coverage.verified)
@@ -366,6 +368,12 @@ const NOT_EXPRESSIBLE = ' — found, not expressible: no resource type for it in
 const hostText = (entry: HostPort): string =>
   entry.port === undefined ? entry.host : `${entry.host}:${String(entry.port)}`
 
+/** A Secret or a ConfigMap as the report names one: `secret billing-db-creds, key password`, or every key of it. */
+function referenceText(reference: Reference, quote: (text: string) => string): string {
+  const source = `${reference.from === 'secret' ? 'secret' : 'config map'} ${quote(reference.name)}`
+  return reference.key === undefined ? `every key of ${source}` : `${source}, key ${quote(reference.key)}`
+}
+
 /**
  * What a finding says, in the engine's words around the finding's own fields,
  * each written by `quote`. Never `shown`, which is said on its own line, and
@@ -404,6 +412,12 @@ function sentenceOf(finding: Finding, quote: (text: string) => string): string {
       return finding.standing === 'evidence'
         ? `the package is named ${quote(fields.name ?? '')}`
         : `${whoStates(finding.standing)} a package named ${quote(fields.name ?? '')}`
+    case 'reference': {
+      const where = fields.reference === undefined ? 'a value' : referenceText(fields.reference, quote)
+      return finding.standing === 'placeholder'
+        ? `configured outside this repository: ${where}${variable}`
+        : `${whoStates(finding.standing)} ${where}${variable}`
+    }
     case 'unparsed':
       return `a value this version could not read${variable}`
     case 'withheld':
@@ -426,9 +440,15 @@ function sentenceOf(finding: Finding, quote: (text: string) => string): string {
   }
 }
 
-/** Whether a finding's rendering is shown: a connection the parser read, and not one that names another value. */
+/**
+ * Whether a finding's rendering is shown: a connection the parser read, and
+ * not one that names another value. A reference is named and never rendered:
+ * no value of it was read.
+ */
 const rendered = (finding: Finding): boolean =>
-  finding.rule === 'env-file.url' && isEngine(finding.kind) && finding.standing !== 'placeholder'
+  (finding.rule === 'env-file.url' || finding.rule === 'k8s.env-value') &&
+  isEngine(finding.kind) &&
+  finding.standing !== 'placeholder'
 
 /**
  * `env-file, a sample: 3 findings` — the extractor, the file's standing when

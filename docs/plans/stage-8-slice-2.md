@@ -1,6 +1,6 @@
 # Stage 8, slice 2 — matching and asking
 
-**Status: plan accepted by the owner on 2026-10-07 ([#148](https://github.com/pcaboor/idp-agent/pull/148)), from `main` at `48a70ec`; 2.1 built ([#149](https://github.com/pcaboor/idp-agent/pull/149)), validated by the owner before it merged; 2.2 built ([#150](https://github.com/pcaboor/idp-agent/pull/150)), its five tapes re-recorded by the owner on 2026-10-08, validated by the owner before it merged; 2.3 built ([#151](https://github.com/pcaboor/idp-agent/pull/151)), its tape recorded by the owner on 2026-10-09, validated by the owner before it merged; 2.4 to 2.7 not started.** Seven
+**Status: plan accepted by the owner on 2026-10-07 ([#148](https://github.com/pcaboor/idp-agent/pull/148)), from `main` at `48a70ec`; 2.1 built ([#149](https://github.com/pcaboor/idp-agent/pull/149)), validated by the owner before it merged; 2.2 built ([#150](https://github.com/pcaboor/idp-agent/pull/150)), its five tapes re-recorded by the owner on 2026-10-08, validated by the owner before it merged; 2.3 built ([#151](https://github.com/pcaboor/idp-agent/pull/151)), its tape recorded by the owner on 2026-10-09, validated by the owner before it merged; 2.4 built ([#152](https://github.com/pcaboor/idp-agent/pull/152)), validated by the owner before it merged; 2.5 to 2.7 not started.** Seven
 pull requests, 2.1 to 2.7, after this plan merged on its own. They are not stacked ahead of
 time: **the owner validates each pull request before it merges and before the next one starts**
 (owner's decision of 2026-10-04, `docs/roadmap.md`), so each branch is cut from `main` once the
@@ -1587,10 +1587,10 @@ export const WORKLOAD_KINDS: readonly string[]   // Deployment, StatefulSet, Dae
 export function k8s(facts: FileFacts): readonly Finding[] | ParseFailure
 ```
 
-- [ ] **Step 1: Pin the before.** `pnpm vitest run tests/unit/discovery-*.test.ts tests/unit/init-discovery.test.ts tests/invariants/discovery-secrets.test.ts`:
+- [x] **Step 1: Pin the before.** `pnpm vitest run tests/unit/discovery-*.test.ts tests/unit/init-discovery.test.ts tests/invariants/discovery-secrets.test.ts`:
   green.
 
-- [ ] **Step 2: Write the extractor's golden table, and see it fail.**
+- [x] **Step 2: Write the extractor's golden table, and see it fail.**
   `tests/unit/discovery-k8s.test.ts`, one `it.each` of rows, each a manifest and its whole
   expected findings (rule, lines, kind, standing, fields):
   1. the note's § 4 deployment (the kit's): `DATABASE_URL` → `k8s.env-value`, lines 12–13,
@@ -1625,7 +1625,7 @@ export function k8s(facts: FileFacts): readonly Finding[] | ParseFailure
       repository; `value: $(DB_URL)` → no finding (a whole-value placeholder).
   *Fails today:* `extract/k8s.ts` does not exist.
 
-- [ ] **Step 3: Write the other tests, and see them fail.**
+- [x] **Step 3: Write the other tests, and see them fail.**
   1. `discovery-allow.test.ts`: `k8s/deployment.yaml`, `deploy/app.yml`, `manifests/x.yaml`
      → `k8s`, `yaml`, `evidence`; `charts/x/templates/deployment.yaml`, `k8s/templates/a.yaml`,
      `values.yaml`, `config/app.yaml` → undefined; `.kube/k8s/a.yaml` → by design first; and
@@ -1647,7 +1647,7 @@ export function k8s(facts: FileFacts): readonly Finding[] | ParseFailure
      marker in stdout, stderr, the body or the trace. *Fails today* at its first assertion: the
      manifest is not in the report.
 
-- [ ] **Step 4: Build it.** The rules, fields, grammars and allow-list rows; `k8s` reads each
+- [x] **Step 4: Build it.** The rules, fields, grammars and allow-list rows; `k8s` reads each
   document through `readDocuments`, after `discardedWhole`, walks the workload kinds' pod template
   by their fixed keys (no other path is read), and mints through `mintFinding`. Switches with
   `const _exhaustive: never`: over `FindingKind` in the report's sentence (`reference`), over
@@ -1655,13 +1655,13 @@ export function k8s(facts: FileFacts): readonly Finding[] | ParseFailure
   a missing entry does not compile), and over `Standing` where `local` gains its words. Steps 2
   and 3 pass.
 
-- [ ] **Step 5: The docs it makes true.** `SECURITY.md`, *Guaranteed today*: the discovery read
+- [x] **Step 5: The docs it makes true.** `SECURITY.md`, *Guaranteed today*: the discovery read
   opens a committed Kubernetes manifest under a manifest folder, reads its containers'
   environment by fixed keys, never a `Secret`'s value, never a `List`'s items, and sets aside
   whole a stream holding a `Secret`, a `SealedSecret` or SOPS, at its top level or in a `List`. `AGENTS.md`'s `core/` row and *Current state*; `README.md`'s
   `init` section; `src/core/README.md`.
 
-- [ ] **Step 6: Checks**
+- [x] **Step 6: Checks**
 
 ```bash
 df -h "$TMPDIR"
@@ -1683,9 +1683,9 @@ sent does not move.
 
 ```bash
 git add src/core/discovery/extract/k8s.ts src/core/discovery/rules.ts src/core/discovery/finding.ts src/core/discovery/grammar.ts \
-  src/core/discovery/allow.ts src/core/discovery/extractors.ts src/core/discovery/report.ts src/cli/render/coverage.ts \
-  tests/unit/discovery-k8s.test.ts tests/unit/discovery-allow.test.ts tests/unit/discovery-report.test.ts tests/unit/discovery-discover.test.ts \
-  tests/unit/init-discovery.test.ts tests/invariants/discovery-secrets.test.ts \
+  src/core/discovery/allow.ts src/core/discovery/extractors.ts src/core/discovery/report.ts src/cli/render/coverage.ts src/core/yaml/serialize.ts \
+  tests/unit/discovery-k8s.test.ts tests/unit/discovery-allow.test.ts tests/unit/discovery-report.test.ts tests/unit/discovery-discover.test.ts tests/unit/discovery-finding.test.ts \
+  tests/unit/discovery-verify.test.ts tests/unit/init-discovery.test.ts tests/invariants/discovery-secrets.test.ts \
   src/core/README.md AGENTS.md SECURITY.md README.md docs/plans/stage-8-slice-2.md CHANGELOG.md
 git commit -m "feat(core): read a deployment's environment, and name the secrets it is handed without reading them"
 ```
@@ -1735,6 +1735,82 @@ Attendu :
   the https endpoint) and counts `2 references configured outside this repository`;
 - the second prints `0`: the secret's value is nowhere;
 - `git status --porcelain` prints nothing.
+
+
+**As built**, where the code asked for it (2026-10-09):
+
+- **`$(NAME)` needed no shape of its own.** `/^\$\(/` is already one of the reference shapes
+  (`core/secrets/shapes.ts`, `REFERENCES`) every extractor's parser reads, so
+  `mysql://app@$(DB_HOST)/billing` is a `placeholder` and a whole `$(DB_URL)` opens like no
+  connection, with no change to `connection.ts`; row 12 pins both.
+- **One closed reason for a stream not read whole.** `ParseFailure` gains `not-yaml` (*not a
+  YAML stream this version reads whole*): a faulted document, a key written twice, an alias bomb
+  past `readDocuments`'s bound, more than `maxYamlDocuments`. The read never hands such a stream
+  in (`discardedWhole` refuses it first); the extractor asks `discardedWhole` again, for the
+  bytes the re-read hands it, and extracts nothing from a stream it would discard.
+- **`discardedWhole` reads a List's kind, and its items' at any depth.** `SecretList` and
+  `SealedSecretList` are discarded by their kind, whatever their items hold (a typed list's items
+  may carry no `kind`); a `…List`'s items are walked with a stack of their own, so a nested List
+  holding a Secret, or an item with a top-level `sops`, discards the stream too.
+- **`local` is assigned in `mintFinding`**, for a finding of an `evidence` file whose every host
+  is a loopback or under `.local` (`isLoopback`, which reads `[::1]` in any of its spellings),
+  after `mention` and `placeholder`: so for every extractor, of which only `k8s` has an
+  `evidence` file with hosts today.
+- **The kit's `k8s/secret.yaml` is never opened.** `secret` is one of the snapshot's credential
+  stems (`core/secrets/names.ts`), so the read sets it aside by its name — *a file or folder
+  that exists to hold a credential, never opened* — before any parse; it is under *present, not
+  read by design*, as Step 3's test 3 and the owner's check say, with that reason rather than
+  *discarded whole*. The property's Secret sits in `k8s/billing-db.yaml`, a name the read opens,
+  so its run takes the parse-and-discard road and asserts it did (*a Secret or a SealedSecret,
+  discarded whole: k8s/billing-db.yaml*).
+- **An alias is read as a value this version could not read.** An entry that is an alias, or
+  holds one, and a container list, a container or a pod spec that is one, gives an `unparsed`
+  finding at its lines, never nothing; an anchored entry is read as written, its span starting
+  at its first key. A `valueFrom` reference with no `key` is `unparsed`; an `envFrom` source has
+  none and reads *every key of secret app*.
+- **The review's findings (2026-10-09), each pinned before its fix.**
+  - *A List that holds itself* (`&a {kind: List, items: [*a]}`): `readDocuments` turns it into
+    a value that contains itself, which `maxAliasCount` does not refuse, and `discardedDocument`'s
+    walk never ended — `init` hung at 100% CPU on a 29-byte manifest. The walk now keeps the
+    Lists on its path and the values it has read: an item named twice is read once, and a List
+    met again on its own path is a `parse-failure`, as Kubernetes' decoder refuses an anchor that
+    contains itself. `discovery-allow.test.ts` and row 9 pin it, flow and block style and beside
+    a Deployment; the test was seen hanging before the fix, and carries no guard against a hang
+    of its own — a regression hangs the run, which CI's timeout ends.
+  - *A Secret whose kind a merge key brings* (`base: &b {kind: Secret}` / `<<: *b`) is a Secret
+    to Kubernetes, whose decoder applies merge keys. `discardedWhole` now reads with them applied
+    (`readDocuments`'s `merge`, off for a catalogue): a Secret merged into a document or a List's
+    item discards the stream, a document's own `kind` is the one it keeps, and a merge Kubernetes
+    refuses (`<<: 3`) or one that holds itself is a `parse-failure`. Row 8 pins it.
+    `src/core/yaml/serialize.ts`, outside the list, gains that option and nothing else.
+  - *An aliased `kind:`* was skipped in silence. A document whose kind an alias or a merge key
+    brings is reported as one `unparsed` finding, at its kind or its merge, when that kind — read
+    as Kubernetes reads it, merges applied — is a workload's, and is no workload otherwise. A pod
+    spec, a container or an entry holding a merge key is read as an alias is, `unparsed` at its
+    lines, never as if it held only its own keys.
+  - *Unpinned branches*: a `valueFrom` reference with no `key` (both sources), an entry whose
+    `valueFrom` is an alias, and `isLoopback`'s IPv6 spellings (row 5, and an `it.each` in
+    `discovery-finding.test.ts`) each have a test, each seen failing with the branch it pins
+    removed.
+  - The report test's discarded Secret is `k8s/billing-db.yaml`, a name the read opens.
+  - The two `discovery-discover.test.ts` tests written after the code stay as they are, said in
+    the bullet below and in the pull request.
+- **The report's words.** A reference is `configured outside this repository: secret
+  billing-db-creds, key password (DB_PASSWORD)` (`config map` for a ConfigMap), counted among the
+  references, and never rendered: its `shown`, `DB_PASSWORD ← secret billing-db-creds, key
+  password`, is no value. A `k8s.env-value` is rendered as an `env-file.url` is.
+  `src/cli/render/coverage.ts` needed no change.
+- **Tests outside the list, each for a record that grew.** `tests/unit/discovery-verify.test.ts`'s
+  scripted extractor table gains `k8s: () => []`, which `VerifyContext.extract`, a record over
+  `ExtractorName`, now requires; no assertion changes. `tests/unit/discovery-discover.test.ts`'s
+  mock gains `k8s`, and two tests, written after the code (each fails without the extractor):
+  a manifest's connection vouches on its re-read and is an evidenced dependency, and a manifest
+  the re-read finds now holding a Secret is set aside as the read would.
+- **Step 6's `git fetch origin` was not run**, with no network; the diff's base is `HEAD`, the
+  branch's `main` at `4b23ae8`, and it prints nothing for the paths named.
+- **The owner's kit**: the manifests committed by the commands above (commit `70b1d7d`), and the
+  helpers unchanged; `init.mjs` with `IDP_REPO` the kit's `iac` and the four flags still prints
+  the catalog-info's diff and `exit 0`, its report now holding the manifest's four findings.
 
 ---
 

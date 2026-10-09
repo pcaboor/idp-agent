@@ -65,6 +65,15 @@ const PACKAGE = `${JSON.stringify(
   null,
   2,
 )}\n`
+/** The note's § 4 deployment and the Secret beside it, as the owner's kit commits them (Task 2.4). */
+const DEPLOYMENT =
+  'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: invoicing-worker\nspec:\n  template:\n    spec:\n      containers:\n' +
+  '        - name: worker\n          image: acme/invoicing-worker:1.0.0\n          env:\n' +
+  '            - name: DATABASE_URL\n              value: mysql://app_billing@billing-db.prod.internal:3306/billing\n' +
+  '            - name: DB_PASSWORD\n              valueFrom:\n                secretKeyRef: { name: billing-db-creds, key: password }\n' +
+  '            - name: PAYMENTS_API_URL\n              value: https://payments.example.com\n' +
+  '            - name: KAFKA_BROKERS\n              valueFrom:\n                configMapKeyRef: { name: platform, key: kafka-brokers }\n'
+const KUBE_SECRET = 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: billing-db-creds\nstringData:\n  password: Secr3t-Kube-Passw0rd-4Hn\n'
 const STATING = 'type: service\nlifecycle: production\nruntime: node\nowner: group:default/tiger\n'
 const DECLARED =
   'apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: billing-api\nspec:\n' +
@@ -512,6 +521,42 @@ describe('init and the discovery report', () => {
       expect(copy).toContain('a\\u001b[31mred.md')
       expect(copy).not.toMatch(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f\p{Cf}\u2028\u2029]/u)
     }
+  })
+
+  it("reports a deployment's connection as the repository's", async () => {
+    // The owner's kit (Tasks 1.2 and 2.4), in its two commits: the service,
+    // then its manifests, a Secret beside the Deployment.
+    const project = await temp()
+    const base: Record<string, string> = {
+      'package.json': `${JSON.stringify({ name: 'invoicing-worker', dependencies: { mysql2: '^3.9.0', ioredis: '^5.4.0', kafkajs: '^2.2.0' } }, null, 2)}\n`,
+      '.env.example': 'DATABASE_URL=mysql://app_billing:S4mple-Passw0rd-7Qz@localhost:3306/billing\nREDIS_URL=redis://localhost:6379\n',
+      CODEOWNERS: '*  @acme/tiger\n',
+      'src/index.ts': 'export const start = () => 0\n',
+    }
+    for (const [file, text] of Object.entries(base)) {
+      await mkdir(path.dirname(path.join(project, file)), { recursive: true })
+      await writeFile(path.join(project, file), text, 'utf8')
+    }
+    await committed(project)
+    await mkdir(path.join(project, 'k8s'))
+    await writeFile(path.join(project, 'k8s', 'deployment.yaml'), DEPLOYMENT, 'utf8')
+    await writeFile(path.join(project, 'k8s', 'secret.yaml'), KUBE_SECRET, 'utf8')
+    await git(project, 'add', 'k8s/deployment.yaml', 'k8s/secret.yaml')
+    await git(project, 'commit', '-qm', 'k8s')
+
+    const { out, err } = await run(['init', '--project', project, ...TYPED_FLAGS], { client: drafting('npm') })
+    const lines = out.split('\n').map((line) => line.trim())
+    expect(lines).toContain(
+      'k8s/deployment.yaml:12   the repository states mysql database billing on billing-db.prod.internal:3306 as app_billing',
+    )
+    expect(lines).toContain('k8s/deployment.yaml (k8s: 4 findings)')
+    // Named for what it holds, so never opened: set aside before any parse.
+    const present = lines.slice(lines.indexOf('present, not read by design'))
+    expect(present).toContain('a file or folder that exists to hold a credential, never opened: k8s/secret.yaml')
+    const sentence = lines.find((line) => line.endsWith('configured outside this repository'))
+    expect(sentence).toMatch(/^2 dependencies evidenced in 3 files analysed /)
+    expect(err.split('\n')).toContain(sentence)
+    expect(`${out}${err}`).not.toContain('Kube-Passw0rd')
   })
 
   it('extracts nothing from a sample changed since HEAD', async () => {

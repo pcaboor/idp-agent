@@ -5,6 +5,9 @@ import {
   isHost,
   isHttpUrl,
   isIdentifier,
+  isKubernetesKey,
+  isKubernetesName,
+  isLoopback,
   isPackageName,
   isPort,
   isScheme,
@@ -49,12 +52,26 @@ export const ENGINES = [
 ] as const
 export type Engine = (typeof ENGINES)[number]
 
-/** What a finding says: an engine reached, a package's name, or a value this version could not, or would not, read. */
-export type FindingKind = Engine | 'package-name' | 'unparsed' | 'withheld'
+/**
+ * What a finding says: an engine reached, a package's name, a Secret or a
+ * ConfigMap a value is taken from (`reference`, Task 2.4), or a value this
+ * version could not, or would not, read.
+ */
+export type FindingKind = Engine | 'package-name' | 'reference' | 'unparsed' | 'withheld'
 
 export interface HostPort {
   readonly host: string
   readonly port?: number
+}
+
+/**
+ * Where a value comes from without the value: a Secret or a ConfigMap by its
+ * name, and the key read from it, absent when every key is (`envFrom`).
+ */
+export interface Reference {
+  readonly from: 'secret' | 'configmap'
+  readonly name: string
+  readonly key?: string
 }
 
 /** Every field a finding may keep, each held to its grammar. None can hold a secret. */
@@ -72,6 +89,8 @@ export interface Fields {
   readonly name?: string
   /** npm.dependency */
   readonly package?: string
+  /** k8s.reference: named, never read. */
+  readonly reference?: Reference
 }
 
 export interface Finding {
@@ -103,6 +122,7 @@ export interface Draft {
     | { readonly connection: Connection }
     | { readonly name: string }
     | { readonly package: string; readonly engine: Engine }
+    | { readonly reference: Reference }
 }
 
 /**
@@ -156,6 +176,10 @@ const GRAMMARS: { readonly [K in keyof Required<Fields>]: (value: NonNullable<Fi
   variable: isVariable,
   name: isPackageName,
   package: isPackageName,
+  reference: (reference) =>
+    (reference.from === 'secret' || reference.from === 'configmap') &&
+    isKubernetesName(reference.name) &&
+    (reference.key === undefined || isKubernetesKey(reference.key)),
 }
 
 /** Whether a value is a list of hosts, each a string and a port or none, and nothing it could be read as else. */
@@ -169,10 +193,23 @@ const isHostList = (value: unknown): value is readonly HostPort[] =>
       ((entry as HostPort).port === undefined || typeof (entry as HostPort).port === 'number'),
   )
 
+/** Whether a value is a reference: a source, a name and a key or none, each a string, and nothing else it could be read as. */
+const isReference = (value: unknown): value is Reference => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const { from, name, key } = value as Record<string, unknown>
+  return typeof from === 'string' && typeof name === 'string' && (key === undefined || typeof key === 'string')
+}
+
 /** Every string a set of fields holds. */
 const stringsOf = (fields: Fields): string[] =>
   Object.values(fields).flatMap((value: Fields[keyof Fields]) =>
-    typeof value === 'string' ? [value] : Array.isArray(value) ? value.map((entry: HostPort) => entry.host) : [],
+    typeof value === 'string'
+      ? [value]
+      : Array.isArray(value)
+        ? value.map((entry: HostPort) => entry.host)
+        : isReference(value)
+          ? [value.name, ...(value.key === undefined ? [] : [value.key])]
+          : [],
   )
 
 /** Whether fields made from a candidate may be kept: each inside its grammar, then none shaped like a credential. */
@@ -182,7 +219,7 @@ function refusalOf(fields: Fields): Refusal | undefined {
     // The type is the caller's word, and a draft is not taken at its word: a
     // number where a name goes, or a host that is no object, is outside its
     // grammar before any grammar is run.
-    const typed = key === 'hosts' ? isHostList(value) : typeof value === 'string'
+    const typed = key === 'hosts' ? isHostList(value) : key === 'reference' ? isReference(value) : typeof value === 'string'
     const holds = GRAMMARS[key] as (value: unknown) => boolean
     if (!typed || !holds(value)) return 'unparsed'
   }
@@ -211,19 +248,20 @@ const isEngine = (value: unknown): value is Engine => (ENGINES as readonly unkno
 const isForm = (value: unknown): boolean => (CONNECTION_FORMS as readonly unknown[]).includes(value)
 
 /**
- * An `env-file.url` candidate, by what the parser made of the value. The
- * connection is held again here, not taken at the parser's word: an engine or
- * a form nobody named is an engine bug, and of each host only its name and
- * its port are read, so nothing else an object carries reaches a finding.
+ * An `env-file.url` or a `k8s.env-value` candidate, by what the parser made of
+ * the value. The connection is held again here, not taken at the parser's
+ * word: an engine or a form nobody named is an engine bug, and of each host
+ * only its name and its port are read, so nothing else an object carries
+ * reaches a finding.
  */
-function fromConnection(connection: Connection, variable: string | undefined): Made {
+function fromConnection(rule: RuleName, connection: Connection, variable: string | undefined): Made {
   const named: Fields = variable === undefined ? {} : { variable }
   const prefix = variable === undefined ? '' : `${variable}=`
   const refused = (kind: Refusal): Made => ({ kind, fields: named, shown: `${prefix}${ELIDED}` })
   switch (connection.outcome) {
     case 'parsed': {
       if (!isEngine(connection.engine) || !isForm(connection.form)) {
-        throw bug('env-file.url', 'a connection of an engine or a form nobody named')
+        throw bug(rule, 'a connection of an engine or a form nobody named')
       }
       if (!isHostList(connection.hosts)) return refused('unparsed')
       const hosts = connection.hosts.map(({ host, port }) => (port === undefined ? { host } : { host, port }))
@@ -241,7 +279,7 @@ function fromConnection(connection: Connection, variable: string | undefined): M
     }
     case 'placeholder': {
       if (!isEngine(connection.engine) || !isForm(connection.form)) {
-        throw bug('env-file.url', 'a connection of an engine or a form nobody named')
+        throw bug(rule, 'a connection of an engine or a form nobody named')
       }
       const fields: Fields = { scheme: connection.scheme, ...named }
       if (refusalOf(fields) !== undefined) return refused('unparsed')
@@ -259,10 +297,43 @@ function fromConnection(connection: Connection, variable: string | undefined): M
       return refused('withheld')
     default: {
       const _exhaustive: never = connection
-      throw bug('env-file.url', `a connection whose outcome nobody named (${typeof _exhaustive})`)
+      throw bug(rule, `a connection whose outcome nobody named (${typeof _exhaustive})`)
     }
   }
 }
+
+const SOURCE_WORDS: { readonly [From in Reference['from']]: string } = { secret: 'secret', configmap: 'config map' }
+
+/**
+ * A `k8s.reference` candidate: the source, its name and its key held to
+ * Kubernetes' own grammars and to the credential shapes. Configured outside
+ * this repository, so a `placeholder` whenever it is kept; shown as the
+ * variable and where its value comes from, never a value, which was not read.
+ */
+function fromReference(reference: Reference, variable: string | undefined): Made {
+  const named: Fields = variable === undefined ? {} : { variable }
+  const prefix = variable === undefined ? '' : `${variable} ← `
+  const kept: Reference =
+    reference.key === undefined
+      ? { from: reference.from, name: reference.name }
+      : { from: reference.from, name: reference.name, key: reference.key }
+  const refusal = refusalOf({ reference: kept })
+  if (refusal !== undefined) return { kind: refusal, fields: named, shown: `${prefix}${ELIDED}` }
+  const key = kept.key === undefined ? '' : `, key ${kept.key}`
+  return {
+    kind: 'reference',
+    fields: { reference: kept, ...named },
+    shown: `${prefix}${SOURCE_WORDS[kept.from]} ${kept.name}${key}`,
+    placeholder: true,
+  }
+}
+
+/**
+ * Whether a finding's every host is this machine's own (`isLoopback`): a
+ * local setting, which a file of `evidence` states and which cannot vouch.
+ */
+const isLocal = (fields: Fields): boolean =>
+  fields.hosts !== undefined && fields.hosts.length > 0 && fields.hosts.every((entry) => isLoopback(entry.host))
 
 /**
  * The only way to make a finding: every field held to its grammar and to the
@@ -287,9 +358,15 @@ export function mintFinding(draft: Draft): Finding {
   let made: Made
   // `Draft['value']` has no tag of its own; its rule is the closed union that says which it must be.
   switch (draft.rule) {
-    case 'env-file.url': {
+    case 'env-file.url':
+    case 'k8s.env-value': {
       if (!('connection' in value)) throw bug(draft.rule, 'a value that is not a connection')
-      made = fromConnection(value.connection, variable)
+      made = fromConnection(draft.rule, value.connection, variable)
+      break
+    }
+    case 'k8s.reference': {
+      if (!('reference' in value)) throw bug(draft.rule, 'a value that is not a reference')
+      made = fromReference(value.reference, variable)
       break
     }
     case 'npm.name': {
@@ -320,8 +397,16 @@ export function mintFinding(draft: Draft): Finding {
     if (!carries.has(key)) throw bug(draft.rule, `a field it does not carry (${key})`)
   }
 
+  // The first that holds: where the file is, a value naming another, a file
+  // of evidence naming this machine alone (Task 2.4), then the file's own.
   const standing: Standing =
-    draft.standing === 'mention' ? 'mention' : made.placeholder === true ? 'placeholder' : draft.standing
+    draft.standing === 'mention'
+      ? 'mention'
+      : made.placeholder === true
+        ? 'placeholder'
+        : draft.standing === 'evidence' && isLocal(made.fields)
+          ? 'local'
+          : draft.standing
   const fields = frozenFields(made.fields)
   const lines = Object.freeze([start, end] as const)
   const named = { rule: draft.rule, ruleVersion: rule.version, path: draft.path, lines, fields, fileSha256: draft.fileSha256 }
@@ -341,13 +426,17 @@ export function mintFinding(draft: Draft): Finding {
   return finding
 }
 
-/** A copy of the fields, frozen to the last host, so nothing a finding holds can change after it is named. */
+/** A copy of the fields, frozen to the last host and the reference, so nothing a finding holds can change after it is named. */
 function frozenFields(fields: Fields): Fields {
   return Object.freeze(
     Object.fromEntries(
       Object.entries(fields).map(([key, value]: [string, Fields[keyof Fields]]) => [
         key,
-        Array.isArray(value) ? Object.freeze(value.map((entry: HostPort) => Object.freeze({ ...entry }))) : value,
+        Array.isArray(value)
+          ? Object.freeze(value.map((entry: HostPort) => Object.freeze({ ...entry })))
+          : typeof value === 'object'
+            ? Object.freeze({ ...value })
+            : value,
       ]),
     ),
   )
