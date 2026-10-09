@@ -455,6 +455,74 @@ describe('isComplete', () => {
   })
 })
 
+/** The note's § 4 deployment, as the owner's kit commits it (Task 2.4). */
+const DEPLOYMENT =
+  'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: invoicing-worker\nspec:\n  template:\n    spec:\n      containers:\n' +
+  '        - name: worker\n          image: acme/invoicing-worker:1.0.0\n          env:\n' +
+  '            - name: DATABASE_URL\n              value: mysql://app_billing@billing-db.prod.internal:3306/billing\n' +
+  '            - name: DB_PASSWORD\n              valueFrom:\n                secretKeyRef: { name: billing-db-creds, key: password }\n' +
+  '            - name: PAYMENTS_API_URL\n              value: https://payments.example.com\n' +
+  '            - name: KAFKA_BROKERS\n              valueFrom:\n                configMapKeyRef: { name: platform, key: kafka-brokers }\n'
+
+describe('a Kubernetes manifest in the report', () => {
+  const deployed = (): Coverage => {
+    const { extracted, checked } = readAll({ '.env.example': SAMPLE, 'k8s/deployment.yaml': DEPLOYMENT, 'package.json': PACKAGE })
+    return coverageOf(
+      walked({
+        opened: ['.env.example', 'k8s/deployment.yaml', 'package.json'],
+        byDesign: [{ path: 'k8s/billing-db.yaml', why: 'discarded-secret' }],
+      }),
+      extracted,
+      checked,
+    )
+  }
+
+  it('evidences a dependency for the first time, and says so', () => {
+    const coverage = deployed()
+    expect(evidencedDependencies(coverage)).toBe(2)
+    expect(verifiedFindings(coverage)).toBe(6)
+    expect(coverageSentence(coverage)).toBe(
+      '2 dependencies evidenced in 3 files analysed (6 findings verified); 1 path not analysed; 3 references configured outside this repository',
+    )
+    const database = readAll({ 'k8s/deployment.yaml': DEPLOYMENT.split('            - name: DB_PASSWORD')[0] ?? '' })
+    const one = coverageOf(walked({ opened: ['k8s/deployment.yaml'] }), database.extracted, database.checked)
+    expect(coverageSentence(one)).toMatch(/^1 dependency evidenced in 1 file analysed \(1 finding verified\);/)
+  })
+
+  it('names a reference where it is configured, and never its value', () => {
+    const lines = coverageLines(deployed()).map((line) => line.trim())
+    expect(lines).toContain('k8s/deployment.yaml (k8s: 4 findings)')
+    expect(lines).toContain(
+      'k8s/deployment.yaml:12   the repository states mysql database billing on billing-db.prod.internal:3306 as app_billing',
+    )
+    expect(lines).toContain('DATABASE_URL=mysql://app_billing@billing-db.prod.internal:3306/billing')
+    expect(lines).toContain(
+      'k8s/deployment.yaml:14   configured outside this repository: secret billing-db-creds, key password (DB_PASSWORD)',
+    )
+    expect(lines).toContain('k8s/deployment.yaml:17   the repository states an https endpoint at https://payments.example.com')
+    expect(lines).toContain(
+      'k8s/deployment.yaml:19   configured outside this repository: config map platform, key kafka-brokers (KAFKA_BROKERS)',
+    )
+    expect(lines).toContain('a Secret or a SealedSecret, discarded whole: k8s/billing-db.yaml')
+    // A reference is named, never rendered: there is no value to render.
+    expect(lines.some((line) => line.includes('←'))).toBe(false)
+  })
+
+  it('says every key of a source an envFrom names, and a local setting as what it is', () => {
+    const manifest = DEPLOYMENT.replace(
+      '          env:\n',
+      '          envFrom:\n            - secretRef: { name: app }\n            - configMapRef: { name: app }\n          env:\n',
+    ).replace('billing-db.prod.internal', 'localhost')
+    const { extracted, checked } = readAll({ 'k8s/deployment.yaml': manifest })
+    const coverage = coverageOf(walked({ opened: ['k8s/deployment.yaml'] }), extracted, checked)
+    const texts = textsOf(coverage, 'findings')
+    expect(texts).toContain('configured outside this repository: every key of secret app')
+    expect(texts).toContain('configured outside this repository: every key of config map app')
+    expect(texts).toContain('a local setting states mysql database billing on localhost:3306 as app_billing')
+    expect(evidencedDependencies(coverage)).toBe(1)
+  })
+})
+
 describe('the terminal rendering', () => {
   it("prints the fixture's report as the plan shows it", () => {
     expect(coverageLines(fixture())).toEqual([

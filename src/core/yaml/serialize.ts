@@ -184,10 +184,14 @@ const MAX_ALIAS_COUNT = 100
  * syntax passed the re-check that reads its output back. `toJS()` itself is
  * guarded: an alias bomb trips yaml's alias-count limit, which throws, and one
  * hostile file must be a rejection rather than the end of the run.
+ *
+ * `merge` applies `<<` merge keys, as Kubernetes' decoder does: stage 8's
+ * discard reads a manifest as Kubernetes would (Task 2.4). A catalogue is
+ * read without, YAML 1.2's own reading, where `<<` is a key like any other.
  */
-export function readDocuments(text: string): DocumentReading[] {
+export function readDocuments(text: string, options: { readonly merge?: boolean } = {}): DocumentReading[] {
   const readings: DocumentReading[] = []
-  for (const document of parseAllDocuments(text)) {
+  for (const document of parseAllDocuments(text, { merge: options.merge === true })) {
     const [error] = document.errors
     if (error !== undefined) {
       readings.push({ error: describe(error) })

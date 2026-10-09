@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { allowed, type FileStanding } from './allow.js'
 import { envFile } from './extract/env-file.js'
+import { k8s } from './extract/k8s.js'
 import { npm } from './extract/npm.js'
 import type { Finding } from './finding.js'
 import { DISCOVERY_LIMITS } from './limits.js'
@@ -8,10 +9,11 @@ import type { ExtractorName } from './rules.js'
 import type { Extract } from './verify.js'
 
 /**
- * The extractors of slice 1 (plan, Task 1.4), by the name the allow-list
- * gives a file: `env-file`, the sample family's connection strings, and
- * `npm`, a `package.json`'s name and the clients of a closed table it
- * installs. Pure: bytes in, typed findings out, each made by `mintFinding`.
+ * The extractors, by the name the allow-list gives a file: slice 1's (plan,
+ * Task 1.4) `env-file`, the sample family's connection strings, and `npm`, a
+ * `package.json`'s name and the clients of a closed table it installs; and
+ * slice 2's `k8s` (Task 2.4), a Kubernetes manifest's container environment.
+ * Pure: bytes in, typed findings out, each made by `mintFinding`.
  *
  * Every extractor wraps its whole body in one `try`, and what it cannot read
  * is a closed reason of the engine's (`ParseFailure`), never a parser's
@@ -20,7 +22,14 @@ import type { Extract } from './verify.js'
  */
 
 /** Why a file did not parse: a closed list of the engine's, never a parser's message. */
-export type ParseFailure = 'not-json' | 'duplicate-key' | 'not-an-object' | 'too-deep' | 'not-utf8' | 'unclosed-quote'
+export type ParseFailure =
+  | 'not-json'
+  | 'duplicate-key'
+  | 'not-an-object'
+  | 'too-deep'
+  | 'not-utf8'
+  | 'unclosed-quote'
+  | 'not-yaml'
 
 export type Extracted =
   | { readonly outcome: 'read'; readonly findings: readonly Finding[] }
@@ -74,6 +83,7 @@ const guarded =
 export const EXTRACTORS: { readonly [E in ExtractorName]: (path: string, bytes: Buffer) => Extracted } = Object.freeze({
   'env-file': guarded(envFile),
   npm: guarded(npm),
+  k8s: guarded(k8s),
 })
 
 /**
@@ -88,7 +98,7 @@ export function findingsOf(table: typeof EXTRACTORS): { readonly [E in Extractor
       const extracted = table[extractor](path, bytes)
       return extracted.outcome === 'read' ? extracted.findings : []
     }
-  return { 'env-file': of('env-file'), npm: of('npm') }
+  return { 'env-file': of('env-file'), npm: of('npm'), k8s: of('k8s') }
 }
 
 /** The words for a parse failure, which the report prints beside the file. */
@@ -106,6 +116,8 @@ export function parseFailureReason(why: ParseFailure): string {
       return 'not valid UTF-8'
     case 'unclosed-quote':
       return 'a quote that never closes'
+    case 'not-yaml':
+      return 'not a YAML stream this version reads whole'
     default: {
       const _exhaustive: never = why
       return _exhaustive

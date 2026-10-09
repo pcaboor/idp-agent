@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Walked } from '../../src/core/discovery/allow.js'
-import { verifiedFindings } from '../../src/core/discovery/report.js'
+import { evidencedDependencies, verifiedFindings } from '../../src/core/discovery/report.js'
 import type { Dropped, Reread } from '../../src/core/discovery/verify.js'
 import { blobId } from '../../src/core/git/blob.js'
 import { discover } from '../../src/context/discovery/discover.js'
@@ -31,7 +31,7 @@ vi.mock('../../src/core/discovery/extractors.js', async (importOriginal) => {
       if (state.throwing.has(path)) throw new Error('an extractor failed on a file, an engine bug')
       return real.EXTRACTORS[name](path, bytes)
     }
-  return { ...real, EXTRACTORS: Object.freeze({ 'env-file': counted('env-file'), npm: counted('npm') }) }
+  return { ...real, EXTRACTORS: Object.freeze({ 'env-file': counted('env-file'), npm: counted('npm'), k8s: counted('k8s') }) }
 })
 
 afterEach(() => {
@@ -77,13 +77,14 @@ function scripted(files: Readonly<Record<string, string>>, again: Readonly<Recor
     files: opened.map((path): OpenedFile => {
       const bytes = Buffer.from(files[path] ?? '')
       handed.push(bytes)
+      const kind = path.endsWith('package.json') ? 'npm' : path.endsWith('.yaml') ? 'k8s' : 'env-file'
       return {
         path,
         bytes,
         sha256: '',
-        extractor: path.endsWith('package.json') ? 'npm' : 'env-file',
-        format: path.endsWith('package.json') ? 'json' : 'dotenv',
-        standing: path.endsWith('package.json') ? 'evidence' : 'sample',
+        extractor: kind,
+        format: kind === 'npm' ? 'json' : kind === 'k8s' ? 'yaml' : 'dotenv',
+        standing: kind === 'env-file' ? 'sample' : 'evidence',
       } as OpenedFile
     }),
     reread: (path: string) => {
@@ -180,6 +181,31 @@ describe('discover', () => {
       zeroed()
     },
   )
+
+  it('verifies a manifest’s connection on its re-read, the first dependency it evidences', async () => {
+    const deployment =
+      'kind: Deployment\nspec:\n  template:\n    spec:\n      containers:\n        - name: worker\n          env:\n' +
+      '            - name: DATABASE_URL\n              value: mysql://app_billing@billing-db.prod.internal:3306/billing\n' +
+      '            - name: DB_PASSWORD\n              valueFrom:\n                secretKeyRef: { name: billing-db-creds, key: password }\n'
+    scripted({ 'k8s/deployment.yaml': deployment })
+    const { coverage, checked } = await discover('/repository')
+    expect(checked.map((one) => one.outcome)).toEqual(['vouches', 'cannot-vouch'])
+    expect(verifiedFindings(coverage)).toBe(1)
+    expect(evidencedDependencies(coverage)).toBe(1)
+    zeroed()
+  })
+
+  it('sets aside by design a manifest the re-read finds now holds a Secret, as the read would', async () => {
+    scripted(
+      { 'k8s/deployment.yaml': 'kind: Pod\nspec:\n  containers:\n    - env:\n        - name: A\n          value: redis://cache:6379\n' },
+      { 'k8s/deployment.yaml': (path) => ({ path, dropped: 'discarded-secret' }) },
+    )
+    const { coverage } = await discover('/repository')
+    expect(coverage.byDesign).toEqual([{ path: 'k8s/deployment.yaml', why: 'discarded-secret' }])
+    expect(coverage.findings).toEqual([])
+    expect(state.calls).toEqual(['k8s/deployment.yaml'])
+    zeroed()
+  })
 
   it('says a file the re-read could not parse is not analysed for that reason', async () => {
     scripted({ 'package.json': manifest('billing-api') }, { 'package.json': (path) => ({ path, dropped: 'parse-failure' }) })

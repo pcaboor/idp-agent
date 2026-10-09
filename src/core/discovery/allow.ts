@@ -152,6 +152,39 @@ const MENTION_DIRECTORIES: ReadonlySet<string> = new Set([
   'e2e',
 ])
 
+/**
+ * The folders a Kubernetes manifest lives in, by name (Task 2.4): a `.yaml`
+ * or `.yml` file is one when a folder of its path is one of these.
+ */
+const MANIFEST_DIRECTORIES: ReadonlySet<string> = new Set([
+  'k8s',
+  'kubernetes',
+  'kube',
+  'manifests',
+  'deploy',
+  'deployment',
+  'deployments',
+])
+
+/**
+ * Helm's folders: what they hold is a Go template, which does not parse as
+ * YAML, or a chart's values, which name no workload. A later slice's.
+ */
+const TEMPLATE_DIRECTORIES: ReadonlySet<string> = new Set(['templates', 'charts'])
+
+/**
+ * Whether a path is a Kubernetes manifest the read opens: a `.yaml` or `.yml`
+ * file under a manifest folder, and under no Helm folder, at any depth. By
+ * name alone, as every row of the allow-list.
+ */
+export function isManifestPath(file: string): boolean {
+  const segments = segmentsOf(file)
+  const extension = path.posix.extname(segments.at(-1) ?? '')
+  if (extension !== '.yaml' && extension !== '.yml') return false
+  const folders = segments.slice(0, -1)
+  return folders.some((folder) => MANIFEST_DIRECTORIES.has(folder)) && !folders.some((folder) => TEMPLATE_DIRECTORIES.has(folder))
+}
+
 /** Source code, by extension: not read for dependencies in slice 1, and said apart from a format with no rule (brief § 9). */
 const CODE_EXTENSIONS: ReadonlySet<string> = new Set([
   '.ts',
@@ -247,8 +280,9 @@ export function isCode(file: string): boolean {
 
 /**
  * The extractor, the format and the file's standing of an allow-listed path,
- * or undefined: `package.json` and the sample family, at any depth, and
- * nothing else. The read asks `neverOpened` and `isGenerated` first.
+ * or undefined: `package.json`, the sample family and a Kubernetes manifest
+ * (`isManifestPath`), at any depth, and nothing else. The read asks
+ * `neverOpened` and `isGenerated` first.
  */
 export function allowed(file: string): Allowed | undefined {
   const segments = segmentsOf(file)
@@ -256,6 +290,7 @@ export function allowed(file: string): Allowed | undefined {
   const mention = segments.slice(0, -1).some((folder) => MENTION_DIRECTORIES.has(folder))
   if (name === 'package.json') return { extractor: 'npm', format: 'json', standing: mention ? 'mention' : 'evidence' }
   if (SAMPLE.test(name)) return { extractor: 'env-file', format: 'dotenv', standing: mention ? 'mention' : 'sample' }
+  if (isManifestPath(file)) return { extractor: 'k8s', format: 'yaml', standing: mention ? 'mention' : 'evidence' }
   return undefined
 }
 
@@ -265,25 +300,60 @@ const DOTENV_KEY = /^\s*(?:export\s+)?([^\s=#]+)\s*=/
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-/** A document SOPS encrypted, or one that holds a Secret: what it is, or undefined. */
-function discardedDocument(value: unknown): 'discarded-sops' | 'discarded-secret' | undefined {
-  if (!isRecord(value)) return undefined
-  if (isRecord(value['sops'])) return 'discarded-sops'
-  if (value['kind'] === 'Secret' || value['kind'] === 'SealedSecret') return 'discarded-secret'
+const SECRET_KINDS: ReadonlySet<unknown> = new Set(['Secret', 'SealedSecret', 'SecretList', 'SealedSecretList'])
+
+/**
+ * A document SOPS encrypted, or one that holds a Secret: what it is, or
+ * undefined. A List holds what its items hold, at any depth (Task 2.4): a
+ * Secret inside one is a Secret in the stream. Walked with a stack of its
+ * own, so a List nested as deep as the parser let it is no recursion here.
+ *
+ * An anchor makes the value a graph: an item named twice is read once, and a
+ * List that holds itself — `&a {kind: List, items: [*a]}`, which the reader
+ * turns into a value that contains itself and Kubernetes' decoder refuses —
+ * is a `parse-failure`, never a walk that does not end.
+ */
+function discardedDocument(document: unknown): 'discarded-sops' | 'discarded-secret' | 'parse-failure' | undefined {
+  // An entry `leave` marks the end of a List's items: until then, it is on the path.
+  const pending: { readonly value: unknown; readonly leave?: true }[] = [{ value: document }]
+  const onPath = new Set<unknown>()
+  const read = new Set<unknown>()
+  while (pending.length > 0) {
+    const { value, leave } = pending.pop() ?? { value: undefined }
+    if (leave === true) {
+      onPath.delete(value)
+      continue
+    }
+    if (!isRecord(value)) continue
+    if (onPath.has(value)) return 'parse-failure'
+    if (read.has(value)) continue
+    read.add(value)
+    if (isRecord(value['sops'])) return 'discarded-sops'
+    const kind = value['kind']
+    if (SECRET_KINDS.has(kind)) return 'discarded-secret'
+    const items: unknown = value['items']
+    if (typeof kind === 'string' && kind.endsWith('List') && Array.isArray(items)) {
+      onPath.add(value)
+      pending.push({ value, leave: true })
+      for (const item of items as readonly unknown[]) pending.push({ value: item })
+    }
+  }
   return undefined
 }
 
 /**
  * Whether a file is discarded whole, after parsing, before any extraction: a
  * dotenv file with a `sops_*` key, a JSON file with a top-level `sops` object,
- * and a YAML document of `kind: Secret` or `SealedSecret` or with a top-level
- * `sops`. Recognising them requires parsing them (brief § 8), so "never
- * opened" would promise what the reader cannot do; nothing in one becomes a
- * finding, and no field of it is kept.
+ * and a YAML document of `kind: Secret` or `SealedSecret` (or their Lists) or
+ * with a top-level `sops`, or a `List` whose items hold one, merge keys
+ * applied as Kubernetes applies them. Recognising them requires parsing them
+ * (brief § 8), so "never opened" would promise what the reader cannot do;
+ * nothing in one becomes a finding, and no field of it is kept.
  *
  * A YAML stream that cannot be read whole — a document the parser faulted, an
- * alias bomb past `readDocuments`'s bound, more documents than
- * `maxYamlDocuments` — cannot be shown to hold no Secret, so it is a
+ * alias bomb past `readDocuments`'s bound, a merge Kubernetes refuses, a List
+ * that holds itself, more documents than `maxYamlDocuments` — cannot be shown
+ * to hold no Secret, so it is a
  * `parse-failure` and nothing of it is read either. A JSON file that does not
  * parse is not discarded here: no extractor reads it, and the npm extractor
  * (1.4) says why in a closed reason of its own. No parser's message is kept:
@@ -313,7 +383,8 @@ export function discardedWhole(
     case 'yaml': {
       let readings
       try {
-        readings = readDocuments(text)
+        // Merge keys applied, as Kubernetes applies them: a Secret merged in is a Secret.
+        readings = readDocuments(text, { merge: true })
       } catch {
         return 'parse-failure'
       }

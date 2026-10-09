@@ -464,4 +464,86 @@ describe('a password reaches no line init writes, no trace and no pull request b
       { numRuns: 5 },
     )
   })
+
+  /**
+   * Task 2.4: a Kubernetes manifest is a road of its own. The password sits
+   * in a Deployment's `value:` in each of the parser's four forms, quoted as
+   * YAML and as each form quotes, and in a Secret's `stringData` beside it;
+   * the run asserts it read the one and set the other aside before it looks
+   * for the marker, everywhere, the model calls' spans included: the scripted
+   * Inspector opens neither file.
+   */
+  it('in a Deployment’s environment and a Secret, through init --submit to GitHub', async () => {
+    const seen = { evidenced: 0 }
+    await fc.assert(
+      fc.asyncProperty(passwordOf(DELIMITERS), async (password) => {
+        const source = await mkdtemp(path.join(tmpdir(), 'idp-discovery-k8s-secret-'))
+        try {
+          const write = async (file: string, text: string): Promise<void> => {
+            await mkdir(path.dirname(path.join(source, file)), { recursive: true })
+            await writeFile(path.join(source, file), text, 'utf8')
+          }
+          const values: readonly (readonly [string, string])[] = [
+            ['DATABASE_URL', `mysql://app_billing:${encodeURIComponent(password)}@billing-db.prod.internal:3306/billing`],
+            ['LEDGER_JDBC', `jdbc:postgresql://pg-01.prod.internal:5432/ledger?user=app&password=${encodeURIComponent(password)}`],
+            ['LEDGER_DSN', `host=pg-01.prod.internal dbname=ledger user=app password='${password.replace(/['\\]/g, '\\$&')}'`],
+            ['REPORTS_DSN', `Server=sql.prod.internal;Database=reports;User Id=app;Password="${password.replaceAll('"', '""')}";`],
+          ]
+          // JSON's string is a YAML double-quoted scalar: whatever the password holds, the value is one scalar.
+          const env = values.map(([name, value]) => `            - name: ${name}\n              value: ${JSON.stringify(value)}\n`).join('')
+          await write('package.json', `${JSON.stringify({ name: 'billing-api' }, null, 2)}\n`)
+          await write('CODEOWNERS', '* @acme/platform\n')
+          await write('README.md', 'type: service\nlifecycle: production\nruntime: node\nowner: group:default/tiger\n')
+          await write(
+            'k8s/deployment.yaml',
+            'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: billing-api\nspec:\n  template:\n    spec:\n' +
+              `      containers:\n        - name: api\n          image: acme/billing-api:1.0.0\n          env:\n${env}`,
+          )
+          // Under a name the read opens, so it is recognised by parsing it, and discarded whole.
+          await write(
+            'k8s/billing-db.yaml',
+            `apiVersion: v1\nkind: Secret\nmetadata:\n  name: billing-db-creds\nstringData:\n  password: ${JSON.stringify(password)}\n`,
+          )
+          const clone = await githubClone({ source, repository: 'acme/billing-api' })
+
+          const sink = memorySink()
+          const out: string[] = []
+          const err: string[] = []
+          const typed = ['--name', 'billing-api', '--type', 'service', '--lifecycle', 'production', '--owner', 'group:default/tiger']
+          const code = await main(
+            ['init', '--project', clone.repo, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev', ...typed],
+            {
+              cwd: clone.repo,
+              env: clone.env,
+              gh: clone.gh.process,
+              client: client(),
+              traceSinks: [sink],
+              out: (chunk) => void out.push(chunk),
+              err: (chunk) => void err.push(chunk),
+            },
+          )
+          const stdout = out.join('')
+          const stderr = err.join('')
+          const posted = clone.gh.sent.filter(({ argv }) => argv.includes('POST'))
+          const { body = '' } = JSON.parse(posted[0]?.stdin?.toString('utf8') ?? '{}') as { body?: string }
+
+          // The road it is about: the manifest read, the Secret set aside, in the report and the body.
+          expect(code, stderr).toBe(0)
+          expect(stdout).toContain('k8s/deployment.yaml:12   the repository states mysql database billing')
+          expect(stdout).toContain('a Secret or a SealedSecret, discarded whole: k8s/billing-db.yaml')
+          const end = body.split('\n').indexOf(ENGINE_BLOCK_END)
+          expect(end).toBeGreaterThan(-1)
+          expect(body.split('\n').slice(end + 1).join('\n')).toContain('`k8s/deployment.yaml`:12')
+          if (/^[1-9]\d* dependenc(?:y|ies) evidenced/m.test(stdout)) seen.evidenced += 1
+
+          for (const leaf of [stdout, stderr, body, ...leaves(onlyTrace(sink))]) expect(leaf.includes(MARKER), leaf).toBe(false)
+        } finally {
+          await rm(source, { recursive: true, force: true })
+        }
+      }),
+      { numRuns: 5 },
+    )
+    // Not vacuous: a URL whose password is percent-encoded is always read.
+    expect(seen.evidenced).toBe(5)
+  })
 })

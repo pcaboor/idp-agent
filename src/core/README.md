@@ -131,16 +131,19 @@ and nothing here can be steered by what it validates. Hence the property tests r
   the parsed owner and name and a positive number, never from GitHub's `html_url`.
 - **Discovery** — `discovery/`, the pure half of stage 8's discovery: what a service
   repository's committed configuration states, as findings, and the report `init` prints of
-  them (slice 1). `finding.ts`: `Finding`, its content-addressed `findingId` (the sha256 of its rule,
+  them (slice 1; the Kubernetes extractor, slice 2's Task 2.4). `finding.ts`: `Finding`, its content-addressed `findingId` (the sha256 of its rule,
   the rule's version, its path, its span, its fields and its file's hash), and `mintFinding`,
   the only way to make one — `isMinted` is false for a spread copy, a `structuredClone` or a
   parsed JSON, as `isCleared` is. A finding has **no field a secret could sit in**: every field
   it keeps is held to a closed grammar (`grammar.ts`: an ASCII host, a port, a database or an
-  account of one script, an http origin, a variable, an npm name) and to the credential shapes,
+  account of one script, an http origin, a variable, an npm name, a Secret's or a ConfigMap's
+  name and key by Kubernetes' own grammars) and to the credential shapes,
   and a value that fails either is kept as `unparsed` or `withheld`, with its file and line and
   nothing it said. `mintFinding` holds them a second time, whoever made the draft: an engine or a
   form nobody named is an engine bug, and of a host only its name and port are kept. Its
-  `shown` is composed from the fields it kept, never cut from the line.
+  `shown` is composed from the fields it kept, never cut from the line. A finding of a file of
+  `evidence` whose every host is this machine's (`isLoopback`: `localhost`, `127.0.0.0/8`,
+  `::1`, a name under `.local`) is `local`, which cannot vouch.
   `connection.ts`: `parseConnection`, the URL, JDBC, libpq and ADO.NET forms, one left-to-right
   scan each, keeping only the parts it names (so the password, and anything under a key it does
   not name, is dropped before it returns), refusing an `@` past a URL's authority, a key
@@ -150,11 +153,14 @@ and nothing here can be steered by what it validates. Hence the property tests r
   password was. `rules.ts`: `RULES`, each rule's version, extractor, fields and what it
   supports, and `ENGINE_TYPE`, the resource type an engine is declared as, or none.
   `allow.ts` (Task 1.2): what the discovery read (`context/discovery/read.ts`) may open, by the
-  path alone — `allowed`, the closed allow-list (`package.json` and the sample family,
-  `.env.example` among them), `neverOpened`, the snapshot's lists of where credentials live,
+  path alone — `allowed`, the closed allow-list (`package.json`, the sample family,
+  `.env.example` among them, and a Kubernetes manifest, `isManifestPath`: a `.yaml` or `.yml`
+  under `k8s/`, `kubernetes/`, `kube/`, `manifests/`, `deploy/`, `deployment/` or
+  `deployments/`, and under no `templates/` or `charts/`), `neverOpened`, the snapshot's lists of where credentials live,
   every name lowercased first, `isGenerated` and `isCode` — and `discardedWhole`, what is
   thrown away after parsing (a `sops_*` dotenv key, a top-level `sops` object, a `Secret` or a
-  `SealedSecret`), with the words of every reason a path is not read. `verify.ts` (Task 1.3):
+  `SealedSecret`, at a stream's top level or among a `List`'s items, merge keys applied as
+  Kubernetes applies them; a List that holds itself is a stream not read whole), with the words of every reason a path is not read. `verify.ts` (Task 1.3):
   the witness re-read, pure over the bytes it is handed. `verifyFinding` holds a finding to its
   file, read again by the discovery read's `reread`, in the note's order — minted (a finding
   nothing minted is refused, named only by an ID of an ID's form), path (one the read opened),
@@ -170,14 +176,19 @@ and nothing here can be steered by what it validates. Hence the property tests r
   dotenv's syntax, a comment skipped by its `#` and never read, a value a connection only when
   the parser says it opens like one; and `extract/npm.ts`, a `package.json`'s name and the
   clients of `NPM_CLIENTS`, a closed table, each at its line, `devDependencies` and
-  `peerDependencies` a `mention`, a version spec never read — each returning findings, a
+  `peerDependencies` a `mention`, a version spec never read; and `extract/k8s.ts` (Task 2.4), a
+  manifest's workloads (`WORKLOAD_KINDS`) read down to their pod's spec by fixed keys, of each
+  container and init container its `env` — a `value:` a connection only when the parser says it
+  opens like one (`k8s.env-value`), a `secretKeyRef` or a `configMapKeyRef` named, never read
+  (`k8s.reference`, a `placeholder`) — and its `envFrom` sources, each finding spanning its
+  entry, an alias or a merge key read as a value it could not read, a List's items never read — each returning findings, a
   `ParseFailure` (a closed reason of the engine's, never a parser's message, which quotes the
   bytes) or `over-finding-cap`; and `findingsOf`, the same table as `verifyFinding` takes it.
   `report.ts`: `coverageOf`, every path the read named in exactly one of analysed, not
   analysed and not read by design, deep-frozen; `verifiedFindings`, the findings that vouched
   and hold a value the engine could read (never `unparsed` or `withheld`), what `init`'s exit
   reads and the sentence counts;
-  `evidencedDependencies`, 0 in slice 1 by construction; `isComplete`; `coverageSections`, § 9's
+  `evidencedDependencies`, 0 in slice 1 by construction, more from a manifest's connection; `isComplete`; `coverageSections`, § 9's
   six parts, from which the terminal's rendering (`cli/render/coverage.ts`) and the body's
   (`github/pull-request.ts`) are both built; and `coverageSentence`. `limits.ts`: every bound
   of the discovery, the read's, the re-read's and the report's among them. No model sees any of it: an architecture rule keeps

@@ -98,6 +98,42 @@ export function isHttpUrl(value: string): boolean {
   return isHost(authority.slice(0, colon)) && /^\d{1,5}$/.test(port) && isPort(Number(port))
 }
 
+/**
+ * Whether every host is this machine's own: `localhost`, an address of
+ * `127.0.0.0/8` or `::1`, or a name under `.local`, the link-local domain. A
+ * connection to one is a local setting, never a dependency's identity (Task
+ * 2.4). Read of a host its grammar already passed.
+ */
+export function isLoopback(host: string): boolean {
+  const lower = host.toLowerCase()
+  if (lower === 'localhost' || lower.endsWith('.local')) return true
+  if (isIpv4(lower)) return lower.startsWith('127.')
+  if (!isBracketedIpv6(lower)) return false
+  // `[::1]`, written in any of its forms: seven groups of 0, then 1.
+  const inner = lower.slice(1, -1)
+  if (inner.includes('.')) return false
+  const [left = '', right] = inner.split('::')
+  const head = left === '' ? [] : left.split(':')
+  const tail = right === undefined || right === '' ? [] : right.split(':')
+  const groups = right === undefined ? head : [...head, ...Array<string>(8 - head.length - tail.length).fill('0'), ...tail]
+  return groups.length === 8 && groups.every((group, index) => Number.parseInt(group, 16) === (index === 7 ? 1 : 0))
+}
+
+/**
+ * A Secret's or a ConfigMap's name, as Kubernetes takes one: a DNS-1123
+ * subdomain, lower-case labels of letters, digits and inner hyphens joined by
+ * dots, at most 253 characters. ASCII only, so `bіlling-db-creds` with a
+ * Cyrillic `і` is no name.
+ */
+export function isKubernetesName(value: string): boolean {
+  if (value.length === 0 || value.length > 253) return false
+  return value.split('.').every((label) => /^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$/.test(label))
+}
+
+/** A key of a Secret or a ConfigMap, as Kubernetes takes one: 1 to 253 of `-._a-zA-Z0-9`, never `.` or `..`. */
+export const isKubernetesKey = (value: string): boolean =>
+  /^[-._a-zA-Z0-9]{1,253}$/.test(value) && value !== '.' && value !== '..'
+
 /** An environment variable's name, as a dotenv file writes it: ASCII, 1 to 128 characters. */
 export const isVariable = (value: string): boolean => /^[A-Za-z_][A-Za-z0-9_.]{0,127}$/.test(value)
 

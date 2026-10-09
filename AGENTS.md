@@ -19,7 +19,7 @@ verifiable over the one that adds an integration.
 
 ```bash
 pnpm install          # Node >= 22, pnpm 10
-pnpm test             # 5493 tests. No API key, no network, no Docker. Ever.
+pnpm test             # 5552 tests. No API key, no network, no Docker. Ever.
 pnpm typecheck        # vitest does not typecheck; this is not redundant
 pnpm build
 pnpm smoke            # packs the tarball and runs its dist/cli/bin.js, which the suite
@@ -234,10 +234,14 @@ idp-agent protection [--repo <dir>]  # through the person's gh, reads only; no m
 
 `init` also reports what the service's committed configuration states (stage 8, slice 1,
 `docs/plans/stage-8-slice-1.md`): `context/discovery/discover.ts` opens the `package.json`
-files and sample environment files `HEAD` holds, by name, extracts typed findings from them
-— a package's name, the database, cache and queue clients it installs, a sample's connection
-strings with no password — reads each finding's file again, and `core/discovery/report.ts`
-says what was read and what was not, and why. The report prints between `init`'s diff and its
+files, sample environment files and Kubernetes manifests `HEAD` holds, by name, extracts typed
+findings from them — a package's name, the database, cache and queue clients it installs, a
+sample's connection strings with no password, and (slice 2, Task 2.4) a manifest's container
+environment: a connection a `value:` states, of standing `evidence`, the first finding that can
+evidence a dependency, and the Secrets and ConfigMaps it names, never read; a stream holding a
+Secret, a SealedSecret or SOPS, at its top level or in a List, is set aside whole — reads each
+finding's file again, and `core/discovery/report.ts` says what was read and what was not, and
+why. The report prints between `init`'s diff and its
 closing lines, so a saved preview still applies, its sentence goes to stderr too, and
 `init --submit`'s pull request carries it after the engine's block. No model is sent any of
 it, and nothing is proposed from it yet. And `init` takes no model's reading of the service
@@ -399,8 +403,8 @@ is built in `index.ts` and handed to a command rather than chosen inside one —
 
 | Folder | Responsibility |
 |---|---|
-| `core/` | schemas (Zod), the nine validation rules and the Backstage registration, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — the engine's check on an answer's commentary (`core/answer/`), `core/github/`: a remote's URL and the grammars a clone's own configuration is held to, the configuration's scope check, gh's version, and the fields read of GitHub's answers, and `core/discovery/`: stage 8's finding, minted only by `mintFinding`, every field held to a closed grammar and to the credential shapes, and the connection-string parser that keeps only the parts it names, `allow.ts`, what the discovery read may open by path, `verify.ts`, the witness re-read, the two extractors of slice 1 (`extract/env-file.ts`, `extract/npm.ts`) and `report.ts`, the coverage report `init` prints and its pull request carries, and its sentence; `core/secrets/` and `core/text/` hold the credential, placeholder and script shapes it shares with `project-fs` and the commentary check, and the lists of where credentials live by name (`secrets/names.ts`), which `project-fs` and the discovery read share; `core/git/blob.ts` computes git's blob id for the forge and the read |
-| `context/` | `ContextProvider` (`fixtures`, and `iac-fs` behind `--repo`; `backstage/provider.ts`, a whole catalogue through the file reader or nothing, which `cli/` constructs for a configured catalogue), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `discovery/read.ts` — stage 8's second reader of that repository, which opens only its committed `package.json` and sample environment files, by name, through `openToRead`, follows no link, keeps a file's bytes only when they are `HEAD`'s, and names a path only when `HEAD` holds it — what git does not track or is staged and never committed is counted, never named; it and `project-fs` load nothing of each other, and `discovery/discover.ts` chains it with the extractors and the re-read for `init`, never throwing — `EntityGraph` and its queries, `backstage/transport.ts` — the only code that sends a catalogue token, over a `fetch` it is handed — and `backstage/cache.ts`, a catalogue read kept under the person's cache folder, which only the provider loads and no command uses yet |
+| `core/` | schemas (Zod), the nine validation rules and the Backstage registration, the JSON Schema export, deterministic YAML serialiser, entity paths, textual surgery, the unified diff, `core/plan/` — everything between a proposal and a diff — the engine's check on an answer's commentary (`core/answer/`), `core/github/`: a remote's URL and the grammars a clone's own configuration is held to, the configuration's scope check, gh's version, and the fields read of GitHub's answers, and `core/discovery/`: stage 8's finding, minted only by `mintFinding`, every field held to a closed grammar and to the credential shapes, and the connection-string parser that keeps only the parts it names, `allow.ts`, what the discovery read may open by path, `verify.ts`, the witness re-read, the two extractors of slice 1 (`extract/env-file.ts`, `extract/npm.ts`) and slice 2's Kubernetes one (`extract/k8s.ts`), which reads a workload's container environment by fixed keys and names a Secret or a ConfigMap without reading it, and `report.ts`, the coverage report `init` prints and its pull request carries, and its sentence; `core/secrets/` and `core/text/` hold the credential, placeholder and script shapes it shares with `project-fs` and the commentary check, and the lists of where credentials live by name (`secrets/names.ts`), which `project-fs` and the discovery read share; `core/git/blob.ts` computes git's blob id for the forge and the read |
+| `context/` | `ContextProvider` (`fixtures`, and `iac-fs` behind `--repo`; `backstage/provider.ts`, a whole catalogue through the file reader or nothing, which `cli/` constructs for a configured catalogue), `iac-fs` snapshots of a declarations repository with provenance, `project-fs` snapshots of an application repository **without its secrets**, `discovery/read.ts` — stage 8's second reader of that repository, which opens only its committed `package.json`, sample environment files and Kubernetes manifests, by name, through `openToRead`, follows no link, keeps a file's bytes only when they are `HEAD`'s, and names a path only when `HEAD` holds it — what git does not track or is staged and never committed is counted, never named; it and `project-fs` load nothing of each other, and `discovery/discover.ts` chains it with the extractors and the re-read for `init`, never throwing — `EntityGraph` and its queries, `backstage/transport.ts` — the only code that sends a catalogue token, over a `fetch` it is handed — and `backstage/cache.ts`, a catalogue read kept under the person's cache folder, which only the provider loads and no command uses yet |
 | `cli/` | argument parsing, commands, rendering, `.idp-agent.yml` and the personal `config.yml`, which source a command reads — the only layer that writes to stdout |
 | `llm/` | the single crossing point: `client.ts` is types only — that is what `agents/` imports — while `providers.ts` and `runtime.ts` are the only modules importing the SDK |
 | `agents/` | the five agents, the bounded turn, the repair loop, the tool registries — reaches no disk, transitively |
