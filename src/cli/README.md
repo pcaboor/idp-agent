@@ -529,6 +529,30 @@ questions, the project's files and init's own verdicts, then `refuseDivergence` 
 names the declarations repository, never the clone the branch goes to. D12 is the local
 forge's refusal, before gh starts; D6 is the clearance's.
 
+**`init`'s two repositories** (stage 8, slice 2, Task 2.3). `init --project` names the
+service, as `plan --project` names the repository its Inspector reads; `init --repo`, which
+named it until then, is refused at parsing whatever it names, exit 2, naming `--project`
+(`INIT_REPO`), and the release after the first one that ships stage 8 removes the refusal.
+`main` resolves the service (`initRoot`, which refuses a declarations repository by its
+markers, as `plan --project` does), then the declarations repository through
+`sourceOf({ command: 'init' })` — `plan`'s chain without `--repo` and without the working
+directory, which is the service: `IDP_REPO`, then `repo` in the personal file — and refuses a
+service that is that repository or lies under its `catalog/` or `dependencies/`
+(`initApart`, `applicationRoot`'s two checks), all before the configuration and before any
+model, so a broken `IDP_REPO` is exit 2 with nothing paid.
+None found is said on stderr (`initFoundNoRepository`) and the run goes on against an empty
+catalogue. `runInitRepo` reads that repository whole as `plan` does (`readContents`), builds the
+graph, tools and contexts with `plan.ts`'s `graphOf` and `contextsOf`, and runs `repair`: the
+Architect, the five gates, the Reviewer last, `componentsOf` as `scope` and the catalog-info's
+edits as `elsewhere`. The signature context carries `ownComponent: 'stated-or-asked'`, so the
+Component's name, type, lifecycle and owner, and every entry of its `dependsOn`, are typed or
+asked, never enumerated off the catalogue or vouched for by a graph tool. A stop on the scope
+shows the draft it refused and closes on what `init` takes (`SCOPE_STOP`), not on a value to
+name. A name the person typed that the declarations repository already gives a Component
+is *nothing to change* before any Reviewer is paid (`renderNamed`); a drafted one is asked, the
+declaration shown (`declaredConflict`). What was already wrong in that repository is counted on
+the line `plan` prints for it (`renderPreview`'s `standing`).
+
 **`init`'s discovery report** (stage 8, slice 1). `runInitRepo` calls
 `context/discovery/discover.ts` after every refusal before the model and just before the
 Inspector, and `render/coverage.ts`'s `coverageLines` prints the report — a heading, § 9's six

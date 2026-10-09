@@ -469,7 +469,7 @@ describe('the CLI says how the application repository was read', () => {
   })
 
   it('refuses init at the filesystem root', async () => {
-    const { code, err } = await run(['init', '--repo', path.parse(process.cwd()).root], {
+    const { code, err } = await run(['init', '--project', path.parse(process.cwd()).root], {
       env: {},
       client: reporting(),
     })

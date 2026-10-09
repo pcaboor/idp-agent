@@ -16,6 +16,7 @@ import { checkRepository } from '../../src/core/validate/rules.js'
 import { FixtureProvider } from '../../src/context/fixtures/index.js'
 import { REPORT_TOOL } from '../../src/agents/tools/project-tools.js'
 import { PROPOSE_TOOL } from '../../src/agents/tools/propose-tool.js'
+import { VERDICT_TOOL } from '../../src/agents/reviewer.js'
 import type {
   AgentName,
   GenerateRequest,
@@ -400,6 +401,7 @@ const drafting = (operations: unknown[], facts: unknown = FACTS) =>
   scripted({
     inspector: [READING, turnCalling(REPORT_TOOL, facts)],
     architect: [turnCalling(PROPOSE_TOOL, { operations })],
+    reviewer: [turnCalling(VERDICT_TOOL, { verdict: 'ok' })],
   })
 
 describe('init, per application', () => {
@@ -736,7 +738,7 @@ describe('init, per application', () => {
 
   it('refuses a run with no model configured, in providers.ts’s own words', async () => {
     const project = await application()
-    const { code, err } = await init(['init', '--repo', project], await temp())
+    const { code, err } = await init(['init', '--project', project], await temp())
 
     expect(code).toBe(2)
     expect(err).toContain('no model configured: set IDP_PROVIDER (one of ')
@@ -1142,7 +1144,7 @@ describe('init --submit through main', () => {
 
   it("cuts init's branch with --local, and says nothing was pushed", async () => {
     const { root, gh, calls } = await onGitHub()
-    const { code, out } = await run(['init', '--repo', root, '--submit', '--local', ...TYPED_FLAGS], drafting([COMPONENT]), gh)
+    const { code, out } = await run(['init', '--project', root, '--submit', '--local', ...TYPED_FLAGS], drafting([COMPONENT]), gh)
     expect(code).toBe(0)
     expect(out).toMatch(/1 file · submitted as idp-agent\/init-billing-api-[0-9a-f]{8} on top of main@[0-9a-f]{7} · main untouched/)
     expect(out).toContain('--local: nothing pushed by this run')
@@ -1152,7 +1154,7 @@ describe('init --submit through main', () => {
   it('refuses a directory that is not a clone as an argument, before a model is even configured', async () => {
     const project = await application()
     made.push(project)
-    const { code, err } = await run(['init', '--repo', project, '--submit'])
+    const { code, err } = await run(['init', '--project', project, '--submit'])
     expect(code).toBe(2)
     expect(err).toContain('not a git working tree')
     expect(err).not.toContain('no model configured')
@@ -1165,7 +1167,7 @@ describe('init --submit through main', () => {
     await writeFile(path.join(root, 'services', 'billing', 'package.json'), '{ "name": "billing-api" }\n')
     await committed(root)
     const client = drafting([COMPONENT])
-    const { code, err } = await run(['init', '--repo', path.join(root, 'services', 'billing'), '--submit'], client)
+    const { code, err } = await run(['init', '--project', path.join(root, 'services', 'billing'), '--submit'], client)
     expect(code).toBe(2)
     expect(err).toContain('not submitted by this build')
     expect(client.seen).toEqual([])
@@ -1177,7 +1179,7 @@ describe('init --submit through main', () => {
     await committed(root)
     const client = drafting([COMPONENT])
     const { code, err } = await run(
-      ['init', '--repo', root, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'prod\u2066'],
+      ['init', '--project', root, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'prod\u2066'],
       client,
     )
     expect(code).toBe(2)
@@ -1193,7 +1195,7 @@ describe('init --submit through main', () => {
     const client = drafting([COMPONENT])
     const long = 'x'.repeat(64)
     const { code, err } = await run(
-      ['init', '--repo', root, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', long],
+      ['init', '--project', root, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', long],
       client,
     )
     expect(code).toBe(2)
@@ -1205,7 +1207,7 @@ describe('init --submit through main', () => {
     const root = await application()
     made.push(root)
     await committed(root)
-    const args = ['init', '--repo', root, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev', '--environment', 'prod', ...TYPED_FLAGS]
+    const args = ['init', '--project', root, '--submit', '--iac-repo', 'github.com/acme/iac', '--environment', 'dev', '--environment', 'prod', ...TYPED_FLAGS]
     const first = await run(args, drafting([COMPONENT]))
     expect(first.code).toBe(0)
     expect(first.out).toMatch(/2 files · submitted as idp-agent\/init-billing-api-[0-9a-f]{8} on top of main@[0-9a-f]{7} · main untouched/)
@@ -1247,7 +1249,7 @@ describe('init --submit to GitHub', { timeout: 30_000 }, () => {
     deps: Parameters<typeof main>[1] = {},
   ) => {
     const io = capture()
-    const code = await main(['init', '--repo', clone.repo, '--submit', ...FLAGS, ...args], {
+    const code = await main(['init', '--project', clone.repo, '--submit', ...FLAGS, ...args], {
       cwd: clone.repo,
       env: clone.env,
       gh: clone.gh.process,
@@ -1280,8 +1282,8 @@ describe('init --submit to GitHub', { timeout: 30_000 }, () => {
     const { body } = JSON.parse(posted[0]?.stdin?.toString('utf8') ?? '{}') as { body?: string }
     expect(body).toContain(
       "This change was drafted by a model from the service's own files and written by idpa init in its own repository: " +
-        'two gates, the schema and the signature, every value the model chose either read by the inspection ' +
-        'or typed by a person, and no Reviewer.',
+        'five gates, the schema, the signature, the policies, the re-check and the Reviewer last, every ' +
+        'value the model chose typed or answered by a person.',
     )
     expect(body).not.toContain('from what a person typed')
   })
@@ -1327,7 +1329,7 @@ describe('init --submit to GitHub', { timeout: 30_000 }, () => {
     }
     const out: string[] = []
 
-    const code = await main(['init', '--repo', clone.repo, '--submit', ...FLAGS], {
+    const code = await main(['init', '--project', clone.repo, '--submit', ...FLAGS], {
       cwd: clone.repo,
       env: clone.env,
       gh: clone.gh.process,
@@ -1471,7 +1473,7 @@ describe('init --submit to GitHub', { timeout: 30_000 }, () => {
     }
 
     const output: string[] = []
-    const code = await main(['init', '--repo', clone.repo, '--submit', ...FLAGS], {
+    const code = await main(['init', '--project', clone.repo, '--submit', ...FLAGS], {
       cwd: clone.repo,
       env: clone.env,
       gh: clone.gh.process,
@@ -1581,7 +1583,7 @@ describe('init --submit to GitHub', { timeout: 30_000 }, () => {
     }
 
     const io = capture()
-    const code = await main(['init', '--repo', path.join(clone.repo, 'services', 'billing'), '--submit', ...FLAGS], {
+    const code = await main(['init', '--project', path.join(clone.repo, 'services', 'billing'), '--submit', ...FLAGS], {
       env: clone.env,
       gh,
       out: (chunk) => void io.out.push(chunk),

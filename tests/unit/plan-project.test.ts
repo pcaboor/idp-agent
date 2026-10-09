@@ -880,7 +880,7 @@ describe('what init prints that a model wrote', () => {
     })
 
     const { code, out, err } = await run(
-      ['init', '--repo', project],
+      ['init', '--project', project],
       { client, env: {} },
       { stream: true },
     )

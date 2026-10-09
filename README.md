@@ -15,7 +15,7 @@
   <a href="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pcaboor/idp-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="Licence: Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-blue.svg"></a>
   <img alt="Node 22 or later" src="https://img.shields.io/badge/node-22%2B-brightgreen.svg">
-  <img alt="Tests: 5464, no API key" src="https://img.shields.io/badge/tests-5464%20%C2%B7%20no%20API%20key-success.svg">
+  <img alt="Tests: 5493, no API key" src="https://img.shields.io/badge/tests-5493%20%C2%B7%20no%20API%20key-success.svg">
   <!-- TODO: npm badge once published — https://img.shields.io/npm/v/idp-agent -->
 </p>
 
@@ -473,7 +473,7 @@ idp-agent plan "<intent>" [--repo <dir>] [--json]  # needs IDP_PROVIDER, IDP_MOD
     [--project <dir>]                              # the service's repository, if not where you stand
     [--submit [--local]]                           # a branch, after all five gates; pushed and a pull request on github.com
 idp-agent protection [--repo <dir>]                # through your gh, reads only; no model
-idp-agent init [--repo <dir>]                      # needs IDP_PROVIDER, IDP_MODEL and its key
+idp-agent init [--project <dir>]                   # needs IDP_PROVIDER, IDP_MODEL and its key
     [--name <name>] [--type <type>]                # the Component's fields; asked at a terminal
     [--lifecycle experimental|production|deprecated]
     [--owner group:<namespace>/<name>]
@@ -593,8 +593,12 @@ Run from a service whose `.idp-agent.yml` names another repository in `iacRepo` 
 one the clone's branch tracks, it is refused, exit 1, naming both, before any model:
 `iacRepo` is a cross-check, never where the pull request goes.
 
-`plan --repo` names the **declarations** repository. `init --repo` names the
-**application** repository being declared. `graph`, `show`, `relations` and `ask` take the first kind;
+`--repo` names the **declarations** repository. `init --project` names the
+**application** repository being declared, as `plan --project` names the one its Inspector
+reads; `init --repo`, which named it before stage 8, is refused in this release, naming
+`--project`. `init` reads the declarations repository too — `IDP_REPO`, else `repo` in the file
+below — and judges the Component against it through the five gates, the Reviewer last; with
+neither it says so and judges against an empty catalogue. `graph`, `show`, `relations` and `ask` take the first kind;
 without `--repo` they read the directory you are standing in when it is a declarations
 repository (a folder under `catalog/` or `dependencies/` holding a `.witness.yml`, as
 `init platform` writes them), then the one you configured (below), and the fictional demo
@@ -641,7 +645,7 @@ write `repo: "~"` for the home directory itself.
 
 Every command but `init` and `validate` takes the first of: `--repo` (or `--demo`) · the
 directory you stand in, when it is a declarations repository · `IDP_REPO` · `repo` in that
-file — and a question and the read commands take a
+file (`init` takes the last two alone: it stands in the service) — and a question and the read commands take a
 [Backstage catalogue](#read-a-backstage-catalogue) ahead of each of the last two, when one
 is configured. With none of them, `graph`, `show`, `relations` and a question read the
 fictional demo SI; a change is refused, naming those four ways, because a write preview is

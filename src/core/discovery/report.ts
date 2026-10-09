@@ -611,7 +611,9 @@ export function coverageSections(
     },
     {
       label: 'declared, not evidenced by this repository',
-      lines: [{ text: 'not read: init reads no declarations repository in this version' }],
+      // True whether or not a declarations repository was found: stderr says
+      // which, and this part is carried into a pull request's body too.
+      lines: [{ text: 'not compared: this version matches nothing against a declarations repository yet' }],
     },
     { label: 'not analysed', lines: notAnalysed.length === 0 ? [{ text: 'nothing' }] : notAnalysed },
     { label: 'present, not read by design', lines: byDesign.length === 0 ? [{ text: 'nothing' }] : byDesign },

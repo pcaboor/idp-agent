@@ -233,13 +233,13 @@ describe('init platform <directory>', () => {
   })
 })
 
-describe('init --repo <directory>', () => {
+describe('init --project <directory>', () => {
   it.each([
-    ['/nonexistent/idp-init', '/nonexistent/idp-init is not a directory; init --repo names the application repository'],
-    ['', '--repo is empty; init --repo names the application repository'],
+    ['/nonexistent/idp-init', '/nonexistent/idp-init is not a directory; init --project names the application repository'],
+    ['', '--project is empty; init --project names the application repository'],
   ])('refuses %j on exit 2 before a model is chosen', async (repo, said) => {
     const client = silent()
-    const { code, out, err } = await run(['init', '--repo', repo], { client, cwd: await temp() })
+    const { code, out, err } = await run(['init', '--project', repo], { client, cwd: await temp() })
     expect({ code, out }).toEqual({ code: 2, out: '' })
     expect(err).toContain(said)
     expect(err).not.toContain('no model configured')
@@ -250,9 +250,9 @@ describe('init --repo <directory>', () => {
     const file = path.join(await temp(), 'package.json')
     await writeFile(file, '{}\n')
     const client = silent()
-    const { code, err } = await run(['init', '--repo', file], { client })
+    const { code, err } = await run(['init', '--project', file], { client })
     expect(code).toBe(2)
-    expect(err).toContain('is not a directory; init --repo names')
+    expect(err).toContain('is not a directory; init --project names')
     expect(client.seen).toEqual([])
   })
 
@@ -261,17 +261,17 @@ describe('init --repo <directory>', () => {
     // there, or hands back a path that is no longer a directory.
     const gone = await temp()
     await rm(gone, { recursive: true })
-    const said = 'the working directory no longer exists; name the service with init --repo <dir>'
+    const said = 'the working directory no longer exists; name the service with init --project <dir>'
     const throwing = (): string => {
       throw Object.assign(new Error('uv_cwd'), { code: 'ENOENT' })
     }
-    await expect(initRoot({ repo: undefined, cwd: throwing, home: undefined })).rejects.toThrow(said)
-    await expect(initRoot({ repo: 'billing-api', cwd: throwing, home: undefined })).rejects.toThrow(said)
-    await expect(initRoot({ repo: undefined, cwd: () => gone, home: undefined })).rejects.toThrow(said)
+    await expect(initRoot({ project: undefined, cwd: throwing, home: undefined })).rejects.toThrow(said)
+    await expect(initRoot({ project: 'billing-api', cwd: throwing, home: undefined })).rejects.toThrow(said)
+    await expect(initRoot({ project: undefined, cwd: () => gone, home: undefined })).rejects.toThrow(said)
   })
 
   it('refuses before the configuration, so nothing configured still names the directory', async () => {
-    const { code, err } = await run(['init', '--repo', '/nonexistent/idp-init'])
+    const { code, err } = await run(['init', '--project', '/nonexistent/idp-init'])
     expect(code).toBe(2)
     expect(err).not.toContain('no model configured')
   })

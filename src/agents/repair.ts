@@ -230,6 +230,25 @@ export interface RepairInput {
    * text rather than an AST, because a reviewer reads an added line (§4.3).
    */
   readonly contents: ReadonlyMap<string, string>
+  /**
+   * Refusals of operations this caller does not take, each a line naming the
+   * operation by its path, reported at gate [1] in the engine's words so the
+   * Architect drafts again. `init` passes the refusal of anything but the
+   * service's own Component (stage 8, slice 2, Task 2.3). Absent on the plan
+   * road, which takes every operation the schema does, and hands the
+   * Architect and the Reviewer exactly what it handed them before.
+   */
+  readonly scope?: (plan: Plan) => readonly string[]
+  /**
+   * What a signed plan writes into another repository than the one this loop
+   * re-checks — `init`'s catalog-info, in the service's own. Read after
+   * `planEdits`, and only for what the Reviewer is told: an operation
+   * `planEdits` gives no bytes because its bytes belong there is described by
+   * its edit there, so the Reviewer is never shown a Component that "writes
+   * nothing". Never an edit the re-check judges or the diff shows. Absent on
+   * the plan road.
+   */
+  readonly elsewhere?: (signed: SignedPlan) => readonly FileEdit[]
 }
 
 /**
@@ -313,7 +332,7 @@ const NOTHING_THEIRS: Theirs = { answers: new Map(), about: new Map(), plan: und
 
 export async function repair(input: RepairInput, emit: EventSink): Promise<RepairOutcome> {
   const attempts: RepairAttempt[] = []
-  /** The last plan that got past gate [1]. What a clean stop shows (§6.1). */
+  /** The last plan that got past gate [1], or that parsed and a caller's `scope` refused. What a clean stop shows (§6.1). */
   let partial: Plan | undefined
   /** Rows the Architect's tools cut off, summed across every attempt. */
   /** Derivations already stated, so a repeated attempt does not restate them. */
@@ -429,6 +448,18 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
         fail('zod', [reasonOf(parsed.error)])
         continue
       }
+      // The caller's scope, at the same gate and for the same reason: an
+      // operation it does not take is a draft it cannot use, and the Architect
+      // is the one who can draft another. After the parse, so what it judges
+      // is a plan; absent, nothing is judged here that was not before. A draft
+      // it refuses did parse, so it is the partial plan a stop shows: "no
+      // draft ever parsed" beside it would be false.
+      const outside = input.scope?.(parsed.data) ?? []
+      if (outside.length > 0) {
+        partial = parsed.data
+        fail('zod', outside)
+        continue
+      }
       passed('zod')
       // Between [1] and [2], and **not a gate**.
       //
@@ -515,9 +546,9 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       // plan no gate ever saw.
       partial = derivation.plan
     // Only what the user TYPED: `reapplication.answers` is built from
-    // `input.answers` alone. `input.provenance.answers` is not the user's
-    // everywhere — `init` puts what its inspection read there — so it is
-    // never reported to the model as theirs.
+    // `input.answers` alone. `input.provenance.answers` is a caller's to
+    // fill with whatever it vouches for at a fixed path, so it is never
+    // reported to the model as theirs.
     theirs = { answers: reapplication.answers, about: reapplication.about, plan: derivation.plan }
 
       // [2] The signature. Free. It vouches for where every value came from, and
@@ -641,7 +672,7 @@ export async function repair(input: RepairInput, emit: EventSink): Promise<Repai
       const verdict = await input.review(signed.plan, {
         derived: derivation.derived,
         targets: targetsOf(signed.plan, input.snapshot, input.signature.vocabulary.environments),
-        effects: effectsOf(signed.plan, dropped, recheck),
+        effects: effectsOf(signed, dropped, recheck, input.elsewhere?.(signed) ?? []),
       })
       if (verdict.verdict === 'no-opinion') {
         // No opinion is not a rejection, and repairing is not the answer to it.
@@ -823,15 +854,38 @@ const environmentOf = (
  * the sentence it should be, as an `it.fails` that turns red the day it is
  * (wip-diff-10). A creation's `already-declared` was already said, and still
  * is.
+ *
+ * `elsewhere` is what the plan writes into another repository than this one
+ * (`RepairInput.elsewhere`). A creation the engine filed nowhere here — a
+ * Component, whose catalog-info goes into the service's own repository — is
+ * described by those edits when there are any, rather than as a drop: it is
+ * the one operation `init` proposes, and "writes nothing" would tell the
+ * Reviewer the run does nothing at all. With none, the drop is said as before.
  */
 function effectsOf(
-  plan: Plan,
+  signed: SignedPlan,
   dropped: readonly DroppedOperation[],
   recheck: Recheck,
+  elsewhere: readonly FileEdit[],
 ): OperationEffect[] {
+  const { plan } = signed
   const reasons = new Map(dropped.map((one) => [one.opIndex, one.reason]))
-  return plan.operations.map((_, opIndex) => {
+  const there =
+    elsewhere.length === 0
+      ? undefined
+      : `${elsewhere
+          .map((edit) => `${edit.before === undefined ? 'creates' : 'adds to'} ${edit.path}`)
+          .join(', ')} in the service's repository`
+  return plan.operations.map((operation, opIndex) => {
     const reason = reasons.get(opIndex)
+    if (
+      reason !== undefined &&
+      there !== undefined &&
+      operation.op === 'create-entity' &&
+      !signed.paths.has(opIndex)
+    ) {
+      return { opIndex, effect: there }
+    }
     if (reason !== undefined) return { opIndex, effect: `writes nothing: ${reason}` }
     const outcome = recheck.outcomes.get(opIndex)
     if (outcome === 'already-declared' && plan.operations[opIndex]?.op !== 'update-entity') {

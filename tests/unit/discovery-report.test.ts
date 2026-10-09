@@ -194,7 +194,7 @@ describe('the coverage report', () => {
       'every finding: this version reports what the configuration states and proposes nothing from it',
     ])
     expect(sections[3]?.lines.map((line) => line.text)).toEqual([
-      'not read: init reads no declarations repository in this version',
+      'not compared: this version matches nothing against a declarations repository yet',
     ])
   })
 
@@ -472,7 +472,7 @@ describe('the terminal rendering', () => {
       '                package.json:6   a kafka client is installed: kafkajs — found, not expressible: no resource type for it in this registry',
       'not proposed    every finding: this version reports what the configuration states and proposes nothing from it',
       'declared, not evidenced by this repository',
-      '                not read: init reads no declarations repository in this version',
+      '                not compared: this version matches nothing against a declarations repository yet',
       'not analysed    no rule for this format: .gitignore',
       '                code, not read for dependencies: src/index.ts',
       '                git does not track 1 path, not named',

@@ -1135,6 +1135,23 @@ is proposed from it yet, and no model sees a finding. A preview with no verified
 repository read in part exits 1 (the owner's answer of 2026-10-04); a branch cut or a pull
 request opened exits 0.
 
+Since its second slice's Task 2.3, `init` reads both repositories. The service is the one
+`--project` names, or the working directory; the declarations repository is found as `plan`
+finds it, without `--repo` and without the working directory, which is the service —
+`IDP_REPO`, then `repo` in the personal file — and with neither the run says so and judges
+against an empty catalogue. The Architect drafts the Component over that repository's graph,
+and the five gates of § 6.1 judge it, the Reviewer last, the Architect drafting again what a
+gate refuses: a draft declaring more than the service is refused at gate [1] and drafted again.
+A name the declarations repository already gives a Component is never proposed again: typed,
+the run has nothing to change and names the declaration; drafted, the name is asked, the
+declaration shown. The Component's name, type, lifecycle and owner, and every entry of its
+`dependsOn`, sign as typed or are asked, never enumerated because the catalogue uses the value
+nor vouched for because a graph tool returned it: `group:default/tiger` owning other
+Components says nothing about who owns this one, and a Resource the Architect read says nothing
+about whether this service reaches it. A service that is the declarations repository, or lies
+under its `catalog/` or `dependencies/`, is refused before any model, as `plan --project`
+refuses one.
+
 ### 7.4 `idp-agent "<intent>"` — the daily gesture
 
 ```
@@ -1217,11 +1234,13 @@ again, and judges again, at the moment of writing. Another person's pull request
 edited, commented on or closed; their login, branch and patch are said on stderr, and reach no
 model, no trace, no `--json` and no pull request body.
 
-The two `--repo` flags on this page name two different repositories, and the difference is
-the whole reason the flag exists. `plan --repo` is the **declarations** repository, which
-the preview is decided against (§ 4.4), and standing in it, `IDP_REPO` or the personal
-file (§ 7.0) can name it instead. `init --repo` is the **application** repository, the one
-being declared.
+`--repo` names the **declarations** repository, which the preview is decided against
+(§ 4.4), and standing in it, `IDP_REPO` or the personal file (§ 7.0) can name it instead.
+The **application** repository, the one being declared or inspected, is `--project`, on
+`plan` and on `init` alike. Until stage 8's second slice `init --repo` named the application
+repository, so one flag named two repositories; in this release `init --repo` is refused
+whatever it names, the refusal naming `--project`, and the release after the first one that
+ships stage 8 removes the refusal.
 
 Every run ends on the same line, so no one mistakes submission for permission:
 

@@ -412,9 +412,41 @@ describe('parseArguments: init --submit and its configuration', () => {
     }
   })
 
+  it('names the service with --project, and refuses init --repo naming it, before a model', async () => {
+    // Stage 8, slice 2, Task 2.3 (question 1): `--repo` names the declarations
+    // repository on every other command, so on `init` it is refused for this
+    // release, whatever it names — never read as the service, never as the
+    // declarations repository.
+    expect(parseArguments(['init', '--project', 'd'])).toStrictEqual({
+      name: 'init',
+      project: 'd',
+      answers: {},
+    })
+    for (const args of [['init', '--repo', 'd'], ['init', '--project', 'd', '--repo', 'iac']]) {
+      const refused = parseArguments(args)
+      expect(refused).toMatchObject({ name: 'error' })
+      if (refused.name !== 'error') continue
+      expect(refused.message).toBe(
+        "init --repo named the service's repository until this release; name it with --project. " +
+          'The declarations repository is found as plan finds it — IDP_REPO, or repo in config.yml',
+      )
+
+      let called = 0
+      const err: string[] = []
+      const code = await main(args, {
+        client: { generate: async () => ((called += 1), { text: '', toolCalls: [], finishReason: 'stop' }) },
+        out: () => {},
+        err: (chunk) => void err.push(chunk),
+      })
+      expect(code).toBe(2)
+      expect(called).toBe(0)
+      expect(err.join('')).toContain('name it with --project')
+    }
+  })
+
   it('is in the usage init prints', () => {
     expect(usageOf('init')).toContain(
-      'idp-agent init [--repo <directory>] [--name <name>] [--type <type>] [--lifecycle experimental|production|deprecated] ' +
+      'idp-agent init [--project <directory>] [--name <name>] [--type <type>] [--lifecycle experimental|production|deprecated] ' +
         '[--owner group:<namespace>/<name>] [--submit [--local]] [--iac-repo <locator>] [--environment <name>]...',
     )
   })

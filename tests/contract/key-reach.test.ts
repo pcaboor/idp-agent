@@ -964,7 +964,9 @@ describe.each(PROVIDER_NAMES)("the %s key, and the person's gh and git, on a sub
     const sink = memorySink()
     const out: string[] = []
     const err: string[] = []
-    const code = await main(catalogue === undefined ? [...argv, '--repo', clone.repo] : argv, {
+    // `init` names the service with --project, and every other road the declarations repository with --repo.
+    const flag = argv[0] === 'init' ? '--project' : '--repo'
+    const code = await main(catalogue === undefined ? [...argv, flag, clone.repo] : argv, {
       root: FIXTURES,
       gh,
       env: {

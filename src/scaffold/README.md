@@ -52,4 +52,4 @@ It never rolls back either, so a write that fails part-way leaves what it wrote,
 so: `ScaffoldWriteError` carries the file it stopped at and what was written and kept before
 it, and `init platform` prints that list on stdout, the reason on stderr, and exits 1. A
 re-run keeps every one of those files and writes the rest. A directory that is a file is
-refused before any of this, exit 2, as `init --repo` refuses one.
+refused before any of this, exit 2, as `init --project` refuses one.

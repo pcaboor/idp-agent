@@ -1521,6 +1521,127 @@ describe('the free gate runs before the paid one', () => {
 })
 
 /**
+ * The two seams `init` hands the loop (stage 8, slice 2, Task 2.3), each
+ * absent on the plan road: `scope`, the operations a caller does not take,
+ * refused at gate [1] so the Architect drafts again; and `elsewhere`, the
+ * bytes a signed plan writes into another repository than the one re-checked,
+ * which the Reviewer is told of as that operation's effect.
+ */
+describe('a caller’s scope, and what it writes elsewhere', () => {
+  /** A service's own Component, every value vouched for by the request. */
+  const SERVICE_INTENT = 'declare invoicing-worker, a production service owned by group:default/tiger'
+  const SERVICE = planOf(
+    {
+      kind: 'Component',
+      metadata: { name: 'invoicing-worker' },
+      spec: { type: 'service', lifecycle: 'production', owner: 'group:default/tiger' },
+    },
+    SERVICE_INTENT,
+  )
+  const SCOPE_REFUSAL = 'operations.0: this caller declares one thing, and not that'
+
+  it('reports a scope refusal at gate [1], and the Architect drafts again', async () => {
+    const { events, emit } = collect()
+    const architect = drafting(PLAN, SERVICE)
+    const seen: Plan[] = []
+    const outcome = planned(
+      await repair(
+        inputs({
+          provenance: stating(SERVICE_INTENT),
+          draft: architect.draft,
+          scope: (plan) => {
+            seen.push(plan)
+            return plan.operations.some((one) => one.op === 'create-entity' && one.entity.kind === 'Resource')
+              ? [SCOPE_REFUSAL]
+              : []
+          },
+        }),
+        emit,
+      ),
+    )
+
+    expect(outcome.attempts.map((attempt) => [attempt.gates, attempt.failed])).toEqual([
+      [['zod'], 'zod'],
+      [ORDER, undefined],
+    ])
+    expect(eventsOfType(events, 'repair')).toEqual([
+      { type: 'repair', attempt: 1, gate: 'zod', reason: SCOPE_REFUSAL },
+    ])
+    // In the engine's words, to the Architect, as every gate's report is.
+    expect(architect.reports[1]).toContain('the plan was refused at the zod gate:')
+    expect(architect.reports[1]).toContain(`  ${SCOPE_REFUSAL}`)
+    // Judged after the schema parsed each draft, and only then.
+    expect(seen).toHaveLength(2)
+  })
+
+  it('stops on a scope it refused three times with that draft as the partial plan, which did parse', async () => {
+    const outcome = stopped(
+      await repair(
+        inputs({
+          provenance: stating(SERVICE_INTENT),
+          draft: drafting(PLAN).draft,
+          scope: () => [SCOPE_REFUSAL],
+        }),
+        collect().emit,
+      ),
+    )
+    expect(outcome.gate).toBe('zod')
+    expect(outcome.reason).toContain(SCOPE_REFUSAL)
+    expect(outcome.plan).toEqual(PLAN)
+  })
+
+  it('tells the Reviewer what a Component writes in the other repository, not that it writes nothing', async () => {
+    const plain = reviewing({ verdict: 'ok' })
+    await repair(
+      inputs({ provenance: stating(SERVICE_INTENT), draft: drafting(SERVICE).draft, review: plain.review }),
+      collect().emit,
+    )
+    // Without the seam, what the loop has always said: no path, no bytes.
+    expect(plain.facts[0]?.effects).toEqual([
+      { opIndex: 0, effect: 'writes nothing: the engine computed no path for it' },
+    ])
+
+    const told = reviewing({ verdict: 'ok' })
+    const outcome = planned(
+      await repair(
+        inputs({
+          provenance: stating(SERVICE_INTENT),
+          draft: drafting(SERVICE).draft,
+          review: told.review,
+          elsewhere: () => [{ path: 'catalog-info.yaml', before: undefined, after: '---\nkind: Component\n' }],
+        }),
+        collect().emit,
+      ),
+    )
+    expect(told.facts[0]?.effects).toEqual([
+      { opIndex: 0, effect: "creates catalog-info.yaml in the service's repository" },
+    ])
+    // The diff of THIS repository is unchanged: the seam is what the Reviewer
+    // reads, never an edit the re-check judges.
+    expect(outcome.edits).toEqual([])
+    expect(outcome.dropped).toEqual([{ opIndex: 0, reason: 'the engine computed no path for it' }])
+  })
+
+  it('says an addition to a file the other repository keeps as one', async () => {
+    const told = reviewing({ verdict: 'ok' })
+    await repair(
+      inputs({
+        provenance: stating(SERVICE_INTENT),
+        draft: drafting(SERVICE).draft,
+        review: told.review,
+        elsewhere: () => [
+          { path: 'deploy/catalog-info.yml', before: '---\nkind: API\n', after: '---\nkind: API\n---\nkind: Component\n' },
+        ],
+      }),
+      collect().emit,
+    )
+    expect(told.facts[0]?.effects).toEqual([
+      { opIndex: 0, effect: "adds to deploy/catalog-info.yml in the service's repository" },
+    ])
+  })
+})
+
+/**
  * The attempts as the stream tells them: each one's gates, passed or refused,
  * between its own attempt:start and attempt:end. It is what a trace is built
  * from (src/trace/), so it must never tell a run differently from the record

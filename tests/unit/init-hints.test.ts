@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent } from '../../src/agents/events.js'
 import { projectFactsSchema, REPORT_TOOL, type ProjectFacts } from '../../src/agents/tools/project-tools.js'
 import { PROPOSE_TOOL } from '../../src/agents/tools/propose-tool.js'
+import { VERDICT_TOOL } from '../../src/agents/reviewer.js'
 import { withHints } from '../../src/cli/commands/init.js'
 import { questionLines, type Ask } from '../../src/cli/commands/plan.js'
 import { main } from '../../src/cli/index.js'
@@ -96,6 +97,7 @@ const drafting = (
   scripted({
     inspector: [reading(files), call(REPORT_TOOL, facts)],
     architect: [call(PROPOSE_TOOL, { operations: [component(spec)] })],
+    reviewer: [call(VERDICT_TOOL, { verdict: 'ok' })],
   })
 
 const run = async (
@@ -106,7 +108,7 @@ const run = async (
   const out: string[] = []
   const err: string[] = []
   const events: AgentEvent[] = []
-  const code = await main(['init', '--repo', root, ...flags], {
+  const code = await main(['init', '--project', root, ...flags], {
     cwd: root,
     ...deps,
     events: (event) => void events.push(event),

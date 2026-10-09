@@ -1027,3 +1027,109 @@ describe('the words are the provenance’s, never the plan’s', () => {
     )
   })
 })
+
+/**
+ * The service's own Component, on `init` (stage 8, slice 2, Task 2.3, row
+ * 10b). From 2.3 `init` signs against the declarations repository's graph, so
+ * the vocabulary holds the owners and the types that repository uses, and the
+ * graph tools witness every reference they return. Neither says anything about
+ * THIS service: `group:default/tiger` owning other Components is no answer to
+ * who owns this one. With `ownComponent`, the four fields of a created
+ * Component are the person's — typed, answered, or asked — and never
+ * enumerated, witnessed or composed.
+ */
+describe('a service’s own Component, stated or asked', () => {
+  /** What `init` signs with: the engine's sentence, which vouches for no word of itself. */
+  const ENGINE = 'declare this repository in the catalogue, from what its own files state'
+  const service = {
+    kind: 'Component' as const,
+    // Every segment a type the catalogue uses: `composed()` would vouch for it.
+    metadata: { name: 'service' },
+    spec: { type: 'service', lifecycle: 'production' as const, owner: 'group:default/tiger' },
+  }
+  const catalogue = context({
+    vocabulary: { ...vocabulary, types: [...vocabulary.types, 'service'] },
+    witnessed: new Set(['group:default/tiger', 'component:default/billing-api']),
+  })
+  const engine = (answers: Record<string, string> = {}): Provenance => ({
+    intent: ENGINE,
+    wordsOf: 'engine',
+    answers: new Map(Object.entries(answers)),
+  })
+  const FIELDS = [
+    'operations.0.entity.metadata.name',
+    'operations.0.entity.spec.type',
+    'operations.0.entity.spec.lifecycle',
+    'operations.0.entity.spec.owner',
+  ]
+  const classOf = (result: SignedPlan, path: string) =>
+    result.classified.find((leaf) => leaf.path === path)?.class
+
+  it('lets the catalogue vouch for them on the plan road, which is why init must not', () => {
+    const result = signed(plan(service, ENGINE), catalogue, engine())
+    expect(classOf(result, 'operations.0.entity.spec.owner')).toBe('enumerated')
+    expect(classOf(result, 'operations.0.entity.spec.type')).toBe('enumerated')
+    expect(classOf(result, 'operations.0.entity.metadata.name')).toBe('echoed')
+  })
+
+  it('asks every one nobody typed, whatever the catalogue uses', () => {
+    const result = signed(plan(service, ENGINE), { ...catalogue, ownComponent: 'stated-or-asked' }, engine())
+    for (const path of FIELDS) expect(classOf(result, path), path).toBe('novel')
+    expect(findUnknowns(result.plan)).toEqual(expect.arrayContaining(FIELDS))
+  })
+
+  it('signs as the person’s each one they typed, and only at its field', () => {
+    const typed = {
+      'operations.0.entity.metadata.name': 'service',
+      'operations.0.entity.spec.type': 'service',
+      'operations.0.entity.spec.lifecycle': 'production',
+      'operations.0.entity.spec.owner': 'group:default/tiger',
+    }
+    const result = signed(plan(service, ENGINE), { ...catalogue, ownComponent: 'stated-or-asked' }, engine(typed))
+    for (const path of FIELDS) expect(classOf(result, path), path).toBe('echoed')
+    expect(findUnknowns(result.plan)).toEqual([])
+  })
+
+  /**
+   * A `dependsOn` on the service's own Component is the service claiming a
+   * dependency (note § 5, `claimed`): a graph tool returning the Resource is
+   * not anybody saying this service reaches it. Before 2.3 the graph was empty
+   * and such an entry was asked; it still is.
+   */
+  const reaching = {
+    ...service,
+    spec: { ...service.spec, dependsOn: ['resource:default/billing-db-prod'] },
+  }
+  const witnessing = {
+    ...catalogue,
+    witnessed: new Set([...catalogue.witnessed, 'resource:default/billing-db-prod']),
+  }
+  const DEPENDS = 'operations.0.entity.spec.dependsOn.0'
+
+  it('lets a graph tool vouch for a dependsOn entry on the plan road, which is why init must not', () => {
+    const result = signed(plan(reaching, ENGINE), witnessing, engine())
+    expect(classOf(result, DEPENDS)).toBe('enumerated')
+  })
+
+  it('asks every dependsOn entry of the service’s own Component nobody typed, whatever a tool returned', () => {
+    const result = signed(plan(reaching, ENGINE), { ...witnessing, ownComponent: 'stated-or-asked' }, engine())
+    expect(classOf(result, DEPENDS)).toBe('novel')
+    expect(findUnknowns(result.plan)).toContain(DEPENDS)
+  })
+
+  it('signs as the person’s a dependsOn entry they answered, at its index', () => {
+    const result = signed(
+      plan(reaching, ENGINE),
+      { ...witnessing, ownComponent: 'stated-or-asked' },
+      engine({ [DEPENDS]: 'resource:default/billing-db-prod' }),
+    )
+    expect(classOf(result, DEPENDS)).toBe('echoed')
+  })
+
+  it('leaves a Resource and its kind to the rules they always had', () => {
+    const result = signed(plan(access), { ...context(), ownComponent: 'stated-or-asked' })
+    expect(classOf(result, 'operations.0.entity.spec.owner')).toBe('enumerated')
+    expect(classOf(result, 'operations.0.entity.spec.type')).toBe('derived')
+    expect(classOf(result, 'operations.0.entity.kind')).toBe('derived')
+  })
+})
